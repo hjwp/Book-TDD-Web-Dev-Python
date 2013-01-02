@@ -9,7 +9,7 @@ class AdditionTest(unittest.TestCase):
 
 
     def test_inputs_out_of_scope_raise_exceptions(self):
-        for bad_input in (2, None, 'Z', 'X', 'L', 'C', 'D', 'M'):
+        for bad_input in (2, None, 'Z', 'L', 'C', 'D', 'M'):
             with self.assertRaises(ValueError) as m:
                 add('I', bad_input)
                 if not hasattr(m, 'exception'):
@@ -28,12 +28,17 @@ class AdditionTest(unittest.TestCase):
         self.assertEqual(add('I', 'V'), 'VI')
 
 
-    def DONTtest_IX_and_X(self):
+    def test_IX_and_X(self):
         self.assertEqual(add('V', 'V'), 'X')
         self.assertEqual(add('V', 'IV'), 'IX')
         self.assertEqual(add('VIII', 'I'), 'IX')
+        self.assertEqual(add('IX', 'I'), 'X')
+        self.assertEqual(add('X', 'I'), 'XI')
+        self.assertEqual(add('I', 'X'), 'XI')
         self.assertEqual(add('X', 'V'), 'XV')
-        self.assertEqual(add('X', 'V'), 'XV')
+        self.assertEqual(add('V', 'X'), 'XV')
+        self.assertEqual(add('X', 'X'), 'XX')
+
 
 if __name__ == '__main__':
     unittest.main()
