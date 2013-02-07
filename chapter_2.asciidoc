@@ -1,0 +1,276 @@
+Chapter 2 - A basic front page for our site
+-------------------------------------------
+
+Let's adapt our test, which currently checks for the default Django "it worked"
+page, and check instead for some of the things we want to see on the front
+page.
+
+Oh, it's probably time to reveal what kind of web app we're building. Well, I
+thought we'd go for... a "to-do" list site!  In doing so I'm very much
+following fashion - a few years ago all web tutorials were about building a
+blog.  Then it was forums and polls, nowadays it's to-do lists.
+
+The reason is that a to-do list is a really nice example. At its most basic
+it is very simple indeed -- just a list of text strings -- so it's easy to
+get a "minimum viable" todo app up and running.  But it can be extended in all
+sorts of ways -- different persistence models, adding deadlines, reminders,
+sharing with other users, and improving the client-side UI. It should allow
+me to demonstrate all of the main aspects of web programming^*^, and how you apply
+TDD to them.
+
+`*` 'With the possible exception of payments integration.  But that's a world
+of pain whose discovery I prefer to leave you, dear readers, to enjoy on your
+own.  Let's concentrate on phase 1, "collect underpants", first.'
+
+
+Using the Django test runner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's take a very small step, and say the first thing we want is that the page
+should have a new title + heading, saying ``My Stuff to get done''.  We'll
+adapt our current `tests.py`.
+
+First off, though, it would be nice to move our tests file into the same folder
+structure as our Django code.  It's also a bit tedious to have to remember to
+spin up the development server (using `manage.py runserver`) each time.
+Thankfully, Django has some tools to help.
+
+Django likes to strucure websites (or "projects") into components called
+"apps". The idea is that you break your site's functionality down into
+coherent parts or apps. Some of these apps might have been developed by 3rd
+parties, and some of them you might re-use between different projects.
+
+To start an app, we use another management called `startapp`:
+
+....
+$ python manage.py startapp fts
+$ tree -I *.pyc
+.
+├── .gitignore
+├── fts
+│   ├── __init__.py
+│   ├── models.py
+│   ├── tests.py
+│   └── views.py
+├── manage.py
+├── mysite
+│   ├── __init__.py
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+└── tests.py
+....
+
+You'll see it creates a new folder called "fts" inside your project.  Inside
+that, it creates a bunch of files including one intriguingly called tests.py.  
+Let's add them to version control:
+
+....
+git add fts
+git commit -m"Add Django app for FTs"
+....
+
+
+Now let's go and take a look at `fts\tests.py`, and see if we can move our own
+test code across.
+
+
+Here's the default contents...
+
+
+[source,python]
+----
+"""
+This file demonstrates writing tests using the unittest module. These will pass
+when you run "manage.py test".
+
+Replace this with more appropriate tests for your application.
+"""
+
+from django.test import TestCase
+
+
+class SimpleTest(TestCase):
+    def test_basic_addition(self):
+        """
+        Tests that 1 + 1 always equals 2.
+        """
+        self.assertEqual(1 + 1, 2)
+----
+
+Django is encouraging us to use `unittest`, which is Python's standard testing
+framework.  Let's do that, along with a few other useful things which I'll
+explain shortly
+
+[source,python]
+----
+from selenium import webdriver
+from django.test import LiveServerTestCase
+
+
+class HomePageTest(LiveServerTestCase):
+
+    def setUp(self):
+        self.browser = webdriver.Firefox()
+
+    def tearDown(self):
+        self.browser.quit()
+
+    def test_home_page(self):
+        self.browser.get('http://localhost:8000')
+        self.assertIn('Django', self.browser.title)
+----
+
+
+<note on copy & paste>
+
+Things to note:
+
+* the `setUp` and `tearDown` methods.  These are special methods which get run
+  before and after each test.  I'm using them to start and stop our browser --
+  note that they're a bit like a try/except, in that tearDown will get run even
+  if there's an error during the test itself.  No more Firefox windows left
+  lying around!
+
+* the main body of the test is in a method called `test_home_page` -- any method
+  whose name starts with `test_` is a test method, and will be run by the test
+  runner
+
+* tests are organised into classes, which are subclasses of `unittest.TestCase`.
+  Django suggested its own `django.test.TestCase`, but we're using a special
+  one called `LiveServerTestCase`.  It will automatically start up the Django
+  dev server for us, during our test run.
+
+
+Let's try running the tests -- you should see something like this
+
+....
+python manage.py test
+(book)51:mysite harry$ python manage.py test
+Creating test database for alias 'default'...
+Traceback (most recent call last):
+  File "manage.py", line 10, in <module>
+    execute_from_command_line(sys.argv)
+
+    [...lots more traceback]
+
+    raise ImproperlyConfigured("settings.DATABASES is improperly configured. "
+django.core.exceptions.ImproperlyConfigured: settings.DATABASES is improperly configured. Please supply the ENGINE value. Check settings documentation for more details.
+....
+
+OK, so we got a load of ugly traceback, but at least there were no syntax
+errors.  That's good enough for a commit:
+
+....
+git diff
+git add fts/tests.py
+git rm tests.py
+git commit -m"Migrate functional test into Django FT app"
+....
+
+The tests drive our development, so let's look into this `ImproperlyConfigured`
+error. It's telling to us to look at settings, which is the
+`mysite/settings.py` file.  Open it up and scroll to the line which defines
+`DATABASES` and `ENGINE`:
+
+[source,python]
+----
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.', # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
+        'NAME': '',                      # Or path to database file if using sqlite3.
+        'USER': '',                      # Not used with sqlite3.
+        'PASSWORD': '',                  # Not used with sqlite3.
+        'HOST': '',                      # Set to empty string for localhost. Not used with sqlite3.
+        'PORT': '',                      # Set to empty string for default. Not used with sqlite3.
+    }
+}
+----
+
+Helpful comments!  Let's use `sqlite3`, which is the quickest to set up.  We can
+always change it later.
+
+[source,python]
+----
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3', 
+        'NAME': '',                      # Or path to database file if using sqlite3.
+----
+
+And let's try running the tests again:
+....
+$ python manage.py test
+Creating test database for alias 'default'...
+..........................................................................................................................................................................................................................................................................................................................................................s........................................................................
+----------------------------------------------------------------------
+Ran 419 tests in 17.679s
+
+OK (skipped=1)
+Destroying test database for alias 'default'...
+(book)51:mysite harry$ 
+....
+
+419 tests!  We didn't write that many!  Well, with the generic `manage.py test`
+command, Django runs all the test for every app you have installed, including
+all of its core modules.  Let's get it to run just the test that we've put in
+our new `fts` app:
+
+....
+$ python manage.py test fts
+Traceback (most recent call last):
+  File "manage.py", line 10, in <module>
+    execute_from_command_line(sys.argv)
+
+    [...lots more traceback]
+
+    raise ImproperlyConfigured("App with label %s could not be found" % app_label)
+django.core.exceptions.ImproperlyConfigured: App with label fts could not be found
+....
+
+BUT IT'S RIGHT THERE! Unfortunately, just running the `startapp` command and putting
+what is obviously an app into your project folder isn't quite enough for Django to
+automatically recognise your app.  You have to tell it that you really mean it,
+and add it to `settings.py`. Open it up and look for a variable called
+`INSTALLED_APPS`:
+
+
+[source,python]
+----
+INSTALLED_APPS = (
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.sites',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    # Uncomment the next line to enable the admin:
+    # 'django.contrib.admin',
+    # Uncomment the next line to enable admin documentation:
+    # 'django.contrib.admindocs',
+    'fts',
+)
+----
+
+We'll add `fts` to the bottom of the list.  Don't forget the trailing comma - it may
+not be required, but one day you'll be really annoyed when you forget it and Python
+concatenates two strings on different lines...
+
+[source,python]
+----
+INSTALLED_APPS = (
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.sites',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    # Uncomment the next line to enable the admin:
+    # 'django.contrib.admin',
+    # Uncomment the next line to enable admin documentation:
+    # 'django.contrib.admindocs',
+    'fts',
+)
+----
+
+oh balls. undebuggable 'problem loading page' crap
