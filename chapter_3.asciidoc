@@ -102,9 +102,9 @@ Ran 1 test in 7.025s
 FAILED (errors=1)
 .....
 
-Decoding that, the test is saying it can't find an `<h1>` element on the page. Well,
-a failing test means we're allowed to make changes to the code!  Let's take a look at
-'awesomelists/urls.py'
+Decoding that, the test is saying it can't find an `<h1>` element on the page.
+Well, a failing test means we're allowed to make changes to the code!  Let's
+take a look at 'awesomelists/urls.py'
 
 
 [source,python]
@@ -122,28 +122,186 @@ urlpatterns = patterns('',
     url(r'^$', get_home_page),
 ----
 
-Well, we could just dive in and start editing the `HOME_PAGE` constant, but editing
-HTML as string constants in a Python file isn't really a lot of fun.  At a very
-minimum, it would be nice to have some kind of syntax-highlighting to help us
-get our HTML straight.  Also, editing view functions right in 'urls.py' isn't really
-the done thing -- Django encourages us to use a separate file for that. It's time
-to bring in Django apps.
+Well, we could just dive in and start editing the `HOME_PAGE` constant, but
+editing HTML as string constants in a Python file isn't really a lot of fun.
+At a very minimum, it would be nice to have some kind of syntax-highlighting to
+help us get our HTML straight.  Also, editing view functions right in 'urls.py'
+isn't really the done thing -- Django encourages us to use a separate file for
+that. It's time to bring in Django apps.
 
 
-Our first Django app
-~~~~~~~~~~~~~~~~~~~~
+Our first Django app, and our first unit test
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Django encourages you to structure your code into apps: one project can have many
-apps, you might re-use the same app in different projects, and you can use
-third-party apps developed by other people.
+Django encourages you to structure your code into ``apps'': one project can
+have many apps, you might re-use the same app in different projects, and you
+can use third-party apps developed by other people.
 
 So, let's start an app for our lists
 
+....
 $ python manage.py startapp lists
+....
 
+That will create a folder at 'awesomelists/lists', next to
+'awesomelists/awesomelists', and within it a number of placeholder files for
+models, tests and, of immediate interest to us, **views**.
+
+....
+$ tree -I *.pyc
+.
+├── awesomelists
+│   ├── __init__.py
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── lists
+│   ├── __init__.py
+│   ├── models.py
+│   ├── tests.py
+│   └── views.py
+├── manage.py
+└── tests.py
+....
+
+We want to move our minimal view function out of 'urls.py' and into 'views.py',
+but doing so crosses a threshold I like to impose -- all view functions should
+have unit tests.  You'll see that Django is encouraging us to write tests by
+putting a 'tests.py' inside 'awesomelists/lists'.
+
+
+Unit tests, and how they differ from Functional tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+As so often, the line between unit tests and functional tests can become a
+little blurry.  The basic distinction, though, is that functional tests test
+the application from the outside, from point of view of the user, whereas unit
+tests test the application from the inside, from the point of view of the
+programmer.
+
+The TDD methodology I'm trying to teach then, follows this sort of a pattern:
+
+1.  Start by writing a Functional test, describing the new functionality from
+    the point of view of the user
+
+2.  Once we have a functional test that fails, we start to think about how
+    to write code that can get it to pass (or at least to get past its current
+    failure)
+
+3.  We now use one or more unit tests to define how we want our code to behave
+    -- the idea is that each line of production code we write should be 
+    tested by (at least) one of our unit tests
+
+4.  Once we have a failing unit test, we can write our application code.  We
+    may iterate between steps 3 and 4 a few times
+
+5.  Now we can re-run our functional tests and see if they pass, or get a
+    little further.  That may prompt us to write some new unit tests, and
+    some new code.
+
+You can see that, all the way through, the functional tests are driving what 
+development we do from a high level, while the unit tests drive what we do
+at a low level.
+
+Now that may seem slightly redundant, and indeed sometimes it is, but
+functional tests and unit tests do really have very different objectives,
+and they will most often end up looking quite different.  Functional tests
+should help you build an application with the right functionality.  Unit
+tests should help you to write code that's clean and bug free.
+
+Enough theory for now, let's see how it looks in practice.
+
+
+Unit testing in Django
+~~~~~~~~~~~~~~~~~~~~~~
+
+Let's see how to write a unit test for our homepage view then. Open up
+'lists/tests.py', and you'll see something like this:
+
+[source,python]
+----
+"""
+This file demonstrates writing tests using the unittest module. These will pass
+when you run "manage.py test".
+
+Replace this with more appropriate tests for your application.
+"""
+
+from django.test import TestCase
+
+
+class SimpleTest(TestCase):
+    def test_basic_addition(self):
+        """
+        Tests that 1 + 1 always equals 2.
+        """
+        self.assertEqual(1 + 1, 2)
+----
+
+Django has helpfully put a little placeholder in there.  Let's use that as a
+starting point to work from.  You've already seen that the TDD cycle involves
+starting with a test that fails, then writing code to get it to pass. Refining
+this idea, even before we can write a test for our code, we want to know that
+the test we're writing is definitely being run.  So let's start by making
+a test that we know will fail, by deliberately breaking the default addition
+test.
+
+[source,python]
+----
+        self.assertEqual(1 + 1, 3)
+----
+
+Now let's invoke Django's test runner - as usual, it's a 'manage.py' command,
+`python manage.py test`:
+
+
+....
+$ python manage.py test
+Creating test database for alias 'default'...
+Traceback (most recent call last):
+  File "manage.py", line 10, in <module>
+    execute_from_command_line(sys.argv)
+
+    [...lots more traceback]
+
+    raise ImproperlyConfigured("settings.DATABASES is improperly configured. "
+django.core.exceptions.ImproperlyConfigured: settings.DATABASES is improperly
+configured. Please supply the ENGINE value. Check settings documentation for
+more details.
+....
+
+Yuk, some pretty ugly traceback, but the message is actually quite helpful -
+the test runner is complaining that it can't run tests until we set up some
+kind of database. Let's do that, in the 'mysite/settings.py' file.  Open it up
+and scroll to the line which defines `DATABASES` and `ENGINE`:
+
+[source,python]
+----
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.', # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
+        'NAME': '',                      # Or path to database file if using sqlite3.
+        'USER': '',                      # Not used with sqlite3.
+        'PASSWORD': '',                  # Not used with sqlite3.
+        'HOST': '',                      # Set to empty string for localhost. Not used with sqlite3.
+        'PORT': '',                      # Set to empty string for default. Not used with sqlite3.
+    }
+}
+----
+
+Helpful comments!  Let's use `sqlite3`, which is the quickest to set up.  We
+can always change it later.
+
+[source,python]
+----
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3', 
+        'NAME': '',                      # Or path to database file if using sqlite3.
+----
 
 And let's try running the tests again:
-.... 
+....
 $ python manage.py test
 Creating test database for alias 'default'...
 ..........................................................................................................................................................................................................................................................................................................................................................s........................................................................
@@ -152,31 +310,35 @@ Ran 419 tests in 17.679s
 
 OK (skipped=1)
 Destroying test database for alias 'default'...
-(book)51:awesomelists harry$ 
 ....
+
 
 419 tests!  We didn't write that many!  Well, with the generic `manage.py test`
-command, Django runs all the test for every app you have installed, including
-all of its core modules.  Let's get it to run just the test that we've put in
-our new `fts` app:
+command, Django runs all its own unit tests, as well as any tests for your app.
+
+More worryingly though, we didn't see a test failure.  Assuming there have been
+no changes in the fundamental properties of mathematics, 1 + 1 should not equal 3.
+Where is our failing test?
+
+Django will let you run tests for an individual app, by specifying it as a
+command-line parameter. Let's try running just the tests for our app, `lists`:
+
 
 ....
-$ python manage.py test fts
 Traceback (most recent call last):
-  File "manage.py", line 10, in <module>
+  File "source/chapter_3/awesomelists/manage.py", line 10, in <module>
     execute_from_command_line(sys.argv)
-
-    [...lots more traceback]
-
+    [lots of traceback]
     raise ImproperlyConfigured("App with label %s could not be found" % app_label)
-django.core.exceptions.ImproperlyConfigured: App with label fts could not be found
+django.core.exceptions.ImproperlyConfigured: App with label lists could not be found
 ....
 
-BUT IT'S RIGHT THERE! Unfortunately, just running the `startapp` command and putting
-what is obviously an app into your project folder isn't quite enough for Django to
-automatically recognise your app.  You have to tell it that you really mean it,
-and add it to `settings.py`. Open it up and look for a variable called
-`INSTALLED_APPS`:
+
+BUT IT'S RIGHT THERE! Unfortunately, just running the `startapp` command and
+having what is obviously an app in your project folder isn't quite enough
+for Django to automatically recognise your app.  You have to tell it that you
+really mean it, and add it to 'settings.py'. Open it up and look for a variable
+called `INSTALLED_APPS`:
 
 
 [source,python]
@@ -192,29 +354,46 @@ INSTALLED_APPS = (
     # 'django.contrib.admin',
     # Uncomment the next line to enable admin documentation:
     # 'django.contrib.admindocs',
-    'fts',
+    'list',
 )
 ----
 
-We'll add `fts` to the bottom of the list.  Don't forget the trailing comma - it may
-not be required, but one day you'll be really annoyed when you forget it and Python
-concatenates two strings on different lines...
+You can see there's lots of apps already in there by default (they're some of the
+apps that caused all those 419 tests earlier).  We just need to add ours,
+`list`, to the bottom of the list.  Don't forget the trailing comma -
+it may not be required, but one day you'll be really annoyed when you forget it
+and Python concatenates two strings on different lines...
 
-[source,python]
-----
-INSTALLED_APPS = (
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.sites',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    # Uncomment the next line to enable the admin:
-    # 'django.contrib.admin',
-    # Uncomment the next line to enable admin documentation:
-    # 'django.contrib.admindocs',
-    'fts',
-)
-----
+Now we can try running the tests for `lists` again:
 
-oh balls. undebuggable 'problem loading page' crap
+....
+$ python manage.py test lists
+Creating test database for alias 'default'...
+F
+======================================================================
+FAIL: test_basic_addition (lists.tests.SimpleTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_3/awesomelists/lists/tests.py", line 16, in test_basic_addition
+    self.assertEqual(1 + 1, 3)
+AssertionError: 2 != 3
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
+Destroying test database for alias 'default'...
+....
+
+That's more like it!  You can reassure yourself that it gets run as part of the
+general command, `manage.py test` as well, and you should see it now runs 420
+tests instead of 419.
+
+
+Writing a unit test for our minimal view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Our view function is totally trivial, but it's always good to get a minimal
+unit test in as soon as possible.  The testing goat is already angry that we
+hacked about in 'urls.py'
+
