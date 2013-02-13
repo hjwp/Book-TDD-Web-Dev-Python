@@ -1,5 +1,5 @@
-Chapter 2 - A basic front page for our site
--------------------------------------------
+Chapter 2 - A basic home page with a unit test
+-------------------------------------------~~~
 
 Let's adapt our test, which currently checks for the default Django "it worked"
 page, and check instead for some of the things we want to see on the front
@@ -18,7 +18,7 @@ sharing with other users, and improving the client-side UI. It should allow
 me to demonstrate all of the main aspects of web programming^*^, and how you
 apply TDD to them.
 
-`*` 'With the possible exception of payments integration.  But that's a world
+`*` 'With the exception of payments integration.  That's a world
 of pain whose discovery I prefer to leave you, dear readers, to enjoy on your
 own.  Let's concentrate on phase 1, "collect underpants", first.'
 
@@ -108,54 +108,306 @@ That's what we call an ``expected fail'', which is actually good news - not
 quite as good as a test that passes, but at least it's failing for the right
 reason; we can have some confidence we've at least written the test correctly.
 
-The Python standard library's unittest module
+
+Our first Django app, and our first unit test
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-But there's a couple of little annoyances we should probably deal with.
-Firstly, the message "AssertionError" isn't very helpful - it would be nice
-if the test told us what it actually found as the browser title.  Also, it's
-left a Firefox window hanging around the desktop, it would be nice if it would
-clear them up for us automatically.
+Django encourages you to structure your code into ``apps'': one project can
+have many apps, you might re-use the same app in different projects, and you
+can use third-party apps developed by other people.
 
-One option would be to use the second parameter to the `assert` keyword,
-something like
+So, let's start an app for our lists:
+
+....
+$ python manage.py startapp lists
+....
+
+That will create a folder at 'awesomelists/lists', next to
+'awesomelists/awesomelists', and within it a number of placeholder files for
+models, views and, of immediate interest to us, tests.
+
+....
+$ tree -I *.pyc
+.
+├── awesomelists
+│   ├── __init__.py
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── lists
+│   ├── __init__.py
+│   ├── models.py
+│   ├── tests.py
+│   └── views.py
+├── manage.py
+└── functional_tests.py
+....
+
+
+Unit tests, and how they differ from Functional tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+As so often, the line between unit tests and functional tests can become a
+little blurry.  The basic distinction, though, is that functional tests test
+the application from the outside, from point of view of the user, whereas unit
+tests test the application from the inside, from the point of view of the
+programmer.
+
+The TDD methodology I'm trying to teach then, follows this sort of a pattern:
+
+1.  Start by writing a **functional test**, describing the new functionality
+    from the point of view of the user
+
+2.  Once we have a functional test that fails, we start to think about how
+    to write code that can get it to pass (or at least to get past its current
+    failure)
+
+3.  We now use one or more **unit tests** to define how we want our code to
+    behave -- the idea is that each line of production code we write should be 
+    tested by (at least) one of our unit tests
+
+4.  Once we have a failing unit test, we can write our application code.  We
+    may iterate between steps 3 and 4 a few times
+
+5.  Now we can re-run our functional tests and see if they pass, or get a
+    little further.  That may prompt us to write some new unit tests, and
+    some new code, and so on.
+
+I would draw you a flowchart, but it really feels like over-egging the pudding!
+Best to explain through demonstration.
+
+You can see that, all the way through, the functional tests are driving what 
+development we do from a high level, while the unit tests drive what we do
+at a low level.
+
+Now that may seem slightly redundant, and sometimes it can seem that way, but
+functional tests and unit tests do really have very different objectives, and
+they will usually end up looking quite different.  Functional tests should help
+you build an application with the right functionality, and guarantee you never
+accidentally break it.  Unit tests should help you to write code that's clean
+and bug free.
+
+Enough theory for now, let's see how it looks in practice.
+
+
+Unit testing in Django
+~~~~~~~~~~~~~~~~~~~~~~
+
+Let's see how to write a unit test for our homepage view then. Open up
+'lists/tests.py', and you'll see something like this:
 
 [source,python]
 ----
-assert 'To-Do' in browser.title, "To-Do not found in browser title, it was " + browser.title
+"""
+This file demonstrates writing tests using the unittest module. These will pass
+when you run "manage.py test".
+
+Replace this with more appropriate tests for your application.
+"""
+
+from django.test import TestCase
+
+
+class SimpleTest(TestCase):
+    def test_basic_addition(self):
+        """
+        Tests that 1 + 1 always equals 2.
+        """
+        self.assertEqual(1 + 1, 2)
 ----
 
-And we could also use a `try/finally` to clean up the old Firefox window. But
-these sorts of problems are quite common in testing, and there are some ready-
-made solutions for us in the standard library's `unittest` module. Let's use
-that!
+Django has helpfully put a little place-holder in there for us to write tests
+with.  You'll see it's using a special class `TestCase`, and a special method
+`self.assertEqual`. These are based on the Python standard library `unittest`,
+which I'll talk more about later, but in essence it's no different from the
+straightforward kind of test we wrote for our functional test.
+
+Let's use that as a starting point to work from.  You've already seen that the
+TDD cycle involves starting with a test that fails, then writing code to get it
+to pass. Refining this idea, even before we can write a test for our code, we
+want to know that the test we're writing is definitely being run.  So let's
+start by making a test that we know will fail, by deliberately breaking the
+default addition test.
 
 [source,python]
 ----
-
-import unittest
-from selenium import webdriver
-
-class NewVisitorTest(unittest.TestCase):
-
-    def setUp(self):
-        self.browser = webdriver.Firefox()
-
-    def tearDown(self):
-        self.browser.quit()
-
-    def test_can_start_a_todo_list_and_get_a_url_for_it(self):
-        # Edith has heard about a cool new online to-do app. She goes
-        # to check out its homepage
-        self.browser.get('http://localhost:8000')
-
-        # She notices the page title and header mention to-do lists
-        self.assertIn('To-Do', self.browser.title)
-        self.fail('Finish the test!')
-
-        # She is invited to enter a to-do item straight away
-        [...rest of comments as before]
+        self.assertEqual(1 + 1, 3)
 ----
+
+Now let's invoke Django's test runner - as usual, it's a 'manage.py' command,
+`python manage.py test`:
+
+....
+$ python manage.py test
+Creating test database for alias 'default'...
+Traceback (most recent call last):
+  File "manage.py", line 10, in <module>
+    execute_from_command_line(sys.argv)
+
+    [...lots more traceback]
+
+    raise ImproperlyConfigured("settings.DATABASES is improperly configured. "
+django.core.exceptions.ImproperlyConfigured: settings.DATABASES is improperly
+configured. Please supply the ENGINE value. Check settings documentation for
+more details.
+....
+
+Yuk, some pretty ugly traceback, but the message is actually quite helpful -
+the test runner is complaining that it can't run tests until we set up some
+kind of database. Let's do that, in the 'mysite/settings.py' file.  Open it up
+and scroll to the line which defines `DATABASES` and `ENGINE`:
+
+[source,python]
+----
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.', # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
+        'NAME': '',                      # Or path to database file if using sqlite3.
+        'USER': '',                      # Not used with sqlite3.
+        'PASSWORD': '',                  # Not used with sqlite3.
+        'HOST': '',                      # Set to empty string for localhost. Not used with sqlite3.
+        'PORT': '',                      # Set to empty string for default. Not used with sqlite3.
+    }
+}
+----
+
+Helpful comments!  Let's use `sqlite3`, which is the quickest to set up.  We
+can always change it later.
+
+[source,python]
+----
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3', 
+        'NAME': '',                      # Or path to database file if using sqlite3.
+----
+
+And let's try running the tests again:
+....
+$ python manage.py test
+Creating test database for alias 'default'...
+..........................................................................................................................................................................................................................................................................................................................................................s........................................................................
+----------------------------------------------------------------------
+Ran 419 tests in 17.679s
+
+OK (skipped=1)
+Destroying test database for alias 'default'...
+....
+
+
+419 tests!  We didn't write that many!  Well, with the generic `manage.py test`
+command, Django runs all its own unit tests, as well as any tests for your
+apps.
+
+More worryingly though, we didn't see a test failure.  Assuming there have been
+no changes in the fundamental properties of mathematics, 1 + 1 should not equal 3.
+Where is our failing test?
+
+Django will let you run tests for an individual app, by specifying it as a
+command-line parameter. Let's try running just the tests for our app, `lists`:
+
+
+....
+Traceback (most recent call last):
+  File "source/chapter_3/awesomelists/manage.py", line 10, in <module>
+    execute_from_command_line(sys.argv)
+    [lots of traceback]
+    raise ImproperlyConfigured("App with label %s could not be found" % app_label)
+django.core.exceptions.ImproperlyConfigured: App with label lists could not be found
+....
+
+
+BUT IT'S RIGHT THERE! Unfortunately, just running the `startapp` command and
+having what is obviously an app in your project folder isn't quite enough
+for Django to automatically recognise your app.  You have to tell it that you
+really mean it, and add it to 'settings.py' as well. Open it up and look for a
+variable called `INSTALLED_APPS`, to which we'll add `lists`:
+
+
+[source,python]
+----
+INSTALLED_APPS = (
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.sites',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    # Uncomment the next line to enable the admin:
+    # 'django.contrib.admin',
+    # Uncomment the next line to enable admin documentation:
+    # 'django.contrib.admindocs',
+    'lists',
+)
+----
+
+You can see there's lots of apps already in there by default (they're some of
+the apps that caused all those 419 tests earlier).  We just need to add ours,
+`lists`, to the bottom of the list.  Don't forget the trailing comma - it may
+not be required, but one day you'll be really annoyed when you forget it and
+Python concatenates two strings on different lines...
+
+Now we can try running the tests for `lists` again:
+
+....
+$ python manage.py test lists
+Creating test database for alias 'default'...
+F
+======================================================================
+FAIL: test_basic_addition (lists.tests.SimpleTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_3/awesomelists/lists/tests.py", line 16, in test_basic_addition
+    self.assertEqual(1 + 1, 3)
+AssertionError: 2 != 3
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
+Destroying test database for alias 'default'...
+....
+
+That's more like it!  You can reassure yourself that it gets run as part of the
+general command, `manage.py test` as well, and you should see it now runs 420
+tests instead of 419.
+
+
+<good point for a commit>
+
+
+Django's MVC, urls and view functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Django is broadly structured along a classic 'Model-View-Controller (MVC)'
+pattern.  Well, broadly.  It definitely has models, but its views are more like
+a controller, and it's the templates that are actually the view part, but the
+general idea is there.  But, irrespective of any of that, like any website,
+Django's main job is to decide what to do when a user asks for a particular URL
+on our site.  
+
+Django's workflow goes something like this:
+
+* A request comes in for a particular URL
+* Django uses some rules to decide which ``view'' function should deal with the
+  request (this is referred to as 'resolving' the URL)
+* The view function processes the request and returns an HTTP response
+
+So we can use unit tests to test that we can resolve the URL for the root
+of the site ``/'' correctly, and that Django passes it to a view function, and
+that that view function
+can return the kind of HTML we want to get the functional test to pass.
+
+The django module that takes care of resolving URLs is called `urlresolvers`, and
+it contains a function called `reverse`, whose job is 
+
+Now let's
+
+
+
+
+
+
 
 Things to note:
 
@@ -239,16 +491,6 @@ Now let's do a `git commit -a`, and add a sensible commit message, like
 ``First FT specced out in comments, and now uses unittest''.
 
 
-Our first web page
-~~~~~~~~~~~~~~~~~~
-
-Django is broadly structured along a classic 'Model-View-Controller (MVC)'
-pattern.  Well, broadly.  It definitely has models, but its views are more like
-a controller, and it's the templates that are actually the view part, but the
-general idea is there.  But, irrespective of any of that, like any website,
-Django's main job is to decide what to do when a user asks for a particular URL
-on our site.  It does this with a file called 'urls.py' which basically maps
-URLs to functions which will respond to them. 
 
 The root 'urls.py' for the whole site is in the 'awesomelists/awesomelists'
 folder. Let's go take a look:
