@@ -543,122 +543,163 @@ Ran 1 test in 0.003s
 OK
 ....
 
-Hooray! Our first ever unit test pass!
+Hooray! Our first ever unit test pass!  You know what, that's so momentous that
+I think it's worthy of a 'commit':
+
+....
+git diff # should show changes to urls.py, tests.py, and views.py
+git commit -am"First unit test and url mapping, dummy view"
+....
 
 
+Unit testing a view
+~~~~~~~~~~~~~~~~~~~
 
-
-
-Onto writing a test for our view. Open up 'lists/tests.py', and change the
-addition test to something like this:
+Onto writing a test for our view, so that it can be something more than a 
+do-nothing function. Let's open up 'lists/tests.py', and let's add a new
+test method:
 
 
 [source,python]
 ----
+from django.core.urlresolvers import resolve
 from django.test import TestCase
 from django.http import HttpRequest
 
 from lists.views import home_page
 
 
-class HomePageViewTest(TestCase):
+class HomePageTest(TestCase):
+
+    def test_root_url_resolves_to_home_page_view(self):
+        found = resolve('/')
+        self.assertEqual(found.func, home_page)
+
 
     def test_home_page_returns_correct_html(self):
         request = HttpRequest()
         response = home_page(request)
-        self.assertIn(response.content, '<title>To-Do lists</title>')
+        self.assertTrue(response.content.startswith('<html>'))
+        self.assertIn('<title>To-Do lists</title>', response.content)
+        self.assertTrue(response.content.endswith('</html>'))
 ----
 
-What's going on in this test?  We create an `HttpRequest` object and pass it to
-a function called `home_page`, which we're expecting to find in `lists.views`.
-We get a response from the view (you won't be surprised to hear that this
-object is of a class called `HttpResponse`).  Then, we assert that the
-`content` of the response -- which is the HTML that we send to the user --
-contains a particular `<title>` tag, with the word ``To-Do'' in -- because
-that's what we specified in our functional test.
+What's going on in this new test?  
 
-Does that make sense?  If not, sometimes it helps to work through tests
-backwards:
+* We create an `HttpRequest` object, which is what Django will see when
+  users load a page
+* We pass it to our `home_page` view
+* We get a response from the view. You won't be surprised to hear that this
+object is of a class called `HttpResponse`.
+* Then, we assert that the `content` of the response -- which is the HTML that
+  we send to the user -- has certain properties, eg that it starts with an
+  `<html>` tag, that we close it, and that somewhere in there is the `<title>`
+  tag, with the word ``To-Do'' in -- because that's what we specified in our
+  functional test.
 
-* Our functional test wants a home page with "To-Do" in the title
-* So, we look at our response content, and check that it has the correct HTML
-  tag to make that work
-* To get the response, we call a our view function with an HTTP request,
-  simulating what would happen when the user's browser asks for the page
-* Finally, we're expecting to find that view function inside 'lists/views.'
-
-You can see how the unit test is driven by the functional test, but it's also
+Once again, the unit test is driven by the functional test, but it's also
 much closer to the actual code -- we're thinking like programmers now, rather
-than thinking like users.  We're also much more closely tied into our
-implementation - we're using Django's own classes, as well as functions we're planning to write.
 
 Let's run the tests now and see how we get on:
 
 ....
-$ python manage.py test lists
-
-Traceback (most recent call last):
-  File "source/chapter_2/awesomelists/manage.py", line 10, in <module>
-    execute_from_command_line(sys.argv)
-    [... lots of traceback]
-    from lists.views import home_page
-ImportError: cannot import name home_page
+TypeError: home_page() takes no arguments (1 given)
 ....
 
+We can start to settle into a TDD unit test / code cycle now - run the tests,
+make a minimal code change, run the tests again, minimal code change again. The
+process may have seen laborious until now (and I promise I'll justify it all soon), 
+but the code/test cycle can actually move at quite a pace, once you get used to it.
 
+Minimal code change:
 
+[source,python]
+----
+def home_page(request):
+    pass
+----
 
+Tests:
 
-<mess follows>
+....
+    self.assertTrue(response.content.startswith('<html>'))
+AttributeError: 'NoneType' object has no attribute 'content'
+....
 
+Code - we use `django.http.HttpResponse`, as predicted:
 
-The django module that takes care of resolving URLs is called `urlresolvers`, and
-it contains a function called `reverse`, whose job is 
+[source,python]
+----
+from django.http import HttpResponse
 
-Now let's
+def home_page(request):
+    return HttpResponse()
+----
 
+Tests again:
+....
+    self.assertTrue(response.content.startswith('<html>'))
+AssertionError: False is not true
+....
 
+Code again:
 
 
 [source,python]
 ----
-from django.conf.urls import patterns, include, url
-from django.http import HttpResponse
-
-# Uncomment the next two lines to enable the admin:
-# from django.contrib import admin
-# admin.autodiscover()
-
-HOME_PAGE = '''
-<html>
-    <head><title>To-Do App</title></head>
-</html>'''
-
-def get_home_page(request):
-    return HttpResponse(HOME_PAGE)
-
-urlpatterns = patterns('',
-    # Examples:
-    url(r'^$', get_home_page),
-    # url(r'^awesomelists/', include('awesomelists.foo.urls')),
-
-    # Uncomment the admin/doc line below to enable admin documentation:
-    # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
-
-    # Uncomment the next line to enable the admin:
-    # url(r'^admin/', include(admin.site.urls)),
-)
+def home_page(request):
+    return HttpResponse('<html>')
 ----
 
-That's a minimal homepage view function -- it takes a one argument called
-request, and returns an `HttpResponse` containing some HTML text.  Some pretty
-minimal HTML text in this case, but in TDD we only ever write enough code to
-fix the current failing test, which in this case is about the browser `title`.
+Tests:
 
-Let's see if it worked:
+....
+AssertionError: '<title>To-Do lists</title>' not found in '<html>'
+....
+
+Code:
+
+
+[source,python]
+----
+def home_page(request):
+    return HttpResponse('<html><title>To-Do lists</title>')
+----
+
+Tests -- almost there?
+
+....
+    self.assertTrue(response.content.endswith('</html>'))
+AssertionError: False is not true
+....
+
+Come on, one last effort:
+
+
+[source,python]
+----
+def home_page(request):
+    return HttpResponse('<html><title>To-Do lists</title></html>')
+----
+
+
+Surely?
+
+....
+$ python manage.py test lists
+Creating test database for alias 'default'...
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.001s
+
+OK
+....
+
+YES!  Now, let's run our functional tests (
 
 ....
 $ python functional_tests.py 
+[13/Feb/2013 18:44:05] "GET / HTTP/1.1" 200 39
 F
 ======================================================================
 FAIL: test_can_start_a_todo_list_and_get_a_url_for_it (__main__.NewVisitorTest)
@@ -669,21 +710,30 @@ Traceback (most recent call last):
 AssertionError: Finish the test!
 
 ----------------------------------------------------------------------
-Ran 1 test in 1.675s
+Ran 1 test in 1.609s
 
 FAILED (failures=1)
 ....
 
-Looks like it, that's another 'expected fail'.
+YES! WE HAVE A WEB PAGE!
 
-Not too bad! We converted our tests to using `unittest`, learnt about
-'urls.py', and we wrote a minimal view function to render some HTML for our
-front page.  We can probably call that a Chapter -- as soon as we've done
-a commit, of course.
+Well, it was a thrilling end to the chapter, you may still be a little
+baffled, perhaps keen to hear a justification for all these tests, but I 
+hope you felt some of the excitement near the end there.
+
+Just a little commit to calm down, and reflect on what we've covered
 
 ....
-git status # should show urls.py has changed
-git diff # review the changed lines in urls.py
-git commit -a # will automatically add those changes to your commit
+git diff # should show our new test in tests.py, and the view in views.py
+git commit -am"Basic view now returns minimal HTML"
 ....
 
+
+That was quite a chapter!
+
+* starting a Django app
+* the Django unit test runner
+* the difference between FTs and unit tests
+* Django url resolving and urls.py
+* Django view functions, request and response objects
+* returning basic HTML
