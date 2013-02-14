@@ -345,16 +345,207 @@ change the default addition test to something like this:
 
 [source,python]
 ----
+from django.core.urlresolvers import resolve
 from django.test import TestCase
-from django.http import HttpRequest
 
 from lists.views import home_page
 
 
+class HomePageTest(TestCase):
+
+    def test_root_url_resolves_to_home_page_view(self):
+        found = resolve('/')
+        self.assertEqual(found.func, home_page)
+----
+
+<note on comments>
+
+What's going on here? Well, `resolve` is the actual function that Django uses
+internally to resolve URLs, and find what function they should map to.  We're
+checking that `resolve`, when called with ``/'', the root of the site, finds a
+function called `home_page`.  What function is that?  It's the function we're
+going to write next, which will actually return the HTML we want.  You can see
+from the `import` that we're planning to store it in `views.py` in our `lists`
+app.
+
+So, what do you think will happen when we run the tests?
+
+
+....
+$ python manage.py test lists
+Traceback (most recent call last):
+  File "source/chapter_3/awesomelists/manage.py", line 10, in <module>
+    execute_from_command_line(sys.argv)
+    [... lots of traceback]
+    from lists.views import home_page
+ImportError: cannot import name home_page
+....
+
+
+It's a very predictable failure, we tried to import something we haven't even
+written yet, but it's still good news. Now that we have both a failing
+functional test and a failing unit test, we have the testing goat's full
+blessing to code away.
+
+
+At last!  We actually write some application code!
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is exciting isn't it?  Well, you should be warned that TDD means that long
+periods of anticipation are only defused very gradually, and by tiny
+increments.  Especially since we're learning and only just starting out, we
+only allow ourselves to change (or add) 1 line of code at a time -- and each
+time, we make just the minimal change required to address the current test
+failure.
+
+I'm being deliberately extreme here, but what's our current test failure? 
+We can't import `home_page` from `lists.views`?  OK, let's fix that -- and only
+that.  In 'lists/views.py':
+
+[source,python]
+----
+# Create your views here.
+home_page = None
+----
+
+``YOU MUST BE JOKING!'', I can hear you say.  I can hear you because it's what
+I used to say (with considerable emotion) when my colleagues first demonstrated
+TDD to me.  Well, bear with me, we'll talk about whether or not this is all
+taking it too far in a little while.  For now, let yourself follow along, even
+if it's with some exasperation, and see where it takes us.
+
+Let's run the tests again:
+
+....
+$ python manage.py test lists
+Creating test database for alias 'default'...
+E
+======================================================================
+ERROR: test_root_url_resolves_to_home_page_view (lists.tests.HomePageTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_3/awesomelists/lists/tests.py", line 10, in test_root_url_resolves_to_home_page_view
+    found = resolve('/')
+  File "/usr/local/lib/python2.7/dist-packages/django/core/urlresolvers.py", line 420, in resolve
+    return get_resolver(urlconf).resolve(path)
+  File "/usr/local/lib/python2.7/dist-packages/django/core/urlresolvers.py", line 315, in resolve
+    raise Resolver404({'tried': tried, 'path': new_path})
+Resolver404: {'path': '', 'tried': []}
+
+----------------------------------------------------------------------
+Ran 1 test in 0.002s
+
+FAILED (errors=1)
+....
+
+OK, a different error - now we find that trying to resolve ``/'' raises a 404
+error -- in other words, Django can't find a mapping for ``/''.  Let's help
+it out.
+
+urls.py
+~~~~~~~
+
+Django uses a file called 'urls.py' to define how URLs map to view functions. 
+There's a main 'urls.py' for the whole site is in the
+'awesomelists/awesomelists' folder. Let's go take a look:
+
+
+[source,python]
+----
+from django.conf.urls import patterns, include, url
+
+# Uncomment the next two lines to enable the admin:
+# from django.contrib import admin
+# admin.autodiscover()
+
+urlpatterns = patterns('',
+    # Examples:
+    # url(r'^$', 'awesomelists.views.home', name='home'),
+    # url(r'^awesomelists/', include('awesomelists.foo.urls')),
+
+    # Uncomment the admin/doc line below to enable admin documentation:
+    # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
+
+    # Uncomment the next line to enable the admin:
+    # url(r'^admin/', include(admin.site.urls)),
+)
 ----
 
 
-<note on comments>
+A `url` entry starts with a regular expression that defines which URLs it
+applies to, and goes on to say where it should send those request -- either to
+a dot-notation encoded function like `awesomelists.views.home`, or maybe to
+another 'urls.py' file somewhere else using `include`.
+
+The first commented-out entry in `urlpatterns` has the regular expression `^$`,
+which means an empty string -- could this be the same as the root of our site,
+which we've been testing with ``/''?  Let's find out -- what happens if we
+uncomment that line?
+
+NOTE: If you've never come across regular expressions, you can get away with
+just taking my word for it, for now -- but you should make a mental note to
+go learn about them!
+
+[source,python]
+----
+urlpatterns = patterns('',
+    # Examples:
+    url(r'^$', 'awesomelists.views.home', name='home'),
+----
+
+And run the tests again:
+
+....
+ViewDoesNotExist: Could not import awesomelists.views.home. Parent module awesomelists.views does not exist.
+....
+
+That's progress!  We're no longer getting a 404, instead Django is complaining
+that the dot-notation `awesomelists.views.home` doesn't point to a real view.
+Let's fix that, by pointing it towards our home_page:
+
+
+[source,python]
+----
+urlpatterns = patterns('',
+    # Examples:
+    url(r'^$', 'lists.views.home_page', name='home'),
+----
+
+And the tests again:
+
+....
+ViewDoesNotExist: Could not import lists.views.home_page. View is not callable.
+....
+
+See?  Now we've got a reason to change our `home_page` from being `None` to 
+being an actual function.  Every single code change is driven by the tests. So,
+back in 'lists/views.py':
+
+
+[source,python]
+----
+# Create your views here.
+
+def home_page():
+    pass
+
+----
+
+And now?
+
+....
+$ python manage.py test lists
+Creating test database for alias 'default'...
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.003s
+
+OK
+....
+
+Hooray! Our first ever unit test pass!
+
+
 
 
 
@@ -414,14 +605,8 @@ Traceback (most recent call last):
 ImportError: cannot import name home_page
 ....
 
-It's a very predictable failure, we tried to import something we haven't even
-written yet, but it's still good news. Now that we have both a failing
-functional test and a failing unit test, we have the testing goat's full
-blessing to code away.
 
 
-At last!  We actually write some application code!
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 <mess follows>
@@ -434,42 +619,6 @@ Now let's
 
 
 
-
-The root 'urls.py' for the whole site is in the 'awesomelists/awesomelists'
-folder. Let's go take a look:
-
-
-[source,python]
-----
-from django.conf.urls import patterns, include, url
-
-# Uncomment the next two lines to enable the admin:
-# from django.contrib import admin
-# admin.autodiscover()
-
-urlpatterns = patterns('',
-    # Examples:
-    # url(r'^$', 'awesomelists.views.home', name='home'),
-    # url(r'^awesomelists/', include('awesomelists.foo.urls')),
-
-    # Uncomment the admin/doc line below to enable admin documentation:
-    # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
-
-    # Uncomment the next line to enable the admin:
-    # url(r'^admin/', include(admin.site.urls)),
-)
-----
-
-
-A `url` entry starts with a regular expression that defines which urls it
-applies to, and goes on to say where it should send those request -- either to
-a dot-notation encoded function like `awesomelists.views.home`, or maybe to another
-'urls.py' file somewhere else using `include`.
-
-Let's hijack the first entry, `'r^$'`, which basically means an empty URL,
-AKA the root of the site. Instead of the dot-notation, let's define a real 
-function to handle that request.  For now, all we want to do is return
-some basic HTML, so let's do that:
 
 [source,python]
 ----
