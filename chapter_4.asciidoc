@@ -155,13 +155,13 @@ class NewVisitorTest(unittest.TestCase):
         [...]
 ----
 
-We're using several of the methods that Selenium provides to examine web pages:
-`find_element_by_tag_name`, `find_element_by_id`, and
-+find_element*s*_by_tag_name+ (notice the extra `s`, which means it will return
-several elements rather than just one).  We also use `send_keys`, which is
-Selenium's way of typing into input elements - note also the `Keys` class
-(don't forget to import it), which lets us send special keys like enter, but
-also modifiers like 'Ctrl'.
+We're using several of the methods that Selenium provides to examine web
+pages: `find_element_by_tag_name`, `find_element_by_id`, and
++find_element*s*_by_tag_name+ (notice the extra `s`, which means it will
+return several elements rather than just one).  We also use `send_keys`,
+which is Selenium's way of typing into input elements - note also the
+`Keys` class (don't forget to import it), which lets us send special keys
+like enter, but also modifiers like 'Ctrl'.
 
 So let's see how it gets on (don't forget to start up the dev server with
 `python manage.py runserver` first)
@@ -180,8 +180,8 @@ Decoding that, the test is saying it can't find an `<h1>` element on the page.
 Let's see what we can do to change the HTML of our home page
 
 
-The ``Don't test constants'' rule, and our first refactor
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The ``Don't test constants'' rule, and templates to the rescue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Let's take a look at our unit tests, 'lists/tests.py'.  Currently we're
 testing for specific HTML strings, but that's not a particularly
@@ -206,12 +206,22 @@ assert wibble = 3
 ----
 
 Unit tests are really about testing logic, flow control and
-configuration. So, one of the solutions is to make constants explicit,
-and re-use them in our tests.  
+configuration. Making assertions about exactly what sequence of characters
+we have in our HTML strings isn't doing that.  
 
-So, what we want to do now is make the HTML string that our view returns
-into a constant.  That's a *refactor* -- when we change the code for
-architectural reasons without changing its functionality.
+What's more, mangling raw strings in Python really isn't a great way of
+dealing with HTML.  There's a much better solution, which is to use 
+templates.  Quite apart from anything else, if we can keep HTML to one
+side in a file whose name ends in `.html`, we'll get better syntax 
+highlighting! There are lots of Python templating frameworks out there,
+and Django has its own which work very well.  Let's see if we can use
+that instead of our current string wrangling.
+
+
+What we want to do now is make our view function return exactly the same
+HTML, but just using a different process.That's a *refactor* -- when we
+change the code for architectural reasons without changing its
+functionality.
 
 That last bit is really important. If you try and add new functionality
 at the same time as refactoring, you're much more likely to run into
@@ -230,44 +240,52 @@ OK
 ....
 
 We have passing tests.  That means we're allowed to try some refactoring.
-In 'lists/views.py':
 
+Let's start by taking our HTML string and putting it into its own file. 
+We'll create a directory called 'lists/templates' to keep templates in,
+and then open a file at 'lists/templates/home.html', to which we'll
+transfer our HTML:
+
+[source,html]
+----
+<html>
+    <title>To-Do lists</title>
+</html>
+----
+
+Mmmh, syntax-highlighted... Much nicer!  Now to change our view function:
 
 [source,python]
 ----
-from django.http import HttpResponse
+from django.shortcuts import render
 
-HOME_PAGE_HTML = '<html><title>To-Do lists</title></html>'
 
 def home_page(request):
-    return HttpResponse(HOME_PAGE_HTML)
+    return render(request, 'home.html')
 ----
+
+Instead of building our own `HttpResponse`, we now use the django 
+`render` function.  It takes the request as its first parameter (for
+reasons we'll go into later) and the name of the template.  Django
+will automatically search folders called 'templates' inside any of
+your apps' directories.
 
 That's a change to the code - do the tests still pass?
 
 ....
 $ python manage.py test lists
-[...]
-OK
+    self.assertTrue(response.content.endswith('</html>'))
+AssertionError: False is not true
 ....
 
-Excellent.  Now we can refactor our tests, so that they use our
-constant:
+Darn, not quite. I had to do a little `print repr(response.content)` to
+debug this, but it turns out that the templates are introducing an 
+additional newline at the end.  We can get them to pass like this:
 
 
 [source,python]
 ----
-[...]
-from lists.views import home_page, HOME_PAGE_HTML
-
-class HomePageTest(TestCase):
-    [...]
-
-    def test_home_page_returns_correct_html(self):
-        request = HttpRequest()
-        response = home_page(request)
-        self.assertEqual(response.content, HOME_PAGE_HTML)
-
+self.assertTrue(response.content.strip().endswith('</html>'))
 ----
 
 And try running the tests again:
@@ -277,6 +295,33 @@ $ python manage.py test lists
 [...]
 OK
 ....
+
+But better still, we should now refactor the tests so that they're
+no longer testing constants -- instead, they should check that we're
+rendering the right template.  Another django helper function called
+`render_to_string` is our friend here:
+
+
+[source,python]
+----
+from django.template.loader import render_to_string
+[...]
+
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()
+        response = home_page(request)
+        expected_html = render_to_string('home.html')
+        self.assertEqual(response.content, expected_html)
+----
+
+So now, instead of testing constants we're testing our implementation
+
+NOTE: Yes, I know the Django Test Client has tools to test templates. I'll
+introduce that later. For now, I think it's good to show how some of the
+internals work.
+
+On refactoring
+~~~~~~~~~~~~~~
 
 Now, that was an absolutely trivial example of refactoring. Yes, we
 probably could have skipped a few of the steps in between.  But once 
@@ -318,11 +363,12 @@ It's usually a good idea to do a commit after any refactoring, so let's
 do one now:
 
 ....
-git status # we've changed the FT and the tests and views
-git diff # review the changes to the code
-git commit -a  
-# message should be "extended FT, and refactor home page to use a
-# constant for its HTML
+git status # see changes to the FT, lists.py and views.py 
+           # but also the new templates folder
+git add .
+git diff --staged # review the changes we're about to commit
+git commit # message should be, eg "extended FT, and refactored
+           # home page view to use a template
 ....
 
 
@@ -330,20 +376,20 @@ Something
 ~~~~~~~~~
 
 In the meantime, our functional test is still failing.  Let's now 
-make an actual code change to get it passing.  Because the HTML is now
-in a constant, we can feel free to make changes to it, without needing
-to write any extra unit tests
+make an actual code change to get it passing.  Because our HTML is now
+in a template, we can feel free to make changes to it, without needing
+to write any extra unit tests.
 
-[source,python]
+[source,html]
 ----
-HOME_PAGE_HTML = '''<html>
-<head>
-    <title>To-Do lists</title>
-</head>
-<body>
-    <h1>To-Do Lists</h1>
-</body>
-</html>'''
+<html>
+    <head>
+        <title>To-Do lists</title>
+    </head>
+    <body>
+        <h1>Your To-Do list</h1>
+    </body>
+</html>
 ----
 
 
