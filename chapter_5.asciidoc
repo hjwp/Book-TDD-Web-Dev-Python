@@ -2,22 +2,20 @@ Chapter 5 - Saving user form submissions
 --------------------------------------
 
 We want to take the To-Do item input from the user and send it to the server,
-so that we can save it and display it back to them later.  That forces us to 
-start to think about exactly how we might want to do that.  For now, we'll 
-use a fairly standard HTML form and POST request, and save the data using a
-database.  A little boring, but also nice and easy to deliver - we can use all
-sorts of sexy HTML5 and JavaScript later in the book.
+so that we can save it and display it back to them later.  For now, we'll 
+use a fairly standard HTML form and POST request.  A little boring, but also
+nice and easy to deliver - we can use all sorts of sexy HTML5 and JavaScript
+later in the book.
 
 
 
 
-Form input
-~~~~~~~~~~
+Wiring up our form to send a POST request
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To get our browser to send a POST request, we can wrap the `<input>` element in
 a `<form>` tag with `method="POST"`, and the browser will take care of sending
-the POST request for us.  But it does mean we have to decide what URL the POST
-request should go to, and what view should deal with it.
+the POST request for us.
 
 One option is to have the same view that rendered our home page also deal with 
 POST requests.  I think it keeps things simpler and clearer to separate the job
@@ -28,16 +26,15 @@ our form (in 'polls/templates/home.html') look like this:
 [source,html]
 ----
     <h1>Your To-Do list</h1>
-    <form method="POST" action="/lists/new">
+    <form method="POST">
         <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
     </form>
 
     <table id="id_list_table">
 ----
 
-Notice the other thing we had to add, which was the `name="item_text"`
-attribute on the input element. Now, running our FTs gives us a slightly
-cryptic, unexpected error:
+We also had to add the `name="item_text"` attribute on the input element. Now,
+running our FTs gives us a slightly cryptic, unexpected error:
 
 ----
 Traceback (most recent call last):
@@ -74,252 +71,198 @@ the sleep just before the error occurs:
 ----
 
 When we run the functional tests again, we've got time to see what's going on -
-you should see a page that looks like <<404_screenshot>>, with lots of Django
-debug information:
+you should see a page that looks like <<csrf_error_screenshot>>, with lots of
+Django debug information:
 
 
-[[404_screenshot]]
-.A 404 error with Django DEBUG=True
-image::images/404_on_lists_new.png[A 404 error with Django DEBUG=True]
+[[csrf_error_screenshot]]
+.Django DEBUG page showing CSRF error
+image::images/csrf_protection_error.png[Django DEBUG page showing CSRF error]
 
-Now we can figure out what happened -- our form is now wired up to send data
-to '/lists/new', but there's no such page yet!  Let's build a new URL and view
-for it.
+If you've never heard of a ``Cross-Site Request Forgery'' exploit, why not look
+it up now? Like all security exploits, it's entertaining to read about, being
+an ingenious use of a system in unexpected ways...
 
-Let's start with the URL. We've done URL tests before
+Django's CSRF protection involves placing a little auto-generated token into
+each generated form, to be able to identify POST requests as having come from
+the original site.  So far our template has been pure HTML, and in this step we
+make the first use of Django's template magic.  We can add the CSRF token by
+using Django's special syntax for templates.  In this case we add what's called
+a template tag using the special curly-bracket / percent syntax, `{% ... %}` 
+(famous for being the world's most annoying two-key touch-typing combination.
+Go on, try it: right pinky shift, left pinky curly, left pinky shift, right
+index fumble for the 5 key... impossible!)
 
-<bla bla TODO add url unit test>
 
-Now let's move on to the unit test for the view.   We want our view
-to handle a POST request containing the user's new to-do item as a 
-string, and create a new list with 1 to-do item on it. So, in 
-pseudocode, our unit test would look like this:
+[source,html]
+----
+    <form method="POST" >
+        <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+        {% csrf_token %}
+    </form>
+----
+
+The Django template system will substitute that during rendering with a special
+`<input type="hidden"`. Re-running the functional test will now give us an
+expected failure:
 
 ----
-1. create an HTTP request with some POST data for the new item
-2. call our view with the request
-3. check in the database, there should be a brand new list
-4. the list should have our to-do as its first item
+AssertionError: New to-do item did not appear in table
 ----
 
-The third item in that list poses a bit of a problem. It requires us to have
-done a bit of thinking about how our database is going to work, and to learn
-about how Django can save and retrieve information from a database.
+The test will also pause on the final screen, showing you that the new item
+text disappears after the form is submitted, and the page refreshes to show an
+empty form again.  That's because we haven't wired up our server to deal with
+the POST request yet - it just ignores it and displays the normal home page.
+
+We can remove the time.sleeps for now though.
 
 
+Processing a POST request on the server
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Small Design When Necessary
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Currently our form is just submitting back to the same URL it was rendered
+from. Let's adapt the view for our home page to be able to deal with a POST
+request.
 
-TDD grew out of the agile movement in software, which includes a strong
-reaction against ``Big Design Up-Front'': the traditional software
-practice whereby, after a lengthy requirements gathering exercise, there
-was an equally lengthy design stage where the software was planned out on
-paper. The philosophy is that you learn more from solving problems in 
-practice than in theory, especially when you confront your application with
-real-world uses as soon as possible. Agile methodologies suggest that we spend
-minimal time on up-front design, and instead let the design evolve gradually
-based on feedback from real users.  To get that feedback, we try and put a
-minimum viable application in front of them as soon as possible.
-
-But that doesn't mean no thinking about design at all!  So, let's think about
-our minimum viable lists app, and what kind of design we'll need to deliver it.
-
-* We want each user to be able to store their own list - at least one, for now.
-* A list is made up of several items, whose primary attribute is a bit of 
-descriptive text
-* We need to save lists from one visit to the next.  For now, we can give 
-each user a unique URL for their list.  Later on we may want some way of
-automatically recognising users and showing them their lists.
-
-To deliver the ``for now'' items then, it sounds like we're going to store
-lists and their items in a database.  Each list will have a unique URL,
-and each list item will be a bit of descriptive text, associated with a
-particular list.
-
-All sorts of other thoughts are occurring to us as well -- we might want to
-give each lists a name or title, we might want to recognise users using
-usernames and passwords, we might want to add a longer notes field as well as
-short descriptions to our list, we might want to store some kind of ordering, 
-and so on.  But we obey another tenet of the agile gospel:  ``YAGNI''
-(pronounced yag-knee), which stands for ``You ain't gonna need it''. Don't
-build things because you 'might' need them, only build them when you definitely
-do.
-
-
-The Django ORM
-~~~~~~~~~~~~~~
-
-An Object-Relational-Mapper (ORM) is a layer of abstraction for data stored in 
-a database with tables, rows and columns. It lets us work with databases using
-familiar Object-Oriented metaphors which work well with code.  Classes map to 
-database tables, attributes map to columns, and individual instances of that
-class represent rows of actual data in the database.
-
-Writing a unit test for our ORM is actually an excellent way of learning it, 
-since it exercises code by specifying how we want it to work.  We're going
-to need to create and save new rows to the database, use a foreign key
-relationship between lists and their items, and then query the database to
-check that the right values have been saved.
-
-Let's create a new class in 'polls/tests.py'
+Open up 'lists/tests.py', and add a new method to `HomePageTest` - I copy &
+pasted the previous method, and then adapted it to add our POST request, and
+then check that the returned HTML will have the new item text in it:
 
 [source,python]
 ----
-from django.http import HttpRequest
+    [...]
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()
+        response = home_page(request)
+        expected_html = render_to_string('home.html')
+        self.assertEqual(response.content, expected_html)
 
-from lists.models import Item, List
-from lists.views import home_page
+
+    def test_home_page_can_save_a_POST_request(self):
+        request = HttpRequest()
+        request.method = 'POST'
+        request.POST['item_text'] = 'A new list item'
+
+        response = home_page(request)
+
+        self.assertIn(response.content, 'A new list item')
+
+----
+
+You can see that we're using a couple of special attributes of the
+`HttpRequest`, `.method` and `.POST`.  They're fairly self-explanatory,
+although now might be a good time for a peek at the Django
+https://docs.djangoproject.com/en/1.5/ref/request-response/[Request and
+Response documentation] . The unit test goes on to check that the new item text
+from our POST request ends up in our rendered template -- that gives us our 
+expected fail:
+
+----
+AssertionError: 'A new list item' not found in '<html> [...]
+----
+
+We can get the test to pass by providing a different code path for POST
+requests:
+
+[source,python]
+----
+def home_page(request):
+    if request.method == 'POST':
+        return HttpResponse(request.POST['item_text'])
+    return render(request, 'home.html')
+----
+
+That gets our unit tests passing, but it's not really what we want.  What we 
+really want to do is add the POST submission to the table in the home page
+template.
+
+We've already had a hint of it, it's time to start to get to know the real
+power of the Django template syntax, which is to pass variables from our Python
+view code, into our HTML templates.  
+
+Let's adjust our unit test to check that the response is a template which has
+been rendered with the new item text passed in as a variable:
+
+
+[source,python]
+----
+    self.assertIn('A new list item', response.content)
+    expected_html = render_to_string(
+        'home.html',
+        {'new_item_text':  'A new list item'}
+    )
+    self.assertEqual(response.content, expected_html)
+----
+
+As you can see, the render_to_string function takes, as its second parameter, a
+mapping of variable names to values.  
+
+Now we adjust our template to actually use the variable we're passing in. The
+syntax is `{{ ... }}`, which displays a variable as a string.
+
+[source,html]
+----
+    <body>
+        <h1>Your To-Do list</h1>
+        <form method="POST" >
+            <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+            {% csrf_token %}
+        </form>
+
+        <table id="id_list_table">
+            <tr><td>{{ new_item_text }}</td></tr>
+        </table>
+
+    </body>
+----
+
+Our unit tests will now fail at 
+
+----
+    self.assertEqual(response.content, expected_html)
+AssertionError: 'A new list item' != u'<html>\n    <head>\n [...]
+----
+
+And we can now re-write our view, and tell it to pass the POST parameter to the
+template:
+
+
+[source,python]
+----
+def home_page(request):
+    return render(request, 'home.html', {
+        'new_item_text': request.POST['item_text'],
+    })
+----
+
+Re-run the unit tests:
+
+----
+ERROR: test_home_page_returns_correct_html (lists.tests.HomePageTest)
 [...]
-
-class ListsAndItemsTest(TestCase):
-
-    def test_creating__saving_and_retrieving_a_list_with_items(self):
-        new_list = List()
-        new_list.save()
-
-        first_item = Item()
-        first_item.text = 'The first (ever) list item'
-        first_item.list = new_list
-        first_item.save()
-
-        second_item = Item()
-        second_item.text = 'Item the second'
-        second_item.list = new_list
-        second_item.save()
-
-        saved_lists = List.objects.all()
-        self.assertEqual(saved_lists.count(), 1)
-        saved_list = saved_lists[0]
-        self.assertEqual(saved_list, new_list)
-
-        saved_items = Item.objects.all()
-        self.assertEqual(saved_items.count(), 2)
-
-        first_saved_item = saved_items[0]
-        second_saved_item = saved_items[1]
-        self.assertEqual(first_saved_item.text, 'The first (ever) list item')
-        self.assertEqual(first_saved_item.list, saved_list)
-        self.assertEqual(second_saved_item.text, 'Item the second')
-        self.assertEqual(second_saved_item.list, saved_list)
+    'new_item_text': request.POST['item_text'],
+KeyError: 'item_text'
 ----
 
-
-You can see we have a couple of classes, `List` and `Item`, which we're
-expecting to live in 'lists/models.py'. We create instances of each, and use a
-special `save()` method to store them as new rows in the database. The two
-instances of `Item` sees most of the action: we set an attribute on them called
-'text', which will be stored as a column value, and an attribute called `list`
-links them both to the parent `List` object -- that will be represented as a
-foreign key relation in the database.
-
-Later on, you can also see how we look up existing objects from the database
-using a special class method, `.objects`, which lets us run queries
-against the database. We use the simplest possible query, `all()`, to 
-retrieve all lists, and later all items, and check that they are saved with
-the right properties -- the right text, and the right relationship to the
-parent list.
-
-It's quite a long-winded unit test. When we get more experienced with the
-Django ORM, we'll be able to write more concise versions, but now, while
-we're still getting used to it, it's good to have a unit test that really
-exercises end-to-end behaviour.
-
-Django's ORM has many other helpful and intuitive features, this might be a good
-time to skim through the
-https://docs.djangoproject.com/en/1.4/intro/tutorial01/#playing-with-the-api[Django documentation] which has an excellent intro to them. 
-
-
-Let's try running the unit test. Here comes another unit test/code cycle
-
-----
-ImportError: cannot import name Item
-----
-
-Let's build a couple of dummy objects to import from 'lists/models.py':
-
-[source,python]
-----
-from django.db import models
-
-Item, List = None, None
-----
-
-See?  I've even done two miny-steps in one. You 'can' bend the rules, when
-you're feeling confident. What's next?
-
-----
-    new_list = List()
-TypeError: 'NoneType' object is not callable
-----
-
-Let's make `List` into a class:
+An unexpected failure! The unit tests have picked up a regression: although our
+new test for handling POST requests is now passing, we broke the old test for
+the code path where there is no POST request.  Here's one way to fix that:
 
 
 [source,python]
 ----
-from django.db import models
-
-Item = None
-
-class List(object):
-    pass
+def home_page(request):
+    return render(request, 'home.html', {
+        'new_item_text': request.POST.get('item_text', ''),
+    })
 ----
 
-And now?
+The unit tests should now pass.  Let's see what the functional tests say:
 
 ----
-    new_list.save()
-AttributeError: 'List' object has no attribute 'save'
+AssertionError: New to-do item did not appear in table
 ----
 
-to give our `List` class a special `save` method, we can make it inherit from the
-Django `Model` class:
-
-
-[source,python]
-----
-from django.db import models
-
-Item = None
-
-class List(models.Model):
-    pass
-----
-
-That gets us past that line, and onto:
-
-----
-    first_item = Item()
-TypeError: 'NoneType' object is not callable
-----
-
-Let's make `List` into a class too.  We might feel like jumping ahead and making
-it inherit from `models.Model` too, but let's just make sure the tests are behaving
-the way we think they are.  We expect them to fail when we try to `save()` the 
-first item...
-
-[source,python]
-----
-class List(models.Model):
-    pass
-
-class Item(object):
-    pass
-----
-
-Sure enough:
-
-----
-    first_item.save()
-AttributeError: 'Item' object has no attribute 'save'
-----
-
-----
-    self.assertEqual(first_saved_item.text, 'The first (ever) list item')
-AttributeError: 'Item' object has no attribute 'text'
-----
-
-That's almost 12 lines later than the last failure -- we've been all the way through
-
+Hm, not a wonderfully helfpul error
 
