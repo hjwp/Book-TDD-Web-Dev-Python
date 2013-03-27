@@ -327,6 +327,233 @@ list item. To persist multipe items in a list, we're going to have to
 use some kind of database.
 
 
+Small Design When Necessary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+TDD grew out of the agile movement in software, which includes a strong
+reaction against ``Big Design Up-Front'': the traditional software
+practice whereby, after a lengthy requirements gathering exercise, there
+was an equally lengthy design stage where the software was planned out on
+paper. The philosophy is that you learn more from solving problems in 
+practice than in theory, especially when you confront your application with
+real-world uses as soon as possible. Agile methodologies suggest that we spend
+minimal time on up-front design, and instead let the design evolve gradually
+based on feedback from real users.  To get that feedback, we try and put a
+minimum viable application in front of them as soon as possible.
+
+But that doesn't mean no thinking about design at all!  So, let's think about
+our minimum viable lists app, and what kind of design we'll need to deliver it.
+
+* We want each user to be able to store their own list - at least one, for now.
+* A list is made up of several items, whose primary attribute is a bit of 
+descriptive text
+* We need to save lists from one visit to the next.  For now, we can give 
+each user a unique URL for their list.  Later on we may want some way of
+automatically recognising users and showing them their lists.
+
+To deliver the ``for now'' items then, it sounds like we're going to store
+lists and their items in a database.  Each list will have a unique URL,
+and each list item will be a bit of descriptive text, associated with a
+particular list.
+
+All sorts of other thoughts are occurring to us as well -- we might want to
+give each lists a name or title, we might want to recognise users using
+usernames and passwords, we might want to add a longer notes field as well as
+short descriptions to our list, we might want to store some kind of ordering,
+and so on.  But we obey another tenet of the agile gospel:  ``YAGNI''
+(pronounced yag-knee), which stands for ``You ain't gonna need it'' - 9 times
+out of 10, no matter how cool the idea was, you won't end up using it. Keep
+things simple. Don't build things because you 'might' need them, only build
+them when you definitely do.
+
+
+The Django ORM
+~~~~~~~~~~~~~~
+
+An Object-Relational-Mapper (ORM) is a layer of abstraction for data stored in 
+a database with tables, rows and columns. It lets us work with databases using
+familiar Object-Oriented metaphors which work well with code.  Classes map to 
+database tables, attributes map to columns, and individual instances of that
+class represent rows of actual data in the database.
+
+Writing a unit test for our ORM is actually an excellent way of learning it, 
+since it exercises code by specifying how we want it to work.  We're going
+to need to create and save new rows to the database, use a foreign key
+relationship between lists and their items, and then query the database to
+check that the right values have been saved.
+
+Let's create a new class in 'polls/tests.py'
+
+[source,python]
+----
+[...]
+from django.http import HttpRequest
+
+from lists.models import Item, List
+from lists.views import home_page
+[...]
+
+class ListsAndItemsModelsTest(TestCase):
+
+    def test_creating__saving_and_retrieving_a_list_with_items(self):
+        new_list = List()
+        new_list.save()
+
+        first_item = Item()
+        first_item.text = 'The first (ever) list item'
+        first_item.list = new_list
+        first_item.save()
+
+        second_item = Item()
+        second_item.text = 'Item the second'
+        second_item.list = new_list
+        second_item.save()
+
+        saved_lists = List.objects.all()
+        self.assertEqual(saved_lists.count(), 1)
+        saved_list = saved_lists[0]
+        self.assertEqual(saved_list.id, new_list.id)
+        self.assertEqual(saved_list, new_list)
+
+        saved_items = Item.objects.all()
+        self.assertEqual(saved_items.count(), 2)
+
+        first_saved_item = saved_items[0]
+        second_saved_item = saved_items[1]
+        self.assertEqual(first_saved_item.text, 'The first (ever) list item')
+        self.assertEqual(first_saved_item.list, saved_list)
+        self.assertEqual(second_saved_item.text, 'Item the second')
+        self.assertEqual(second_saved_item.list, saved_list)
+----
+
+
+You can see we have a couple of classes, `List` and `Item`, which we're
+expecting to live in 'lists/models.py'. We create instances of each, and use a
+special `save()` method to store them as new rows in the database. The two
+instances of `Item` sees most of the action: we set an attribute on them called
+'text', which will be stored as a column value, and an attribute called `list`
+links them both to the parent `List` object -- that will be represented as a
+foreign key relation in the database.
+
+Later on, you can also see how we look up existing objects from the database
+using a special class method, `.objects`, which lets us run queries
+against the database. We use the simplest possible query, `all()`, to 
+retrieve all lists, and later all items, and check that they are saved with
+the right properties -- the right auto-generated `id` as primary key, the
+right text, and the right relationship to the parent list.
+
+It's quite a long-winded unit test. When we get more experienced with the
+Django ORM, we'll be able to write more concise versions, but now, while
+we're still getting used to it, it's good to have a unit test that really
+exercises end-to-end behaviour.
+
+Django's ORM has many other helpful and intuitive features, this might be a
+good time to skim through the
+https://docs.djangoproject.com/en/1.4/intro/tutorial01/#playing-with-the-api[Django
+documentation] which has an excellent intro to them. 
+
+
+Let's try running the unit test. Here comes another unit test/code cycle
+
+----
+ImportError: cannot import name Item
+----
+
+Let's build a couple of dummy objects to import from 'lists/models.py':
+
+[source,python]
+----
+from django.db import models
+
+Item, List = None, None
+----
+
+See?  I've even done two miny-steps in one. You 'can' bend the rules, when
+you're feeling confident. What's next?
+
+----
+    new_list = List()
+TypeError: 'NoneType' object is not callable
+----
+
+Let's make `List` into a class:
+
+
+[source,python]
+----
+from django.db import models
+
+Item = None
+
+class List(object):
+    pass
+----
+
+And now?
+
+----
+    new_list.save()
+AttributeError: 'List' object has no attribute 'save'
+----
+
+To give our `List` class a special `save` method, we can make it inherit from
+the Django `Model` class:
+
+
+[source,python]
+----
+from django.db import models
+
+Item = None
+
+class List(models.Model):
+    pass
+----
+
+That gets us past that line, and onto:
+
+----
+    first_item = Item()
+TypeError: 'NoneType' object is not callable
+----
+
+Let's make `List` into a class too.  We might feel like jumping ahead and
+making it inherit from `models.Model` too, but let's just make sure the tests
+are behaving the way we think they are.  We expect them to fail when we try to
+`save()` the first item...
+
+[source,python]
+----
+class List(models.Model):
+    pass
+
+class Item(object):
+    pass
+----
+
+Sure enough:
+
+----
+    first_item.save()
+AttributeError: 'Item' object has no attribute 'save'
+----
+
+Let's make Item into a Model as well then... 
+
+[source,python]
+----
+class Item(models.Model):
+    pass
+----
+
+Can you guess where the tests will fail next? It might be later than you think:
+
+----
+    self.assertEqual(first_saved_item.text, 'The first (ever) list item')
+AttributeError: 'Item' object has no attribute 'text'
+----
+
+That's almost 12 lines later than the last failure -- we've been all the way
+through saving the 
 
 
