@@ -2,11 +2,28 @@ Chapter 5 - Saving user form submissions
 --------------------------------------
 
 We want to take the To-Do item input from the user and send it to the server,
-so that we can save it and display it back to them later.  For now, we'll 
-use a fairly standard HTML form and POST request.  A little boring, but also
-nice and easy to deliver - we can use all sorts of sexy HTML5 and JavaScript
-later in the book.
+so that we can save it and display it back to them later.  For now, we'll use a
+fairly standard HTML form and POST request.  A little boring, but also nice and
+easy to deliver - we can use all sorts of sexy HTML5 and JavaScript later in
+the book.
 
+As I started writing this chapter, I immediately skipped to what I thought was
+the right answer -- building a set of models for lists and list items, and then
+building a new view for dealing with POST requests -- and started writing that.
+But I've decided to present things in a much more iterative fashion instead,
+taking one step at a time, even if I suspected that the step wouldn't solve the
+whole problem, and was slightly in the wrong direction.
+
+I'm doing it this way partially because it makes for a more gradual learning 
+curve -- it introduces one concept at a time, rather than all of them at once.
+But it also demonstrates how TDD can save you from having to be smart all the
+time.  Just letting the tests drive development, without needing to think
+ahead, I can iterate towards the right answer.  Each step is at least partially
+in the right direction, even if I end up re-writing most of my code, and we
+get there in the end.
+
+That's not to say you shouldn't try and think ahead, and be clever -- it's just
+saying you don't always have to!
 
 
 
@@ -446,11 +463,14 @@ links them both to the parent `List` object -- that will be represented as a
 foreign key relation in the database.
 
 Later on, you can also see how we look up existing objects from the database
-using a special class method, `.objects`, which lets us run queries
-against the database. We use the simplest possible query, `all()`, to 
-retrieve all lists, and later all items, and check that they are saved with
-the right properties -- the right auto-generated `id` as primary key, the
-right text, and the right relationship to the parent list.
+using a special class method, `.objects`, which lets us run queries against the
+database. We use the simplest possible query, `all()`, to retrieve all lists.
+If you've taken a look at the Django documentation, you'll know that it returns
+a special list-like object called a Queryset, which we can call further
+functions on, like `.count()`, and also extract individual objects. We check
+those objects to see that they are saved with the right properties -- the right
+auto-generated `id` as primary key, the right text, and the right relationship
+to the parent list.
 
 It's quite a long-winded unit test. When we get more experienced with the
 Django ORM, we'll be able to write more concise versions, but now, while
@@ -632,5 +652,95 @@ git commit -am"Created models for Lists and list Items"
 Saving POST submissions in our view:
 ------------------------------------
 
+Let's adjust the test for our home page POST request, and add in a check
+that the new item actually gets saved to the database:
 
+
+[source,python]
+----
+def test_home_page_can_save_a_POST_request(self):
+    request = HttpRequest()
+    request.method = 'POST'
+    request.POST['item_text'] = 'A new list item'
+
+    response = home_page(request)
+
+    self.assertEqual(List.objects.all().count(), 1)
+    self.assertEqual(Item.objects.all().count(), 1)
+    new_list = List.objects.all()[0]
+    new_item = Item.objects.get(list=new_list)
+    self.assertEqual(new_item.text, 'A new list item')
+
+    self.assertIn('A new list item', response.content)
+    expected_html = render_to_string(
+        'home.html',
+        {'new_item_text':  'A new list item'}
+    )
+    self.assertEqual(response.content, expected_html)
+----
+
+We've inserted a new block of assertions, using some of the tools we've
+used before like `objects.all()` and `.count()`.  We also use `objects.get`
+to query the database for a particular object by attribute, in this case
+`list`.
+
+The rest of the test is currently the same as it was... But we actually want 
+to change this too, because our new requirement is that the template should
+be able to display multiple items.  We want the template to render all
+the items in the list as rows in the table. The Django template syntax
+has a tag for iterating through list, `{% for .. in .. %}`, so we can use it
+like this:
+
+
+[source,html]
+----
+<table id="id_list_table">
+    {% for item in list.item_set.all %}
+        <tr><td>1: {{ item.text }}</td></tr>
+    {% endfor %}
+----
+
+(Another great feature of Django's ORM:  objects have a special attribute
+that lets you access related objects, which is the related class name, lowercased,
+with `_set` appended: here: `list.item_set`, which returns a `QuerySet`.  We 
+then use the `.all()` query, which in Django template language doesn't need 
+brackets. If you haven't already, read up on some of the
+https://docs.djangoproject.com/en/1.5/topics/templates/[Django template
+language magic]
+
+So we need to pass our template the list object instead of just a single item text.
+Let's reflect that in our unit test:
+
+[source,html]
+----
+    expected_html = render_to_string(
+        'home.html',
+        {'list':  new_list}
+    )
+----
+
+There's definitely a 'code smell' here.  The unit test is getting a little long, and
+it's testing two quite different things -- checking that POST submissions get
+saved to the database 'and' checking that the view renders a template populated
+with the right objects... Long and unwieldy unit tests tend to mean you have a
+function that's doing too much.  Let's put that on our list of things to look into
+later.
+
+For now, let's try running our unit test:
+
+----
+    self.assertEqual(List.objects.all().count(), 1)
+AssertionError: 0 != 1
+----
+
+
+
+
+Covered:
+
+saving POST requests
+debugging FTs with time.sleep and better error messages
+defining models and foreign key relationships
+using the ORM to retrieve objects from the database
+? redirect after POST
 
