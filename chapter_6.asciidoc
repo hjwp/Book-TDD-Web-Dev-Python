@@ -1,23 +1,186 @@
 Getting to the minimum viable site
 ----------------------------------
 
+We ended the last chapter with a classic testing problem:  how to ensure
+'isolation' between tests.  When we run unit tests, the Django test runner
+automatically creates a brand new test database (separate from the production
+one), and resets it before each individual test is run.  But our functional
+tests currently run against the ``real'' database. 
+
+Ensuring test isolation in functional tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are two ways we could tackle this.  One is to `roll our own'' solution:
+we use the `setUp` and `tearDown` methods from `unittest` to create a fresh
+database and reset it between each test.  In an old tutorial I wrote, I managed
+it using a combination of:
+
+* creating a 'settings_for_fts.py' which imports everything from 'settings.py',
+but changes the `DATABASES` entry to have a different `NAME`
+* in `setUp`, use `subprocess.Popen` to spin up the Django `manage.py
+runserver`, passing in `settings=settings_for_fts`.
+* use `django.core.management.setup_environ` with `settings_for_fts` to load
+Django for our test database
+* Then we can do things like `django.core.management.call_command("syncdb")`,
+as well as add any test data to the database.
+* `tearDown` would kill the server and delete the database file after each
+test.
+
+You can explore the implementation at my Github page for the
+Test-Driven-Django-Tutorial, on a tag called https://github.com/hjwp/Test-Driven-Django-Tutorial/blob/old-ft-runner/mysite/functional_tests.py[old-ft-runner]
+
+Since Django 1.4 though, there's a new class called `LiveServerTestCase` which
+does a lot of this work for you, automatically, essentially just like the unit
+tests runs.  Although it has some limitations and we'll probably need to move
+off it later, it's a useful tool at this stage, so let's check it out.
+
+`LiveServerTestCase` expects to be run by the Django test runner, so the
+first step is to create a new Django app to hold our functional tests.
+
+[subs="specialcharacters,quotes"]
+----
+$ *python manage.py startapp fts*
+----
+
+Then we move our functional tests, from being a standalone file, to being
+the tests of the `functional_tests` app.  We use *`git mv`* so that git
+notices that we've moved the file:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git mv -f functional_tests.py fts/tests.py*
+$ git status # at this point should show the "rename"
+----
+
+At this point your directory tree should look like this:
+
+----
+├── database.sqlite
+├── fts
+│   ├── __init__.py
+│   ├── models.py
+│   ├── tests.py
+│   └── views.py
+├── lists
+│   ├── __init__.py
+│   ├── __init__.pyc
+│   ├── models.py
+│   ├── templates
+│   │   └── home.html
+│   ├── tests.py
+│   └── views.py
+├── manage.py
+└── superlists
+    ├── __init__.py
+    ├── settings.py
+    ├── urls.py
+    └── wsgi.py
+----
+
+
+Now let's edit 'fts/tests.py' to make it use LiveServerTestCase:
+
+[source,python]
+----
+from django.test import LiveServerTestCase
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+
+class NewVisitorTest(LiveServerTestCase):
+
+    def setUp(self):
+        self.browser = webdriver.Firefox()
+        self.browser.implicitly_wait(3)
+
+    def tearDown(self):
+        self.browser.quit()
+
+    def test_can_start_a_list_and_retrieve_it_later(self):
+        # Edith has heard about a cool new online to-do app. She goes
+        # to check out its homepage
+        self.browser.get(self.live_server_url)
+
+        [...]
+----
+
+Note we've changed the `import` at the top, the `class`, and the 
+`self.browser.get`, which now uses `self.live_server_url`, an attribute that
+`LiveServerTestCase` will populate for us when it starts up the server.
+
+And finally, we add `fts` as a new app in 'settings.py':
+
+[source,python]
+----
+INSTALLED_APPS = (
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.sites',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    # Uncomment the next line to enable the admin:
+    # 'django.contrib.admin',
+    # Uncomment the next line to enable admin documentation:
+    # 'django.contrib.admindocs',
+    'lists',
+    'fts',
+)
+----
+
+Now we should be able to run our functional tests using the Django 
+test runner, by telling it to run just the tests for our new `fts` app:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test fts*]
+$ python manage.py test fts 
+Creating test database for alias 'default'...
+Traceback (most recent call last):
+  [...]
+  File "/usr/lib/python2.7/wsgiref/handlers.py", line 85, in run
+    template, origin = find_template(template_name)
+  File "/usr/local/lib/python2.7/dist-packages/django/template/loader.py", line 138, in find_template
+    raise TemplateDoesNotExist(name)
+TemplateDoesNotExist: 500.html
+F
+======================================================================
+FAIL: test_can_start_a_list_and_retrieve_it_later (fts.tests.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/media/SHARED/Dropbox/book/source/chapter_6/superlists/fts/tests.py", line 74, in test_can_start_a_list_and_retrieve_it_later
+    self.fail('Finish the test!')
+AssertionError: Finish the test!
+
+ ---------------------------------------------------------------------
+Ran 1 test in 6.378s
+
+FAILED (failures=1)
+Destroying test database for alias 'default'...
+----
+
+Well, despite that ugly `TemplateDoesNotExist: 500` traceback, which we'll look
+at in a moment,  the FT actually got through to its expected `self.fail`.
+
+That's worthy of a commit:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* # see rename, modified fts/tests.py, settings.py, and new files
+$ *git add fts*
+$ *git add superlists/settings.py*
+$ *git diff --staged -M*
+$ *git commit*  # msg eg "move functional_tests to fts app, use LiveServerTestCase"
+----
+
+The `-M` flag on the `git diff` is a useful one. It means "detect moves", so it
+will notice that `functional_tests.py` and `fts/tests.py` are the same file, and
+show you a more sensible diff...
+
+
 (Under construction)
 
-In this chapter we want to
-
-* move to liveservertestcase
-* fts becomes an app
 * change FT to show a second user?
 * specify each list should have its own url
 * use django test client
-
-
-A subtitle
-~~~~~~~~~~
-
-Python Ipsum: Future integration itertools goat python. Return raspberrypi
-community dict method. Script raspberrypi exception test object method
-requests. Python raspberrypi itertools test script class pypy. Dunder
-integration generator pypy django scipy. Object raspberrypi diversity test
-cython.
 
