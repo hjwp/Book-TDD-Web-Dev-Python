@@ -42,14 +42,18 @@ first step is to create a new Django app to hold our functional tests.
 $ *python manage.py startapp fts*
 ----
 
+NOTE: You could mix your functional tests into the tests for the 'lists' app.
+I tend to prefer to keep them separate, because functional tests usually have
+cross-cutting concerns that run across different apps.
+
 Then we move our functional tests, from being a standalone file, to being
-the tests of the `functional_tests` app.  We use *`git mv`* so that git
+the tests of the `fts` app.  We use *`git mv`* so that git
 notices that we've moved the file:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git mv -f functional_tests.py fts/tests.py*
-$ git status # at this point should show the "rename"
+$ git status # should show the "rename"
 ----
 
 At this point your directory tree should look like this:
@@ -101,12 +105,13 @@ class NewVisitorTest(LiveServerTestCase): <2>
         self.browser.get(self.live_server_url) <3>
 
         [...]
-# we can also remove the if __name__ == '__main__' from the end <4>
+# also remove the if __name__ == '__main__' from the end <4>
 ----
 
 We've changed the `import` <1> at the top, the `class` <2>, and the 
 `self.browser.get`, which now uses `self.live_server_url` <3>, an attribute that
-`LiveServerTestCase` will populate for us when it starts up the server.
+`LiveServerTestCase` will populate for us when it starts up the server.  We also
+remove the runner from the end -- 'manage.py' will take care of that for us.
 
 And finally, we add `fts` as a new app in 'settings.py':
 
@@ -135,7 +140,6 @@ test runner, by telling it to run just the tests for our new `fts` app:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test fts*]
-$ python manage.py test fts 
 Creating test database for alias 'default'...
 Traceback (most recent call last):
   [...]
@@ -162,7 +166,6 @@ Destroying test database for alias 'default'...
 
 Well, despite that ugly `TemplateDoesNotExist: 500` traceback, which we'll look
 at in a moment,  the FT actually got through to its expected `self.fail`.
-
 That's worthy of a commit:
 
 [subs="specialcharacters,quotes"]
@@ -202,19 +205,23 @@ going back to their saved lists.
 Small Design When Necessary
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-TDD grew out of the agile movement in software, which includes a strong
-reaction against ``Big Design Up-Front'': the traditional software
-practice whereby, after a lengthy requirements gathering exercise, there
-was an equally lengthy design stage where the software was planned out on
-paper. The philosophy is that you learn more from solving problems in 
-practice than in theory, especially when you confront your application with
-real-world uses as soon as possible. Agile methodologies suggest that we spend
-minimal time on up-front design, and instead let the design evolve gradually
-based on feedback from real users.  To get that feedback, we try and put a
-minimum viable application in front of them as soon as possible.
+TDD is closely associated with the agile movement in software development,
+which includes a strong reaction against ``Big Design Up-Front'': the
+traditional software engineering practice whereby, after a lengthy requirements
+gathering exercise, there was an equally lengthy design stage where the
+software was planned out on paper. The philosophy is that you learn more from
+solving problems in practice than in theory, especially when you confront your
+application with real-world uses as soon as possible. Agile methodologies
+suggest that we spend minimal time on up-front design, and instead let the
+design evolve gradually based on feedback from real users.  To get that
+feedback, we try and put a minimum viable application in front of them as soon
+as possible.
 
-But that doesn't mean no thinking about design at all!  So, let's think about
-our minimum viable lists app, and what kind of design we'll need to deliver it.
+But that doesn't mean that thinking about design is outright banned! In the
+last chapter we saw how just blundering ahead without thinking can 'eventually'
+get us to the right answer, but often a 'little' thinking about design can help
+us get there faster. So, let's think about our minimum viable lists app, and
+what kind of design we'll need to deliver it.
 
 * We want each user to be able to store their own list - at least one, for now.
 * A list is made up of several items, whose primary attribute is a bit of 
@@ -238,7 +245,7 @@ short descriptions to our list, we might want to store some kind of ordering,
 and so on.  But we obey another tenet of the agile gospel:  ``YAGNI''
 (pronounced yag-knee), which stands for ``You ain't gonna need it''.  As 
 software developers, we have an urge to create things, and sometimes it's
-hard to resist the urge to build things just because an idea occured to us
+hard to resist the urge to build things just because an idea occurred to us
 and we 'might' need it.  The trouble is that 9 times out of 10, no matter how
 cool the idea was, you won't end up using it, and you've ended up with a load
 of unused code, adding to the complexity of your application. YAGNI is the 
@@ -261,7 +268,7 @@ a user-facing site rather than an API).
 REST suggests that we have a URL structure that matches our data structure,
 in this case, lists and list items.  Each list can have its own URL, like
 
-`/lists/<list id>/`
+`/lists/<list identifier>/`
 
 That will fulfil the requirement we've specified in our FT. To view a list, we
 use a GET request (a normal browser visit to the page)
@@ -274,13 +281,513 @@ requests:
 To add a new item to an existing list, we'll have a separate URL, to which
 we can send POST requests.
 
-`/lists/<list id>/add_item`
+`/lists/<list identifier>/add_item`
 
-Let's update our FT to reflect this new design.
+Let's translate this thinking to our functional test.  As soon as Edith
+submits a first list item, we'll want to create a new list, adding one
+item to it, and take her to the URL for her list.  That's around line 35:
+
+
+[source,python]
+----
+    # When she hits enter, she is taken to a new URL,
+    # and now the page lists "1: Buy peacock feathers" as an item in a
+    # to-do list table
+    inputbox.send_keys(Keys.ENTER)
+    edith_list_url = self.browser.current_url
+    self.assertRegexpMatches(edith_list_url, '/lists/.+')
+
+    table = self.browser.find_element_by_id('id_list_table')
+    [...]
+----
+
+
+Now let's change the end of the test and imagine a new user coming along.
+We want to check that they don't see any of Edith's items when they visit
+the home page, and that they get their own unique URL for their list.
+
+Delete everything from the comment at line 74 ("Edith wonders..."), and 
+replace it with:
+
+
+[source,python]
+----
+    # Now a new user, Francis, comes along to the site.
+    self.browser.quit()
+    ## We use a new browser session to make sure that no information
+    ## of Edith's is coming through from cookies etc
+    self.browser = webdriver.Firefox()
+
+    # Francis visits the home page.  There is no sign of Edith's
+    # list
+    self.browser.get(self.live_server_url)
+    page_text = self.browser.find_element_by_tag_name('body').text
+    self.assertNotIn('Buy peacock feathers', page_text)
+    self.assertNotIn('make a fly', page_text)
+
+    # Francis starts a new list by entering a new item. He 
+    # is less interesting than Edith...
+    inputbox = self.browser.find_element_by_id('id_new_item')
+    inputbox.send_keys('Buy milk')
+    inputbox.send_keys(Keys.ENTER)
+
+    # Francis gets his own unique URL
+    francis_list_url = self.browser.current_url
+    self.assertRegexpMatches(francis_list_url, '/lists/.+')
+    self.assertNotEqual(francis_list_url, edith_list_url)
+
+    # Again, there is no trace of Edith's list
+    page_text = self.browser.find_element_by_tag_name('body').text
+    self.assertNotIn('Buy peacock feathers', page_text)
+    self.assertIn('Buy milk', page_text)
+----
+
+`assertRegexpMatches` is a new function, we use it to check our new REST design
+has been implemented.  Other than that, our changes are fairly straightforward.
+Let's see how they do when we run our FTs:
+
+----
+AssertionError: Regexp didn't match: '/lists/.+' not found in
+u'http://localhost:8081/'
+----
+
+
+As expected.  Let's do a commit, and then go and build some new models
+and views.
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -a* 
+----
+
+NOTE: I found the FTs hung when I tried to run them today.  It turns out I
+needed to upgrade Selenium, with a `pip install --upgrade selenium`. It's
+only been a couple of months since I last upgraded, and Selenium had gone up
+by 6 point versions.  There's no standing still!
+
+
+Iterating towards the new design
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Being all excited about our new design, I had an overwhelming urge to dive in
+at this point and start changing 'models.py', which would have broken half the
+unit tests, and then pile in and change almost every single line of code, all
+in one go.  Obey the Testing Goat, not Refactoring Cat!  We don't need to
+implement our new, shiny design in a single big bang. Let's make small changes
+that take us from a working state to a working state, with our design guiding
+us gently at each stage.
+
+We'll start by adjusting our URLs to be more in line with our design, since
+that's what the FT is currently stuck on: it's complaining that the URL you get
+taken to after starting a list isn't a list URL.  So let's start by fixing that
+-- it's the redirect after POST.  In 'lists/tests.py', find
+`test_home_page_can_save_a_POST_request`, and change the expected redirect 
+location:
+
+[source,python]
+----
+    self.assertEqual(response.status_code, 302)
+    self.assertEqual(response['location'], '/lists/the-only-list-in-the-world')
+----
+
+That gets us an expected fail
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+AssertionError: '/' != '/lists/the-only-list-in-the-world'
+----
+
+Now we can go adjust our `home_page` view in 'lists/views.py':
+
+[source,python]
+----
+def home_page(request):
+    if request.method == 'POST':
+        Item.objects.create(text=request.POST['item_text'])
+        return redirect('/lists/the-only-list-in-the-world')
+----
+
+Of course that will now break the functional test, because there is no such
+URL on our site yet.  Sure enough, if you run them, you'll find they fail
+just after trying to submit the first item.
+
+TODO: mention fact that fts now run with DEBUG=False?
+
+So, let's build a special URL for our one and only list (it's a problem-solving
+technique: you need something that works for N objects, you currently have
+nothing (ie something that works for 0 objects). Solving for 1 object is a good
+step forwards)
+
+
+Testing views, templates and URLs together with the Django Test Client
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+In previous chapters I've shown how you can test your URL resolution 
+explicitly, and how to test view functions by actually calling them, and 
+checking that they render your templates correctly too.  Django actually
+provides us with a little tool that can do all three, which we'll use now.
+
+I wanted to show you how to "roll your own" first, partially because it's
+a better introduction to how Django works, but also because those techniques
+are portable -- you may not always use Django, but you'll almost always have
+view functions, templates and URL mappings, and you now know how to test them.
+
+So let's use the Django Test Client.  Open up 'lists/tests.py', add `Client` to
+the list of things we import from `django.test`, and then add a new test class
+called `ListViewTest`.  Then, lets copy the method called
+`test_home_page_displays_all_list_items` across from `HomePageTest`, and adapt
+it slightly:
+
+[source,python]
+----
+from django.test import Client, TestCase
+[...]
+
+
+class ListViewTest(TestCase):
+
+    def test_list_view_displays_all_items(self):
+        Item.objects.create(text='itemey 1')
+        Item.objects.create(text='itemey 2')
+
+        client = Client()
+        client.get('/lists/the-only-list-in-the-world')
+
+        self.assertIn('itemey 1', response.content)
+        self.assertIn('itemey 2', response.content)
+
+----
+
+Instead of calling the view function directly, we instantiate a test client
+with `Client()`, and then we call `.get` with the URL we're testing -- it's 
+actually a very similar API to the one that Selenium uses. Let's try running
+the test now:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+======================================================================
+ERROR: test_list_view_displays_all_items (lists.tests.ListViewTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/media/SHARED/Dropbox/book/source/chapter_6/superlists/lists/tests.py", line 63, in test_list_view_displays_all_items
+    response = client.get('/lists/the-only-list-in-the-world')
+  File "/usr/local/lib/python2.7/dist-packages/django/test/client.py", line 439, in get
+  [...]
+  File "/usr/local/lib/python2.7/dist-packages/django/views/defaults.py", line 20, in page_not_found <1>
+    t = loader.get_template(template_name) # You need to create a 404.html template.<2>
+  File "/usr/local/lib/python2.7/dist-packages/django/template/loader.py", line 145, in get_template
+    template, origin = find_template(template_name)
+  File "/usr/local/lib/python2.7/dist-packages/django/template/loader.py", line 138, in find_template
+    raise TemplateDoesNotExist(name)
+TemplateDoesNotExist: 404.html
+
+ ---------------------------------------------------------------------
+Ran 7 tests in 0.058s
+
+FAILED (errors=1)
+
+----
+
+You can see that the Django Test Client goes through much more of the Django
+stack than our other unit tests do -- it's gone through the URL resolution
+part of the stack (which we used to call separately via `resolve`), and
+come to the conclusion that the URL doesn't exist when it gets to the 
+view in 'defaults.py' called `page_not_found` <1>.  Following on the rest of
+the traceback, you can see it then tries to load a 404 template, but it can't
+find one and so raises a `TemplateDoesNotExist` error.  There's even one of
+Django's classic helpful comments telling us that we need to create one at <2>
+
+
+Creating 404 and 500 templates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Although we could skip this step, maybe we should take advantage of this
+gentle prompt from the tests to create some minimal 404 and 500 templates. 
+You'll remember the functional tests were complaining about not having a
+500 template too, and it was creating a lot of messy output on the
+command-line. Here is how to create some extremely simple ones:
+
+[subs="specialcharacters,quotes"]
+----
+$ *echo "500 Server Error.  This shouldn't happen :-/" > lists/templates/500.html*
+$ *echo "404 Page not found. Try another URL." > lists/templates/404.html*
+----
+
+Let's try re-running our unit tests now?
+
+    AssertionError: 'itemey 1' not found in '404 Page not found. Try another URL.\n'
+
+And if you try running the functional tests, you'll still see the same error,
+but at least all the ugly traceback complaining about a missing 500 page will
+be gone.
+
+Let's add those two templates, on their own, as a commit:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status*  # should show 2 changed and 2 new files
+$ *git add lists/templates* 
+$ *git status*  # should show 2 changed and 2 new files
+$ *git commit -m"Minimal 404 and 500 templates"*
+----
+
+Back to our unit test fail, which is currently showing a 404 for our singleton
+list URL.  Let's fix that in 'superlists/urls.py'
+
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^lists/the-only-list-in-the-world$', 'lists.views.view_list',
+        name='view_list'
+    ),
+    # url(r'^superlists/', include('superlists.foo.urls')),
+    [...]
+----
+
+Running the tests again, we get:
+
+----
+ViewDoesNotExist: Could not import lists.views.view_list. View does not exist
+in module lists.views.
+----
+
+Nicely self-explanatory.  Let's create a dummy view function in 'lists/views.py'
+
+[source,python]
+----
+def view_list(request):
+    pass
+----
+
+Now we get
+
+----
+ValueError: The view lists.views.view_list didn't return an HttpResponse object.
+----
+
+Let's copy the two last lines from the `home_page` view and see if they'll do
+the trick:
+
+[source,python]
+----
+def view_list(request):
+    items = Item.objects.all()
+    return render(request, 'home.html', {'items': items})
+----
+
+Re-run the tests and they should pass:
+
+----
+Ran 7 tests in 0.052s
+OK
+----
+
+And the FTs should get a little further on:
+
+----
+AssertionError: New to-do item did not appear in table -- its text was:
+1: Buy peacock feathers
+----
+
+Now it's time for a little tidying up.  In the Red/Green/Refactor dance, we've
+got to green, it's time to refactor.  We now have two views, one for the home
+page, and one for an individual list.  Both are currently using the same 
+template, and passing it the current list items in the database.  If we 
+look through our unit test methods, we can see some stuff we probably want
+to change:
+
+----
+$ egrep "class|def" lists/tests.py
+class HomePageTest(TestCase):
+    def test_root_url_resolves_to_home_page_view(self):
+    def test_home_page_returns_correct_html(self):
+    def test_home_page_displays_all_list_items(self):
+    def test_home_page_only_saves_items_when_necessary(self):
+    def test_home_page_can_save_a_POST_request(self):
+class ListViewTest(TestCase):
+    def test_list_view_displays_all_items(self):
+class ItemModelTest(TestCase):
+    def test_saving_and_retrieving_items(self):
+----
+
+We don't actually need the home page to display all list items any more, it
+should just show a single input box inviting you to start a new list. We also
+don't want the home page and the list view using the same template.
+
+We can start by deleting the `test_home_page_displays_all_list_items` method,
+it's no longer needed.  If you run `manage.py test lists` now, it should say
+it ran 6 tests instead of 7.
+
+Next let's adapt our list view test to check that it's using a different
+template:
+
+[source,python]
+----
+class ListViewTest(TestCase):
+
+    def test_list_view_displays_all_items(self):
+        Item.objects.create(text='itemey 1')
+        Item.objects.create(text='itemey 2')
+
+        client = Client()
+        response = client.get('/lists/the-only-list-in-the-world')
+
+        self.assertIn('itemey 1', response.content)
+        self.assertIn('itemey 2', response.content)
+        self.assertTemplateUsed(response, 'list.html')
+----
+
+`assertTemplateUsed` is one of the more useful functions that the test client
+gives us.  Let's see what it says:
+
+----
+AssertionError: Template 'list.html' was not a template used to render the
+response. Actual template(s) used: home.html
+----
+
+
+Great!  Let's change the view:
+
+[source,python]
+----
+def view_list(request):
+    items = Item.objects.all()
+    return render(request, 'list.html', {'items': items})
+----
+
+But, obviously, that template doesn't exist yet. If we run the unit tests, we
+get:
+
+----
+TemplateDoesNotExist: list.html
+----
+
+Let's create a new file at 'lists/templates/list.html'.  
+
+[subs="specialcharacters,quotes"]
+----
+$ *touch lists/templates/list.html*
+----
+
+A blank template, which gives us this error -- good to know the tests are
+there to remind us!  
+
+----
+AssertionError: 'itemey 1' not found in ''
+----
+
+The template for an individual list will re-use quite a lot of the stuff
+we currently have in 'home.html', so we could just copy that:
+
+[subs="specialcharacters,quotes"]
+----
+$ *cp lists/templates/home.html lists/templates/list.html*
+----
+
+Well, that gets the unit tests back to passing.  Now let's do a little 
+more tidying up.  The home page doesn't need to list items, it only
+needs the new list input field, so we can remove some lines from
+'lists/templates/home.html', and maybe slightly tweak the `h1` to
+say "Start a new list":
+
+[source,html]
+----
+<html>
+    <head>
+        <title>To-Do lists</title>
+    </head>
+    <body>
+        <h1>Start a To-Do list</h1>
+        <form method="POST" >
+            <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+            {% csrf_token %}
+        </form>
+    </body>
+</html>
+----
+
+We re-run the unit tests to check that hasn't broken anything... Good...
+
+Now there's actually no need to pass all the items to the 'home.html'
+template in our `home_page` view, so we can simplify that:
+
+[source,html]
+----
+def home_page(request):
+    if request.method == 'POST':
+        Item.objects.create(text=request.POST['item_text'])
+        return redirect('/lists/the-only-list-in-the-world')
+    return render(request, 'home.html')
+----
+
+Re run the unit tests, they still pass. And, taking a look at
+'list.html', it looks about right. 
+
+Let's run the functional tests:
+
+----
+  File "/media/SHARED/Dropbox/book/source/chapter_6/superlists/fts/
+  tests.py", line 64, in test_can_start_a_list_and_retrieve_it_later
+    table.text,
+AssertionError: New to-do item did not appear in table -- its text was:
+1: Buy peacock feathers
+----
+
+We're failing to input the second item.  What's going on here? Well,
+the problem is that our new item forms are both missing an `action=`
+attribute, which means that, by default, they submit to the same URL
+they were rendered from. That works for the home page, because it's
+the only one that knows how to deal with POST requests currently,
+but it won't work for our 'view_list' function, which is just ignoring
+the POST.
+
+Let's fix that, in 'lists/templates/list.html'
+
+[source,html]
+----
+    <form method="POST" action="/" >
+----
+
+And try running the FT again:
+
+----
+    self.assertNotEqual(francis_list_url, edith_list_url)
+AssertionError: u'http://localhost:8081/lists/the-only-list-in-the-world' == u'http://localhost:8081/lists/the-only-list-in-the-world'
+----
+
+Hooray! We're back to where we were earlier, which means our refactoring is
+complete -- we now have a unique URL for our one list.  It may feel like we
+haven't made any progress since, functionally, the site still behaves almost
+exactly like it did when we started the chapter, but this really is progress.
+We've started on the road to our new design, and we've implemented a number of
+things without making anything worse than it was before.  Let's commit our
+progress so far:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* # should show 4 changed files and 1 new file, list.html
+$ *git add lists/templates/list.html*
+$ *git diff* # should show we've simplified home.html,
+             # moved one test to a new class in lists/tests.py
+             # added a new view in views.py, and simplified home_page
+             # and made one addition to urls.py
+$ *git commit -a* # add a message summarising the above, maybe something
+                  # like "new URL, view and template to display lists"
+----
+
+
+Things to be dragged in:
+
+* 404 and 500 error templates... including putting them in the right place?
+* urls.py, and including them from lists.
 
 (Under construction)
 
-* change FT to show a second user?
-* specify each list should have its own url
-* use django test client
 
