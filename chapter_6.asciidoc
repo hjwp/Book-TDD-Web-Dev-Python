@@ -1210,14 +1210,269 @@ URL.\n'
 It's time to learn how we can pass parameters from URLs to views:
 
 
+
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^lists/(.+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^lists/new$', 'lists.views.new_list', name='new_list'
+----
+
+We adjust the regular expression for our URL to include a capture group,
+and the captured text will get passed to the view as its first argument. 
+But our view doesn't expect an argument yet! Sure enough, this causes
+problems:
+
 TODO:  would this be better explained with the old way of testing views?
 
+----
+ERROR: test_list_view_displays_all_items (lists.tests.ListViewTest)
+[...]
+TypeError: view_list() takes exactly 1 argument (2 given)
 
-Things to be dragged in:
+ERROR: test_saving_a_POST_request (lists.tests.NewListTest)
+[...]
+TypeError: view_list() takes exactly 1 argument (2 given)
+----
 
-* 404 and 500 error templates... including putting them in the right place?
-* urls.py, and including them from lists.
+We can fix that easily with a dummy parameter in 'views.py'
 
-(Under construction)
+[source,python]
+----
+def view_list(request, list_id):
+----
 
+Now we're down to our expected failure:
+
+    self.assertNotIn('other list item 1', response.content)
+AssertionError: 'other list item 1' unexpectedly found in [...]
+
+Let's make our view discriminate over which items it sends to the 
+template:
+
+[source,python]
+----
+def view_list(request, list_id):
+    list = List.objects.get(id=list_id)
+    items = Item.objects.filter(list=list)
+    return render(request, 'list.html', {'items': items})
+----
+
+Now we get an error in another test:
+
+----
+ERROR: test_saving_a_POST_request (lists.tests.NewListTest)
+    self.assertRedirects(response, '/lists/the-only-list-in-the-world/')
+    [...]
+    return int(value)
+ValueError: invalid literal for int() with base 10: 'the-only-list-in-the-world'
+----
+
+Let's take a look at this test then, since it's whining.  Hm, it 
+looks like it hasn't been adjusted to the new world of Lists and Items.
+In fact, this brings to mind the fact that we actually need to treat
+the creation of 'new' lists differently from the addition of new items
+to 'existing' lists.  
+
+Let's adjust the test to the new world, showing that it expects this
+view to create a brand new list:
+
+[source,python]
+----
+    self.assertEqual(List.objects.all().count(), 1)
+    new_list = List.objects.all()[0]
+    self.assertEqual(Item.objects.all().count(), 1)
+    new_item = Item.objects.all()[0]
+    self.assertEqual(new_item.text, 'A new list item')
+    self.assertEqual(new_item.list, new_list)
+
+    self.assertRedirects(response, '/lists/%d/' % (new_list.id,))
+----
+
+That still gives us the invalid literal error. Let's take a look at the
+view itself, and change it so it redirects to a valid place:
+
+[source,python]
+----
+    return redirect('/lists/%d/' % (list.id,))
+----
+
+That gets us back to passing unit tests.  What about the functional 
+tests?  We must be almost there?
+
+----
+AssertionError: New to-do item did not appear in table -- its text was:
+1: Use peacock feathers to make a fly
+----
+
+A regression -- because we're now creating a new list for every single
+POST submission.  We need a URL and view to handle adding a new item
+to an existing list.  We're getting pretty good at these now, so let's
+knock one together quickly:
+
+[source,python]
+----
+class NewItemTest(TestCase):
+
+    def test_saving_a_POST_request_to_an_existing_list(self):
+        list = List.objects.create()
+        other_list = List.objects.create()
+        client = Client()
+        response = client.post(
+            '/lists/%d/new_item' % (list.id,),
+            data={'item_text': 'A new item for an existing list'}
+        )
+
+        self.assertEqual(Item.objects.all().count(), 1)
+        new_item = Item.objects.all()[0]
+        self.assertEqual(new_item.text, 'A new item for an existing list')
+        self.assertEqual(new_item.list, list)
+
+        self.assertRedirects(response, '/lists/%d/' % (list.id,))
+----
+
+We get 
+
+----
+AssertionError: 0 != 1
+----
+
+Again, this is because the view is actually giving a 404 (we can check
+by moving the `assertRedirects` higher in the test if we like)
+
+Add a new url in urls.py:
+
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^lists/(.+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^lists/(.+)/new_item$', 'lists.views.add_item', name='add_item'),
+    url(r'^lists/new$', 'lists.views.new_list', name='new_list'),
+----
+
+Hm, three very similar-looking URLs there.  Let's make a note on our
+to-do list, they look like good candidates for a refactoring.
+
+We now get:
+
+----
+ViewDoesNotExist: Could not import lists.views.add_item. View does not exist in module lists.views.
+----
+
+Let's try:
+
+
+[source,python]
+----
+def add_item(request):
+    pass
+----
+
+Aha:
+
+    TypeError: add_item() takes exactly 1 argument (2 given)
+
+[source,python]
+----
+def add_item(request, list_id):
+    pass
+----
+
+And then:
+
+    ValueError: The view lists.views.add_item didn't return an HttpResponse object.
+
+
+let's copy the `redirect` from `new_list` and the `List.objects.get` from
+`view_list`:
+
+[source,python]
+----
+def add_item(request, list_id):
+    list = List.objects.get(id=list_id)
+    return redirect('/lists/%d/' % (list.id,))
+----
+
+----
+    self.assertEqual(Item.objects.all().count(), 1)
+AssertionError: 0 != 1
+----
+
+And finally let's make it save our new list item:
+
+
+[source,python]
+----
+def add_item(request, list_id):
+    list = List.objects.get(id=list_id)
+    Item.objects.create(text=request.POST['item_text'], list=list)
+    return redirect('/lists/%d/' % (list.id,))
+----
+
+Now we just need to use this URL in our 'list.html' template.  Open it
+up and... oh.  The template needs to know what list it's rendering,
+as well as what items.  Let's adjust our unit test `ListViewTest`, and
+add an extra check at the end:
+
+[source,python]
+----
+    self.assertNotIn('other list item 2', response.content)
+    self.assertTemplateUsed(response, 'list.html')
+    self.assertEqual(response.context['list'], list)
+----
+
+That gives us `KeyError: 'list'` because we're not passing list into 
+the template.  It actually gives us an opportunity to simplify a little
+
+[source,python]
+----
+def view_list(request, list_id):
+    list = List.objects.get(id=list_id)
+    return render(request, 'list.html', {'list': list})
+----
+
+That, of course, will break because the template is expecting `items`, 
+but we can fix it in 'list.html'
+
+[source,html]
+----
+    <form method="POST" action="/lists/{{ list.id }}/new_item" >
+
+    [...]
+
+    {% for item in list.item_set.all %}
+        <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+    {% endfor %}
+----
+
+`.item_set` is called a ``reverse lookup'' -- it's one of Django's
+incredibly useful bits of ORM, that lets you look up an object's 
+related items...
+
+So that gets the unit tests to pass.  How about the FT?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test fts*]
+ Creating test database for alias 'default'...
+ .
+ ----------------------------------------------------------------------
+ Ran 1 test in 5.824s
+ 
+ OK
+----
+
+YES!  And a quick check on our to-do list:
+
+* [line-through] #Adjust model so that items are associated with different
+lists#
+* [line-through] # Add unique URLs for each list
+* [line-through] # Add a URL for creating a new list via POST
+* [line-through] # Add URLs for adding a new item to an existing list via POST
+* refactor away some duplication in 'urls.py'
+
+
+TODO: finish this last bit
 
