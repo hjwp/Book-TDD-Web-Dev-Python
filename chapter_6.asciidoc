@@ -283,6 +283,13 @@ we can send POST requests.
 
 `/lists/<list identifier>/add_item`
 
+In summary, our to-do list looks something like this:
+
+* Adjust model so that items are associated with different lists
+* Add unique URLs for each list
+* Add a URL for creating a new list via POST
+* Add URLs for adding a new item to an existing list via POST
+
 Let's translate this thinking to our functional test.  As soon as Edith
 submits a first list item, we'll want to create a new list, adding one
 item to it, and take her to the URL for her list.  That's around line 35:
@@ -718,7 +725,7 @@ We re-run the unit tests to check that hasn't broken anything... Good...
 Now there's actually no need to pass all the items to the 'home.html'
 template in our `home_page` view, so we can simplify that:
 
-[source,html]
+[source,python]
 ----
 def home_page(request):
     if request.method == 'POST':
@@ -782,6 +789,333 @@ $ *git commit -a* # add a message summarising the above, maybe something
                   # like "new URL, view and template to display lists"
 ----
 
+
+Adding another URL
+~~~~~~~~~~~~~~~~~~
+
+Let's take a look at our to-do list:
+
+* Adjust model so that items are associated with different lists
+* Add unique URLs for each list
+* Add a URL for creating a new list via POST
+* Add URLs for adding a new item to an existing list via POST
+
+Hm, well, we've sort of made progress on no. 2, even if there's only
+1 list in the world. Item 1 is a bit scary.  Can we do something about
+items 3 and 4?  Let's have a new URL for adding new list items.  If 
+nothing else, it'll simplify the home page view. Open up 'lists/tests.py',
+and 'move' the `test_home_page_can_save_a_POST_request` method into a new
+class, then change its name:
+
+
+[source,python]
+----
+        self.assertEqual(Item.objects.all().count(), 0)
+
+
+
+class NewListTest(TestCase):
+
+    def test_saving_a_POST_request(self):
+        request = HttpRequest()
+        request.method = 'POST'
+        [...]
+----
+
+Now let's use the Django test client:
+
+[source,python]
+----
+class NewListTest(TestCase):
+
+    def test_saving_a_POST_request(self):
+        client = Client()
+        response = client.post(
+                '/lists/new',
+                data={'item_text': 'A new list item'}
+        )
+
+        self.assertEqual(Item.objects.all().count(), 1)
+        new_item = Item.objects.all()[0]
+        self.assertEqual(new_item.text, 'A new list item')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['location'], '/lists/the-only-list-in-the-world')
+----
+
+Let's try running that:
+
+
+    self.assertEqual(Item.objects.all().count(), 1)
+AssertionError: 0 != 1
+
+
+Hmm, a little baffling.  I think I know why.  Let's move the
+response.status_code check a little higher up:
+
+[source,python]
+----
+    def test_saving_a_POST_request(self):
+        client = Client()
+        response = client.post(
+                '/lists/new',
+                data={'item_text': 'A new list item'}
+        )
+        self.assertEqual(response.status_code, 302)
+
+        self.assertEqual(Item.objects.all().count(), 1)
+        new_item = Item.objects.all()[0]
+        self.assertEqual(new_item.text, 'A new list item')
+
+        self.assertEqual(response['location'], '/lists/the-only-list-in-the-world')
+----
+
+Sure enough:
+
+----
+    self.assertEqual(response.status_code, 302)
+AssertionError: 404 != 302
+----
+
+There's no such URL, so let's add one:
+
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^lists/the-only-list-in-the-world$', 'lists.views.view_list',
+        name='view_list'
+    ),
+    url(r'^lists/new$', 'lists.views.new_list', name='new_list'
+    ),
+----
+
+Next we get a `ViewDoesNotExist`, so let's fix that, in 'lists/views.py':
+
+[source,python]
+----
+def new_list(request):
+    pass
+----
+
+Then we get ``The view lists.views.new_list didn't return an HttpResponse object.''  (this is getting rather familiar!).  Let's borrow a line from 
+`home_page`
+
+[source,python]
+----
+def new_list(request):
+    return redirect('/lists/the-only-list-in-the-world')
+----
+
+----
+    self.assertEqual(Item.objects.all().count(), 1)
+AssertionError: 0 != 1
+----
+
+And another line from home_page:
+
+[source,python]
+----
+def new_list(request):
+    Item.objects.create(text=request.POST['item_text'])
+    return redirect('/lists/the-only-list-in-the-world')
+----
+
+Oops, an unexpected fail:
+
+----
+    self.assertEqual(response['location'], '/lists/the-only-list-in-the-world')
+AssertionError: 'http://testserver/lists/the-only-list-in-the-world' != '/lists/the-only-list-in-the-world'
+----
+
+That's because the Django test client behaves slightly differently to our
+pure view function, it's using the full Django stack which adds the 
+domain to our relative URL.  Let's use a helper function instead
+of our two-step check for the redirect:
+
+[source,python]
+----
+    def test_saving_a_POST_request(self):
+        client = Client()
+        response = client.post(
+                '/lists/new',
+                data={'item_text': 'A new list item'}
+        )
+
+        self.assertEqual(Item.objects.all().count(), 1)
+        new_item = Item.objects.all()[0]
+        self.assertEqual(new_item.text, 'A new list item')
+
+        self.assertRedirects(response, '/lists/the-only-list-in-the-world')
+----
+
+Looking good.  Can we remove the old code from `home_page`?
+
+[source,html]
+----
+def home_page(request):
+    return render(request, 'home.html')
+----
+
+We re-run the tests to make sure... Yes, 6 tests OK. 
+
+Finally, let's wire up our two forms to use this new URL.  In **both** 
+'home.html' and 'lists.html':
+
+[source,html]
+----
+    <form method="POST" action="/lists/new" >
+----
+
+And we re-run our FTs to make sure everything still works...
+
+----
+AssertionError: u'http://localhost:8081/lists/the-only-list-in-the-world' ==
+u'http://localhost:8081/lists/the-only-list-in-the-world'
+----
+
+Yup.  That's a nicely self-contained commit, and our 'views.py' is looking
+much neater and tidier.  We're getting good at this refactoring malarkey!
+
+$ *git status* # 5 changed files
+$ *git diff* # URLs for forms x2, moved code in views + tests, new URL
+$ *git commit -a* 
+
+
+Adjusting our models
+~~~~~~~~~~~~~~~~~~~~
+
+OK, enough housekeeping with our URLs. It's time to bite the bullet and
+change our models.  Let's adjust our unit tests. Perhaps showing you a 
+diff output might be the best way to show the changes?
+
+----
+-from lists.models import Item
++from lists.models import Item, List
+ from lists.views import home_page
+ 
+ 
+@@ -62,14 +62,21 @@ class ListViewTest(TestCase):
+-class ItemModelTest(TestCase):
++class ListAndItemModelsTest(TestCase):
+ 
+     def test_saving_and_retrieving_items(self):
++        list = List()
++        list.save()
+ 
+         first_item = Item()
+         first_item.text = 'The first (ever) list item'
++        first_item.list = list
+         first_item.save()
+ 
+         second_item = Item()
+         second_item.text = 'Item the second'
++        second_item.list = list
+         second_item.save()
+ 
++        saved_lists = List.objects.all()
++        self.assertEqual(saved_lists.count(), 1)
++        self.assertEqual(saved_lists[0], list)
+         saved_items = Item.objects.all()
+         self.assertEqual(saved_items.count(), 2)
+
+         first_saved_item = saved_items[0]
+         second_saved_item = saved_items[1]
+         self.assertEqual(first_saved_item.text, 'The first (ever) list item')
++        self.assertEqual(first_saved_item.list, list)
+         self.assertEqual(second_saved_item.text, 'Item the second')
++        self.assertEqual(second_saved_item.list, list)
+
+----
+
+We create a new `List` object, and then we assign each item to it
+by assigning it as its `.list` property.  We check the list is properly
+saved, and we check that the two items have also saved their relationship
+to the list.
+
+Let's unit-test/code cycle this in.  I'm just going to show the test errors
+for the first couple, and let you figure out for yourself what the code
+should be:
+
+----
+ImportError: cannot import name List
+----
+
+----
+AttributeError: 'List' object has no attribute 'save'
+----
+
+----
+    self.assertEqual(first_saved_item.list, list)
+AttributeError: 'Item' object has no attribute 'list'
+----
+
+How do we give our Item a list attribute?  Let's just try making it
+like the text attribute:
+
+
+[source,html]
+----
+class Item(models.Model):
+    text = models.TextField()
+    list = models.TextField()
+----
+
+That give us:
+
+    AssertionError: u'List object' != <List: List object>
+
+Not quite -- the string representation of an object isn't the same 
+as the object itself.  To get Django to see that we want to create
+a relationship between the two classes, we use a `ForeignKey`:
+
+[source,html]
+----
+class Item(models.Model):
+    text = models.TextField()
+    list = models.ForeignKey(List)
+----
+
+(`List` will need to be defined above `Item` in your source for that to
+work).
+
+Now what happens?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test fts*]
+ Creating test database for alias 'default'...
+ ....EE
+ ======================================================================
+ ERROR: test_list_view_displays_all_items (lists.tests.ListViewTest)
+ ----------------------------------------------------------------------
+ Traceback (most recent call last):
+   File "/media/SHARED/Dropbox/book/source/chapter_6/superlists/lists/tests.py", line 50, in test_list_view_displays_all_items
+     Item.objects.create(text='itemey 1')
+     [...]
+     return Database.Cursor.execute(self, query, params)
+ IntegrityError: lists_item.list_id may not be NULL
+ 
+ ======================================================================
+ ERROR: test_saving_a_POST_request (lists.tests.NewListTest)
+ ----------------------------------------------------------------------
+ Traceback (most recent call last):
+   File "/media/SHARED/Dropbox/book/source/chapter_6/superlists/lists/tests.py", line 36, in test_saving_a_POST_request
+     data={'item_text': 'A new list item'}
+     [...]
+     return Database.Cursor.execute(self, query, params)
+ IntegrityError: lists_item.list_id may not be NULL
+ 
+ ----------------------------------------------------------------------
+ Ran 6 tests in 0.017s
+----
+
+Oh gawd!  Well, our model tests are passing but two of our view tests are
+failing, because Items have to be associated with a list now.
+
+Let's get them working again
+
+And we cre
 
 Things to be dragged in:
 
