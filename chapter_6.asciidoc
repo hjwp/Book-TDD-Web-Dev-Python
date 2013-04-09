@@ -108,10 +108,11 @@ class NewVisitorTest(LiveServerTestCase): <2>
 # also remove the if __name__ == '__main__' from the end <4>
 ----
 
-We've changed the `import` <1> at the top, the `class` <2>, and the 
-`self.browser.get`, which now uses `self.live_server_url` <3>, an attribute that
-`LiveServerTestCase` will populate for us when it starts up the server.  We also
-remove the runner from the end -- 'manage.py' will take care of that for us.
+We've changed the `import` <1> at the top, the `class` <2>, and the
+`self.browser.get`, which now uses `self.live_server_url` <3>, an attribute
+that `LiveServerTestCase` will populate for us when it starts up the server.
+We also remove the runner from the end -- 'manage.py' will take care of that
+for us.
 
 And finally, we add `fts` as a new app in 'settings.py':
 
@@ -977,9 +978,12 @@ u'http://localhost:8081/lists/the-only-list-in-the-world/'
 Yup.  That's a nicely self-contained commit, and our 'views.py' is looking
 much neater and tidier.  We're getting good at this refactoring malarkey!
 
+[subs="specialcharacters,quotes"]
+----
 $ *git status* # 5 changed files
 $ *git diff* # URLs for forms x2, moved code in views + tests, new URL
 $ *git commit -a* 
+----
 
 
 Adjusting our models
@@ -989,6 +993,7 @@ OK, enough housekeeping with our URLs. It's time to bite the bullet and
 change our models.  Let's adjust our unit tests. Perhaps showing you a 
 diff output might be the best way to show the changes?
 
+[source,diff]
 ----
 -from lists.models import Item
 +from lists.models import Item, List
@@ -1054,7 +1059,7 @@ How do we give our Item a list attribute?  Let's just try making it
 like the text attribute:
 
 
-[source,html]
+[source,python]
 ----
 class Item(models.Model):
     text = models.TextField()
@@ -1069,7 +1074,7 @@ Not quite -- the string representation of an object isn't the same
 as the object itself.  To get Django to see that we want to create
 a relationship between the two classes, we use a `ForeignKey`:
 
-[source,html]
+[source,python]
 ----
 class Item(models.Model):
     text = models.TextField()
@@ -1473,6 +1478,88 @@ lists#
 * [line-through] #Add URLs for adding a new item to an existing list via POST#
 * refactor away some duplication in 'urls.py'
 
+Irritatingly, the Testing Goat is a stickler for tying up loose ends too, so 
+we've got to do this one final thing.
 
-TODO: finish this last bit
+Before we start, we'll do a commit - always make sure you've got a commit
+of a working state before embarking on a refactor
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* 
+$ *git commit -am"new URL + view for adding to existing lists. FT passes!"*
+----
+
+A final refactor using URL includes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+'superlists/urls.py', strictly speaking, is meant for URLs that apply to your 
+entire site.  For URLs that only apply to the lists app, we can use a 
+separate 'lists/urls.py', to make the app more self-contained.  The simplest
+thing to do to start is to make a copy of the existing urls.py:
+
+[subs="specialcharacters,quotes"]
+----
+$ *cp superlists/urls.py lists/*
+----
+
+Then we replace 3 lines in 'superlists/urls.py' with an `include`.  Notice
+that `include` can take a part of a URL regex as a prefix, which will be
+applied to all the included URLs (this is the bit where we reduce duplication,
+as well as giving our code a better structure).
+
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^lists/', include('lists.urls')),
+
+    # Uncomment the admin/doc line below to enable admin documentation:
+    # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
+
+    # Uncomment the next line to enable the admin:
+    # url(r'^admin/', include(admin.site.urls)),
+)
+----
+
+And 'lists/urls.py' we can trim down to only include the latter part
+of our 3 URLs, and none of the other stuff from the parent urls.py:
+
+
+
+[source,python]
+----
+from django.conf.urls import patterns, url
+
+urlpatterns = patterns('',
+    url(r'^(.+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(.+)/new_item$', 'lists.views.add_item', name='add_item'),
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+)
+----
+
+And re-run the unit tests to check everything worked.  When I did it, I
+couldn't quite believe I did it correctly on the first go, so I deliberately
+changed one of the URLs slightly, just to check if it broke a test. It did. 
+We're covered.
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* 
+$ *git add lists/urls.py* 
+$ *git add superlists/urls.py* 
+$ *git diff --staged* 
+$ *git commit* 
+----
+
+Phew. A marathon chapter. But we covered a number of important topics,
+starting with 'test isolation', we did some thinking about design. We saw how
+to adapt an existing site step-by-step, going from working state to working
+state, in order to iterate towards our new REST-ish structure.  We covered some
+rules of thumb like ``YAGNI'' and ``3 strikes then refactor''
+
+I'd say we're pretty close to being able to ship this site, as the very first
+beta of the superlists website that's going to take over the world.  Maybe it
+needs a little prettification first... Let's look at what we need to do to
+release it in the next chapter.
 
