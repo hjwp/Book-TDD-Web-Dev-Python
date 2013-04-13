@@ -169,12 +169,17 @@ more details.
 ----
 
 Yuck, that's some pretty ugly traceback! The failure message at the bottom is
-actually quite helpful though: the test runner is complaining that it can't run
-tests until we set up some kind of database. Well, a test failure means we're
-allowed to change production code, so let's open up the
-'superlists/settings.py' file. You'll find a whole bunch of customisable
-settings in here. Scroll down until you find the line which defines `DATABASES`
-and `ENGINE`:
+actually quite helpful though: the test runner is complaining that the database
+settings are improperly configured.  The reason it cares is that the first
+thing the Django test runner tries to do is create a test database -- the
+assumption is that all Django websites have some kind of database, and you need
+a version of that database to run unit tests against. We'll see that in action
+in the next chapter.
+
+For now, a test failure means we're allowed to change production code, so
+let's open up the 'superlists/settings.py' file. You'll find a whole bunch of
+customisable settings in here. Scroll down until you find the line which
+defines `DATABASES` and `ENGINE`:
 
 
 [source,python]
@@ -376,9 +381,9 @@ class HomePageTest(TestCase):
 [role="caption"]
 lists/tests.py
 
-What's going on here? Apart from getting rid of some comments AKA lies?
+What's going on here? 
 
-*   `resolve` is the actual tool that Django uses internally to resolve
+*   `resolve` is the actual function Django uses internally to resolve
     URLs, and find what view function they should map to.  We're checking that
     `resolve`, when called with ``/'', the root of the site, finds a function
     called `home_page`.  
@@ -524,7 +529,7 @@ urlpatterns = patterns('',
 [role="caption"]
 superlists/urls.py
 
-And run the tests again:
+And run the unit tests again, *`python manage.py test lists`*:
 
 ----
 ViewDoesNotExist: Could not import superlists.views.home. Parent module
@@ -533,7 +538,8 @@ superlists.views does not exist.
 
 That's progress!  We're no longer getting a 404, instead Django is complaining
 that the dot-notation `superlists.views.home` doesn't point to a real view.
-Let's fix that, by pointing it towards our home_page:
+Let's fix that, by pointing it towards our placeholder `home_page` object,
+which is inside 'lists', not 'superlists':
 
 
 [source,python]
@@ -545,15 +551,16 @@ urlpatterns = patterns('',
 [role="caption"]
 superlists/urls.py
 
-And the tests again:
+And the run the tests again:
 
 ----
 ViewDoesNotExist: Could not import lists.views.home_page. View is not callable.
 ----
 
-See?  Now we've got a reason to change our `home_page` from being `None` to 
-being an actual function.  Every single code change is driven by the tests. So,
-back in 'lists/views.py':
+The unit tests have made the link between the url '/' and the `home_page = None` in 'lists/views.py', and are now complaining that `home_page` isn't a callable,
+ie it's not a function. Now we've got a justification for changing it from
+being `None` to being an actual function.  Every single code change is driven
+by the tests. So, back in 'lists/views.py':
 
 
 [source,python]
@@ -599,8 +606,9 @@ Unit testing a view
 ~~~~~~~~~~~~~~~~~~~
 
 Onto writing a test for our view, so that it can be something more than a 
-do-nothing function. Let's open up 'lists/tests.py', and let's add a new
-'test method':
+do-nothing function, and instead be a function that return a real response
+with HTML to the browser. Open up 'lists/tests.py', and add a new
+'test method'. I'll explain each bit:
 
 
 [source,python]
@@ -618,11 +626,11 @@ class HomePageTest(TestCase):
 
 
     def test_home_page_returns_correct_html(self):
-        request = HttpRequest()
-        response = home_page(request)
-        self.assertTrue(response.content.startswith('<html>'))
-        self.assertIn('<title>To-Do lists</title>', response.content)
-        self.assertTrue(response.content.endswith('</html>'))
+        request = HttpRequest() <1>
+        response = home_page(request) <2>
+        self.assertTrue(response.content.startswith('<html>')) <3>
+        self.assertIn('<title>To-Do lists</title>', response.content) <4>
+        self.assertTrue(response.content.endswith('</html>')) <5>
 ----
 [role="caption"]
 lists/tests.py
@@ -630,20 +638,22 @@ lists/tests.py
 What's going on in this new test?  
 
 * We create an `HttpRequest` object, which is what Django will see when
-  a user's browser asks for a page.
-* We pass it to our `home_page` view.
+a user's browser asks for a page. <1>
+* We pass it to our `home_page` view. <2>
 * We get a response from the view. You won't be surprised to hear that this
-  object is of a class called `HttpResponse`.
+object is of a class called `HttpResponse`. <2>
 * Then, we assert that the `.content` of the response -- which is the HTML that
-  we send to the user -- has certain properties. 
-  - We want it to start with an `<html>` tag which gets closed at the end
-  - And we want a `<title>` tag somewhere in the middle, with the word
-    ``To-Do'' in -- because that's what we specified in our functional test.
+we send to the user -- has certain properties:
+    - We want it to start with an `<html>` tag <3> which gets closed at the end
+      <5>
+    - And we want a `<title>` tag somewhere in the middle, with the word
+    ``To-Do'' in <4> -- because that's what we specified in our functional
+    test.
 
 Once again, the unit test is driven by the functional test, but it's also
 much closer to the actual code -- we're thinking like programmers now.
 
-Let's run the tests now and see how we get on:
+Let's run the unit tests now and see how we get on:
 
 ----
 TypeError: home_page() takes no arguments (1 given)
@@ -774,7 +784,7 @@ FAILED (failures=1)
 
 FAILED? What? Oh, it's an expected fail? Yes? Yes! We have a web page!
 
-Ahem.  Well, 'I' thought it was a thrilling end to the chapter. You may still
+Ahem.  Well,  'I' thought it was a thrilling end to the chapter. You may still
 be a little baffled, perhaps keen to hear a justification for all these tests,
 but I hope you felt just a tinge of the excitement near the end there.
 
