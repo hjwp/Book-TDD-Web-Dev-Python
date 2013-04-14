@@ -2,16 +2,18 @@ Saving user input
 -----------------
 
 We want to take the To-Do item input from the user and send it to the server,
-so that we can save it and display it back to them later.  For now, we'll use a
-standard HTML form and POST request.  A little boring, but also nice and
-easy to deliver - we can use all sorts of sexy HTML5 and JavaScript later in
-the book.
+so that we can save it somehow and display it back to them later.  For now,
+we'll use a standard HTML form and POST request.  A little boring, but also
+nice and easy to deliver - we can use all sorts of sexy HTML5 and JavaScript
+later in the book.
 
 As I started writing this chapter, I immediately skipped to what I thought was
-the right answer -- building multiple models for lists and list items, and then
-building a couple of new views for dealing with POST requests -- and started
-writing that. But I stopped myself, and decided to present things in a much
-more iterative fashion instead: I would take one step at a time, even if I
+the right design: multiple models for lists and list items, a bunch of
+different URLs for adding new lists, new items, 3 new view functions. I could
+jump ahead and write tests for all of them at once. But I stopped myself, and
+decided to present things in a more iterative fashion instead: I would
+take one step at a time, solve the immediate problem needed to get the 
+functional tests a little further, and only that problem, even if I
 suspected that the step wouldn't quite solve the whole problem. In a way I
 decided to be deliberately short-sighted.
 
@@ -42,12 +44,12 @@ adjust our template at 'lists/templates/home.html':
 
 [source,html]
 ----
-    <h1>Your To-Do list</h1>
-    <form method="POST">
-        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
-    </form>
+<h1>Your To-Do list</h1>
+<form method="POST">
+    <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
+</form>
 
-    <table id="id_list_table">
+<table id="id_list_table">
 ----
 [role="caption"]
 lists/templates/home.html
@@ -64,14 +66,14 @@ Traceback (most recent call last):
     table = self.browser.find_element_by_id('id_list_table')
 [...]
 NoSuchElementException: Message: u'Unable to locate element:
-{"method":"id","selector":"id_list_table"}' ;
+{"method":"id","selector":"id_list_table"}' ; Stacktrace [...]
 ----
 
 When a functional test fails with an unexpected failure, there are several
 things we can do to debug them:
 
 * Add `print` statements, to show, eg, what the current page text is
-* Improve the error message to show more info about the current state
+* Improve the 'error message' to show more info about the current state
 * Manually visit the site yourself
 * Use `time.sleep` to pause the test during execution
 
@@ -103,12 +105,12 @@ Django debug information:
 .Django DEBUG page showing CSRF error
 image::images/csrf_protection_error.png[Django DEBUG page showing CSRF error]
 
+.Security: surprisingly fun!
+*******************************************************************************
 If you've never heard of a ``Cross-Site Request Forgery'' exploit, why not look
 it up now? Like all security exploits, it's entertaining to read about, being
 an ingenious use of a system in unexpected ways...
 
-.Security: surprisingly fun!
-*******************************************************************************
 When I went back to University to take my Computer Science degree, I signed up
 for the Security module out of a sense of duty:  ``Oh well, it'll probably be
 very dry and boring, but I suppose I'd better take it''.  It turned out to be
@@ -127,10 +129,10 @@ Django's CSRF protection involves placing a little auto-generated token into
 each generated form, to be able to identify POST requests as having come from
 the original site.  So far our template has been pure HTML, and in this step we
 make the first use of Django's template magic. To add the CSRF token we
-use a ``template tag'' which has the curly-bracket / percent syntax, `{% ... %}` 
-(famous for being the world's most annoying two-key touch-typing combination.
-Go on, try it: right pinky shift, left pinky curly, left pinky shift, right
-index fumble for the 5 key... impossible!)
+use a ``template tag'' which has the curly-bracket / percent syntax, 
+`{% ... %}` (famous for being the world's most annoying two-key touch-typing
+combination. Go on, try it: right pinky shift, left pinky curly, left pinky
+shift, right index fumble for the 5 key... impossible!)
 
 
 [source,html]
@@ -173,13 +175,15 @@ functional_tests.py
 Processing a POST request on the server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Because we haven't specified an `action=` attribute, the form is submitting
-back to the same URL it was rendered from, by default, i.e. the home page.
-Let's adapt the view to be able to deal with a POST request.
+Because we haven't specified an `action=` attribute in the form, it is
+submitting back to the same URL it was rendered from by default, i.e. `/`,
+which is dealt with by our `home_page` function. Let's adapt the view to be
+able to deal with a POST request.
 
-Open up 'lists/tests.py', and add a new method to `HomePageTest` - I copy &
-pasted the previous method, and then adapted it to add our POST request, and
-then check that the returned HTML will have the new item text in it:
+That means a new unit test for the `home_page` view. Open up 'lists/tests.py',
+and add a new method to `HomePageTest` - I copy & pasted the previous method,
+and then adapted it to add our POST request, then check that the returned
+HTML will have the new item text in it:
 
 [source,python]
 ----
@@ -223,8 +227,9 @@ $ pass:quotes[*python manage.py test lists*]
 AssertionError: 'A new list item' not found in '<html> [...]
 ----
 
-We can get the test to pass by providing a different code path for POST
-requests, with a slightly silly return value:
+We can get the test to pass by adding an `if` and providing a different code
+path for POST requests. In typical TDD style, we start with a deliberately
+silly return value:
 
 [source,python]
 ----
@@ -261,7 +266,9 @@ been rendered with the new item text passed in as a variable:
 lists/tests.py
 
 As you can see, the `render_to_string` function takes, as its second parameter,
-a mapping of variable names to values.  
+a mapping of variable names to values.  We're saying that we expect to pass
+the text of our new list item, which came from the POST request, to the
+template, using the variable name `new_item_text`.
 
 Now we adjust our template to actually use the variable we're passing in. The
 syntax is `{{ ... }}`, which displays a variable as a string.
@@ -284,21 +291,21 @@ syntax is `{{ ... }}`, which displays a variable as a string.
 [role="caption"]
 lists/templates/home.html
 
-Does that make sense? We tell our template renderer that we want a variable
-called `new_item_text` to be bound to the string value `'A new list item'`.
-Then the renderer will substitute `{{ new_item_text }}` for ``A new list 
-item'' inside the `<td>` when it's sent to the user's browser.
+We've told our template renderer that we want a variable called `new_item_text`
+to be bound to the string value `'A new list item'`. Then the renderer will
+substitute `{{ new_item_text }}` for ``A new list item'' inside the `<td>` when
+it's sent to the user's browser.
 
-
-Let's see what it does to our unit tests:
+Let's see what effect that all has when we re-run our unit tests:
 
 ----
     self.assertEqual(response.content, expected_html)
 AssertionError: 'A new list item' != u'<html>\n    <head>\n [...]
 ----
 
-And we can now re-write our view, and tell it to pass the POST parameter to the
-template:
+Good, our deliberately silly return value is now no longer fooling our tests,
+so we are allowed to re-write our view, and tell it to pass the POST parameter
+to the template:
 
 
 [source,python]
@@ -311,7 +318,7 @@ def home_page(request):
 [role="caption"]
 lists/views.py
 
-Re-run the unit tests:
+Running the unit tests again:
 
 ----
 ERROR: test_home_page_returns_correct_html (lists.tests.HomePageTest)
@@ -401,6 +408,11 @@ way to get that to pass is with a quick change to the template:
 [role="caption"]
 lists/templates/home.html
 
+NOTE: This part of the FT is sensitive to whitespace, so if you see problems,
+check you have the right number of spaces inside the `<td>`, eg between the 
+`1:` and the new item text.
+
+
 .Red / Green / Refactor and Triangulation
 *******************************************************************************
 The unit test / code cycle is sometimes taught as ``Red, Green, Refactor'':
@@ -465,12 +477,17 @@ AssertionError: New to-do item did not appear in table -- its text was:
 3 strikes and refactor
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Before we go further -- we've got a bad code smell in this FT. We've got 3
+Before we go further -- we've got a bad ``code smell'' in this FT. We've got 3
 almost identical code blocks checking for new items in the list table. There's
 a principle called ``Don't repeat yourself'' (DRY), which we like to apply by
 following the mantra ``3 strikes and refactor''. You can copy & paste code
 once, and it may be premature to try and remove the duplication it causes, but
 once you get 3 occurrences, it's time to remove duplication.
+
+NOTE: a ``code smell'' is something about a piece of code that makes you
+want to re-write it. Jeff Atwood has http://www.codinghorror.com/blog/2006/05/code-smells.html[a compilation on his blog] ``Coding Horror''. The more
+experience you gain as a programmer, the more fine-tuned your nose becomes
+to code smells...
 
 We start by committing what we have so far. Even though we know our site
 has a major flaw - it can only handle 1 list item - it's still further ahead
@@ -548,8 +565,9 @@ familiar Object-Oriented metaphors which work well with code.  Classes map to
 database tables, attributes map to columns, and an individual instance of the
 class represent a row of data in the database.
 
-Writing a unit test for our ORM is actually an excellent way of learning it, 
-since it exercises code by specifying how we want it to work.  
+Django comes with an excellent ORM, and writing a unit test that uses it is
+actually an excellent way of learning it, since it exercises code by specifying
+how we want it to work.  
 
 Let's create a new class in 'lists/tests.py'
 
@@ -600,12 +618,13 @@ Tutorial] which has an excellent intro to them.
 Let's try running the unit test. Here comes another unit test/code cycle
 
 ----
+    from lists.models import Item
 ImportError: cannot import name Item
 ----
 
-Let's give it something to import from 'lists/models.py'.  We're feeling
-confident so let's skip the `Item = None` step, and go straight to creating a
-class:
+OK then, let's give it something to import from 'lists/models.py'.  We're
+feeling confident so we'll skip the `Item = None` step, and go straight to
+creating a class:
 
 [source,python]
 ----
@@ -671,7 +690,8 @@ https://docs.djangoproject.com/en/1.5/intro/tutorial01/#creating-models[tutorial
 and in the
 https://docs.djangoproject.com/en/1.5/ref/models/fields/[documentation].
 
-Let's do a commit for our first ever model!
+In any case, the unit tests now pass, so let's do a commit for our first ever
+model!
 
 [subs="specialcharacters,quotes"]
 ----
@@ -685,7 +705,8 @@ Saving the POST to the database
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Let's adjust the test for our home page POST request, and say we want the view
-to save a new item to the database:
+to save a new item to the database. We can do that by adding 3 new lines
+to the existing test called `test_home_page_can_save_a_POST_request`
 
 
 [source,python]
@@ -711,13 +732,13 @@ def test_home_page_can_save_a_POST_request(self):
 [role="caption"]
 lists/tests.py
 
+
 This test is getting a little long-winded.  It seems to be testing lots of
-different things.  That's a 'code smell' -- a long unit test either needs to be
-broken into two, or it may be an indication that the thing you're testing is
-too complicated.  Let's add that to a mental to-do list, and run the test in
+different things.  That's another 'code smell' -- a long unit test either needs
+to be broken into two, or it may be an indication that the thing you're testing
+is too complicated.  Let's add that to a mental to-do list, and run the test in
 the meantime.  We get an expected failure:
 
-TODO: explain what a code smell is?
 
 ----
     self.assertEqual(Item.objects.all().count(), 1)
@@ -798,14 +819,16 @@ def home_page(request):
 [role="caption"]
 lists/views.py
 
+`.objects.create` is a neat shorthand for creating a new `Item`, without
+needing to call `.save()`. And that gets the test passing.
+
 Redirect after a POST
 ~~~~~~~~~~~~~~~~~~~~~
 
-`.objects.create` is a neat shorthand for creating a new `Item`, without
-needing to call `.save()`. But, yuck, that whole `new_item_text = ''` dance is
-making me pretty unhappy. Thankfully the next item on the list gives us a
-chance to fix it. https://en.wikipedia.org/wiki/Post/Redirect/Get[Always
-redirect after a POST], they say, so let's do that:
+But, yuck, that whole `new_item_text = ''` dance is making me pretty unhappy.
+Thankfully the next item on the list gives us a chance to fix it.
+https://en.wikipedia.org/wiki/Post/Redirect/Get[Always redirect after a POST],
+they say, so let's do that:
 
 [source,python]
 ----
@@ -820,7 +843,7 @@ redirect after a POST], they say, so let's do that:
         new_item = Item.objects.all()[0]
         self.assertEqual(new_item.text, 'A new list item')
 
-        self.assertEqual(resonse.status_code, 302)
+        self.assertEqual(response.status_code, 302)
         self.assertEqual(response['location'], '/')
 ----
 [role="caption"]
@@ -885,7 +908,7 @@ The Django template syntax has a tag for iterating through lists,
 [source,html]
 ----
 <table id="id_list_table">
-    {% for item in items%}
+    {% for item in items %}
         <tr><td>1: {{ item.text }}</td></tr>
     {% endfor %}
 </table>
@@ -893,11 +916,15 @@ The Django template syntax has a tag for iterating through lists,
 [role="caption"]
 lists/templates/home.html
 
-Pretty neat! If you haven't already, you should read up on the rest of the
-https://docs.djangoproject.com/en/1.5/topics/templates/[Django template
-language magic]
+Now the template will render with multiple `<tr>` rows, one for each item
+in the variable `items`.  Pretty neat huh?  I'll introduce a few more
+bits of Django template magic as we go, but at some point you'll want to
+go and read up on the rest of them in the 
+https://docs.djangoproject.com/en/1.5/topics/templates/[Django
+Docs]
 
-And now we pass the items to the template in our home page view:
+Just changing the template doesn't get our tests to pass, we now need to 
+we pass the items to it from our home page view:
 
 [source,python]
 ----
@@ -912,10 +939,13 @@ def home_page(request):
 [role="caption"]
 lists/views.py
 
-Which gets our unit tests to pass... Moment of truth, will the functional test
-pass?
+That does get the unit tests to pass... Moment of truth, will the functional
+test pass?
 
-    AssertionError: 'To-Do' not found in u'ImproperlyConfigured at /'
+----
+[...] (lots of traceback!
+AssertionError: 'To-Do' not found in u'ImproperlyConfigured at /'
+----
 
 Oops, apparently not.  Let's use another functional test debugging technique,
 and it's one of the most straightforward: manually visiting the site!  Open
@@ -937,11 +967,8 @@ database' for unit tests, it's one of the magical things that Django's
 `TestCase` does.  
 
 To set up our real database, we need to tell Django where it is -- sqlite
-databases are a single file on disk.  We'll then need to create a table to 
-hold our Items. Django will do that for us, using the definitions we provided
-in 'models.py', with a command called `syncdb`:
-
-First we edit 'superlists/settings.py':
+databases are a single file on disk. We tell Django where we want that file
+to be in 'superlists/settings.py':
 
 [source,python]
 ----
@@ -954,9 +981,12 @@ DATABASES = {
 [role="caption"]
 superlists/settings.py
 
-You can try reloading the page on localhost at this point, and it will tell you
-that there is a DatabaseError, ``no such table: lists_item''.  `syncdb`, one
-of Django's Swiss army knife `manage.py` commands , will fix this:
+If we try reloading the page on localhost at this point, and it will tell you
+that there is a `DatabaseError`, ``no such table: lists_item''.  We have a 
+database, but no tables in it yet. We've told Django everything it needs 
+to know how to create them in 'models.py' though, so we just need to tell
+it to make it using another Django Swiss army knife `manage.py`
+commands ,`syncdb`:
 
 [subs="specialcharacters,macros"]
 ----
@@ -981,9 +1011,10 @@ Installing indexes ...
 Installed 0 object(s) from 0 fixture(s)
 ----
 
-I said "no" to the question about superusers - we'll look at that in a later 
-chapter.  For now we can refresh the page on 'localhost', see that our error is
-gone, and try running the functional tests again.
+I said "no" to the question about superusers -- we don't need one yet, but we
+will look at it in a later chapter. For now we can refresh the page on
+'localhost', see that our error is gone, and try running the functional tests
+again.
 
 ----
 AssertionError: New to-do item did not appear in table -- its text was:
