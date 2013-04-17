@@ -147,13 +147,6 @@ test runner, by telling it to run just the tests for our new `fts` app:
 ----
 $ pass:quotes[*python manage.py test fts*]
 Creating test database for alias 'default'...
-Traceback (most recent call last):
-  [...]
-  File "/usr/lib/python2.7/wsgiref/handlers.py", line 85, in run
-    template, origin = find_template(template_name)
-  File "/usr/local/lib/python2.7/dist-packages/django/template/loader.py", line 138, in find_template
-    raise TemplateDoesNotExist(name)
-TemplateDoesNotExist: 500.html
 F
 ======================================================================
 FAIL: test_can_start_a_list_and_retrieve_it_later (fts.tests.NewVisitorTest)
@@ -170,11 +163,14 @@ FAILED (failures=1)
 Destroying test database for alias 'default'...
 ----
 
-TODO: TemplateDoesNotExist stuff doesn't appear in Django 1.5. rewrite/upgrade.
+NOTE: If, before the FAIL, you see some traceback ending in a
+`TemplateDoesNotExist: 500`, it's because you're running Django 1.4 instead of
+1.5. You should upgrade, because although not much has changed between the two
+versions, a few subtle things like this have.  It's not too late to upgrade at
+this stage.
 
-Well, despite that ugly `TemplateDoesNotExist: 500` traceback, which we'll look
-at in a moment,  the FT actually got through to its expected `self.fail`.
-That's worthy of a commit:
+The FT gets through to the `self.fail`, just like it did before the refactor.
+We should commit it as an atomic change:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -496,114 +492,15 @@ Instead of calling the view function directly, we instantiate a test client
 with `Client()`, and then we call `.get` with the URL we're testing -- it's 
 actually a very similar API to the one that Selenium uses. 
 
-Reading tracebacks
-~~~~~~~~~~~~~~~~~~
-
-TODO: from this point on, there is a difference between Django 1.4 and 1.5.
-Need to rewrite for 1.5...
-
 Let's try running the test now:
 
-[subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test lists*]
-[...]
-======================================================================
-ERROR: test_list_view_displays_all_items (lists.tests.ListViewTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/media/SHARED/Dropbox/book/source/chapter_6/superlists/lists/tests.py",
- line 63, in test_list_view_displays_all_items
-    response = client.get('/lists/the-only-list-in-the-world/')<2>
-  File "/usr/local/lib/python2.7/dist-packages/django/test/client.py",
- line 439, in get
-  [...]
-  File "/usr/local/lib/python2.7/dist-packages/django/views/defaults.py",
- line 20, in page_not_found <3>
-    t = loader.get_template(template_name) # You need to create a 404.html template.<4>
-  File "/usr/local/lib/python2.7/dist-packages/django/template/loader.py",
- line 145, in get_template
-    template, origin = find_template(template_name)
-  File "/usr/local/lib/python2.7/dist-packages/django/template/loader.py",
- line 138, in find_template
-    raise TemplateDoesNotExist(name)
-TemplateDoesNotExist: 404.html<1>
-
- ---------------------------------------------------------------------
-Ran 7 tests in 0.058s
-
-FAILED (errors=1)
-
+    self.assertIn('itemey 1', response.content)
+AssertionError: 'itemey 1' not found in '<h1>Not Found</h1><p>The requested URL
+/lists/the-only-list-in-the-world/ was not found on this server.</p>'
 ----
 
-This is a good example to use as a little aside on how to read tracebacks -- in
-TDD we do spend a lot of time looking at tracebacks (although I seem to
-remember looking at a lot of tracebacks before my TDD days, but that may be
-because I used to write very buggy code).
-
-The first things to look at are the top and the bottom.  The bottom should tell
-you something about what the actual problem is: <1> in this case, Django is
-complaining that it cannot find a template called '404.html'.
-
-Then, it's often useful to look up to the top, to try and find the line from
-your test code that started everything off: <2> in this case, it was when
-we tried to get the '/the-only-list-in-the-world/' URL, which we may remember
-doesn't actually exist yet.
-
-For more information, you can start to look between the two.  You might look
-for a line of your own code, application code this time, which has caused the
-problem.  Or, as in this case, it may be external library code, which can
-tell you something more about what happened.
-
-Here you can see that the Django Test Client goes through much more of the
-Django stack than our other unit tests do -- it's gone through the URL
-resolution part of the stack (which we used to call separately via `resolve`),
-and come to the conclusion that the URL we asked for doesn't exist,  when it
-gets to the view in 'defaults.py' called `page_not_found` <3>.  Following on
-the rest of the traceback, you can see it then tries to load a 404 template,
-but it can't find one and so raises a `TemplateDoesNotExist` error.  There's
-even one of Django's classic helpful comments telling us that we need to create
-one at <4>
-
-
-Creating 404 and 500 templates
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Although we could skip this step, maybe we should take advantage of this
-gentle prompt from the tests to create some minimal 404 and 500 templates. 
-You'll remember the functional tests were complaining about not having a
-500 template too, and it was creating a lot of messy output on the
-command-line. Here is how to create some extremely simple ones:
-
-[subs="specialcharacters,quotes"]
-----
-$ *echo "500 Server Error.  This shouldn't happen :-/" > lists/templates/500.html*
-$ *echo "404 Page not found. Try another URL." > lists/templates/404.html*
-----
-
-Let's try re-running our unit tests now?
-
-----
-AssertionError: 'itemey 1' not found in '404 Page not found. Try another URL.\n'
-----
-
-And if you try running the functional tests, you'll still see the same error,
-but at least all the ugly traceback complaining about a missing 500 page will
-be gone.
-
-Let's add those two templates, on their own, as a commit:
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *git status*  # should show 2 changed and 2 new files
-$ *git add lists/templates* 
-$ *git status*  # should show 2 new files in green
-$ *git commit -m"Minimal 404 and 500 templates"*
-----
-
-Back to our unit test fail, which is currently showing a 404 for our singleton
-list URL.  Let's fix that in 'superlists/urls.py'
+Our singleton list URL doesn't exist yet.  We fix that in 'superlists/urls.py'
 
 [source,python]
 ----
