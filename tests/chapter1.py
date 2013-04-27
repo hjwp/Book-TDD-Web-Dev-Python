@@ -27,10 +27,10 @@ class Chapter1Test(unittest.TestCase):
 
     def tearDown(self):
         for process in self.processes:
-            process.poll()
-            if process.returncode is None:
-                print 'killing', vars(process)
+            try:
                 os.killpg(process.pid, signal.SIGTERM)
+            except OSError:
+                print 'error killing', process._command
 
 
     def run_command(self, command):
@@ -45,6 +45,7 @@ class Chapter1Test(unittest.TestCase):
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             preexec_fn=os.setsid
         )
+        process._command = command
         self.processes.append(process)
         print 'directory listing is now', os.listdir(tempdir)
         if 'runserver' in command:
