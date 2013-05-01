@@ -1,3 +1,4 @@
+from collections import namedtuple
 import os
 import signal
 import subprocess
@@ -65,22 +66,48 @@ class Chapter1Test(unittest.TestCase):
 
 
     def test_listings_and_commands_and_output(self):
+        CodeListing = namedtuple('CodeListing', ['filename', 'contents'])
         chapter_1 = html.cssselect('div.sect1')[1]
         listings = chapter_1.cssselect('div.listingblock')
+        code_listings = []
+        commands = []
+        outputs = []
         for listing in listings:
             if listing.getnext().get('class') == 'paragraph caption':
                 filename = listing.getnext().text_content()
-                write_to_file(filename, listing.text_content().strip())
-            elif listing.cssselect('pre code strong'):
-                command = listing.cssselect('pre code strong')[0].text_content()
-                output_lines = listing.text_content().split('\n')
-                output_excluding_command = '\n'.join(
-                    l for l in output_lines if command not in l
-                )
-                actual_output = self.run_command(command)
-                if 'runserver' in command:
-                    continue
-                self.assert_console_output_correct(output_excluding_command, actual_output)
+                contents = listing.text_content().strip()
+                code_listings.append(CodeListing(filename, contents))
+                continue
+            if listing.cssselect('pre code strong'):
+                commands_in_this_listing = [
+                    el.text_content()
+                    for el in listing.cssselect('pre code strong')
+                ]
+                commands.extend(commands_in_this_listing)
+                if not commands_in_this_listing:
+                    outputs.extend(listing.text_content())
+                else:
+                    output_after_command = ''
+                    for line in listing.text_content().split('\n'):
+                        if any(cmd in line for cmd in commands_in_this_listing):
+                            if output_after_command:
+                                outputs.append(output_after_command)
+                                output_after_command = ''
+                        else:
+                            output_after_command += line + '\n'
+                    if output_after_command:
+                        outputs.append(output_after_command)
+                        output_after_command = ''
+
+        ## hack -- listings with a star in are weird
+        fix_pos = commands.index("git rm --cached superlists/")
+        commands.remove("git rm --cached superlists/")
+        commands.remove(".pyc")
+        commands.insert(fix_pos, "git rm --cached superlists/*.pyc")
+
+        self.assertEqual(len(code_listings), 1)
+        self.assertEqual(len(commands), 16, 'len %s not %s, %s' %(len(commands), 16, str(commands)))
+        self.assertEqual(len(outputs), 14, 'len %s not %s, %s' %(len(outputs), 14, '\n\n'.join(outputs)))
 
 
 if __name__ == '__main__':
