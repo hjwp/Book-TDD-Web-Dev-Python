@@ -3,7 +3,7 @@ Getting to the minimum viable site
 
 In this chapter we're going to address the problems we discovered at the end
 of the last chapter. In the immediate, the problem of cleaning up after 
-functional test runs, and later the more general problem, which is that
+functional test runs. Later, the more general problem, which is that
 our design only allows for one global list.  I'll demonstrate a critical
 TDD technique:  how to adapt existing code using an incremental, step-by-step
 process which takes you from working code to working code. Testing Goat, not
@@ -115,8 +115,8 @@ NOTE: You could mix your functional tests into the tests for the 'lists' app.
 I tend to prefer to keep them separate, because functional tests usually have
 cross-cutting concerns that run across different apps.
 
-First let's edit 'functional_tests/tests.py' to make it use
-`LiveServerTestCase`:
+First let's edit 'functional_tests/tests.py' and change our `NewVisitorTest` class
+to make it use `LiveServerTestCase`:
 
 [source,python]
 ----
@@ -226,7 +226,7 @@ $ *git commit*  # msg eg "move functional_tests to functional_tests app, use Liv
 
 The `-M` flag on the `git diff` is a useful one. It means "detect moves", so it
 will notice that `functional_tests.py` and `functional_tests/tests.py` are the
-same file, and show you a more sensible diff...
+same file, and show you a more sensible diff (try it without!).
 
 .Useful commands updated
 *******************************************************************************
@@ -358,7 +358,22 @@ In summary, our to-do list for this chapter looks something like this:
 * Add a URL for creating a new list via POST
 * Add URLs for adding a new item to an existing list via POST
 
-Let's translate this thinking to our functional test.  As soon as Edith
+Implementing the new design using TDD
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+How do we use TDD to implement the new design? Let's take another look at
+the flowchart for the TDD process:
+
+.The TDD process with Functional and Unit tests
+image::images/tdd_flowchart_functional_and_unit.png[A flowchart showing functional tests as the overall cycle, and unit tests helping to code]
+
+At the top level, we're going to use a combination of adding new functionality
+(by extending the FT and writing new application code), and refactoring our
+application - ie re-writing some of the existing implementation so that it
+delivers the same functionality to the user but using aspects of our new
+design.
+
+Let's translate our to-do list into our functional test.  As soon as Edith
 submits a first list item, we'll want to create a new list, adding one
 item to it, and take her to the URL for her list.  Look for the point
 at which we say `inputbox.send_keys('Buy peacock feathers')`, and amend
@@ -502,7 +517,12 @@ forwards, in that we'll have a different URL for our list and our home page,
 which is a step along the way to a more REST-ful design. Later, when we have
 multiple lists, it will be easy to change.
 
-That gets us an expected fail in our unit tests:
+Another way of thinking about it is as a problem-solving technique: our new
+URL design is currently not implemented, so it works for 0 items.  Ultimately,
+we want to solve for 'n' items, but solving for 1 item is a good step along the
+way.
+
+Running the unit tests gives us an expected fail:
 
 [subs="specialcharacters,macros"]
 ----
@@ -550,9 +570,9 @@ view functions, templates and URL mappings, and you now know how to test them.
 
 So let's use the Django Test Client.  Open up 'lists/tests.py', add `Client` to
 the list of things we import from `django.test`, and then add a new test class
-called `ListViewTest`.  Then, lets copy the method called
-`test_home_page_displays_all_list_items` across from `HomePageTest`, and adapt
-it slightly:
+called `ListViewTest`.  Then, let's copy the method called
+`test_home_page_displays_all_list_items` across from `HomePageTest` into our 
+new class, rename it, and adapt it slightly:
 
 [source,python]
 ----
@@ -1219,10 +1239,10 @@ $ pass:quotes[*python manage.py test functional_tests*]
  Ran 6 tests in 0.017s
 ----
 
-Oh dear!  Well, our model tests are passing but two of our view tests are
-failing, because Items have to be associated with a list now. Let's get them
-working again.  The easiest is the `ListViewTest`, we just create a parent
-list for our two test items:
+Oh gawd!  Well, our model tests are passing but two of our view tests are
+failing, because Items have to be associated with a list now. Still, this is
+exactly why we have tests. Let's get them working again.  The easiest is the
+`ListViewTest`; we just create a parent list for our two test items:
 
 [source,python]
 ----
@@ -1445,10 +1465,13 @@ AssertionError: '2: Use peacock feathers to make a fly' not found in
 [u'1: Use peacock feathers to make a fly']
 ----
 
-A regression -- because we're now creating a new list for every single
-POST submission.  We need a URL and view to handle adding a new item
-to an existing list.  We're getting pretty good at these now, so let's
-knock one together quickly:
+The functional tests have uncovered a regression in our application: because
+we're now creating a new list for every single POST submission, we have 
+broken the ability to add multiple items to a list.  This is exactly what
+we have functional tests for!
+
+We need a URL and view to handle adding a new item to an existing list.  We're
+getting pretty good at these now, so let's knock one together quickly:
 
 [source,python]
 ----
@@ -1479,7 +1502,7 @@ We get
 AssertionError: 0 != 1
 ----
 
-Again, this is because the view is actually giving a 404 (we can check
+This is because the view is actually giving a 404 (we can check
 by moving the `assertRedirects` higher in the test if we like)
 
 Add a new url in urls.py:
@@ -1616,7 +1639,7 @@ lists/templates/list.html
 
 `.item_set` is called a ``reverse lookup'' -- it's one of Django's
 incredibly useful bits of ORM, that lets you look up an object's 
-related items...
+related items from a different table...
 
 So that gets the unit tests to pass.  How about the FT?
 
@@ -1655,10 +1678,10 @@ $ *git commit -am"new URL + view for adding to existing lists. FT passes!"*
 A final refactor using URL includes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-'superlists/urls.py', strictly speaking, is meant for URLs that apply to your 
-entire site.  For URLs that only apply to the lists app, we can use a 
-separate 'lists/urls.py', to make the app more self-contained.  The simplest
-thing to do to start is to make a copy of the existing urls.py:
+'superlists/urls.py', is really meant for URLs that apply to your 
+entire site.  For URLs that only apply to the lists app, Django encourages us
+to use a separate 'lists/urls.py', to make the app more self-contained.  The
+simplest way to make one is to use a copy of the existing 'urls.py':
 
 [subs="specialcharacters,quotes"]
 ----
@@ -1705,9 +1728,12 @@ urlpatterns = patterns('',
 lists/urls.py
 
 And re-run the unit tests to check everything worked.  When I did it, I
-couldn't quite believe I did it correctly on the first go, so I deliberately
-changed one of the URLs slightly, just to check if it broke a test. It did. 
-We're covered.
+couldn't quite believe I did it correctly on the first go. It always pays to be
+skeptical of your own abilities, so I deliberately changed one of the URLs
+slightly, just to check if it broke a test. It did. We're covered.  
+
+Feel free to try it yourself!  Remember to change it back, check the tests
+all pass again, and then commit:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -1729,3 +1755,22 @@ beta of the superlists website that's going to take over the world.  Maybe it
 needs a little prettification first... Let's look at what we need to do to
 release it in the next chapter.
 
+
+
+.Useful TDD concepts
+*******************************************************************************
+
+Test isolation::
+    Different tests shouldn't affect one another.  This means we need to 
+    reset any permanent state at the end of each test. Django's test runner
+    helps us do this by creating a test database, which it wipes clean in 
+    between each test.
+
+The Testing Goat vs Refactoring Cat::
+    Our natural urge is often to dive in and fix everything at once... but if
+    we're not careful, we'll end up like Refactoring Cat in a situation with 
+    loads of changes to our code and nothing working.  The Testing Goat
+    encourages us to take on step at a time, and go from working state to 
+    working state.
+
+*******************************************************************************
