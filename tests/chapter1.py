@@ -1,4 +1,4 @@
-from collections import namedtuple
+# -*- coding: utf-8 -*-
 import os
 import signal
 import subprocess
@@ -6,24 +6,23 @@ import tempfile
 import unittest
 from lxml import html
 
+from parsing_tools import (
+    CodeListing,
+    Command,
+    Output,
+    parse_listing,
+)
+
 base_dir = os.path.split(os.path.dirname(__file__))[0]
 raw_html = open(os.path.join(base_dir, 'book.html')).read()
-html = html.fromstring(raw_html)
-
-tempdir = tempfile.mkdtemp()
-
-def write_to_file(filename, contents):
-    print 'writing to file', filename
-    with open(os.path.join(tempdir, filename), 'w') as f:
-        f.write(contents)
-    print 'wrote', open(os.path.join(tempdir, filename)).read()
-
+parsed_html = html.fromstring(raw_html)
 
 
 
 class Chapter1Test(unittest.TestCase):
 
     def setUp(self):
+        self.tempdir = tempfile.mkdtemp()
         self.processes = []
 
     def tearDown(self):
@@ -33,81 +32,74 @@ class Chapter1Test(unittest.TestCase):
             except OSError:
                 print 'error killing', process._command
 
+    def write_to_file(self, codelisting):
+        print 'writing to file', codelisting.filename
+        with open(os.path.join(self.tempdir, codelisting.filename), 'w') as f:
+            f.write(codelisting.contents)
+        print 'wrote', open(os.path.join(self.tempdir, codelisting.filename)).read()
+
 
     def run_command(self, command):
-        cwd = tempdir
-        if 'superlists' in os.listdir(tempdir):
-            cwd = os.path.join(tempdir, 'superlists')
-        if 'functional_tests.py' in command and 'functional_tests.py' in os.listdir(tempdir):
-            cwd = tempdir
+        self.assertEqual(type(command), Command)
+        cwd = self.tempdir
+        if 'superlists' in os.listdir(self.tempdir):
+            cwd = os.path.join(self.tempdir, 'superlists')
+        if 'functional_tests.py' in command and 'functional_tests.py' in os.listdir(self.tempdir):
+            cwd = self.tempdir
         print 'running command', command
         process = subprocess.Popen(
             command, shell=True, cwd=cwd,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             preexec_fn=os.setsid
         )
+        command.was_run = True
         process._command = command
         self.processes.append(process)
-        print 'directory listing is now', os.listdir(tempdir)
+        print 'directory listing is now', os.listdir(self.tempdir)
         if 'runserver' in command:
             return
         process.wait()
-        return process.stdout.read()
+        return process.stdout.read().decode('utf8')
 
 
-    def assert_console_output_correct(self, expected, actual):
-        def nonblank(lines):
-            return '\n'.join(l for l in lines if l and l.strip() != '$')
-
+    def assert_console_output_correct(self, actual, expected):
+        self.assertEqual(type(expected), Output)
         self.assertMultiLineEqual(
-            nonblank(actual.replace('\r\n', '\n').strip().split('\n')),
-            nonblank(expected.replace('\r\n', '\n').strip().split('\n'))
+            actual.strip(),
+            expected.replace('\r\n', '\n'),
         )
+        expected.was_checked = True
+
+
+    def assert_directory_tree_correct(self, expected_tree):
+        actual_tree = self.run_command(Command('tree -I *.pyc --noreport'))
+        # special case for first listing:
+        if expected_tree.startswith('superlists/'):
+            print 'FIXING'
+            expected_tree = Output(
+                expected_tree.replace('superlists/', '.', 1)
+            )
+        self.assert_console_output_correct(actual_tree, expected_tree)
 
 
     def test_listings_and_commands_and_output(self):
-        CodeListing = namedtuple('CodeListing', ['filename', 'contents'])
-        chapter_1 = html.cssselect('div.sect1')[1]
-        listings = chapter_1.cssselect('div.listingblock')
-        code_listings = []
-        commands = []
-        outputs = []
-        for listing in listings:
-            if listing.getnext().get('class') == 'paragraph caption':
-                filename = listing.getnext().text_content()
-                contents = listing.text_content().strip()
-                code_listings.append(CodeListing(filename, contents))
-                continue
-            if listing.cssselect('pre code strong'):
-                commands_in_this_listing = [
-                    el.text_content()
-                    for el in listing.cssselect('pre code strong')
-                ]
-                commands.extend(commands_in_this_listing)
-                if not commands_in_this_listing:
-                    outputs.extend(listing.text_content())
-                else:
-                    output_after_command = ''
-                    for line in listing.text_content().split('\n'):
-                        if any(cmd in line for cmd in commands_in_this_listing):
-                            if output_after_command:
-                                outputs.append(output_after_command)
-                                output_after_command = ''
-                        else:
-                            output_after_command += line + '\n'
-                    if output_after_command:
-                        outputs.append(output_after_command)
-                        output_after_command = ''
+        chapter_1 = parsed_html.cssselect('div.sect1')[1]
+        listings_nodes = chapter_1.cssselect('div.listingblock')
+        listings = [p for n in listings_nodes for p in parse_listing(n)]
 
-        ## hack -- listings with a star in are weird
-        fix_pos = commands.index("git rm --cached superlists/")
-        commands.remove("git rm --cached superlists/")
-        commands.remove(".pyc")
-        commands.insert(fix_pos, "git rm --cached superlists/*.pyc")
+        self.assertEqual(type(listings[0]), CodeListing)
+        self.assertEqual(type(listings[1]), Command)
+        self.assertEqual(type(listings[2]), Output)
 
-        self.assertEqual(len(code_listings), 1)
-        self.assertEqual(len(commands), 16, 'len %s not %s, %s' %(len(commands), 16, str(commands)))
-        self.assertEqual(len(outputs), 14, 'len %s not %s, %s' %(len(outputs), 14, '\n\n'.join(outputs)))
+        self.write_to_file(listings[0])
+        first_output = self.run_command(listings[1])
+        self.assert_console_output_correct(first_output, listings[2])
+
+        self.run_command(listings[3])
+
+        self.assert_directory_tree_correct(listings[4])
+
+
 
 
 if __name__ == '__main__':
