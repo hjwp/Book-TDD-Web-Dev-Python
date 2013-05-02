@@ -127,6 +127,15 @@ class Chapter1Test(unittest.TestCase):
         git_status_output = self.run_command(listings[18])
         self.assert_console_output_correct(git_status_output, listings[19])
 
+        rm_cached_output = self.run_command(listings[20])
+        self.assert_console_output_correct(rm_cached_output, listings[21])
+        self.run_command(listings[22])
+
+        git_status_output = self.run_command(listings[23])
+        self.assert_console_output_correct(git_status_output, listings[24])
+
+        self.run_command(listings[25])
+        #self.run_command(listings[26]) #git commit, no am
 
 
 

@@ -37,27 +37,6 @@ def parse_listing(listing):
         return outputs
 
 
-def parse_output(output, commands):
-    output = output.strip()
-    if not commands:
-        return [output]
-    outputs = []
-    output_after_command = ''
-    for line in output.split('\r\n'):
-        if any(line.endswith(cmd) for cmd in commands):
-            print 'line has command'
-            if output_after_command:
-                print 'adding previous to outputs', output_after_command
-                outputs.append(output_after_command)
-                output_after_command = ''
-        else:
-            output_after_command += line + '\r\n'
-    if output_after_command:
-        print 'adding final to outputs', repr(output_after_command.rstrip())
-        outputs.append(output_after_command.rstrip())
-    return outputs
-
-
 def get_commands(node):
     commands = [
         el.text_content()

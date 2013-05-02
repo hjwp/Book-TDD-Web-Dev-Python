@@ -9,7 +9,6 @@ from parsing_tools import (
     Output,
     get_commands,
     parse_listing,
-    parse_output,
 )
 from examples import CODE_LISTING_WITH_CAPTION
 
@@ -107,56 +106,6 @@ class ParseListingTest(unittest.TestCase):
                 'git rm --cached superlists/*.pyc',
                 'echo "*.pyc" > .gitignore',
             ]
-        )
-
-
-class ParseOutputTests(unittest.TestCase):
-
-    def test_returns_output_stripped_if_no_commands(self):
-        output = '\r\nfoo\r\nabc\r\n'
-        self.assertEqual(
-                parse_output(output, []),
-                ['foo\r\nabc']
-        )
-
-
-    def test_returns_lines_except_for_commands(self):
-        output = (
-            '\r\n\r\n$ python functional_tests.py\r\n'
-            'Traceback (most recent call last):\r\n'
-            '  File "functional_tests.py", line 6, in <module>\r\n'
-            '    assert \'Django\' in browser.title\r\n'
-            'AssertionError\r\n'
-        )
-        commands = ['python functional_tests.py']
-        outputs = parse_output(output, commands)
-        self.assertEqual(len(outputs), 1)
-        self.assertMultiLineEqual(
-            outputs[0],
-            (
-                'Traceback (most recent call last):\r\n'
-                '  File "functional_tests.py", line 6, in <module>\r\n'
-                '    assert \'Django\' in browser.title\r\n'
-                'AssertionError'
-            )
-        )
-
-
-    def test_doesnt_get_confused_by_ls_in_words(self):
-        output = (
-            'ls\r\n'
-            'abclsfoo\r\n'
-            'AssertionError\r\n'
-        )
-        commands = ['ls']
-        outputs = parse_output(output, commands)
-        self.assertEqual(len(outputs), 1)
-        self.assertMultiLineEqual(
-            outputs[0],
-            (
-                'abclsfoo\r\n'
-                'AssertionError'
-            )
         )
 
 
