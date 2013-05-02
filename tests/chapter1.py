@@ -20,6 +20,7 @@ parsed_html = html.fromstring(raw_html)
 
 
 class Chapter1Test(unittest.TestCase):
+    maxDiff = None
 
     def setUp(self):
         self.tempdir = tempfile.mkdtemp()
@@ -48,7 +49,7 @@ class Chapter1Test(unittest.TestCase):
             cwd = self.tempdir
         print 'running command', command
         process = subprocess.Popen(
-            command, shell=True, cwd=cwd,
+            command, shell=True, cwd=cwd, executable='/bin/bash',
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             preexec_fn=os.setsid
         )
@@ -57,15 +58,18 @@ class Chapter1Test(unittest.TestCase):
         self.processes.append(process)
         print 'directory listing is now', os.listdir(self.tempdir)
         if 'runserver' in command:
-            return
+            return #test this another day
         process.wait()
         return process.stdout.read().decode('utf8')
 
 
     def assert_console_output_correct(self, actual, expected):
         self.assertEqual(type(expected), Output)
+        # special case for git init
+        if self.tempdir in actual:
+            actual = actual.replace(self.tempdir, '/workspace')
         self.assertMultiLineEqual(
-            actual.strip(),
+            actual.strip().replace('\t', '       '),
             expected.replace('\r\n', '\n'),
         )
         expected.was_checked = True
@@ -87,6 +91,7 @@ class Chapter1Test(unittest.TestCase):
         listings_nodes = chapter_1.cssselect('div.listingblock')
         listings = [p for n in listings_nodes for p in parse_listing(n)]
 
+        # sanity checks
         self.assertEqual(type(listings[0]), CodeListing)
         self.assertEqual(type(listings[1]), Command)
         self.assertEqual(type(listings[2]), Output)
@@ -98,6 +103,29 @@ class Chapter1Test(unittest.TestCase):
         self.run_command(listings[3])
 
         self.assert_directory_tree_correct(listings[4])
+
+        runserver_output = self.run_command(listings[5])
+        #self.assert_console_output_correct(runserver_output, listings[6])
+
+        second_ft_run_output = self.run_command(listings[7])
+        self.assertFalse(second_ft_run_output)
+        self.assertEqual(listings[8].strip(), '$')
+
+        ls_output = self.run_command(listings[9])
+        #self.assert_console_output_correct(
+        #    ls_output, listings[10]
+        #)
+        self.run_command(listings[11])
+        self.run_command(listings[12])
+        git_init_output = self.run_command(listings[13])
+        self.assert_console_output_correct(git_init_output, listings[14])
+        #ls_output = self.run_command(listings[15])
+        #self.assert_console_output_correct(
+        #    ls_output, listings[16]
+        #)
+        self.run_command(listings[17])
+        git_status_output = self.run_command(listings[18])
+        self.assert_console_output_correct(git_status_output, listings[19])
 
 
 
