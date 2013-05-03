@@ -144,7 +144,18 @@ class Chapter1Test(unittest.TestCase):
 
         self.run_command(listings[25])
         #self.run_command(listings[26]) #git commit, no am
+        commit = Command(listings[26] + ' -am"first commit"')
+        self.run_command(commit)
         listings[26].was_run = True # TODO
+        local_repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../source/chapter_6/superlists'))
+        gra = self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
+        print gra
+        fetch = self.run_command(Command('git fetch repo'))
+        import time
+        print self.tempdir
+        time.sleep(200)
+        diff = self.run_command(Command('git diff repo/chapter_1_end')
+        self.assertEqual(diff, '')
         for i, listing in enumerate(listings):
             if type(listing) == CodeListing:
                 self.assertTrue(
