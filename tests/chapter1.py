@@ -60,15 +60,19 @@ class Chapter1Test(unittest.TestCase):
         return process.stdout.read().decode('utf8')
 
 
-    def assert_console_output_correct(self, actual, expected):
+    def assert_console_output_correct(self, actual, expected, ls=False):
         self.assertEqual(type(expected), Output)
         # special case for git init
         if self.tempdir in actual:
             actual = actual.replace(self.tempdir, '/workspace')
-        self.assertMultiLineEqual(
-            actual.strip().replace('\t', '       '),
-            expected.replace('\r\n', '\n'),
-        )
+        if ls:
+            actual=actual.strip()
+            self.assertItemsEqual(actual.split('\n'), expected.split())
+        else:
+            self.assertMultiLineEqual(
+                actual.strip().replace('\t', '       '),
+                expected.replace('\r\n', '\n'),
+            )
         expected.was_checked = True
 
 
@@ -109,18 +113,18 @@ class Chapter1Test(unittest.TestCase):
         self.assertEqual(listings[8].strip(), '$')
 
         ls_output = self.run_command(listings[9], cwd=self.tempdir)
-        #self.assert_console_output_correct(
-        #    ls_output, listings[10]
-        #)
+        self.assert_console_output_correct(
+            ls_output, listings[10], ls=True
+        )
         self.run_command(listings[11], cwd=self.tempdir) # mv
         self.run_command(listings[12], cwd=self.tempdir) # cd
         git_init_output = self.run_command(listings[13])
         self.assert_console_output_correct(git_init_output, listings[14])
 
         ls_output = self.run_command(listings[15])
-        #self.assert_console_output_correct(
-        #    ls_output, listings[16]
-        #)
+        self.assert_console_output_correct(
+            ls_output, listings[16], ls=True
+        )
         self.run_command(listings[17]) # git add
         git_status_output = self.run_command(listings[18])
         self.assert_console_output_correct(git_status_output, listings[19])
