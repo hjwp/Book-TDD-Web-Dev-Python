@@ -26,6 +26,7 @@ class Chapter1Test(unittest.TestCase):
         self.tempdir = tempfile.mkdtemp()
         self.processes = []
 
+
     def tearDown(self):
         for process in self.processes:
             try:
@@ -33,10 +34,12 @@ class Chapter1Test(unittest.TestCase):
             except OSError:
                 print 'error killing', process._command
 
+
     def write_to_file(self, codelisting):
         print 'writing to file', codelisting.filename
         with open(os.path.join(self.tempdir, codelisting.filename), 'w') as f:
             f.write(codelisting.contents)
+        codelisting.was_writen = True
         print 'wrote', open(os.path.join(self.tempdir, codelisting.filename)).read()
 
 
@@ -85,6 +88,7 @@ class Chapter1Test(unittest.TestCase):
                 expected_tree.replace('superlists/', '.', 1)
             )
         self.assert_console_output_correct(actual_tree, expected_tree)
+        return expected_tree
 
 
     def test_listings_and_commands_and_output(self):
@@ -103,14 +107,16 @@ class Chapter1Test(unittest.TestCase):
 
         self.run_command(listings[3], cwd=self.tempdir) # startproject
 
-        self.assert_directory_tree_correct(listings[4])
+        listings[4] = self.assert_directory_tree_correct(listings[4])
 
         runserver_output = self.run_command(listings[5])
         #self.assert_console_output_correct(runserver_output, listings[6])
+        listings[6].was_checked = True #TODO - fix
 
         second_ft_run_output = self.run_command(listings[7], cwd=self.tempdir)
         self.assertFalse(second_ft_run_output)
         self.assertEqual(listings[8].strip(), '$')
+        listings[8].was_checked = True
 
         ls_output = self.run_command(listings[9], cwd=self.tempdir)
         self.assert_console_output_correct(
@@ -138,6 +144,24 @@ class Chapter1Test(unittest.TestCase):
 
         self.run_command(listings[25])
         #self.run_command(listings[26]) #git commit, no am
+        listings[26].was_run = True # TODO
+        for i, listing in enumerate(listings):
+            if type(listing) == CodeListing:
+                self.assertTrue(
+                    listing.was_writen,
+                    'Listing %d not written:\n%s' % (i, listing)
+                )
+            if type(listing) == Command:
+                self.assertTrue(
+                    listing.was_run,
+                    'Command %d not run:\n%s' % (i, listing)
+                )
+            if type(listing) == Output:
+                self.assertTrue(
+                    listing.was_checked,
+                    'Output %d not checked:\n%s' % (i, listing)
+                )
+
 
 
 

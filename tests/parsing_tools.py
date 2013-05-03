@@ -1,6 +1,10 @@
-from collections import namedtuple
 
-CodeListing = namedtuple('CodeListing', ['filename', 'contents'])
+class CodeListing(object):
+    def __init__(self, filename, contents):
+        self.filename = filename
+        self.contents = contents
+        self.was_written = False
+
 class Command(unicode):
     def __init__(self, a_string):
         self.was_run = False
