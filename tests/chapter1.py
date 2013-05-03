@@ -40,13 +40,10 @@ class Chapter1Test(unittest.TestCase):
         print 'wrote', open(os.path.join(self.tempdir, codelisting.filename)).read()
 
 
-    def run_command(self, command):
+    def run_command(self, command, cwd=None):
         self.assertEqual(type(command), Command)
-        cwd = self.tempdir
-        if 'superlists' in os.listdir(self.tempdir):
+        if cwd is None:
             cwd = os.path.join(self.tempdir, 'superlists')
-        if 'functional_tests.py' in command and 'functional_tests.py' in os.listdir(self.tempdir):
-            cwd = self.tempdir
         print 'running command', command
         process = subprocess.Popen(
             command, shell=True, cwd=cwd, executable='/bin/bash',
@@ -75,8 +72,8 @@ class Chapter1Test(unittest.TestCase):
         expected.was_checked = True
 
 
-    def assert_directory_tree_correct(self, expected_tree):
-        actual_tree = self.run_command(Command('tree -I *.pyc --noreport'))
+    def assert_directory_tree_correct(self, expected_tree, cwd=None):
+        actual_tree = self.run_command(Command('tree -I *.pyc --noreport'), cwd)
         # special case for first listing:
         if expected_tree.startswith('superlists/'):
             print 'FIXING'
@@ -97,33 +94,34 @@ class Chapter1Test(unittest.TestCase):
         self.assertEqual(type(listings[2]), Output)
 
         self.write_to_file(listings[0])
-        first_output = self.run_command(listings[1])
+        first_output = self.run_command(listings[1], cwd=self.tempdir)
         self.assert_console_output_correct(first_output, listings[2])
 
-        self.run_command(listings[3])
+        self.run_command(listings[3], cwd=self.tempdir) # startproject
 
         self.assert_directory_tree_correct(listings[4])
 
         runserver_output = self.run_command(listings[5])
         #self.assert_console_output_correct(runserver_output, listings[6])
 
-        second_ft_run_output = self.run_command(listings[7])
+        second_ft_run_output = self.run_command(listings[7], cwd=self.tempdir)
         self.assertFalse(second_ft_run_output)
         self.assertEqual(listings[8].strip(), '$')
 
-        ls_output = self.run_command(listings[9])
+        ls_output = self.run_command(listings[9], cwd=self.tempdir)
         #self.assert_console_output_correct(
         #    ls_output, listings[10]
         #)
-        self.run_command(listings[11])
-        self.run_command(listings[12])
+        self.run_command(listings[11], cwd=self.tempdir) # mv
+        self.run_command(listings[12], cwd=self.tempdir) # cd
         git_init_output = self.run_command(listings[13])
         self.assert_console_output_correct(git_init_output, listings[14])
-        #ls_output = self.run_command(listings[15])
+
+        ls_output = self.run_command(listings[15])
         #self.assert_console_output_correct(
         #    ls_output, listings[16]
         #)
-        self.run_command(listings[17])
+        self.run_command(listings[17]) # git add
         git_status_output = self.run_command(listings[18])
         self.assert_console_output_correct(git_status_output, listings[19])
 
