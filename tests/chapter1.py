@@ -147,15 +147,34 @@ class Chapter1Test(unittest.TestCase):
         commit = Command(listings[26] + ' -am"first commit"')
         self.run_command(commit)
         listings[26].was_run = True # TODO
-        local_repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../source/chapter_6/superlists'))
-        gra = self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
-        print gra
-        fetch = self.run_command(Command('git fetch repo'))
-        import time
-        print self.tempdir
-        time.sleep(200)
-        diff = self.run_command(Command('git diff repo/chapter_1_end')
-        self.assertEqual(diff, '')
+        local_repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../source/chapter_1/superlists'))
+        self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
+        self.run_command(Command('git fetch repo'))
+        diff = self.run_command(Command('git diff -b repo/chapter_1_end'))
+        actual_diff_lines = diff.strip().split('\n')
+
+
+        expected_diff_lines = [
+           u"diff --git a/superlists/settings.py b/superlists/settings.py",
+            "index 2326f30..956bff8 100644",
+            "--- a/superlists/settings.py",
+            "+++ b/superlists/settings.py",
+            "@@ -83,7 +83,7 @@ STATICFILES_FINDERS = (",
+            " )",
+            " ",
+            " # Make this unique, and don't share it with anybody.",
+            "-SECRET_KEY = 'k0(t##0$lx9d#7do0d-47tdxo)pvs+knkc@&mfapc(e%_74ghq'",
+            "+SECRET_KEY = '-pr7xq9-786$n9vasjc1!covnbayhfw%p0@zm9c-p-(-4y#lqf'",
+            " ",
+            " # List of callables that know how to import templates from various sources.",
+            " TEMPLATE_LOADERS = (",
+        ]
+        self.assertEqual(actual_diff_lines[0], expected_diff_lines[0])
+        self.assertTrue(actual_diff_lines[1].startswith("index"))
+        self.assertEqual(actual_diff_lines[2:9], expected_diff_lines[2:9])
+        self.assertEqual(actual_diff_lines[10:], expected_diff_lines[10:])
+        self.assertTrue(actual_diff_lines[8].startswith("-SECRET_KEY"))
+
         for i, listing in enumerate(listings):
             if type(listing) == CodeListing:
                 self.assertTrue(
