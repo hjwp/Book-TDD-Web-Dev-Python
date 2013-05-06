@@ -2,11 +2,12 @@
 import os
 import unittest
 
-from chapter_test import ChapterTest, parsed_html
-from parsing_tools import (
+from book_tester import (
+    ChapterTest,
     CodeListing,
     Command,
     Output,
+    parsed_html,
     parse_listing,
     write_to_file
 )

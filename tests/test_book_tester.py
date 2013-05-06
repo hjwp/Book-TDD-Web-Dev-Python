@@ -5,7 +5,7 @@ import tempfile
 from textwrap import dedent
 import unittest
 
-from parsing_tools import (
+from book_tester import (
     CodeListing,
     Command,
     Output,
