@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import signal
 import subprocess
 import shutil
@@ -12,6 +13,7 @@ from parsing_tools import (
     Command,
     Output,
     parse_listing,
+    write_to_file,
 )
 
 base_dir = os.path.split(os.path.dirname(__file__))[0]
@@ -39,8 +41,8 @@ class ChapterTest(unittest.TestCase):
 
     def write_to_file(self, codelisting):
         print 'writing to file', codelisting.filename
-        write_to_file(codelisting, self.tempdir)
-        print 'wrote', open(os.path.join(self.tempdir, codelisting.filename)).read()
+        write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
+        print 'wrote', open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read()
 
 
     def run_command(self, command, cwd=None):
@@ -65,17 +67,29 @@ class ChapterTest(unittest.TestCase):
 
     def assert_console_output_correct(self, actual, expected, ls=False):
         self.assertEqual(type(expected), Output)
+
         # special case for git init
         if self.tempdir in actual:
             actual = actual.replace(self.tempdir, '/workspace')
+
         if ls:
             actual=actual.strip()
             self.assertItemsEqual(actual.split('\n'), expected.split())
+
         else:
-            self.assertMultiLineEqual(
-                actual.strip().replace('\t', '       '),
-                expected.replace('\r\n', '\n'),
+            actual_text = actual.strip().replace('\t', '       ')
+            actual_text = re.sub(
+                "Ran \d+ tests? in \d+\.\d\d\ds",
+                "Ran \1 tests in X.Xs",
+                actual_text
             )
+            expected_text = expected.replace(' -----', '------')
+            expected_text = re.sub(
+                "Ran \d+ tests? in \d+\.\d\d\ds",
+                "Ran \1 tests in X.Xs",
+                expected_text
+            )
+            self.assertMultiLineEqual(actual_text, expected_text)
         expected.was_checked = True
 
 

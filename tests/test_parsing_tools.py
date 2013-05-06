@@ -18,7 +18,8 @@ from examples import CODE_LISTING_WITH_CAPTION
 class ParseListingTest(unittest.TestCase):
 
     def test_recognises_code_listings(self):
-        listing_only = html.fromstring(CODE_LISTING_WITH_CAPTION).cssselect('div.listingblock')[0]
+        code_listing = CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
+        listing_only = html.fromstring(code_listing).cssselect('div.listingblock')[0]
         listings = parse_listing(listing_only)
         self.assertEqual(len(listings), 1)
         listing = listings[0]
@@ -37,6 +38,7 @@ class ParseListingTest(unittest.TestCase):
                 """
             ).strip()
         )
+        self.assertFalse('\r' in listing.contents)
 
 
     def test_can_extract_one_command_and_its_output(self):
@@ -56,9 +58,9 @@ class ParseListingTest(unittest.TestCase):
             parsed_listings,
             [
                 'python functional_tests.py',
-                'Traceback (most recent call last):\r\n'
-                '  File "functional_tests.py", line 6, in <module>\r\n'
-                '    assert \'Django\' in browser.title\r\n'
+                'Traceback (most recent call last):\n'
+                '  File "functional_tests.py", line 6, in <module>\n'
+                '    assert \'Django\' in browser.title\n'
                 'AssertionError'
             ]
         )
@@ -161,6 +163,17 @@ class WriteToFileTest(unittest.TestCase):
         with open(os.path.join(tempdir, listing.filename)) as f:
             self.assertEqual(f.read(), listing.contents)
         self.assertTrue(listing.was_written)
+
+
+    def test_write_to_file_strips_line_callouts(self):
+        tempdir = tempfile.mkdtemp()
+        listing = CodeListing(
+            filename='foo.py',
+            contents= 'bla bla #\n'
+        )
+        write_to_file(listing, tempdir)
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertEqual(f.read(), 'bla bla\n')
 
 
     def test_write_to_file_with_new_contents_then_indented_elipsis_then_appendix(self):

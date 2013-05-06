@@ -8,9 +8,17 @@ from parsing_tools import (
     Command,
     Output,
     parse_listing,
+    write_to_file
 )
 
 class Chapter1Test(ChapterTest):
+
+    def write_to_file(self, codelisting):
+        # override write to file, in this chapter cwd is root tempdir
+        print 'writing to file', codelisting.filename
+        write_to_file(codelisting, os.path.join(self.tempdir))
+        print 'wrote', open(os.path.join(self.tempdir, codelisting.filename)).read()
+
 
     def test_listings_and_commands_and_output(self):
         chapter_1 = parsed_html.cssselect('div.sect1')[1]
@@ -99,7 +107,7 @@ class Chapter1Test(ChapterTest):
         for i, listing in enumerate(listings):
             if type(listing) == CodeListing:
                 self.assertTrue(
-                    listing.was_writen,
+                    listing.was_written,
                     'Listing %d not written:\n%s' % (i, listing)
                 )
             if type(listing) == Command:

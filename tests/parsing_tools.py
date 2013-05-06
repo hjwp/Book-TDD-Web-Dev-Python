@@ -25,12 +25,12 @@ class Output(unicode):
 def parse_listing(listing):
     if listing.getnext().get('class') == 'paragraph caption':
         filename = listing.getnext().text_content()
-        contents = listing.text_content().strip()
+        contents = listing.text_content().strip().replace('\r\n', '\n')
         return [CodeListing(filename, contents)]
 
     else:
         commands = get_commands(listing)
-        lines = listing.text_content().strip().split('\r\n')
+        lines = listing.text_content().strip().replace('\r\n', '\n').split('\n')
         outputs = []
         output_after_command = ''
         for line in lines:
@@ -41,7 +41,7 @@ def parse_listing(listing):
                     output_after_command = ''
                 outputs.append(Command(commands_in_this_line[0]))
             else:
-                output_after_command += line + '\r\n'
+                output_after_command += line + '\n'
         if output_after_command:
             outputs.append(Output(output_after_command.rstrip()))
         return outputs
@@ -89,6 +89,10 @@ def write_to_file(codelisting, cwd):
         new_contents += newline_indent.join(old_lines_after)
         new_contents += '\n'
         new_contents += '\n'.join(lines_after)
+
+    new_contents = '\n'.join(
+        l.rstrip(' #') for l in new_contents.split('\n')
+    )
 
     with open(os.path.join(cwd, codelisting.filename), 'w') as f:
         f.write(new_contents)
