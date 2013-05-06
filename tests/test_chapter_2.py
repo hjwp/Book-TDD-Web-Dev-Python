@@ -49,8 +49,27 @@ class Chapter2Test(ChapterTest):
         second_ft_run = self.run_command(listings[7])
         self.assert_console_output_correct(second_ft_run, listings[8])
 
+        self.write_to_file(listings[9])
+
+        diff = self.run_command(listings[10])
+        print diff
+        self.assert_console_output_correct(diff, listings[11])
+
+        commit = Command(listings[12] + 'm"first ft specced out in comments and now uses unittest"')
+        self.run_command(commit)
+        listings[12].was_run = True # TODO
+
+        diff = self.run_command(Command('git diff -b repo/chapter_2'))
+        print diff
+        print
+        print self.tempdir
+        import time
+        self.assertEqual(diff, '')
 
         for i, listing in enumerate(listings):
+            if i == 1 or i == 5:
+                continue
+
             if type(listing) == CodeListing:
                 self.assertTrue(
                     listing.was_written,

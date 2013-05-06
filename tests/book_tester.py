@@ -81,31 +81,64 @@ def write_to_file(codelisting, cwd):
     else:
         with open(os.path.join(cwd, codelisting.filename)) as f:
             old_contents = f.read()
+        new_contents = ''
+
         lines = codelisting.contents.split('\n')
-        split_line = [l for l in lines if "[..." in l][0]
-        indent = split_line.split("[...")[0]
-        split_line_pos = lines.index(split_line)
-        lines_before = lines[:split_line_pos]
-        last_line_before = lines_before[-1]
-        lines_after = lines[split_line_pos + 1:]
+        old_lines = old_contents.strip().split('\n')
+        if codelisting.contents.count("[...") == 1:
+            split_line = [l for l in lines if "[..." in l][0]
+            indent = split_line.split("[...")[0]
+            split_line_pos = lines.index(split_line)
+            lines_before = lines[:split_line_pos]
+            last_line_before = lines_before[-1]
+            lines_after = lines[split_line_pos + 1:]
 
-        old_lines = old_contents.split('\n')
-        last_old_line = [
-            l for l in old_lines if l.strip() == last_line_before.strip()
-        ][0]
-        last_old_line_pos = old_lines.index(last_old_line)
-        old_lines_after = old_lines[last_old_line_pos + 1:]
+            last_old_line = [
+                l for l in old_lines if l.strip() == last_line_before.strip()
+            ][0]
+            last_old_line_pos = old_lines.index(last_old_line)
+            old_lines_after = old_lines[last_old_line_pos + 1:]
 
-        new_contents = '\n'.join(lines_before)
-        newline_indent = '\n' + indent
-        new_contents += newline_indent
-        new_contents += newline_indent.join(old_lines_after)
-        new_contents += '\n'
-        new_contents += '\n'.join(lines_after)
+            # special-case: stray browser.quit in chap. 2
+            if 'rest of comments' in split_line:
+                assert old_lines_after[-1] == 'browser.quit()'
+                old_lines_after.pop()
+
+            newline_indent = '\n' + indent
+
+            new_contents += '\n'.join(lines_before)
+            new_contents += newline_indent
+            new_contents += newline_indent.join(old_lines_after)
+            new_contents += '\n'
+            new_contents += '\n'.join(lines_after)
+
+        elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
+            first_line_to_find = lines[1]
+            last_old_line = [
+                l for l in old_lines if l.strip() == first_line_to_find.strip()
+            ][0]
+            last_old_line_pos = old_lines.index(last_old_line)
+            indent = (len(last_old_line) - len(last_old_line.lstrip())) * " "
+
+            second_line_to_find = lines[-2]
+            old_resume_line = [
+                l for l in old_lines if l.strip() == second_line_to_find.strip()
+            ][0]
+            old_lines_resume_pos = old_lines.index(old_resume_line)
+
+            newline_indent = '\n' + indent
+            new_contents += '\n'.join(old_lines[:last_old_line_pos + 1])
+            new_contents += newline_indent
+            new_contents += newline_indent.join(lines[2:-2])
+            new_contents += '\n'.join(old_lines[old_lines_resume_pos - 1:])
+
 
     new_contents = '\n'.join(
         l.rstrip(' #') for l in new_contents.split('\n')
     )
+
+    if not new_contents.endswith('\n'):
+        new_contents += '\n'
 
     with open(os.path.join(cwd, codelisting.filename), 'w') as f:
         f.write(new_contents)
@@ -169,17 +202,32 @@ class ChapterTest(unittest.TestCase):
 
         else:
             actual_text = actual.strip().replace('\t', '       ')
-            actual_text = re.sub(
-                "Ran \d+ tests? in \d+\.\d\d\ds",
-                "Ran \1 tests in X.Xs",
-                actual_text
-            )
             expected_text = expected.replace(' -----', '------')
-            expected_text = re.sub(
-                "Ran \d+ tests? in \d+\.\d\d\ds",
-                "Ran \1 tests in X.Xs",
-                expected_text
+            actual_text = re.sub(
+                r"Ran (\d+) tests? in \d+\.\d\d\ds",
+                r"Ran \1 tests in X.Xs",
+                actual_text,
             )
+            expected_text = re.sub(
+                r"Ran (\d+) tests? in \d+\.\d\d\ds",
+                r"Ran \1 tests in X.Xs",
+                expected_text,
+            )
+            actual_text = re.sub(
+                r"index .......\.\........ 100644",
+                r"index XXXXXXX\.\.XXXXXXX 100644",
+                actual_text,
+            )
+            expected_text = re.sub(
+                r"index .......\.\........ 100644",
+                r"index XXXXXXX\.\.XXXXXXX 100644",
+                expected_text,
+            )
+            if expected_text.endswith("[...]"):
+                expected_lines = expected_text.split('\n')[:-1]
+                expected_text = '\n'.join(l.strip() for l in expected_lines)
+                actual_lines = actual_text.split('\n')[:len(expected_lines)]
+                actual_text = '\n'.join(l.strip() for l in actual_lines)
             self.assertMultiLineEqual(actual_text, expected_text)
         expected.was_checked = True
 

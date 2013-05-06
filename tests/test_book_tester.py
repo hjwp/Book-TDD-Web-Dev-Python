@@ -6,6 +6,7 @@ from textwrap import dedent
 import unittest
 
 from book_tester import (
+    ChapterTest,
     CodeListing,
     Command,
     Output,
@@ -161,7 +162,7 @@ class WriteToFileTest(unittest.TestCase):
         listing = CodeListing(filename='foo.py', contents='abcdef')
         write_to_file(listing, tempdir)
         with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertEqual(f.read(), listing.contents)
+            self.assertEqual(f.read(), listing.contents + '\n')
         self.assertTrue(listing.was_written)
 
 
@@ -178,7 +179,7 @@ class WriteToFileTest(unittest.TestCase):
 
     def test_write_to_file_with_new_contents_then_indented_elipsis_then_appendix(self):
         tempdir = tempfile.mkdtemp()
-        old_contents = '#abc\n#def\n#ghi\n#jkl'
+        old_contents = '#abc\n#def\n#ghi\n#jkl\n'
         listing = CodeListing(
             filename='foo.py',
             contents = (
@@ -205,10 +206,116 @@ class WriteToFileTest(unittest.TestCase):
                     '    #def\n'
                     '    #ghi\n'
                     '    #jkl\n'
-                    '# then add this'
+                    '# then add this\n'
                 )
             )
 
+
+    def test_write_to_file_with_two_elipsis_dedented_change(self):
+        tempdir = tempfile.mkdtemp()
+        old_contents = dedent("""
+            class Wibble(object):
+
+                def foo(self):
+                    return 2
+
+                def bar(self):
+                    return 3
+            """).lstrip()
+
+        listing = CodeListing(
+            filename='foo.py',
+            contents = dedent("""
+                [...]
+                def foo(self):
+                    return 4
+
+                def bar(self):
+                [...]
+                """
+            ).strip()
+        )
+
+        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
+            f.write(old_contents)
+
+        write_to_file(listing, tempdir)
+
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertMultiLineEqual(
+                f.read(),
+                dedent("""
+                    class Wibble(object):
+
+                        def foo(self):
+                            return 4
+
+                        def bar(self):
+                            return 3
+                    """).lstrip()
+            )
+
+
+class ChapterTestTest(ChapterTest):
+
+    def test_assert_console_output_correct_simple_case(self):
+        actual = 'foo'
+        expected = Output('foo')
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_assert_console_output_correct_ignores_test_run_times_and_test_dashes(self):
+        actual =dedent("""
+            bla bla bla
+
+            ----------------------------------------------------------------------
+            Ran 1 test in 1.343s
+            """).strip()
+        expected = Output(dedent("""
+            bla bla bla
+
+             ---------------------------------------------------------------------
+            Ran 1 test in 1.456s
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_assert_console_output_correct_handles_elipsis(self):
+        actual =dedent("""
+            bla
+            bla bla
+            loads more stuff
+            """).strip()
+        expected = Output(dedent("""
+            bla
+            bla bla
+            [...]
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_assert_console_output_correct_ignores_diff_indexes(self):
+        actual =dedent("""
+            diff --git a/functional_tests.py b/functional_tests.py
+            index d333591..1f55409 100644
+            --- a/functional_tests.py
+            """).strip()
+        expected = Output(dedent("""
+            diff --git a/functional_tests.py b/functional_tests.py
+            index d333591..b0f22dc 100644
+            --- a/functional_tests.py
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
 
 
 if __name__ == '__main__':
