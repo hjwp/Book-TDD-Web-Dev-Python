@@ -37,10 +37,21 @@ class Output(unicode):
 
 def wrap_long_lines(text):
     if any(len(l) > 80 for l in text.split('\n')):
+
         fixed_text = ''
         for line in text.split('\n'):
             if len(line) < 80:
                 fixed_text += line + '\n'
+            elif " " not in line:
+                textlist = list(text)
+                newline = ''
+                while textlist:
+                    if len(newline) < 79:
+                        newline += textlist.pop(0)
+                    else:
+                        fixed_text += newline + "\n"
+                        newline = ""
+                fixed_text += newline
             else:
                 broken_line = ''
                 for word in line.split():
@@ -299,6 +310,12 @@ class ChapterTest(unittest.TestCase):
                 self.assertIn(raise_line, actual_text)
                 actual_text = actual_text.split(raise_line)[-1]
                 expected_text = expected_text.split(raise_line)[-1].strip()
+
+            if "Creating test database for alias 'default'..." in actual_text:
+                actual_lines = actual_text.split('\n')
+                actual_lines.remove("Creating test database for alias 'default'...")
+                actual_lines.insert(0, "Creating test database for alias 'default'...")
+                actual_text = '\n'.join(actual_lines)
 
             actual_text = wrap_long_lines(actual_text)
 

@@ -19,7 +19,7 @@ from examples import CODE_LISTING_WITH_CAPTION
 
 class WrapLongLineTest(unittest.TestCase):
 
-    def test_wrap_long_lines(self):
+    def test_wrap_long_lines_with_words(self):
         self.assertEqual(wrap_long_lines('normal line'), 'normal line')
         text = (
             "This is a short line\n"
@@ -34,6 +34,21 @@ class WrapLongLineTest(unittest.TestCase):
             "79 chars in length\n"
             "This line is fine though."
         )
+        self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
+
+
+    def test_wrap_long_lines_with_unbroken_chars(self):
+        text = "." * 479
+        expected_text = (
+                "." * 79 + "\n" +
+                "." * 79 + "\n" +
+                "." * 79 + "\n" +
+                "." * 79 + "\n" +
+                "." * 79 + "\n" +
+                "." * 79 + "\n" +
+                "....."
+        )
+
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
 
@@ -409,6 +424,40 @@ class ChapterTestTest(ChapterTest):
             diff --git a/functional_tests.py b/functional_tests.py
             index d333591..b0f22dc 100644
             --- a/functional_tests.py
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_assert_console_output_correct_fixes_stdout_stderr_for_creating_db(self):
+        actual =dedent("""
+            ======================================================================
+            FAIL: test_basic_addition (lists.tests.SimpleTest)
+            ----------------------------------------------------------------------
+            Traceback etc
+
+            ----------------------------------------------------------------------
+            Ran 1 tests in X.Xs
+
+            FAILED (failures=1)
+            Creating test database for alias 'default'...
+            Destroying test database for alias 'default'
+            """).strip()
+
+        expected = Output(dedent("""
+            Creating test database for alias 'default'...
+            ======================================================================
+            FAIL: test_basic_addition (lists.tests.SimpleTest)
+            ----------------------------------------------------------------------
+            Traceback etc
+
+            ----------------------------------------------------------------------
+            Ran 1 tests in X.Xs
+
+            FAILED (failures=1)
+            Destroying test database for alias 'default'
             """).strip()
         )
 
