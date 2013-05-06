@@ -2,6 +2,7 @@
 import os
 import signal
 import subprocess
+import shutil
 import tempfile
 import unittest
 from lxml import html
@@ -33,13 +34,12 @@ class ChapterTest(unittest.TestCase):
                 os.killpg(process.pid, signal.SIGTERM)
             except OSError:
                 print 'error killing', process._command
+        shutil.rmtree(self.tempdir)
 
 
     def write_to_file(self, codelisting):
         print 'writing to file', codelisting.filename
-        with open(os.path.join(self.tempdir, codelisting.filename), 'w') as f:
-            f.write(codelisting.contents)
-        codelisting.was_writen = True
+        write_to_file(codelisting, self.tempdir)
         print 'wrote', open(os.path.join(self.tempdir, codelisting.filename)).read()
 
 

@@ -1,5 +1,7 @@
 from lxml import html
 from mock import Mock
+import os
+import tempfile
 from textwrap import dedent
 import unittest
 
@@ -9,6 +11,7 @@ from parsing_tools import (
     Output,
     get_commands,
     parse_listing,
+    write_to_file
 )
 from examples import CODE_LISTING_WITH_CAPTION
 
@@ -147,6 +150,51 @@ class GetCommandsTest(unittest.TestCase):
                 'echo "*.pyc" > .gitignore',
             ]
         )
+
+
+class WriteToFileTest(unittest.TestCase):
+
+    def test_write_to_file_simple_case(self):
+        tempdir = tempfile.mkdtemp()
+        listing = CodeListing(filename='foo.py', contents='abcdef')
+        write_to_file(listing, tempdir)
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertEqual(f.read(), listing.contents)
+        self.assertTrue(listing.was_written)
+
+
+    def test_write_to_file_with_new_contents_then_indented_elipsis_then_appendix(self):
+        tempdir = tempfile.mkdtemp()
+        old_contents = '#abc\n#def\n#ghi\n#jkl'
+        listing = CodeListing(
+            filename='foo.py',
+            contents = (
+                '#abc\n'
+                'def foo(v):\n'
+                '    return v + 1\n'
+                '    #def\n'
+                '    [... old stuff as before]\n'
+                '# then add this'
+            )
+        )
+        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
+            f.write(old_contents)
+
+        write_to_file(listing, tempdir)
+
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertMultiLineEqual(
+                f.read(),
+                (
+                    '#abc\n'
+                    'def foo(v):\n'
+                    '    return v + 1\n'
+                    '    #def\n'
+                    '    #ghi\n'
+                    '    #jkl\n'
+                    '# then add this'
+                )
+            )
 
 
 
