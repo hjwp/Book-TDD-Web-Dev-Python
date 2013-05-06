@@ -123,7 +123,5 @@ class Chapter1Test(ChapterTest):
                 )
 
 
-
-
 if __name__ == '__main__':
     unittest.main()

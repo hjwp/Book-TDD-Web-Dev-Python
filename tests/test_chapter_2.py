@@ -13,15 +13,6 @@ from book_tester import (
 
 class Chapter2Test(ChapterTest):
 
-    def start_with_checkout(self):
-        local_repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../source/chapter_2/superlists'))
-        self.run_command(Command('mkdir superlists'), cwd=self.tempdir)
-        self.run_command(Command('git init .'))
-        self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
-        self.run_command(Command('git fetch repo'))
-        self.run_command(Command('git checkout chapter_1_end'))
-
-
     def test_listings_and_commands_and_output(self):
         chapter_2 = parsed_html.cssselect('div.sect1')[2]
         listings_nodes = chapter_2.cssselect('div.listingblock')
@@ -32,7 +23,7 @@ class Chapter2Test(ChapterTest):
         self.assertEqual(type(listings[1]), Output)
         self.assertEqual(type(listings[2]), Command)
 
-        self.start_with_checkout()
+        self.start_with_checkout(2)
 
         self.write_to_file(listings[0])
 
@@ -60,10 +51,6 @@ class Chapter2Test(ChapterTest):
         listings[12].was_run = True # TODO
 
         diff = self.run_command(Command('git diff -b repo/chapter_2'))
-        print diff
-        print
-        print self.tempdir
-        import time
         self.assertEqual(diff, '')
 
         for i, listing in enumerate(listings):

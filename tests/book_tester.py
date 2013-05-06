@@ -163,6 +163,18 @@ class ChapterTest(unittest.TestCase):
         shutil.rmtree(self.tempdir)
 
 
+    def start_with_checkout(self, chapter):
+        local_repo_path = os.path.abspath(os.path.join(
+            os.path.dirname(__file__),
+            '../source/chapter_%d/superlists' % (chapter,)
+        ))
+        self.run_command(Command('mkdir superlists'), cwd=self.tempdir)
+        self.run_command(Command('git init .'))
+        self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
+        self.run_command(Command('git fetch repo'))
+        self.run_command(Command('git checkout chapter_%s' % (chapter - 1,)))
+
+
     def write_to_file(self, codelisting):
         print 'writing to file', codelisting.filename
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
