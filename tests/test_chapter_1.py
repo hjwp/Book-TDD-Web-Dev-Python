@@ -105,22 +105,7 @@ class Chapter1Test(ChapterTest):
         self.assertEqual(actual_diff_lines[10:], expected_diff_lines[10:])
         self.assertTrue(actual_diff_lines[8].startswith("-SECRET_KEY"))
 
-        for i, listing in enumerate(listings):
-            if type(listing) == CodeListing:
-                self.assertTrue(
-                    listing.was_written,
-                    'Listing %d not written:\n%s' % (i, listing)
-                )
-            if type(listing) == Command:
-                self.assertTrue(
-                    listing.was_run,
-                    'Command %d not run:\n%s' % (i, listing)
-                )
-            if type(listing) == Output:
-                self.assertTrue(
-                    listing.was_checked,
-                    'Output %d not checked:\n%s' % (i, listing)
-                )
+        self.assert_all_listings_checked(listings)
 
 
 if __name__ == '__main__':

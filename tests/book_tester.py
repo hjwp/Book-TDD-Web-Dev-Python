@@ -36,7 +36,8 @@ class Output(unicode):
 
 
 def parse_listing(listing):
-    if listing.getnext().get('class') == 'paragraph caption':
+    next_element = listing.getnext()
+    if next_element is not None and next_element.get('class') == 'paragraph caption':
         filename = listing.getnext().text_content()
         contents = listing.text_content().strip().replace('\r\n', '\n')
         return [CodeListing(filename, contents)]
@@ -246,6 +247,8 @@ class ChapterTest(unittest.TestCase):
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.run_command(Command('tree -I *.pyc --noreport'), cwd)
+        print expected_tree
+        print actual_tree
         # special case for first listing:
         if expected_tree.startswith('superlists/'):
             print 'FIXING'
@@ -254,4 +257,28 @@ class ChapterTest(unittest.TestCase):
             )
         self.assert_console_output_correct(actual_tree, expected_tree)
         return expected_tree
+
+
+    def assert_all_listings_checked(self, listings, exceptions=[]):
+        for i, listing in enumerate(listings):
+            if i in exceptions:
+                continue
+
+            if type(listing) == CodeListing:
+                self.assertTrue(
+                    listing.was_written,
+                    'Listing %d not written:\n%s' % (i, listing)
+                )
+            if type(listing) == Command:
+                self.assertTrue(
+                    listing.was_run,
+                    'Command %d not run:\n%s' % (i, listing)
+                )
+            if type(listing) == Output:
+                self.assertTrue(
+                    listing.was_checked,
+                    'Output %d not checked:\n%s' % (i, listing)
+                )
+
+
 

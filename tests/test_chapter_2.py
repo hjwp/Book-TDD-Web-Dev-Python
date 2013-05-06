@@ -53,25 +53,7 @@ class Chapter2Test(ChapterTest):
         diff = self.run_command(Command('git diff -b repo/chapter_2'))
         self.assertEqual(diff, '')
 
-        for i, listing in enumerate(listings):
-            if i == 1 or i == 5:
-                continue
-
-            if type(listing) == CodeListing:
-                self.assertTrue(
-                    listing.was_written,
-                    'Listing %d not written:\n%s' % (i, listing)
-                )
-            if type(listing) == Command:
-                self.assertTrue(
-                    listing.was_run,
-                    'Command %d not run:\n%s' % (i, listing)
-                )
-            if type(listing) == Output:
-                self.assertTrue(
-                    listing.was_checked,
-                    'Output %d not checked:\n%s' % (i, listing)
-                )
+        self.assert_all_listings_checked(listings, [1,5])
 
 
 
