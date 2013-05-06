@@ -35,6 +35,25 @@ class Output(unicode):
 
 
 
+def wrap_long_lines(text):
+    if any(len(l) > 80 for l in text.split('\n')):
+        fixed_text = ''
+        for line in text.split('\n'):
+            if len(line) < 80:
+                fixed_text += line + '\n'
+            else:
+                broken_line = ''
+                for word in line.split():
+                    if len(broken_line) + 1 + len(word) < 79:
+                        broken_line += word + " "
+                    else:
+                        fixed_text += broken_line.strip() + "\n"
+                        broken_line = word + " "
+                fixed_text += broken_line.strip() + "\n"
+        return fixed_text.strip()
+    return text
+
+
 def parse_listing(listing):
     next_element = listing.getnext()
     if next_element is not None and next_element.get('class') == 'paragraph caption':
@@ -77,8 +96,24 @@ def get_commands(node):
 
 
 def write_to_file(codelisting, cwd):
-    if "[..." not in codelisting.contents:
+
+    if len(codelisting.contents.strip().split('\n')) == 1:
+        new_line = codelisting.contents.strip()
+        assert new_line.startswith("self.assert")
+        assertion = new_line.split("(")[0]
+        with open(os.path.join(cwd, codelisting.filename)) as f:
+            old_contents = f.read()
+        old_line = [
+            l for l in old_contents.split('\n') if l.strip().startswith(assertion)
+        ][0]
+        indent = (len(old_line) - len(old_line.lstrip())) * " "
+        new_line = indent + new_line
+        new_contents = old_contents.replace(old_line, new_line)
+
+
+    elif "[..." not in codelisting.contents:
         new_contents = codelisting.contents
+
     else:
         with open(os.path.join(cwd, codelisting.filename)) as f:
             old_contents = f.read()
@@ -195,11 +230,10 @@ class ChapterTest(unittest.TestCase):
         command.was_run = True
         process._command = command
         self.processes.append(process)
-        print 'directory listing is now', os.listdir(self.tempdir)
         if 'runserver' in command:
             return #test this another day
-        process.wait()
-        return process.stdout.read().decode('utf8')
+        output, return_code = process.communicate()
+        return output.decode('utf8')
 
 
     def assert_console_output_correct(self, actual, expected, ls=False):
@@ -236,11 +270,25 @@ class ChapterTest(unittest.TestCase):
                 r"index XXXXXXX\.\.XXXXXXX 100644",
                 expected_text,
             )
+
             if expected_text.endswith("[...]"):
                 expected_lines = expected_text.split('\n')[:-1]
                 expected_text = '\n'.join(l.strip() for l in expected_lines)
                 actual_lines = actual_text.split('\n')[:len(expected_lines)]
                 actual_text = '\n'.join(l.strip() for l in actual_lines)
+
+            elif expected_text.strip().startswith("[..."):
+                # long traceback, only care about output from raise onwards
+                expected_lines = expected_text.strip().split('\n')
+                raise_line = [
+                    l for l in expected_lines if l.strip().startswith("raise")
+                ][-1]
+                self.assertIn(raise_line, actual_text)
+                actual_text = actual_text.split(raise_line)[-1]
+                expected_text = expected_text.split(raise_line)[-1].strip()
+
+            actual_text = wrap_long_lines(actual_text)
+
             self.assertMultiLineEqual(actual_text, expected_text)
         expected.was_checked = True
 

@@ -12,9 +12,30 @@ from book_tester import (
     Output,
     get_commands,
     parse_listing,
-    write_to_file
+    wrap_long_lines,
+    write_to_file,
 )
 from examples import CODE_LISTING_WITH_CAPTION
+
+class WrapLongLineTest(unittest.TestCase):
+
+    def test_wrap_long_lines(self):
+        self.assertEqual(wrap_long_lines('normal line'), 'normal line')
+        text = (
+            "This is a short line\n"
+            "This is a long line which should wrap just before the word that "
+            "takes it over 79 chars in length\n"
+            "This line is fine though."
+        )
+        expected_text = (
+            "This is a short line\n"
+            "This is a long line which should wrap just before the word that "
+            "takes it over\n"
+            "79 chars in length\n"
+            "This line is fine though."
+        )
+        self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
+
 
 class ParseListingTest(unittest.TestCase):
 
@@ -159,7 +180,7 @@ class WriteToFileTest(unittest.TestCase):
 
     def test_write_to_file_simple_case(self):
         tempdir = tempfile.mkdtemp()
-        listing = CodeListing(filename='foo.py', contents='abcdef')
+        listing = CodeListing(filename='foo.py', contents='abc\ndef')
         write_to_file(listing, tempdir)
         with open(os.path.join(tempdir, listing.filename)) as f:
             self.assertEqual(f.read(), listing.contents + '\n')
@@ -170,11 +191,11 @@ class WriteToFileTest(unittest.TestCase):
         tempdir = tempfile.mkdtemp()
         listing = CodeListing(
             filename='foo.py',
-            contents= 'bla bla #\n'
+            contents= 'hello\nbla bla #\n'
         )
         write_to_file(listing, tempdir)
         with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertEqual(f.read(), 'bla bla\n')
+            self.assertEqual(f.read(), 'hello\nbla bla\n')
 
 
     def test_write_to_file_with_new_contents_then_indented_elipsis_then_appendix(self):
@@ -255,6 +276,42 @@ class WriteToFileTest(unittest.TestCase):
                     """).lstrip()
             )
 
+    def test_write_to_file_with_single_line_assertion_replacement(self):
+        tempdir = tempfile.mkdtemp()
+        old_contents = dedent("""
+            class Wibble(unittest.TestCase):
+
+                def test_number_1(self):
+                    self.assertEqual(1 + 1, 2)
+
+            """).lstrip()
+
+        listing = CodeListing(
+            filename='foo.py',
+            contents = dedent("""
+                self.assertEqual(1 + 1, 3)
+                """
+            ).strip()
+        )
+
+        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
+            f.write(old_contents)
+
+        write_to_file(listing, tempdir)
+
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertMultiLineEqual(
+                f.read(),
+                dedent("""
+                    class Wibble(unittest.TestCase):
+
+                        def test_number_1(self):
+                            self.assertEqual(1 + 1, 3)
+
+                    """).lstrip()
+            )
+
+
 
 class ChapterTestTest(ChapterTest):
 
@@ -317,6 +374,50 @@ class ChapterTestTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+
+    def test_assert_console_output_correct_for_long_traceback(self):
+        with open(os.path.join(os.path.dirname(__file__), "actual_manage_py_test.output")) as f:
+            actual = f.read().strip()
+        expected = Output(dedent("""
+            [... lots and lots of traceback]
+
+            Traceback (most recent call last):
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py",
+             line 259, in __call__
+                self._pre_setup()
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py",
+             line 479, in _pre_setup
+                self._fixture_setup()
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py",
+             line 829, in _fixture_setup
+                if not connections_support_transactions():
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py",
+             line 816, in connections_support_transactions
+                for conn in connections.all())
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py",
+             line 816, in <genexpr>
+                for conn in connections.all())
+              File "/usr/local/lib/python2.7/dist-packages/django/utils/functional.py",
+             line 43, in __get__
+                res = instance.__dict__[self.func.__name__] = self.func(instance)
+              File "/usr/local/lib/python2.7/dist-packages/django/db/backends/__init__.py",
+             line 442, in supports_transactions
+                self.connection.enter_transaction_management()
+              File "/usr/local/lib/python2.7/dist-packages/django/db/backends/dummy/base.py",
+             line 15, in complain
+                raise ImproperlyConfigured("settings.DATABASES is improperly configured. "
+            ImproperlyConfigured: settings.DATABASES is improperly configured. Please
+            supply the ENGINE value. Check settings documentation for more details.
+
+             ---------------------------------------------------------------------
+            Ran 85 tests in 0.788s
+
+            FAILED (errors=404, skipped=1)
+            AttributeError: _original_allowed_hosts
+            """).strip()
+        )
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
 
 if __name__ == '__main__':
     unittest.main()
