@@ -94,79 +94,92 @@ def get_commands(node):
 
     return commands
 
+def get_indent(line):
+    return (len(line) - len(line.lstrip())) * " "
+
+
+
 
 def write_to_file(codelisting, cwd):
-
-    if len(codelisting.contents.strip().split('\n')) == 1:
-        new_line = codelisting.contents.strip()
-        assert new_line.startswith("self.assert")
-        assertion = new_line.split("(")[0]
-        with open(os.path.join(cwd, codelisting.filename)) as f:
-            old_contents = f.read()
-        old_line = [
-            l for l in old_contents.split('\n') if l.strip().startswith(assertion)
-        ][0]
-        indent = (len(old_line) - len(old_line.lstrip())) * " "
-        new_line = indent + new_line
-        new_contents = old_contents.replace(old_line, new_line)
-
-
-    elif "[..." not in codelisting.contents:
+    path = os.path.join(cwd, codelisting.filename)
+    if not os.path.exists(path):
         new_contents = codelisting.contents
 
     else:
-        with open(os.path.join(cwd, codelisting.filename)) as f:
-            old_contents = f.read()
-        new_contents = ''
-
-        lines = codelisting.contents.split('\n')
+        old_contents = open(path).read()
         old_lines = old_contents.strip().split('\n')
-        if codelisting.contents.count("[...") == 1:
-            split_line = [l for l in lines if "[..." in l][0]
-            indent = split_line.split("[...")[0]
-            split_line_pos = lines.index(split_line)
-            lines_before = lines[:split_line_pos]
-            last_line_before = lines_before[-1]
-            lines_after = lines[split_line_pos + 1:]
+        new_lines = codelisting.contents.strip().split('\n')
 
-            last_old_line = [
-                l for l in old_lines if l.strip() == last_line_before.strip()
-            ][0]
-            last_old_line_pos = old_lines.index(last_old_line)
-            old_lines_after = old_lines[last_old_line_pos + 1:]
+        if "[..." not in codelisting.contents:
+            if len(new_lines) > 1:
+                start_line_in_old = [
+                    l for l in old_lines if l.strip() == new_lines[0]
+                ][0]
+                start_line_pos = old_lines.index(start_line_in_old)
+                indent = get_indent(start_line_in_old)
+                for ix, line in enumerate(new_lines):
+                    old_lines[start_line_pos + ix] = indent + line
+                new_contents = '\n'.join(old_lines)
 
-            # special-case: stray browser.quit in chap. 2
-            if 'rest of comments' in split_line:
-                assert old_lines_after[-1] == 'browser.quit()'
-                old_lines_after.pop()
+            else:
+                new_line = new_lines[0]
+                assert new_line.startswith("self.assert")
+                assertion = new_line.split("(")[0]
+                old_line = [
+                    l for l in old_contents.split('\n') if l.strip().startswith(assertion)
+                ][0]
+                new_line = get_indent(old_line) + new_line
+                new_contents = old_contents.replace(old_line, new_line)
 
-            newline_indent = '\n' + indent
+        else:
+            new_contents = ''
+            if codelisting.contents.count("[...") == 1:
+                split_line = [l for l in new_lines if "[..." in l][0]
+                split_line_pos = new_lines.index(split_line)
+                lines_before = new_lines[:split_line_pos]
+                last_line_before = lines_before[-1]
+                lines_after = new_lines[split_line_pos + 1:]
 
-            new_contents += '\n'.join(lines_before)
-            new_contents += newline_indent
-            new_contents += newline_indent.join(old_lines_after)
-            new_contents += '\n'
-            new_contents += '\n'.join(lines_after)
+                last_old_line = [
+                    l for l in old_lines if l.strip() == last_line_before.strip()
+                ][0]
+                last_old_line_pos = old_lines.index(last_old_line)
+                old_lines_after = old_lines[last_old_line_pos + 1:]
 
-        elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
-            first_line_to_find = lines[1]
-            last_old_line = [
-                l for l in old_lines if l.strip() == first_line_to_find.strip()
-            ][0]
-            last_old_line_pos = old_lines.index(last_old_line)
-            indent = (len(last_old_line) - len(last_old_line.lstrip())) * " "
+                # special-case: stray browser.quit in chap. 2
+                if 'rest of comments' in split_line:
+                    assert old_lines_after[-1] == 'browser.quit()'
+                    old_lines_after.pop()
 
-            second_line_to_find = lines[-2]
-            old_resume_line = [
-                l for l in old_lines if l.strip() == second_line_to_find.strip()
-            ][0]
-            old_lines_resume_pos = old_lines.index(old_resume_line)
+                newline_indent = '\n' + get_indent(split_line)
 
-            newline_indent = '\n' + indent
-            new_contents += '\n'.join(old_lines[:last_old_line_pos + 1])
-            new_contents += newline_indent
-            new_contents += newline_indent.join(lines[2:-2])
-            new_contents += '\n'.join(old_lines[old_lines_resume_pos - 1:])
+                new_contents += '\n'.join(lines_before)
+                new_contents += newline_indent
+                new_contents += newline_indent.join(old_lines_after)
+                new_contents += '\n'
+                new_contents += '\n'.join(lines_after)
+
+            elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
+                #TODO replace this with smart block-replacer
+                first_line_to_find = new_lines[1]
+                last_old_line = [
+                    l for l in old_lines if l.strip() == first_line_to_find.strip()
+                ][0]
+                last_old_line_pos = old_lines.index(last_old_line)
+
+                second_line_to_find = new_lines[-2]
+                old_resume_line = [
+                    l for l in old_lines if l.strip() == second_line_to_find.strip()
+                ][0]
+                old_lines_resume_pos = old_lines.index(old_resume_line)
+
+                newline_indent = '\n' + get_indent(last_old_line)
+                new_contents += '\n'.join(old_lines[:last_old_line_pos + 1])
+                new_contents += newline_indent
+                new_contents += newline_indent.join(new_lines[2:-2])
+                new_contents += '\n'.join(old_lines[old_lines_resume_pos - 1:])
+
+
 
 
     new_contents = '\n'.join(

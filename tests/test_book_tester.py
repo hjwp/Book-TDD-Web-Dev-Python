@@ -231,6 +231,82 @@ class WriteToFileTest(unittest.TestCase):
                 )
             )
 
+    def test_write_to_file_for_existing_file_replaces_matching_lines(self):
+        tempdir = tempfile.mkdtemp()
+        old_contents = dedent("""
+            class Foo(object):
+                def method_1(self):
+                    return 1
+
+                def method_2(self):
+                    # two
+                    return 2
+            """).lstrip()
+        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
+            f.write(old_contents)
+
+        listing = CodeListing(
+            filename='foo.py',
+            contents = dedent("""
+                def method_2(self):
+                    # two
+                    return 'two'
+                """
+            ).strip()
+        )
+
+        write_to_file(listing, tempdir)
+
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertMultiLineEqual(
+                f.read(),
+                dedent("""
+                    class Foo(object):
+                        def method_1(self):
+                            return 1
+
+                        def method_2(self):
+                            # two
+                            return 'two'
+                    """).lstrip()
+            )
+
+
+    def test_write_to_file_with_single_line_assertion_replacement(self):
+        tempdir = tempfile.mkdtemp()
+        old_contents = dedent("""
+            class Wibble(unittest.TestCase):
+
+                def test_number_1(self):
+                    self.assertEqual(1 + 1, 2)
+
+            """).lstrip()
+
+        listing = CodeListing(
+            filename='foo.py',
+            contents = dedent("""
+                self.assertEqual(1 + 1, 3)
+                """
+            ).strip()
+        )
+
+        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
+            f.write(old_contents)
+
+        write_to_file(listing, tempdir)
+
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertMultiLineEqual(
+                f.read(),
+                dedent("""
+                    class Wibble(unittest.TestCase):
+
+                        def test_number_1(self):
+                            self.assertEqual(1 + 1, 3)
+
+                    """).lstrip()
+            )
+
 
     def test_write_to_file_with_two_elipsis_dedented_change(self):
         tempdir = tempfile.mkdtemp()
@@ -273,41 +349,6 @@ class WriteToFileTest(unittest.TestCase):
 
                         def bar(self):
                             return 3
-                    """).lstrip()
-            )
-
-    def test_write_to_file_with_single_line_assertion_replacement(self):
-        tempdir = tempfile.mkdtemp()
-        old_contents = dedent("""
-            class Wibble(unittest.TestCase):
-
-                def test_number_1(self):
-                    self.assertEqual(1 + 1, 2)
-
-            """).lstrip()
-
-        listing = CodeListing(
-            filename='foo.py',
-            contents = dedent("""
-                self.assertEqual(1 + 1, 3)
-                """
-            ).strip()
-        )
-
-        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
-            f.write(old_contents)
-
-        write_to_file(listing, tempdir)
-
-        with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertMultiLineEqual(
-                f.read(),
-                dedent("""
-                    class Wibble(unittest.TestCase):
-
-                        def test_number_1(self):
-                            self.assertEqual(1 + 1, 3)
-
                     """).lstrip()
             )
 
