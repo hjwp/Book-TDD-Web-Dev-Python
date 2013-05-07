@@ -21,8 +21,8 @@ time' rather than having to dump them on you all at once.
 
 None of this says that you 'shouldn't' try and think ahead, and be clever.  In
 the next chapter we'll use a bit more design and up-front thinking, and show
-how that fits in with TDD. But for now, let's plough on mindlessly, like a
-goat, and just do what the tests tell us to.
+how that fits in with TDD. But for now let's plough on mindlessly and just do
+what the tests tell us to.
 
 
 
@@ -215,7 +215,7 @@ You can see that we're using a couple of special attributes of the
 although now might be a good time for a peek at the Django
 https://docs.djangoproject.com/en/1.5/ref/request-response/[Request and
 Response documentation]). Then we check that the text from our POST request
-ends up in the rendered template. That gives us our expected fail:
+ends up in the rendered HTML. That gives us our expected fail:
 
 [subs="specialcharacters,macros"]
 ----
@@ -246,8 +246,10 @@ We've already had a hint of it, it's time to start to get to know the real
 power of the Django template syntax, which is to pass variables from our Python
 view code, into HTML templates.  
 
-Let's adjust the unit test to check that the response is a template which has
-been rendered with the new item text passed in as a variable:
+How do we pass a variable to a template?  We can find out by actually doing it
+in the unit test -- we've already used the `render_to_string` function in a 
+previous unit test to manually render a template and compare it with the HTML
+the view returns.  Now let's add the variable we want to pass in:
 
 
 [source,python]
@@ -263,12 +265,12 @@ been rendered with the new item text passed in as a variable:
 lists/tests.py
 
 As you can see, the `render_to_string` function takes, as its second parameter,
-a mapping of variable names to values.  We're saying that we expect to pass
-the text of our new list item, which came from the POST request, to the
-template, using the variable name `new_item_text`.
+a mapping of variable names to values. We're giving the template a variable
+with named `new_item_text`, whose value is the expected item text from our
+POST request.
 
-Now we adjust our template to actually use the variable we're passing in. The
-syntax is `{{ ... }}`, which displays a variable as a string.
+How do we then use it in the actual template? The syntax is `{{ ... }}`, which
+displays a variable as a string.
 
 [source,html]
 ----
@@ -288,12 +290,9 @@ syntax is `{{ ... }}`, which displays a variable as a string.
 [role="caption"]
 lists/templates/home.html
 
-We've told our template renderer that we want a variable called `new_item_text`
-to be bound to the string value `'A new list item'`. Then the renderer will
-substitute `{{ new_item_text }}` for ``A new list item'' inside the `<td>` when
-it's sent to the user's browser.
-
-Let's see what effect that all has when we re-run our unit tests:
+Now, when we run the unit test, `render_to_string` will substitute 
+`{{ new_item_text }}` for ``A new list item'' inside the `<td>`. That's
+something the actual view isn't doing yet, so we should see a test failure:
 
 ----
     self.assertEqual(response.content, expected_html)
@@ -301,8 +300,8 @@ AssertionError: 'A new list item' != u'<html>\n    <head>\n [...]
 ----
 
 Good, our deliberately silly return value is now no longer fooling our tests,
-so we are allowed to re-write our view, and tell it to pass the POST parameter
-to the template:
+so we are allowed to re-write our view, and tell it too to pass the POST
+parameter to the template:
 
 
 [source,python]
@@ -329,12 +328,12 @@ were working on to pass, but the unit tests have picked up an unexpected
 consequence, a regression: we broke the code path where there is no POST
 request.  
 
-This is the whole point of having tests.  Now, perhaps you saw it coming, but
-imagine if you'd been having a bad day or weren't paying attention: our tests
-have just saved us from accidentally breaking our application, and, because
-we're using TDD, we found out immediately.  We didn't have to wait for a QA
-team, or click through our site manually, and we can get on with fixing it
-straight away.  Here's how:
+This is the whole point of having tests.  Of course we could have predicted
+this would happen, but imagine if we'd been having a bad day or weren't paying
+attention: our tests have just saved us from accidentally breaking our
+application, and, because we're using TDD, we found out immediately.  We didn't
+have to wait for a QA team, or switch to a web browser and click through our
+site manually, and we can get on with fixing it straight away.  Here's how:
 
 
 [source,python]
@@ -402,7 +401,7 @@ AssertionError: '1: Buy peacock feathers' not found in [u'Buy peacock feathers']
 
 Consider me suitably chastened.  The point is that the FT wants us to enumerate
 list items with a ``1:'' at the beginning of the first list item. The fastest
-way to get that to pass is with a quick change to the template:
+way to get that to pass is with a quick ``cheating'' change to the template:
 
 
 [source,html]
@@ -411,10 +410,6 @@ way to get that to pass is with a quick change to the template:
 ----
 [role="caption"]
 lists/templates/home.html
-
-NOTE: This part of the FT is sensitive to whitespace, so if you see problems,
-check you have the right number of spaces inside the `<td>`, eg between the 
-`1:` and the new item text.
 
 
 .Red / Green / Refactor and Triangulation
@@ -712,7 +707,7 @@ Saving the POST to the database
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Let's adjust the test for our home page POST request, and say we want the view
-to save a new item to the database. We can do that by adding 3 new lines (<1>)
+to save a new item to the database. We can do that by adding 3 new lines (%1%)
 to the existing test called `test_home_page_can_save_a_POST_request`
 
 
@@ -743,9 +738,14 @@ lists/tests.py
 This test is getting a little long-winded.  It seems to be testing lots of
 different things.  That's another 'code smell' -- a long unit test either needs
 to be broken into two, or it may be an indication that the thing you're testing
-is too complicated.  Let's add that to a mental to-do list, and run the test in
-the meantime.  We get an expected failure:
+is too complicated.  Let's add that to a little to-do list of our own, perhaps
+on a piece of scrap paper:
 
+* Don't save blank items for every request
+
+Writing it down reassures us that we won't forget, so we are comfortable
+getting back to what we were working on.  We re-run the tests and see
+an expected failure:
 
 ----
     self.assertEqual(Item.objects.all().count(), 1)
@@ -771,19 +771,23 @@ def home_page(request):
 [role="caption"]
 lists/views.py
 
-I've done so very naively, you can probably spot a very obvious problem,
-which is that we're going to be saving empty items with every request to
-the home page.  Let's add that to our list of things to fix later.  You know,
-along with the painfully obvious fact that we currently have no way at all of
-having different lists for different people.  That we'll keep ignoring for now.
-La la la la...
+I've codes a very naive solution and you can probably spot a very obvious
+problem, which is that we're going to be saving empty items with every request
+to the home page.  Let's add that to our list of things to fix later.  You
+know, along with the painfully obvious fact that we currently have no way at
+all of having different lists for different people.  That we'll keep ignoring
+for now. La la la la...
 
-Remember, I'm not saying you should ignore glaring problems like this in ``real
-life''. When we spot problems in advance, it's usually a good idea to deal with
-them straight away, if we can.  But we don't always spot problems in advance,
-and sometimes the solution isn't obvious.  What I'm demonstrating here is the 
-way that TDD can help guide you to the right answer, even when you 'don't'
-catch problems in advance.
+Remember, I'm not saying you should always ignore glaring problems like this in
+``real life''. Whenever we spot problems in advance, there's a judgement call
+to make over whether to stop what you're doing and start again, or leave them
+until later.  Sometimes finishing off what you're doing is still worth it, and
+sometimes the problem may be so major as to warrant a stop and re-think.
+
+But the point is that we 'don't' always spot problems in advance, and sometimes
+the implications aren't obvious.  What I'm demonstrating here is the way that
+TDD can help guide you to the right answer, even when you don't catch
+problems in advance.
 
 Let's see how the unit tests get on... They pass!  Good.  We can do a bit of
 refactoring:
@@ -794,7 +798,8 @@ refactoring:
     })
 ----
 
-So, on our to-do list:
+Let's have a little look at our own to-do list. I've added a couple of the 
+other things that are on our mind:
 
 * Don't save blank items for every request
 * Code smell: POST test is too long?
@@ -802,8 +807,8 @@ So, on our to-do list:
 * Support more than one list!
 
 Let's start with the first one.  We could tack on an assertion to an existing
-test, but it's best to keep tests to testing fewer things each, so let's add a
-new one:
+test, but it's best to keep unit tests to testing one thing at a time, so let's
+add a new one:
 
 [source,python]
 ----
@@ -904,8 +909,10 @@ Much better!  Back to our to-do list:
 * Display multiple items in the table
 * Support more than one list!
 
-Let's have a new unit test that checks that the template can also display
-multiple list items:
+Crossing things off the list is almost as satisfying as seeing tests pass!
+
+The third item is the last of the ``easy'' ones. Let's have a new unit test
+that checks that the template can also display multiple list items:
 
 [source,python]
 ----
@@ -943,15 +950,15 @@ The Django template syntax has a tag for iterating through lists,
 [role="caption"]
 lists/templates/home.html
 
-Now the template will render with multiple `<tr>` rows, one for each item
-in the variable `items`.  Pretty neat huh?  I'll introduce a few more
-bits of Django template magic as we go, but at some point you'll want to
-go and read up on the rest of them in the 
-https://docs.djangoproject.com/en/1.5/topics/templates/[Django
+This is one of the major strengths of the templating system. Now the template
+will render with multiple `<tr>` rows, one for each item in the variable
+`items`.  Pretty neat!  I'll introduce a few more bits of Django template
+magic as we go, but at some point you'll want to go and read up on the rest of
+them in the https://docs.djangoproject.com/en/1.5/topics/templates/[Django
 Docs]
 
-Just changing the template doesn't get our tests to pass, we now need to 
-we pass the items to it from our home page view:
+Just changing the template doesn't get our tests to pass, we need to actually
+pass the items to it from our home page view:
 
 [source,python]
 ----
@@ -993,7 +1000,7 @@ in the unit tests, I hear you ask?  Because Django creates a special 'test
 database' for unit tests, it's one of the magical things that Django's 
 `TestCase` does.  
 
-To set up our real database, we need to tell Django where it is -- sqlite
+To set up our ``real'' database, we need to tell Django where it is -- sqlite
 databases are a single file on disk. We tell Django where we want that file
 to be in 'superlists/settings.py':
 
@@ -1008,8 +1015,8 @@ DATABASES = {
 [role="caption"]
 superlists/settings.py
 
-If we try reloading the page on localhost at this point, and it will tell you
-that there is a `DatabaseError`, ``no such table: lists_item''.  We have a 
+If we try reloading the page on localhost at this point, it will tell us
+that there is a `DatabaseError`, `no such table: lists_item`.  We have a 
 database, but no tables in it yet. We've told Django everything it needs 
 to know how to create them in 'models.py' though, so we just need to tell
 it to make it using another Django Swiss army knife `manage.py`
@@ -1130,7 +1137,7 @@ But we've got a couple of items on our own to-do list, namely getting the FT to
 clean up after itself, and perhaps more critically, adding support for more
 than one list.  
 
-I mean, I suppose we could ship the site as it is, but people might find it
+I mean, we 'could' ship the site as it is, but people might find it
 strange that the entire human population has to share a single to-do list.  I
 suppose it might get people to stop and think about how connected we all are to
 one another, how we all share a common destiny here on spaceship Earth, and how
@@ -1162,6 +1169,10 @@ Triangulation::
 
 3 strikes and refactor::
     A rule of thumb for when to remove duplication from code.
+
+The scrap-paper to-do list::
+    A place to write down things that occur to us as we're coding, so that
+    we can finish up what we're doing and come back to them later.
 
 *******************************************************************************
 
