@@ -21,27 +21,418 @@ So what 'do' we need to do before we can deploy?  Just a few things really:
 
 Let's see how TDD can help us with with some of these tasks.
 
-Prettification: Integrating a CSS framework
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Prettification: Functionally testing layout and styling
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Our site is undeniably a bit ugly at the moment.  We can't be adding to Python's
-reputation for being http://grokcode.com/746/dear-python-why-are-you-so-ugly/[ugly],
+Our site is undeniably a bit ugly at the moment.  
+
+.Our homepage, looking a little ugly..
+image::images/ugly_homepage_screenshot.png[Our homepage, looking a little ugly]
+
+We can't be adding to Python's reputation for being
+http://grokcode.com/746/dear-python-why-are-you-so-ugly/[ugly],
 so let's do a tiny bit of polishing.  Here's a few things we might want:
 
 * A large, centered block for our new item box, both for new and existing lists
 * A terms & conditions footer that "sticks" to the bottom of the page
 
-How do we apply TDD to these things?  In general, you shouldn't test aesthetics,
-but you can test some aspects.  We're going to use Cascading Style Sheets (CSS) for
-our styling, and they will be loaded as static files.  Static files can be a bit
-tricky to configure (especially, as we'll see later, when you move off your own
-PC and onto a hosting site), so we'll want some kind of quick test that the CSS
-has loaded.  And, while we might not want to test things like fonts and shading,
-we can test, for example, that the footer is reasonably close to the bottom of
-the page.
+How do we apply TDD to these things?  In general, you shouldn't test
+aesthetics, but you can test some aspects.  We're going to use Cascading Style
+Sheets (CSS) for our styling, and they will be loaded as static files.  Static
+files can be a bit tricky to configure (especially, as we'll see later, when
+you move off your own PC and onto a hosting site), so we'll want some kind of
+quick test that the CSS has loaded.  And, while we might not want to test
+things like fonts and shading, we can test, for example, that the footer is
+reasonably close to the bottom of the page.
 
 Let's start a new test method inside our functional test:
 
+[source,python]
+----
+    def test_can_start_a_list_and_retrieve_it_later(self):
+        # Edith has heard about a cool new online to-do app. She goes
+        [...]
+
+
+    def test_layount_and_styling(self):
+        # Edith goes to the home page
+        self.browser.get(self.live_server_url)
+
+        # She notices the input box is nicely centered
+        inputbox = self.browser.find_element_by_tag_name('input')
+        window_width = self.browser.get_window_size()['width']
+        self.assertAlmostEqual(
+            inputbox.location['x'] + inputbox.size['width'] / 2,
+            window_width / 2,
+            delta=3
+        )
+----
+[role="caption"]
+functional_tests/tests.py
+
+A few new things here.  We retrieve some information about the size of the
+browser window, and the size and position of the input element.  We then
+do a little maths, to check whether it seems to be positioned in the middle
+of the page.  `assertAlmostEqual` helps us to deal with rounding errors by
+letting us specify that we want our arithmetic to work to within 3 pixels.
+
+Now, if we run the functional tests, we get:
+
+----
+$ python manage.py test functional_tests
+Creating test database for alias 'default'...
+.F
+======================================================================
+FAIL: test_layount_and_styling (functional_tests.tests.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_7/superlists/functional_tests/tests.py", line 101, in test_layount_and_styling
+    delta=3
+AssertionError: 125 != 470 within 3 delta
+
+ ---------------------------------------------------------------------
+Ran 2 tests in 9.188s
+
+FAILED (failures=1)
+----
+
+That's the expected failure!
+
+Here's a quick, cheating solution:
+
+
+[source,html]
+----
+<form method="POST" action="/lists/new" >
+    <p style="text-align: center;">
+        <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+    </p>
+----
+[role="caption"]
+lists/templates/home.html
+
+That passes!  And it reassures us that our FT was written correctly.  We don't 
+want to keep that solution, but we can still commit the functional test as 
+a first step:
+
+----
+$ git add functional_tests/tests.py
+$ git commit -m "fist steps of FT for layout + styling"
+----
+
+Let's extend our FT to make sure that the input box is still aligned-center on
+the page for a new list:
+
+[source,python]
+----
+    [...]
+    # She starts a new list and sees the input is nicely
+    # centered there too
+    inputbox.send_keys('testing\n')
+    inputbox = self.browser.find_element_by_tag_name('input')
+    window_width = self.browser.get_window_size()['width']
+    self.assertAlmostEqual(
+        inputbox.location['x'] + inputbox.size['width'] / 2,
+        window_width / 2,
+        delta=3
+    )
+----
+[role="caption"]
+functional_tests/tests.py
+
+That gives us another test failure:
+
+----
+  File "/home/harry/Dropbox/book/source/chapter_7/superlists/functional_tests/tests.py", line 101, in test_layount_and_styling
+    delta=3
+AssertionError: 125 != 470 within 3 delta
+----
+
+Now it feels like we're justified in finding a "proper" solution to our need
+for some better styling for our site.
+
+Prettification: Using a CSS framework
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Design is hard (¬let's go shopping¬), and doubly so now that we have to deal
+with mobile, tablets and so forth.  That's why many programmers, particularly 
+lazy ones like me, are turning to CSS frameworks to solve some of those
+problems for them.  There are lots of frameworks out there, but one of the 
+earliest and most popular is Twitter's Bootstrap.  Let's use that.
+
+You can find bootstrap at http://twitter.github.io/bootstrap/ 
+
+We'll download it and put it in a new folder called *static* inside the `lists`
+app:
+
+----
+$ mkdir lists/static
+$ wget http://twitter.github.io/bootstrap/assets/bootstrap.zip
+$ mv bootstrap.zip lists/static/
+$ cd lists/static/
+$ unzip bootstrap.zip 
+$ rm bootstrap.zip 
+----
+
+Our directory tree will end up looking like this:
+
+----
+.
+├── database.sqlite
+├── functional_tests
+│   ├── __init__.py
+│   ├── models.py
+│   └── tests.py
+├── lists
+│   ├── __init__.py
+│   ├── models.py
+│   ├── static
+│   │   └── bootstrap
+│   │       ├── css
+│   │       │   ├── bootstrap.css
+│   │       │   ├── bootstrap.min.css
+│   │       │   ├── bootstrap-responsive.css
+│   │       │   └── bootstrap-responsive.min.css
+│   │       ├── img
+│   │       │   ├── glyphicons-halflings.png
+│   │       │   └── glyphicons-halflings-white.png
+│   │       └── js
+│   │           ├── bootstrap.js
+│   │           └── bootstrap.min.js
+│   ├── templates
+│   │   ├── home.html
+│   │   └── list.html
+│   ├── tests.py
+│   ├── urls.py
+│   └── views.py
+├── manage.py
+└── superlists
+    ├── __init__.py
+    ├── settings.py
+    ├── urls.py
+    └── wsgi.py
+----
+
+Now, if we have a look at the "Getting Started" section of the 
+http://twitter.github.io/bootstrap/getting-started.html#html-template[Bootsrap 
+Documentation], you'll see it wants our HTML template to include something
+like this:
+
+
+[source,html]
+----
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Bootstrap 101 Template</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <!-- Bootstrap -->
+        <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
+      </head>
+      <body>
+        <h1>Hello, world!</h1>
+        <script src="http://code.jquery.com/jquery.js"></script>
+        <script src="js/bootstrap.min.js"></script>
+      </body>
+    </html>
+----
+
+We already have two HTML templates.  Now feels like the right time to apply
+the "Don't repeat yourself" rule, and bring all the common parts together.
+Thankfully, the Django template language makes that easy using something
+called template inheritance.
+
+Let's have a little review of what the differences are between 'home.html' and
+'list.html':
+
+----
+$ diff lists/templates/home.html lists/templates/list.html 
+6,7c6,7
+<         <h1>Start a To-Do list</h1>
+<         <form method="POST" action="/lists/new" >
+---
+>         <h1>Your To-Do list</h1>
+>         <form method="POST" action="/lists/{{ list.id }}/new_item" >
+10a11,17
+> 
+>         <table id="id_list_table">
+>             {% for item in list.item_set.all %}
+>                 <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+>             {% endfor %}
+>         </table>
+> 
+----
+
+They have different header texts, and their forms use different URLs. On top
+of that, 'list.html' has the additional `<table>` element.
+
+Now that we're clear on what's in common and what's not, we can make the two 
+templates inherit from a common "superclass" template.  We'll start by 
+making a copy of 'home.html':
+
+----
+$ cp lists/templates/home.html lists/templates/base.html
+----
+
+Now let's edit our base template to pick out the parts where we expect
+our templates to customise it:
+
+[source,html]
+----
+<html>
+    <head>
+        <title>To-Do lists</title>
+    </head>
+    <body>
+        <h1>{% block header_text %}{% endblock %}</h1>
+        {% block form %}
+        {% endblock %}
+        {% block table %}
+        {% endblock %}
+    </body>
+</html>
+----
+[role="caption"]
+lists/templates/base.html
+
+The base template defines a series of areas called "blocks", which will be 
+places that other templates can hook in and add their own content.  Let's
+see how that works in practice, but changing 'home.html' so that it "inherit
+from" 'base.html':
+
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block header_text %}Start a To-Do list{% endblock %}
+
+{% block form %}
+    <form method="POST" action="/lists/new" >
+        <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+        {% csrf_token %}
+    </form>
+{% endblock %}
+----
+[role="caption"]
+lists/templates/home.html
+
+You can see that lots of the boilerplate html disappears, and we just
+concentrate on the bits we want to customise. We do the same for 'list.html':
+
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block header_text %}Your To-Do list{% endblock %}
+
+{% block form %}
+    <form method="POST" action="/lists/{{ list.id }}/new_item" >
+        <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+        {% csrf_token %}
+    </form>
+{% endblock %}
+
+{% block table %}
+    <table id="id_list_table">
+        {% for item in list.item_set.all %}
+            <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+        {% endfor %}
+    </table>
+{% endblock %}
+----
+[role="caption"]
+lists/templates/home.html
+
+
+That's a refactor of the way our templates work.  We re-run the FTs to make sure
+we haven't broken anything...
+
+----
+AssertionError: 125 != 470 within 3 delta
+----
+
+Sure enough, they're still getting to exactly where they were before.  That's 
+worthy of a commmit;
+
+----
+$ git diff -b  
+# the -b means ignore whitespace, useful since we've changed some html indenting
+$ git status
+$ git add lists/templates  # leave static, for now
+$ git add functional_tests/tests.py
+$ git commit -m"refactor templates to use a base template and extend ft"
+----
+
+Now it's much easier to integrate the boilerplate code that bootstrap wants:
+
+----
+$ git diff
+diff --git a/lists/templates/base.html b/lists/templates/base.html
+index 144a9e4..1dbbc32 100644
+--- a/lists/templates/base.html
++++ b/lists/templates/base.html
+@@ -1,5 +1,8 @@
++<!DOCTYPE html>
+ <html>
+     <head>
++        <meta name="viewport" content="width=device-width, initial-scale=1.0">
++        <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
+         <title>To-Do lists</title>
+     </head>
+     <body>
+@@ -8,5 +11,7 @@
+         {% endblock %}
+         {% block table %}
+         {% endblock %}
++        <script src="http://code.jquery.com/jquery.js"></script>
++        <script src="js/bootstrap.min.js"></script>
+     </body>
+ </html>
+----
+
+Finally, let's actually use some of the bootstrap magic! You'll have to read
+the bootstrap documentation yourself, but we can use a combination of the
+grid system and the `text-center` class to get what we want:
+
+----
++++ b/lists/templates/base.html
+@@ -1,12 +1,23 @@
++<!DOCTYPE html>
+ <html>
+     <head>
++        <meta name="viewport" content="width=device-width, initial-scale=1.0">
++        <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
+         <title>To-Do lists</title>
+     </head>
+     <body>
++        <div class="container">
++            <div class="row">
++                <div class="span6 offset3 text-center">
+                     <h1>{% block header_text %}{% endblock %}</h1>
+                     {% block form %}
+                     {% endblock %}
+                     {% block table %}
+                     {% endblock %}
++                </div>
++            </div>
++        </div>
++        <script src="http://code.jquery.com/jquery.js"></script>
++        <script src="js/bootstrap.min.js"></script>
+     </body>
+ </html>
+----
+
+
+Does that work?  Hm. no.
+
+<aside on how static files work>
+
+Run again.. yes!
+
+<now tweak, add hero unit etc>
+
+
+Closer!
 
 
 
@@ -49,6 +440,7 @@ Testing deployment using a staging site
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The danger areas of deployment:
+
 - "but it works on my machine!"
 - static files
 - the database
@@ -56,6 +448,7 @@ The danger areas of deployment:
 - keeping staging and live the same.
 
 the solution:
+
 - a staging site
 - an FT
 - an FT
