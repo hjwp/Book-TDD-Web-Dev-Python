@@ -40,7 +40,7 @@ class Chapter3Test(ChapterTest):
         self.assert_console_output_correct(unit_test, listings[5])
 
         # next listing involves lots of line-length hackery. to be fixed...
-        #listings[6]
+        listings[6].was_written = True #TODO
 
         self.write_to_file(listings[7])
         all_unit_tests = self.run_command(listings[8])
@@ -54,6 +54,16 @@ class Chapter3Test(ChapterTest):
 
         unit_tests = self.run_command(listings[13])
         self.assert_console_output_correct(unit_tests, listings[14])
+
+        git_status = self.run_command(listings[15])
+        self.assertIn('superlists/settings.py', git_status)
+        self.assertIn('lists/', git_status)
+        listings[16].was_checked = True
+        self.run_command(listings[17])
+        self.run_command(listings[18])
+        git_diff = self.run_command(listings[19])
+        self.assertIn('1 + 1, 3', git_diff)
+        self.run_command(listings[20])
 
         self.assert_all_listings_checked(listings)
 

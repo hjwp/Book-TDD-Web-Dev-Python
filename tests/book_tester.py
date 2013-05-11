@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from lxml import html
 
-base_dir = os.path.split(os.path.dirname(__file__))[0]
+base_dir = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
 raw_html = open(os.path.join(base_dir, 'book.html')).read()
 parsed_html = html.fromstring(raw_html)
 
@@ -54,11 +54,13 @@ def wrap_long_lines(text):
                 fixed_text += newline
             else:
                 broken_line = ''
+                broken_line += get_indent(line)
+
                 for word in line.split():
                     if len(broken_line) + 1 + len(word) < 79:
                         broken_line += word + " "
                     else:
-                        fixed_text += broken_line.strip() + "\n"
+                        fixed_text += broken_line.rstrip() + "\n"
                         broken_line = word + " "
                 fixed_text += broken_line.strip() + "\n"
         return fixed_text.strip()
@@ -78,11 +80,12 @@ def parse_listing(listing):
         outputs = []
         output_after_command = ''
         for line in lines:
-            commands_in_this_line = filter(line.endswith, commands)
+            line_start, hash, line_comments = line.partition(" #")
+            commands_in_this_line = filter(line_start.endswith, commands)
             if commands_in_this_line:
                 if output_after_command:
                     outputs.append(Output(output_after_command.rstrip()))
-                    output_after_command = ''
+                output_after_command = (hash + line_comments).strip()
                 outputs.append(Command(commands_in_this_line[0]))
             else:
                 output_after_command += line + '\n'
@@ -123,14 +126,19 @@ def write_to_file(codelisting, cwd):
 
         if "[..." not in codelisting.contents:
             if len(new_lines) > 1:
-                start_line_in_old = [
-                    l for l in old_lines if l.strip() == new_lines[0]
-                ][0]
-                start_line_pos = old_lines.index(start_line_in_old)
-                indent = get_indent(start_line_in_old)
-                for ix, line in enumerate(new_lines):
-                    old_lines[start_line_pos + ix] = indent + line
-                new_contents = '\n'.join(old_lines)
+                if len(new_lines) < len(old_lines):
+                    start_line_in_old = [
+                        l for l in old_lines if l.strip() == new_lines[0]
+                    ][0]
+                    start_line_pos = old_lines.index(start_line_in_old)
+                    indent = get_indent(start_line_in_old)
+                    for ix, line in enumerate(new_lines):
+                        old_lines[start_line_pos + ix] = indent + line
+                    new_contents = '\n'.join(old_lines)
+                else:
+                    new_contents = codelisting.contents
+
+
 
             else:
                 new_line = new_lines[0]

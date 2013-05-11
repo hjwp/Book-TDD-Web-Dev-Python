@@ -52,6 +52,21 @@ class WrapLongLineTest(unittest.TestCase):
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
 
+    def test_wrap_long_lines_with_indent(self):
+        text = (
+            "This is a short line\n"
+            "   This is a long line with an indent which should wrap just "
+            "before the word that takes it over 79 chars in length\n"
+        )
+        expected_text = (
+            "This is a short line\n"
+            "   This is a long line with an indent which should wrap just "
+            "before the word\n"
+            "that takes it over 79 chars in length"
+        )
+        self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
+
+
 class ParseListingTest(unittest.TestCase):
 
     def test_recognises_code_listings(self):
@@ -151,6 +166,28 @@ class ParseListingTest(unittest.TestCase):
         )
 
 
+    def test_catches_command_with_trailing_comment(self):
+        listing = html.fromstring(
+            dedent("""
+                <div class="listingblock">
+                    <div class="content">
+                        <pre><code>$ <strong>git diff --staged</strong> # will show you the diff that you're about to commit
+                </code></pre>
+                </div></div>
+                """)
+        )
+        listing.getnext = Mock()
+        parsed_listings = parse_listing(listing)
+        self.assertEqual(
+            parsed_listings,
+            [
+                "git diff --staged",
+                "# will show you the diff that you're about to commit",
+            ]
+        )
+        self.assertEqual(type(parsed_listings[0]), Command)
+        self.assertEqual(type(parsed_listings[1]), Output)
+
 
 class GetCommandsTest(unittest.TestCase):
 
@@ -193,7 +230,7 @@ class GetCommandsTest(unittest.TestCase):
 
 class WriteToFileTest(unittest.TestCase):
 
-    def test_write_to_file_simple_case(self):
+    def test_simple_case(self):
         tempdir = tempfile.mkdtemp()
         listing = CodeListing(filename='foo.py', contents='abc\ndef')
         write_to_file(listing, tempdir)
@@ -202,7 +239,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assertTrue(listing.was_written)
 
 
-    def test_write_to_file_strips_line_callouts(self):
+    def test_strips_line_callouts(self):
         tempdir = tempfile.mkdtemp()
         listing = CodeListing(
             filename='foo.py',
@@ -213,7 +250,7 @@ class WriteToFileTest(unittest.TestCase):
             self.assertEqual(f.read(), 'hello\nbla bla\n')
 
 
-    def test_write_to_file_with_new_contents_then_indented_elipsis_then_appendix(self):
+    def test_with_new_contents_then_indented_elipsis_then_appendix(self):
         tempdir = tempfile.mkdtemp()
         old_contents = '#abc\n#def\n#ghi\n#jkl\n'
         listing = CodeListing(
@@ -246,7 +283,8 @@ class WriteToFileTest(unittest.TestCase):
                 )
             )
 
-    def test_write_to_file_for_existing_file_replaces_matching_lines(self):
+
+    def test_for_existing_file_replaces_matching_lines(self):
         tempdir = tempfile.mkdtemp()
         old_contents = dedent("""
             class Foo(object):
@@ -287,7 +325,46 @@ class WriteToFileTest(unittest.TestCase):
             )
 
 
-    def test_write_to_file_with_single_line_assertion_replacement(self):
+    def test_longer_new_file_starts_replacing_from_first_different_line(self):
+        tempdir = tempfile.mkdtemp()
+        old_contents = dedent("""
+            # line 1
+            # line 2
+            # line 3
+
+            """).lstrip()
+        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
+            f.write(old_contents)
+
+        listing = CodeListing(
+            filename='foo.py',
+            contents = dedent("""
+                # line 1
+                # line 2
+
+                # line 3
+
+                # line 4
+                """).strip()
+        )
+
+        write_to_file(listing, tempdir)
+
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertMultiLineEqual(
+                f.read(),
+                dedent("""
+                    # line 1
+                    # line 2
+
+                    # line 3
+
+                    # line 4
+                    """).lstrip()
+            )
+
+
+    def test_with_single_line_assertion_replacement(self):
         tempdir = tempfile.mkdtemp()
         old_contents = dedent("""
             class Wibble(unittest.TestCase):
@@ -323,7 +400,7 @@ class WriteToFileTest(unittest.TestCase):
             )
 
 
-    def test_write_to_file_with_two_elipsis_dedented_change(self):
+    def test_with_two_elipsis_dedented_change(self):
         tempdir = tempfile.mkdtemp()
         old_contents = dedent("""
             class Wibble(object):
@@ -432,7 +509,7 @@ class ChapterTestTest(ChapterTest):
 
 
     def test_assert_console_output_correct_fixes_stdout_stderr_for_creating_db(self):
-        actual =dedent("""
+        actual = dedent("""
             ======================================================================
             FAIL: test_basic_addition (lists.tests.SimpleTest)
             ----------------------------------------------------------------------
@@ -458,6 +535,24 @@ class ChapterTestTest(ChapterTest):
 
             FAILED (failures=1)
             Destroying test database for alias 'default'
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+    def test_assert_console_output_correct_handles_long_lines(self):
+        actual = dedent("""
+            A normal line
+                An indented line, that's longer than 80 chars. it goes on for a while you see.
+                a normal indented line
+            """).strip()
+
+        expected = Output(dedent("""
+            A normal line
+                An indented line, that's longer than 80 chars. it goes on for a while you
+            see.
+                a normal indented line
             """).strip()
         )
 

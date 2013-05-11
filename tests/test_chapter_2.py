@@ -28,7 +28,6 @@ class Chapter2Test(ChapterTest):
         self.write_to_file(listings[0])
 
         # listings 1 is an aside
-
         runserver_output = self.run_command(listings[2])
         first_output = self.run_command(listings[3])
         self.assert_console_output_correct(first_output, listings[4])
