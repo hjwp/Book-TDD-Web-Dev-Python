@@ -63,7 +63,33 @@ class Chapter3Test(ChapterTest):
         self.run_command(listings[18])
         git_diff = self.run_command(listings[19])
         self.assertIn('1 + 1, 3', git_diff)
-        self.run_command(listings[20])
+        listings[20].was_checked = True
+
+        commit = self.run_command(listings[21])
+        self.assertIn('insertions', commit)
+
+        self.write_to_file(listings[22])
+
+        test_run = self.run_command(listings[23])
+        self.assert_console_output_correct(test_run, listings[24])
+
+        self.write_to_file(listings[25])
+
+        test_run = self.run_command(listings[26])
+        self.assert_console_output_correct(test_run, listings[27])
+
+        self.write_to_file(listings[29])
+
+        test_run = self.run_command(listings[26])  # TODO - retrieve from text
+        self.assert_console_output_correct(test_run, listings[30])
+
+        self.write_to_file(listings[31])
+        test_run = self.run_command(listings[26])
+        self.assert_console_output_correct(test_run, listings[32])
+
+        self.write_to_file(listings[33])
+        test_run = self.run_command(listings[26])
+        self.assert_console_output_correct(test_run, listings[34])
 
         self.assert_all_listings_checked(listings)
 

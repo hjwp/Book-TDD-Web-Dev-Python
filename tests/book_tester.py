@@ -57,7 +57,7 @@ def wrap_long_lines(text):
                 broken_line += get_indent(line)
 
                 for word in line.split():
-                    if len(broken_line) + 1 + len(word) < 79:
+                    if len(broken_line + " " + word) < 80:
                         broken_line += word + " "
                     else:
                         fixed_text += broken_line.rstrip() + "\n"
@@ -115,6 +115,7 @@ def get_indent(line):
 
 
 def write_to_file(codelisting, cwd):
+
     path = os.path.join(cwd, codelisting.filename)
     if not os.path.exists(path):
         new_contents = codelisting.contents
@@ -126,14 +127,16 @@ def write_to_file(codelisting, cwd):
 
         if "[..." not in codelisting.contents:
             if len(new_lines) > 1:
-                if len(new_lines) < len(old_lines):
-                    start_line_in_old = [
-                        l for l in old_lines if l.strip() == new_lines[0]
-                    ][0]
-                    start_line_pos = old_lines.index(start_line_in_old)
+                stripped_old_lines = [l.strip() for l in old_lines]
+                if new_lines[0] in stripped_old_lines:
+                    start_line_pos = stripped_old_lines.index(new_lines[0])
+                    start_line_in_old = old_lines[start_line_pos]
                     indent = get_indent(start_line_in_old)
-                    for ix, line in enumerate(new_lines):
-                        old_lines[start_line_pos + ix] = indent + line
+                    for ix, new_line in enumerate(new_lines):
+                        if len(old_lines) > start_line_pos + ix:
+                            old_lines[start_line_pos + ix] = indent + new_line
+                        else:
+                            old_lines.append(indent + new_line)
                     new_contents = '\n'.join(old_lines)
                 else:
                     new_contents = codelisting.contents
@@ -244,6 +247,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def write_to_file(self, codelisting):
+        self.assertEqual(type(codelisting), CodeListing)
         print 'writing to file', codelisting.filename
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
         print 'wrote', open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read()
@@ -318,6 +322,12 @@ class ChapterTest(unittest.TestCase):
                 self.assertIn(raise_line, actual_text)
                 actual_text = actual_text.split(raise_line)[-1]
                 expected_text = expected_text.split(raise_line)[-1].strip()
+
+            elif len(expected_text.split('\n')) < 3:
+                for expected_line in expected_text.split('\n'):
+                    self.assertIn(expected_line, actual_text)
+                expected.was_checked = True
+                return
 
             if "Creating test database for alias 'default'..." in actual_text:
                 actual_lines = actual_text.split('\n')

@@ -57,12 +57,19 @@ class WrapLongLineTest(unittest.TestCase):
             "This is a short line\n"
             "   This is a long line with an indent which should wrap just "
             "before the word that takes it over 79 chars in length\n"
+            "   This is a short indented line\n"
+            "This is a long line which should wrap just before the word that "
+            "takes it over 79 chars in length\n"
         )
         expected_text = (
             "This is a short line\n"
             "   This is a long line with an indent which should wrap just "
             "before the word\n"
-            "that takes it over 79 chars in length"
+            "that takes it over 79 chars in length\n"
+            "   This is a short indented line\n"
+            "This is a long line which should wrap just before the word that "
+            "takes it over\n"
+            "79 chars in length"
         )
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
@@ -556,6 +563,39 @@ class ChapterTestTest(ChapterTest):
             """).strip()
         )
 
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_assert_console_output_correct_for_minimal_expected(self):
+        actual = dedent("""
+            Creating test database for alias 'default'...
+            E
+            ======================================================================
+            ERROR: test_root_url_resolves_to_home_page_view (lists.tests.HomePageTest)
+            ----------------------------------------------------------------------
+            Traceback (most recent call last):
+              File "/workspace/superlists/lists/tests.py", line 8, in test_root_url_resolves_to_home_page_view
+                found = resolve('/')
+              File "/usr/local/lib/python2.7/dist-packages/django/core/urlresolvers.py", line 440, in resolve
+                return get_resolver(urlconf).resolve(path)
+              File "/usr/local/lib/python2.7/dist-packages/django/core/urlresolvers.py", line 104, in get_callable
+                (lookup_view, mod_name))
+            ViewDoesNotExist: Could not import superlists.views.home. Parent module superlists.views does not exist.
+            ----------------------------------------------------------------------
+            Ran 1 tests in X.Xs
+
+            FAILED (errors=1)
+            Destroying test database for alias 'default'...
+            """.strip()
+        )
+
+        expected = Output(dedent(
+            """
+            ViewDoesNotExist: Could not import superlists.views.home. Parent module
+            superlists.views does not exist.
+            """).strip()
+        )
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
