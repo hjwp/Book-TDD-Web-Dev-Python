@@ -515,6 +515,36 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_assert_console_output_correct_ignores_git_commit_numers_in_logs(self):
+        actual =dedent("""
+            ea82222 Basic view now returns minimal HTML
+            7159049 First unit test and url mapping, dummy view
+            edba758 Add app for lists, with deliberately failing unit test
+            """).strip()
+        expected = Output(dedent("""
+            a6e6cc9 Basic view now returns minimal HTML
+            450c0f3 First unit test and url mapping, dummy view
+            ea2b037 Add app for lists, with deliberately failing unit test
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+        actual =dedent("""
+            abc Basic view now returns minimal HTML
+            123 First unit test and url mapping, dummy view
+            """).strip()
+        expected = Output(dedent("""
+            bad Basic view now returns minimal HTML
+            456 First unit test and url mapping, dummy view
+            """).strip()
+        )
+
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(actual, expected)
+
+
     def test_assert_console_output_correct_fixes_stdout_stderr_for_creating_db(self):
         actual = dedent("""
             ======================================================================

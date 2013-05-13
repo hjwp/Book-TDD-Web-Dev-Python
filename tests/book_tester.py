@@ -314,6 +314,19 @@ class ChapterTest(unittest.TestCase):
                 r"index XXXXXXX\.\.XXXXXXX 100644",
                 expected_text,
             )
+            actual_text = re.sub(
+                r"^[a-f0-9]{7} ",
+                r"XXXXXXX ",
+                actual_text,
+                flags=re.MULTILINE,
+
+            )
+            expected_text = re.sub(
+                r"^[a-f0-9]{7} ",
+                r"XXXXXXX ",
+                expected_text,
+                flags=re.MULTILINE,
+            )
 
             if expected_text.endswith("[...]"):
                 expected_lines = expected_text.split('\n')[:-1]
