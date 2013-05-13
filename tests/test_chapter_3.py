@@ -76,20 +76,78 @@ class Chapter3Test(ChapterTest):
         self.write_to_file(listings[25])
 
         test_run = self.run_command(listings[26])
+        self.assertEqual(listings[26], 'python manage.py test lists')
         self.assert_console_output_correct(test_run, listings[27])
 
         self.write_to_file(listings[29])
 
-        test_run = self.run_command(listings[26])  # TODO - retrieve from text
+        test_run = self.run_command(Command("python manage.py test lists"))  # TODO - retrieve from text
+        #TODO - why does this fail intermittently?
         self.assert_console_output_correct(test_run, listings[30])
 
         self.write_to_file(listings[31])
-        test_run = self.run_command(listings[26])
+        grep = self.run_command(Command("grep -iIr 'superlists\.views'"))
+        if grep:
+            self.fail(grep)
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        test_run = self.run_command(Command("python manage.py test lists"))
         self.assert_console_output_correct(test_run, listings[32])
 
         self.write_to_file(listings[33])
-        test_run = self.run_command(listings[26])
-        self.assert_console_output_correct(test_run, listings[34])
+        passing_test_run = self.run_command(listings[34])
+        self.assert_console_output_correct(passing_test_run, listings[35])
+
+        git_diff = self.run_command(listings[36])
+        for expected_file in ('urls.py', 'tests.py', 'views.py'):
+            self.assertIn(expected_file, git_diff)
+            self.assertIn(expected_file, listings[37])
+        commit = self.run_command(listings[38])
+        self.assertIn('insertions', commit)
+
+        self.write_to_file(listings[39])
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        test_run = self.run_command(Command("python manage.py test lists"))
+        self.assert_console_output_correct(test_run, listings[40])
+
+        self.write_to_file(listings[41])
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        test_run = self.run_command(Command("python manage.py test lists"))
+        self.assert_console_output_correct(test_run, listings[42])
+
+        self.write_to_file(listings[43])
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        test_run = self.run_command(Command("python manage.py test lists"))
+        self.assert_console_output_correct(test_run, listings[44])
+
+        self.write_to_file(listings[45])
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        test_run = self.run_command(Command("python manage.py test lists"))
+        self.assert_console_output_correct(test_run, listings[46])
+
+        self.write_to_file(listings[47])
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        test_run = self.run_command(Command("python manage.py test lists"))
+        self.assert_console_output_correct(test_run, listings[48])
+
+        self.write_to_file(listings[49])
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        test_run = self.run_command(listings[50])
+        self.assert_console_output_correct(test_run, listings[51])
+
+        self.run_command(Command('python manage.py runserver'))
+        ft_run = self.run_command(listings[52])
+        self.assert_console_output_correct(ft_run, listings[53])
+
+        git_diff = self.run_command(listings[54])
+        for expected_file in ('tests.py', 'views.py'):
+            self.assertIn(expected_file, git_diff)
+            self.assertIn(expected_file, listings[55])
+        commit = self.run_command(listings[56])
+        self.assertIn('insertions', commit)
+
+        gitlog = self.run_command(listings[57])
+        self.assert_console_output_correct(gitlog, listings[58])
+
 
         self.assert_all_listings_checked(listings)
 

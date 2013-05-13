@@ -247,14 +247,19 @@ class ChapterTest(unittest.TestCase):
 
 
     def write_to_file(self, codelisting):
-        self.assertEqual(type(codelisting), CodeListing)
+        self.assertEqual(
+            type(codelisting), CodeListing,
+            "passed a non-Codelisting to write_to_file:\n%s" % (codelisting,)
+        )
         print 'writing to file', codelisting.filename
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
         print 'wrote', open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read()
 
 
     def run_command(self, command, cwd=None):
-        self.assertEqual(type(command), Command)
+        self.assertEqual(type(command), Command,
+            "passed a non-Command to run-command:\n%s" % (command,)
+        )
         if cwd is None:
             cwd = os.path.join(self.tempdir, 'superlists')
         print 'running command', command
@@ -273,7 +278,10 @@ class ChapterTest(unittest.TestCase):
 
 
     def assert_console_output_correct(self, actual, expected, ls=False):
-        self.assertEqual(type(expected), Output)
+        self.assertEqual(
+            type(expected), Output,
+            "passed a non-Output to run-command:\n%s" % (expected,)
+        )
 
         # special case for git init
         if self.tempdir in actual:
