@@ -128,18 +128,27 @@ def write_to_file(codelisting, cwd):
         if "[..." not in codelisting.contents:
             if len(new_lines) > 1:
                 stripped_old_lines = [l.strip() for l in old_lines]
-                if new_lines[0] in stripped_old_lines:
+                if new_lines[0] not in stripped_old_lines:
+                    new_contents = codelisting.contents
+
+                else:
                     start_line_pos = stripped_old_lines.index(new_lines[0])
                     start_line_in_old = old_lines[start_line_pos]
                     indent = get_indent(start_line_in_old)
-                    for ix, new_line in enumerate(new_lines):
-                        if len(old_lines) > start_line_pos + ix:
-                            old_lines[start_line_pos + ix] = indent + new_line
-                        else:
-                            old_lines.append(indent + new_line)
-                    new_contents = '\n'.join(old_lines)
-                else:
-                    new_contents = codelisting.contents
+                    if new_lines[-1] in stripped_old_lines[start_line_pos:]:
+                        old_line_pos = start_line_pos + stripped_old_lines[start_line_pos:].index(new_lines[-1])
+                        new_contents = '\n'.join(
+                            old_lines[:start_line_pos] +
+                            new_lines +
+                            old_lines[old_line_pos + 1:]
+                        )
+                    else:
+                        for ix, new_line in enumerate(new_lines):
+                            if len(old_lines) > start_line_pos + ix:
+                                old_lines[start_line_pos + ix] = indent + new_line
+                            else:
+                                old_lines.append(indent + new_line)
+                        new_contents = '\n'.join(old_lines)
 
 
 

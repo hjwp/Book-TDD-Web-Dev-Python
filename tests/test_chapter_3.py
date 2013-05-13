@@ -35,24 +35,23 @@ class Chapter3Test(ChapterTest):
             listings[2].was_written = True
 
         self.write_to_file(listings[3])
-
         unit_test = self.run_command(listings[4])
         self.assert_console_output_correct(unit_test, listings[5])
 
-        # next listing involves lots of line-length hackery. to be fixed...
+        # next listing also just shows whats on disk by default,
+        # involves lots of line-length hackery. to be fixed...
         listings[6].was_written = True #TODO
 
         self.write_to_file(listings[7])
         all_unit_tests = self.run_command(listings[8])
         #self.assert_console_output_correct(all_unit_tests, listings[9])
-        listings[9].was_checked = True
         #TODO - fix this, stdout/stderr problems plus chatter
+        listings[9].was_checked = True
 
         unit_tests = self.run_command(listings[10])
         self.assert_console_output_correct(unit_tests, listings[11])
 
         self.write_to_file(listings[12])
-
         unit_tests = self.run_command(listings[13])
         self.assert_console_output_correct(unit_tests, listings[14])
 
@@ -60,8 +59,10 @@ class Chapter3Test(ChapterTest):
         self.assertIn('superlists/settings.py', git_status)
         self.assertIn('lists/', git_status)
         listings[16].was_checked = True
+
         self.run_command(listings[17])
         self.run_command(listings[18])
+
         git_diff = self.run_command(listings[19])
         self.assertIn('1 + 1, 3', git_diff)
         listings[20].was_checked = True
@@ -70,24 +71,21 @@ class Chapter3Test(ChapterTest):
         self.assertIn('insertions', commit)
 
         self.write_to_file(listings[22])
-
         test_run = self.run_command(listings[23])
         self.assert_console_output_correct(test_run, listings[24])
 
         self.write_to_file(listings[25])
-
         test_run = self.run_command(listings[26])
-        self.assertEqual(listings[26], 'python manage.py test lists')
         self.assert_console_output_correct(test_run, listings[27])
+        self.assertEqual(listings[26], 'python manage.py test lists') # sanity check
 
         current_contents = self.run_command(Command('cat ' + listings[28].filename))
         self.assertMultiLineEqual(current_contents.strip(), listings[28].contents.strip())
-        listings[28].was_checked = True
+        listings[28].was_written = True
 
         self.write_to_file(listings[29])
-
         test_run = self.run_command(Command("python manage.py test lists"))  # TODO - retrieve from text
-        #TODO - why does this fail intermittently?
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
         self.assert_console_output_correct(test_run, listings[30])
 
         self.write_to_file(listings[31])
@@ -103,6 +101,7 @@ class Chapter3Test(ChapterTest):
         for expected_file in ('urls.py', 'tests.py', 'views.py'):
             self.assertIn(expected_file, git_diff)
             self.assertIn(expected_file, listings[37])
+            listings[37].was_checked = True
         commit = self.run_command(listings[38])
         self.assertIn('insertions', commit)
 
@@ -144,6 +143,7 @@ class Chapter3Test(ChapterTest):
         for expected_file in ('tests.py', 'views.py'):
             self.assertIn(expected_file, git_diff)
             self.assertIn(expected_file, listings[55])
+            listings[55].was_checked = True
         commit = self.run_command(listings[56])
         self.assertIn('insertions', commit)
 
@@ -151,10 +151,6 @@ class Chapter3Test(ChapterTest):
         self.assert_console_output_correct(gitlog, listings[58])
 
         diff = self.run_command(Command('git diff -b repo/chapter_3'))
-        print diff
-        import time
-        print self.tempdir
-        time.sleep(200)
         self.assertEqual(diff, '')
 
         self.assert_all_listings_checked(listings)

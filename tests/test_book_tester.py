@@ -335,14 +335,17 @@ class WriteToFileTest(unittest.TestCase):
     def test_for_existing_file_doesnt_swallow_whitespace(self):
         tempdir = tempfile.mkdtemp()
         old_contents = dedent("""
-            # line 1
-            line = 1
+            one = (
+                1,
+            )
 
-            # line 3
-            line = 3
+            two = (
+                2,
+            )
 
-            # line 4
-            line = 4
+            three = (
+                3,
+            )
             """).lstrip()
         with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
             f.write(old_contents)
@@ -350,9 +353,10 @@ class WriteToFileTest(unittest.TestCase):
         listing = CodeListing(
             filename='foo.py',
             contents = dedent("""
-                # line 3
-                # inserted lines shouldnt swallow whitespace
-                line = "three"
+                two = (
+                    2,
+                    #two
+                )
                 """
             ).strip()
         )
@@ -363,14 +367,18 @@ class WriteToFileTest(unittest.TestCase):
             self.assertMultiLineEqual(
                 f.read(),
                 dedent("""
-                    # line 1
-                    line = 1
+                        one = (
+                            1,
+                        )
 
-                    # line 3
-                    line = "three"
+                        two = (
+                            2,
+                            #two
+                        )
 
-                    # line 4
-                    line = 4
+                        three = (
+                            3,
+                        )
                     """).lstrip()
             )
 
