@@ -332,6 +332,48 @@ class WriteToFileTest(unittest.TestCase):
             )
 
 
+    def test_for_existing_file_doesnt_swallow_whitespace(self):
+        tempdir = tempfile.mkdtemp()
+        old_contents = dedent("""
+            # line 1
+            line = 1
+
+            # line 3
+            line = 3
+
+            # line 4
+            line = 4
+            """).lstrip()
+        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
+            f.write(old_contents)
+
+        listing = CodeListing(
+            filename='foo.py',
+            contents = dedent("""
+                # line 3
+                # inserted lines shouldnt swallow whitespace
+                line = "three"
+                """
+            ).strip()
+        )
+
+        write_to_file(listing, tempdir)
+
+        with open(os.path.join(tempdir, listing.filename)) as f:
+            self.assertMultiLineEqual(
+                f.read(),
+                dedent("""
+                    # line 1
+                    line = 1
+
+                    # line 3
+                    line = "three"
+
+                    # line 4
+                    line = 4
+                    """).lstrip()
+            )
+
     def test_longer_new_file_starts_replacing_from_first_different_line(self):
         tempdir = tempfile.mkdtemp()
         old_contents = dedent("""

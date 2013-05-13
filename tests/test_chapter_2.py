@@ -42,7 +42,6 @@ class Chapter2Test(ChapterTest):
         self.write_to_file(listings[9])
 
         diff = self.run_command(listings[10])
-        print diff
         self.assert_console_output_correct(diff, listings[11])
 
         commit = Command(listings[12] + 'm"first ft specced out in comments and now uses unittest"')
