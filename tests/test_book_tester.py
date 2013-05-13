@@ -257,43 +257,44 @@ class WriteToFileTest(unittest.TestCase):
             self.assertEqual(f.read(), 'hello\nbla bla\n')
 
 
-    def test_with_new_contents_then_indented_elipsis_then_appendix(self):
+    def assert_write_to_file_gives(
+        self, old_contents, new_contents, expected_contents
+    ):
         tempdir = tempfile.mkdtemp()
-        old_contents = '#abc\n#def\n#ghi\n#jkl\n'
-        listing = CodeListing(
-            filename='foo.py',
-            contents = (
-                '#abc\n'
-                'def foo(v):\n'
-                '    return v + 1\n'
-                '    #def\n'
-                '    [... old stuff as before]\n'
-                '# then add this'
-            )
-        )
+        listing = CodeListing(filename='foo.py', contents=new_contents)
         with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
             f.write(old_contents)
 
         write_to_file(listing, tempdir)
 
         with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertMultiLineEqual(
-                f.read(),
-                (
-                    '#abc\n'
-                    'def foo(v):\n'
-                    '    return v + 1\n'
-                    '    #def\n'
-                    '    #ghi\n'
-                    '    #jkl\n'
-                    '# then add this\n'
-                )
-            )
+            self.assertMultiLineEqual(f.read(), expected_contents)
+
+
+    def test_with_new_contents_then_indented_elipsis_then_appendix(self):
+        old = '#abc\n#def\n#ghi\n#jkl\n'
+        new = (
+            '#abc\n'
+            'def foo(v):\n'
+            '    return v + 1\n'
+            '    #def\n'
+            '    [... old stuff as before]\n'
+            '# then add this'
+        )
+        expected = (
+            '#abc\n'
+            'def foo(v):\n'
+            '    return v + 1\n'
+            '    #def\n'
+            '    #ghi\n'
+            '    #jkl\n'
+            '# then add this\n'
+        )
+        self.assert_write_to_file_gives(old, new, expected)
 
 
     def test_for_existing_file_replaces_matching_lines(self):
-        tempdir = tempfile.mkdtemp()
-        old_contents = dedent("""
+        old = dedent("""
             class Foo(object):
                 def method_1(self):
                     return 1
@@ -301,40 +302,29 @@ class WriteToFileTest(unittest.TestCase):
                 def method_2(self):
                     # two
                     return 2
-            """).lstrip()
-        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
-            f.write(old_contents)
-
-        listing = CodeListing(
-            filename='foo.py',
-            contents = dedent("""
+            """
+        ).lstrip()
+        new = dedent("""
                 def method_2(self):
                     # two
                     return 'two'
                 """
-            ).strip()
-        )
+        ).strip()
+        expected = dedent("""
+            class Foo(object):
+                def method_1(self):
+                    return 1
 
-        write_to_file(listing, tempdir)
-
-        with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertMultiLineEqual(
-                f.read(),
-                dedent("""
-                    class Foo(object):
-                        def method_1(self):
-                            return 1
-
-                        def method_2(self):
-                            # two
-                            return 'two'
-                    """).lstrip()
-            )
+                def method_2(self):
+                    # two
+                    return 'two'
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
 
 
     def test_for_existing_file_doesnt_swallow_whitespace(self):
-        tempdir = tempfile.mkdtemp()
-        old_contents = dedent("""
+        old = dedent("""
             one = (
                 1,
             )
@@ -347,119 +337,135 @@ class WriteToFileTest(unittest.TestCase):
                 3,
             )
             """).lstrip()
-        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
-            f.write(old_contents)
+        new = dedent("""
+            two = (
+                2,
+                #two
+            )
+            """
+        ).strip()
 
-        listing = CodeListing(
-            filename='foo.py',
-            contents = dedent("""
-                two = (
-                    2,
-                    #two
-                )
-                """
-            ).strip()
-        )
 
-        write_to_file(listing, tempdir)
-
-        with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertMultiLineEqual(
-                f.read(),
-                dedent("""
-                        one = (
-                            1,
-                        )
-
-                        two = (
-                            2,
-                            #two
-                        )
-
-                        three = (
-                            3,
-                        )
-                    """).lstrip()
+        expected = dedent("""
+            one = (
+                1,
             )
 
+            two = (
+                2,
+                #two
+            )
+
+            three = (
+                3,
+            )
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
     def test_longer_new_file_starts_replacing_from_first_different_line(self):
-        tempdir = tempfile.mkdtemp()
-        old_contents = dedent("""
+        old = dedent("""
             # line 1
             # line 2
             # line 3
 
+            """
+        ).lstrip()
+        new = dedent("""
+            # line 1
+            # line 2
+
+            # line 3
+
+            # line 4
+            """
+        ).strip()
+        expected = dedent("""
+            # line 1
+            # line 2
+
+            # line 3
+
+            # line 4
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_for_existing_file_inserting_new_lines_between_comments(self):
+        old = dedent("""
+            # test 1
+            a = foo()
+            assert  a == 1
+
+            # test 2
+            self.fail('finish me')
+
+            # test 3
+
+            # the end
+            # is here
             """).lstrip()
-        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
-            f.write(old_contents)
+        new = dedent("""
+            # test 2
+            b = bar()
+            assert b == 2
 
-        listing = CodeListing(
-            filename='foo.py',
-            contents = dedent("""
-                # line 1
-                # line 2
+            # test 3
+            assert True
+            self.fail('finish me')
 
-                # line 3
+            # the end
+            [...]
+            """
+        ).strip()
 
-                # line 4
-                """).strip()
-        )
+        expected = dedent("""
+            # test 1
+            a = foo()
+            assert  a == 1
 
-        write_to_file(listing, tempdir)
+            # test 2
+            self.fail('finish me')
 
-        with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertMultiLineEqual(
-                f.read(),
-                dedent("""
-                    # line 1
-                    # line 2
+            # test 3
 
-                    # line 3
-
-                    # line 4
-                    """).lstrip()
-            )
+            # the end
+            # is here
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
 
 
     def test_with_single_line_assertion_replacement(self):
-        tempdir = tempfile.mkdtemp()
-        old_contents = dedent("""
+        old = dedent("""
             class Wibble(unittest.TestCase):
 
                 def test_number_1(self):
                     self.assertEqual(1 + 1, 2)
 
-            """).lstrip()
+            """
+        ).lstrip()
 
-        listing = CodeListing(
-            filename='foo.py',
-            contents = dedent("""
+        new = dedent("""
                 self.assertEqual(1 + 1, 3)
                 """
-            ).strip()
-        )
+        ).strip()
 
-        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
-            f.write(old_contents)
+        expected = dedent("""
+            class Wibble(unittest.TestCase):
 
-        write_to_file(listing, tempdir)
+                def test_number_1(self):
+                    self.assertEqual(1 + 1, 3)
 
-        with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertMultiLineEqual(
-                f.read(),
-                dedent("""
-                    class Wibble(unittest.TestCase):
-
-                        def test_number_1(self):
-                            self.assertEqual(1 + 1, 3)
-
-                    """).lstrip()
-            )
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
 
 
     def test_with_two_elipsis_dedented_change(self):
-        tempdir = tempfile.mkdtemp()
-        old_contents = dedent("""
+        old = dedent("""
             class Wibble(object):
 
                 def foo(self):
@@ -469,9 +475,7 @@ class WriteToFileTest(unittest.TestCase):
                     return 3
             """).lstrip()
 
-        listing = CodeListing(
-            filename='foo.py',
-            contents = dedent("""
+        new = dedent("""
                 [...]
                 def foo(self):
                     return 4
@@ -479,27 +483,19 @@ class WriteToFileTest(unittest.TestCase):
                 def bar(self):
                 [...]
                 """
-            ).strip()
-        )
+        ).strip()
 
-        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
-            f.write(old_contents)
+        expected = dedent("""
+            class Wibble(object):
 
-        write_to_file(listing, tempdir)
+                def foo(self):
+                    return 4
 
-        with open(os.path.join(tempdir, listing.filename)) as f:
-            self.assertMultiLineEqual(
-                f.read(),
-                dedent("""
-                    class Wibble(object):
-
-                        def foo(self):
-                            return 4
-
-                        def bar(self):
-                            return 3
-                    """).lstrip()
-            )
+                def bar(self):
+                    return 3
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
 
 
 
