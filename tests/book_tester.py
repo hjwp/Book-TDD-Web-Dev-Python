@@ -412,6 +412,7 @@ class ChapterTest(unittest.TestCase):
         self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
         if test_command_in_listings:
             pos += 1
+            self.assertIn('test', self.listings[pos])
             test_run = self.run_command(self.listings[pos])
         else:
             test_run = self.run_command(Command("python manage.py test lists"))
