@@ -407,4 +407,31 @@ class ChapterTest(unittest.TestCase):
                 )
 
 
+    def check_test_code_cycle(self, pos, test_command_in_listings=True):
+        self.write_to_file(self.listings[pos])
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        if test_command_in_listings:
+            pos += 1
+            test_run = self.run_command(self.listings[pos])
+        else:
+            test_run = self.run_command(Command("python manage.py test lists"))
+        pos += 1
+        self.assert_console_output_correct(test_run, self.listings[pos])
+
+
+    def check_git_diff_and_commit(self, pos):
+        LIKELY_FILES = ['urls.py', 'tests.py', 'views.py', 'functional_tests.py']
+        self.assertIn('git diff', self.listings[pos])
+        git_diff = self.run_command(self.listings[pos])
+        self.assertTrue(
+            any(l in git_diff for l in LIKELY_FILES),
+            'no likely files in diff output %s' % (git_diff,)
+        )
+        for expected_file in LIKELY_FILES:
+            if expected_file in git_diff:
+                self.assertIn(expected_file, self.listings[pos + 1])
+                self.listings[pos + 1].was_checked = True
+        commit = self.run_command(self.listings[pos + 2])
+        self.assertIn('insertions', commit)
+
 
