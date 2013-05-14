@@ -41,6 +41,19 @@ class Chapter4Test(ChapterTest):
 
         self.check_git_diff_and_commit(5)
 
+        self.assertIn('wibble', self.listings[8])
+        self.listings[8].was_checked = True
+        self.assertIn('wibble', self.listings[9])
+        self.listings[9].was_checked = True
+
+        tests = self.run_command(self.listings[10])
+        self.assert_console_output_correct(tests, self.listings[11])
+
+        self.write_to_file(self.listings[12])
+        self.check_test_code_cycle(13)
+        self.check_test_code_cycle(16)
+        self.write_to_file(self.listings[19])
+
         self.assert_all_listings_checked(self.listings)
 
 
