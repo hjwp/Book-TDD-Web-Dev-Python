@@ -32,9 +32,9 @@ class Chapter4Test(ChapterTest):
         self.write_to_file(self.listings[2])
         self.fail('last write_to_file is screwy')
 
-        print self.tempdir
-        import time
-        time.sleep(200)
+        #print self.tempdir
+        #import time
+        #time.sleep(200)
 
         self.check_test_code_cycle(2)
 

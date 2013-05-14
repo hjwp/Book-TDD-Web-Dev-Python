@@ -157,6 +157,20 @@ def _find_end_line(old_lines, new_lines):
         return None
 
 
+def _replace_lines_in(old_lines, new_lines):
+    if len(new_lines) == 1:
+       return _replace_single_assertion(old_lines, new_lines)
+    start_pos = _find_start_line(old_lines, new_lines)
+    end_pos = _find_end_line(old_lines, new_lines)
+    if start_pos is None:
+        return '\n'.join(new_lines)
+
+    elif end_pos is None:
+        return _replace_lines_from(old_lines, new_lines, start_pos)
+
+    else:
+        return _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos)
+
 def write_to_file(codelisting, cwd):
     path = os.path.join(cwd, codelisting.filename)
     if not os.path.exists(path):
@@ -168,34 +182,14 @@ def write_to_file(codelisting, cwd):
         new_lines = codelisting.contents.strip().split('\n')
 
         if "[..." not in codelisting.contents:
-            if len(new_lines) == 1:
-                new_contents = _replace_single_assertion(old_lines, new_lines)
-            else:
-                start_pos = _find_start_line(old_lines, new_lines)
-                end_pos = _find_end_line(old_lines, new_lines)
-                if start_pos is None:
-                    new_contents = codelisting.contents
-
-                else:
-                    if end_pos is None:
-                        new_contents = _replace_lines_from(
-                            old_lines, new_lines, start_pos
-                        )
-
-                    else:
-                        new_contents = _replace_lines_from_to(
-                            old_lines, new_lines, start_pos, end_pos
-                        )
+            new_contents = _replace_lines_in(old_lines, new_lines)
 
         else:
             new_contents = ''
             if codelisting.contents.count("[...") == 1:
                 if codelisting.contents.endswith("[...]"):
                     new_lines = new_lines[:-1]
-                    start_pos = _find_start_line(old_lines, new_lines)
-                    end_pos = _find_end_line(old_lines, new_lines)
-                    end_pos = _find_end_line(old_lines, new_lines)
-                    new_contents = _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos)
+                    new_contents = _replace_lines_in(old_lines, new_lines)
 
                 else:
                     split_line = [l for l in new_lines if "[..." in l][0]
