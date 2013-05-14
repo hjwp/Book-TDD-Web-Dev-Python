@@ -113,9 +113,51 @@ def get_indent(line):
 
 
 
+def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
+    #TODO: indent
+    return '\n'.join(old_lines[:start_pos] + new_lines + old_lines[end_pos + 1:])
+
+
+def _replace_lines_from(old_lines, new_lines, start_pos):
+    start_line_in_old = old_lines[start_pos]
+    indent = get_indent(start_line_in_old)
+    for ix, new_line in enumerate(new_lines):
+        if len(old_lines) > start_pos + ix:
+            old_lines[start_pos + ix] = indent + new_line
+        else:
+            old_lines.append(indent + new_line)
+    return '\n'.join(old_lines)
+
+
+def _replace_single_assertion(old_lines, new_lines):
+    new_line = new_lines[0]
+    assert new_line.startswith("self.assert")
+    assertion = new_line.split("(")[0]
+    old_line = [
+        l for l in old_lines if l.strip().startswith(assertion)
+    ][0]
+    new_line = get_indent(old_line) + new_line
+    return '\n'.join(old_lines).replace(old_line, new_line)
+
+
+def _find_start_line(old_lines, new_lines):
+    stripped_old_lines = [l.strip() for l in old_lines]
+    try:
+        return stripped_old_lines.index(new_lines[0])
+    except ValueError:
+        return None
+
+
+def _find_end_line(old_lines, new_lines):
+    start_pos = _find_start_line(old_lines, new_lines)
+    stripped_old_lines = [l.strip() for l in old_lines][start_pos:]
+    try:
+        return stripped_old_lines.index(new_lines[-1]) + start_pos
+    except ValueError:
+        return None
+
 
 def write_to_file(codelisting, cwd):
-
     path = os.path.join(cwd, codelisting.filename)
     if not os.path.exists(path):
         new_contents = codelisting.contents
@@ -126,69 +168,60 @@ def write_to_file(codelisting, cwd):
         new_lines = codelisting.contents.strip().split('\n')
 
         if "[..." not in codelisting.contents:
-            if len(new_lines) > 1:
-                stripped_old_lines = [l.strip() for l in old_lines]
-                if new_lines[0] not in stripped_old_lines:
+            if len(new_lines) == 1:
+                new_contents = _replace_single_assertion(old_lines, new_lines)
+            else:
+                start_pos = _find_start_line(old_lines, new_lines)
+                end_pos = _find_end_line(old_lines, new_lines)
+                if start_pos is None:
                     new_contents = codelisting.contents
 
                 else:
-                    start_line_pos = stripped_old_lines.index(new_lines[0])
-                    start_line_in_old = old_lines[start_line_pos]
-                    indent = get_indent(start_line_in_old)
-                    if new_lines[-1] in stripped_old_lines[start_line_pos:]:
-                        old_line_pos = start_line_pos + stripped_old_lines[start_line_pos:].index(new_lines[-1])
-                        new_contents = '\n'.join(
-                            old_lines[:start_line_pos] +
-                            new_lines +
-                            old_lines[old_line_pos + 1:]
+                    if end_pos is None:
+                        new_contents = _replace_lines_from(
+                            old_lines, new_lines, start_pos
                         )
+
                     else:
-                        for ix, new_line in enumerate(new_lines):
-                            if len(old_lines) > start_line_pos + ix:
-                                old_lines[start_line_pos + ix] = indent + new_line
-                            else:
-                                old_lines.append(indent + new_line)
-                        new_contents = '\n'.join(old_lines)
-
-
-
-            else:
-                new_line = new_lines[0]
-                assert new_line.startswith("self.assert")
-                assertion = new_line.split("(")[0]
-                old_line = [
-                    l for l in old_contents.split('\n') if l.strip().startswith(assertion)
-                ][0]
-                new_line = get_indent(old_line) + new_line
-                new_contents = old_contents.replace(old_line, new_line)
+                        new_contents = _replace_lines_from_to(
+                            old_lines, new_lines, start_pos, end_pos
+                        )
 
         else:
             new_contents = ''
             if codelisting.contents.count("[...") == 1:
-                split_line = [l for l in new_lines if "[..." in l][0]
-                split_line_pos = new_lines.index(split_line)
-                lines_before = new_lines[:split_line_pos]
-                last_line_before = lines_before[-1]
-                lines_after = new_lines[split_line_pos + 1:]
+                if codelisting.contents.endswith("[...]"):
+                    new_lines = new_lines[:-1]
+                    start_pos = _find_start_line(old_lines, new_lines)
+                    end_pos = _find_end_line(old_lines, new_lines)
+                    end_pos = _find_end_line(old_lines, new_lines)
+                    new_contents = _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos)
 
-                last_old_line = [
-                    l for l in old_lines if l.strip() == last_line_before.strip()
-                ][0]
-                last_old_line_pos = old_lines.index(last_old_line)
-                old_lines_after = old_lines[last_old_line_pos + 1:]
+                else:
+                    split_line = [l for l in new_lines if "[..." in l][0]
+                    split_line_pos = new_lines.index(split_line)
+                    lines_before = new_lines[:split_line_pos]
+                    last_line_before = lines_before[-1]
+                    lines_after = new_lines[split_line_pos + 1:]
 
-                # special-case: stray browser.quit in chap. 2
-                if 'rest of comments' in split_line:
-                    assert old_lines_after[-1] == 'browser.quit()'
-                    old_lines_after.pop()
+                    last_old_line = [
+                        l for l in old_lines if l.strip() == last_line_before.strip()
+                    ][0]
+                    last_old_line_pos = old_lines.index(last_old_line)
+                    old_lines_after = old_lines[last_old_line_pos + 1:]
 
-                newline_indent = '\n' + get_indent(split_line)
+                    # special-case: stray browser.quit in chap. 2
+                    if 'rest of comments' in split_line:
+                        assert old_lines_after[-1] == 'browser.quit()'
+                        old_lines_after.pop()
 
-                new_contents += '\n'.join(lines_before)
-                new_contents += newline_indent
-                new_contents += newline_indent.join(old_lines_after)
-                new_contents += '\n'
-                new_contents += '\n'.join(lines_after)
+                    newline_indent = '\n' + get_indent(split_line)
+
+                    new_contents += '\n'.join(lines_before)
+                    new_contents += newline_indent
+                    new_contents += newline_indent.join(old_lines_after)
+                    new_contents += '\n'
+                    new_contents += '\n'.join(lines_after)
 
             elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
                 #TODO replace this with smart block-replacer
@@ -209,9 +242,6 @@ def write_to_file(codelisting, cwd):
                 new_contents += newline_indent
                 new_contents += newline_indent.join(new_lines[2:-2])
                 new_contents += '\n'.join(old_lines[old_lines_resume_pos - 1:])
-
-
-
 
     new_contents = '\n'.join(
         l.rstrip(' #') for l in new_contents.split('\n')

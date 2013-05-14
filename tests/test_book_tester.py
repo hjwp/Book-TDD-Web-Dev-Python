@@ -271,6 +271,13 @@ class WriteToFileTest(unittest.TestCase):
             self.assertMultiLineEqual(f.read(), expected_contents)
 
 
+    def test_existing_file_bears_no_relation_means_replaced(self):
+        old = '#abc\n#def\n#ghi\n#jkl\n'
+        new = '#mno\n#pqr\n#stu\n#vvv\n'
+        expected = new
+        self.assert_write_to_file_gives(old, new, expected)
+
+
     def test_with_new_contents_then_indented_elipsis_then_appendix(self):
         old = '#abc\n#def\n#ghi\n#jkl\n'
         new = (
@@ -427,9 +434,12 @@ class WriteToFileTest(unittest.TestCase):
             assert  a == 1
 
             # test 2
-            self.fail('finish me')
+            b = bar()
+            assert b == 2
 
             # test 3
+            assert True
+            self.fail('finish me')
 
             # the end
             # is here
@@ -444,7 +454,6 @@ class WriteToFileTest(unittest.TestCase):
 
                 def test_number_1(self):
                     self.assertEqual(1 + 1, 2)
-
             """
         ).lstrip()
 
@@ -458,7 +467,6 @@ class WriteToFileTest(unittest.TestCase):
 
                 def test_number_1(self):
                     self.assertEqual(1 + 1, 3)
-
             """
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
