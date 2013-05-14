@@ -160,6 +160,39 @@ class ParseListingTest(unittest.TestCase):
         self.assertEqual(type(parsed_listings[5]), Output)
 
 
+    def test_post_command_comment_with_multiple_spaces(self):
+        listing = html.fromstring(
+            '<div class="listingblock">'
+            '<div class="content">'
+            '<pre><code>$ <strong>git diff</strong>  # should show changes to functional_tests.py\n'
+            '$ <strong>git commit -am "Functional test now checks we can input a to-do item"</strong></code></pre>'
+            '</div></div>&#13;'
+        )
+        listing.getnext = Mock()
+        commands = get_commands(listing)
+        self.assertEqual(
+            commands,
+            [
+                'git diff',
+                'git commit -am "Functional test now checks we can input a to-do item"',
+            ]
+        )
+
+        parsed_listings = parse_listing(listing)
+        self.assertEqual(
+            parsed_listings,
+            [
+                'git diff',
+                '# should show changes to functional_tests.py',
+                'git commit -am "Functional test now checks we can input a to-do item"',
+            ]
+        )
+        self.assertEqual(type(parsed_listings[0]), Command)
+        self.assertEqual(type(parsed_listings[1]), Output)
+        self.assertEqual(type(parsed_listings[2]), Command)
+
+
+
     def test_specialcase_for_asterisk(self):
         listing = html.fromstring(
             '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>git rm --cached superlists/</strong>*<strong>.pyc</strong>\r\nrm <em>superlists/__init__.pyc</em>\r\nrm <em>superlists/settings.pyc</em>\r\nrm <em>superlists/urls.pyc</em>\r\nrm <em>superlists/wsgi.pyc</em>\r\n\r\n$ <strong>echo "*.pyc" &gt; .gitignore</strong></code></pre>\r\n</div></div>&#13;\n'

@@ -81,7 +81,7 @@ def parse_listing(listing):
         output_after_command = ''
         for line in lines:
             line_start, hash, line_comments = line.partition(" #")
-            commands_in_this_line = filter(line_start.endswith, commands)
+            commands_in_this_line = filter(line_start.strip().endswith, commands)
             if commands_in_this_line:
                 if output_after_command:
                     outputs.append(Output(output_after_command.rstrip()))
