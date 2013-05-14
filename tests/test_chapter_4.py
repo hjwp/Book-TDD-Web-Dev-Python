@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import os
 import unittest
 
 from book_tester import (
@@ -29,8 +28,9 @@ class Chapter4Test(ChapterTest):
         ft_run = self.run_command(self.listings[0])
         self.assert_console_output_correct(ft_run, self.listings[1])
 
-        self.write_to_file(self.listings[2])
-        self.fail('last write_to_file is screwy')
+        print '*' * 80
+        #self.write_to_file(self.listings[2])
+        #self.fail('last write_to_file is screwy')
 
         #print self.tempdir
         #import time

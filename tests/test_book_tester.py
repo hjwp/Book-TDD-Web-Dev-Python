@@ -406,12 +406,13 @@ class WriteToFileTest(unittest.TestCase):
             a = foo()
             assert  a == 1
 
-            # test 2
-            self.fail('finish me')
+            if a:
+                # test 2
+                self.fail('finish me')
 
-            # test 3
+                # test 3
 
-            # the end
+                # the end
             # is here
             """).lstrip()
         new = dedent("""
@@ -426,22 +427,23 @@ class WriteToFileTest(unittest.TestCase):
             # the end
             [...]
             """
-        ).strip()
+        ).lstrip()
 
         expected = dedent("""
             # test 1
             a = foo()
             assert  a == 1
 
-            # test 2
-            b = bar()
-            assert b == 2
+            if a:
+                # test 2
+                b = bar()
+                assert b == 2
 
-            # test 3
-            assert True
-            self.fail('finish me')
+                # test 3
+                assert True
+                self.fail('finish me')
 
-            # the end
+                # the end
             # is here
             """
         ).lstrip()

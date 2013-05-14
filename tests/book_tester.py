@@ -114,8 +114,12 @@ def get_indent(line):
 
 
 def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
-    #TODO: indent
-    return '\n'.join(old_lines[:start_pos] + new_lines + old_lines[end_pos + 1:])
+    indented_new_lines = [get_indent(old_lines[start_pos]) + l for l in new_lines]
+    return '\n'.join(
+        old_lines[:start_pos] +
+        indented_new_lines +
+        old_lines[end_pos + 1:]
+    )
 
 
 def _replace_lines_from(old_lines, new_lines, start_pos):
@@ -152,7 +156,7 @@ def _find_end_line(old_lines, new_lines):
     start_pos = _find_start_line(old_lines, new_lines)
     stripped_old_lines = [l.strip() for l in old_lines][start_pos:]
     try:
-        return stripped_old_lines.index(new_lines[-1]) + start_pos
+        return stripped_old_lines.index(new_lines[-1].strip()) + start_pos
     except ValueError:
         return None
 
@@ -187,7 +191,7 @@ def write_to_file(codelisting, cwd):
         else:
             new_contents = ''
             if codelisting.contents.count("[...") == 1:
-                if codelisting.contents.endswith("[...]"):
+                if codelisting.contents.strip().endswith("[...]"):
                     new_lines = new_lines[:-1]
                     new_contents = _replace_lines_in(old_lines, new_lines)
 
@@ -263,7 +267,7 @@ class ChapterTest(unittest.TestCase):
             try:
                 os.killpg(process.pid, signal.SIGTERM)
             except OSError:
-                print 'error killing', process._command
+                pass
         shutil.rmtree(self.tempdir)
 
 
@@ -397,11 +401,9 @@ class ChapterTest(unittest.TestCase):
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.run_command(Command('tree -I *.pyc --noreport'), cwd)
-        print expected_tree
-        print actual_tree
+        print 'checking tree', expected_tree
         # special case for first listing:
         if expected_tree.startswith('superlists/'):
-            print 'FIXING'
             expected_tree = Output(
                 expected_tree.replace('superlists/', '.', 1)
             )

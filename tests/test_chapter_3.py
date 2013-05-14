@@ -36,7 +36,7 @@ class Chapter3Test(ChapterTest):
 
         self.check_test_code_cycle(3)
 
-        # next listing also just shows whats on disk by default,
+        # next listing also just shows whats on disk in settings.py by default,
         # involves lots of line-length hackery. to be fixed...
         self.listings[6].was_written = True #TODO
 
@@ -86,7 +86,6 @@ class Chapter3Test(ChapterTest):
         self.check_test_code_cycle(43, test_command_in_listings=False)
         self.check_test_code_cycle(45, test_command_in_listings=False)
         self.check_test_code_cycle(47, test_command_in_listings=False)
-
         self.check_test_code_cycle(49)
 
         self.run_command(Command('python manage.py runserver'))
