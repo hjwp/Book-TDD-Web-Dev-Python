@@ -82,6 +82,7 @@ class Chapter3Test(ChapterTest):
         self.check_git_diff_and_commit(36)
 
         self.check_test_code_cycle(39, test_command_in_listings=False)
+        print self.listings[41].contents
         self.check_test_code_cycle(41, test_command_in_listings=False)
         self.check_test_code_cycle(43, test_command_in_listings=False)
         self.check_test_code_cycle(45, test_command_in_listings=False)

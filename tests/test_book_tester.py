@@ -235,6 +235,7 @@ class GetCommandsTest(unittest.TestCase):
         )
 
 
+
 class WriteToFileTest(unittest.TestCase):
 
     def test_simple_case(self):
@@ -471,6 +472,27 @@ class WriteToFileTest(unittest.TestCase):
                     self.assertEqual(1 + 1, 3)
             """
         ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_changing_function_signature_and_stripping_comment(self):
+        old = dedent(
+            """
+            # stuff
+
+            def foo():
+                pass
+            """
+        ).lstrip()
+
+        new = dedent(
+            """
+            def foo(bar):
+                pass
+            """
+        ).strip()
+
+        expected = new + '\n'
         self.assert_write_to_file_gives(old, new, expected)
 
 

@@ -164,12 +164,13 @@ def _find_end_line(old_lines, new_lines):
 def _replace_lines_in(old_lines, new_lines):
     if len(new_lines) == 1:
        return _replace_single_assertion(old_lines, new_lines)
+
     start_pos = _find_start_line(old_lines, new_lines)
-    end_pos = _find_end_line(old_lines, new_lines)
     if start_pos is None:
         return '\n'.join(new_lines)
 
-    elif end_pos is None:
+    end_pos = _find_end_line(old_lines, new_lines)
+    if end_pos is None:
         return _replace_lines_from(old_lines, new_lines, start_pos)
 
     else:
