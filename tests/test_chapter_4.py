@@ -30,6 +30,7 @@ class Chapter4Test(ChapterTest):
 
         print '*' * 80
         #self.write_to_file(self.listings[2])
+        #self.fail(self.run_command(self.listings[3]))
         #self.fail('last write_to_file is screwy')
 
         #print self.tempdir

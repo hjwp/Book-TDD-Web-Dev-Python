@@ -365,23 +365,32 @@ class ChapterTest(unittest.TestCase):
                 flags=re.MULTILINE,
             )
 
+
+            if expected_text.strip().startswith("[..."):
+                if 'raise' in expected_text:
+                    expected_lines = expected_text.strip().split('\n')
+                    # long traceback, only care about output from raise onwards
+                    raise_line = [
+                        l for l in expected_lines if l.strip().startswith("raise")
+                    ][-1]
+                    self.assertIn(raise_line, actual_text)
+                    actual_text = actual_text.split(raise_line)[-1]
+                    expected_text = expected_text.split(raise_line)[-1].strip()
+                else:
+                    exception_line = re.search(
+                        r'^.+Exception:.+$', actual_text, re.MULTILINE
+                    ).group(0)
+                    actual_text = wrap_long_lines(exception_line)
+                    actual_text = actual_text.split('[...]')[0]
+                    expected_text = '\n'.join(expected_text.split('[...]')).strip()
+
             if expected_text.endswith("[...]"):
                 expected_lines = expected_text.split('\n')[:-1]
                 expected_text = '\n'.join(l.strip() for l in expected_lines)
                 actual_lines = actual_text.split('\n')[:len(expected_lines)]
                 actual_text = '\n'.join(l.strip() for l in actual_lines)
 
-            elif expected_text.strip().startswith("[..."):
-                # long traceback, only care about output from raise onwards
-                expected_lines = expected_text.strip().split('\n')
-                raise_line = [
-                    l for l in expected_lines if l.strip().startswith("raise")
-                ][-1]
-                self.assertIn(raise_line, actual_text)
-                actual_text = actual_text.split(raise_line)[-1]
-                expected_text = expected_text.split(raise_line)[-1].strip()
-
-            elif len(expected_text.split('\n')) < 3:
+            if len(expected_text.split('\n')) < 3:
                 for expected_line in expected_text.split('\n'):
                     self.assertIn(expected_line, actual_text)
                 expected.was_checked = True

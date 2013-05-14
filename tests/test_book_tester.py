@@ -554,6 +554,27 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_assert_console_output_correct_with_start_elipsis_and_end_longline_elipsis(self):
+        actual =dedent("""
+            bla
+            bla bla
+            loads more stuff
+                raise MyException('eek')
+            MyException: a really long exception, which will eventually wrap into multiple lines, so much so that it gets boring after a while...
+
+            and then there's some stuff afterwards we don't care about
+            """).strip()
+        expected = Output(dedent("""
+            [...]
+            MyException: a really long exception, which will eventually wrap into multiple
+            lines, so much so that [...]
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_assert_console_output_correct_ignores_diff_indexes(self):
         actual =dedent("""
             diff --git a/functional_tests.py b/functional_tests.py
