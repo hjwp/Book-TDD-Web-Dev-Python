@@ -608,6 +608,22 @@ class ChapterTestTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+    def test_assert_console_output_correct_with_start_elipsis_and_OK(self):
+        actual =dedent("""
+            bla
+
+            OK
+
+            and some epilogue
+            """).strip()
+        expected = Output(dedent("""
+            [...]
+            OK
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
 
     def test_assert_console_output_correct_with_start_elipsis_and_end_longline_elipsis(self):
         actual =dedent("""

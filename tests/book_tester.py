@@ -368,8 +368,9 @@ class ChapterTest(unittest.TestCase):
 
 
             if expected_text.strip().startswith("[..."):
+                actual_lines = actual_text.strip().split('\n')
+                expected_lines = expected_text.strip().split('\n')
                 if 'raise' in expected_text:
-                    expected_lines = expected_text.strip().split('\n')
                     # long traceback, only care about output from raise onwards
                     raise_line = [
                         l for l in expected_lines if l.strip().startswith("raise")
@@ -380,10 +381,18 @@ class ChapterTest(unittest.TestCase):
                 else:
                     exception_line = re.search(
                         r'^.+Exception:.+$', actual_text, re.MULTILINE
-                    ).group(0)
-                    actual_text = wrap_long_lines(exception_line)
-                    actual_text = actual_text.split('[...]')[0]
-                    expected_text = '\n'.join(expected_text.split('[...]')).strip()
+                    )
+                    if exception_line:
+                        exception_line = exception_line.group(0)
+                        actual_text = wrap_long_lines(exception_line)
+                        actual_text = actual_text.split('[...]')[0]
+                        expected_text = '\n'.join(expected_text.split('[...]')).strip()
+                    else:
+                        self.assertIn("OK", expected_lines)
+                        self.assertIn("OK", actual_lines)
+                        expected.was_checked = True
+                        return
+
 
             if expected_text.endswith("[...]"):
                 expected_lines = expected_text.split('\n')[:-1]
