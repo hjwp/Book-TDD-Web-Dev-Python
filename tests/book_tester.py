@@ -180,6 +180,9 @@ def write_to_file(codelisting, cwd):
     path = os.path.join(cwd, codelisting.filename)
     if not os.path.exists(path):
         new_contents = codelisting.contents
+        dir = os.path.dirname(path)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
 
     else:
         old_contents = open(path).read()

@@ -1,6 +1,7 @@
 from lxml import html
 from mock import Mock
 import os
+import shutil
 import tempfile
 from textwrap import dedent
 import unittest
@@ -270,38 +271,40 @@ class GetCommandsTest(unittest.TestCase):
 
 
 class WriteToFileTest(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tempdir)
 
     def test_simple_case(self):
-        tempdir = tempfile.mkdtemp()
         listing = CodeListing(filename='foo.py', contents='abc\ndef')
-        write_to_file(listing, tempdir)
-        with open(os.path.join(tempdir, listing.filename)) as f:
+        write_to_file(listing, self.tempdir)
+        with open(os.path.join(self.tempdir, listing.filename)) as f:
             self.assertEqual(f.read(), listing.contents + '\n')
         self.assertTrue(listing.was_written)
 
 
     def test_strips_line_callouts(self):
-        tempdir = tempfile.mkdtemp()
         listing = CodeListing(
             filename='foo.py',
             contents= 'hello\nbla bla #\n'
         )
-        write_to_file(listing, tempdir)
-        with open(os.path.join(tempdir, listing.filename)) as f:
+        write_to_file(listing, self.tempdir)
+        with open(os.path.join(self.tempdir, listing.filename)) as f:
             self.assertEqual(f.read(), 'hello\nbla bla\n')
 
 
     def assert_write_to_file_gives(
         self, old_contents, new_contents, expected_contents
     ):
-        tempdir = tempfile.mkdtemp()
         listing = CodeListing(filename='foo.py', contents=new_contents)
-        with open(os.path.join(tempdir, 'foo.py'), 'w') as f:
+        with open(os.path.join(self.tempdir, 'foo.py'), 'w') as f:
             f.write(old_contents)
 
-        write_to_file(listing, tempdir)
+        write_to_file(listing, self.tempdir)
 
-        with open(os.path.join(tempdir, listing.filename)) as f:
+        with open(os.path.join(self.tempdir, listing.filename)) as f:
             self.assertMultiLineEqual(f.read(), expected_contents)
 
 
@@ -607,6 +610,7 @@ class ChapterTestTest(ChapterTest):
 
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
+
 
     def test_assert_console_output_correct_with_start_elipsis_and_OK(self):
         actual =dedent("""
