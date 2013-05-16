@@ -315,6 +315,33 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
+    def test_with_new_first_line_then_elipsis_then_block(self):
+        old = dedent("""
+            top line
+            middle section
+            of stuff
+            def foo():
+                return 1
+            """)
+        new = dedent("""
+            a new top line
+            [...]
+            def foo():
+                return 2
+            """
+        )
+        expected = dedent("""
+            a new top line
+            top line
+            middle section
+            of stuff
+            def foo():
+                return 2
+            """)
+        )
+        self.assert_write_to_file_gives(old, new, expected)
+
+
     def test_with_new_contents_then_indented_elipsis_then_appendix(self):
         old = '#abc\n#def\n#ghi\n#jkl\n'
         new = (
