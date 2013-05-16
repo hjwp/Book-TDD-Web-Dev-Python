@@ -511,6 +511,36 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
+    def test_with_single_line_assertion_replacement_finds_right_one(self):
+        old = dedent("""
+            class Wibble(unittest.TestCase):
+
+                def test_number_1(self):
+                    self.assertEqual(1 + 1, 2)
+
+                def test_number_2(self):
+                    self.assertEqual(1 + 2, 3)
+            """
+        ).lstrip()
+
+        new = dedent("""
+                self.assertEqual(1 + 2, 4)
+                """
+        ).strip()
+
+        expected = dedent("""
+            class Wibble(unittest.TestCase):
+
+                def test_number_1(self):
+                    self.assertEqual(1 + 1, 2)
+
+                def test_number_2(self):
+                    self.assertEqual(1 + 2, 4)
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
     def test_changing_function_signature_and_stripping_comment(self):
         old = dedent(
             """
@@ -623,6 +653,26 @@ class ChapterTestTest(ChapterTest):
         expected = Output(dedent("""
             [...]
             OK
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_assert_console_output_correct_with_elipsis_finds_assertionerrors(self):
+        actual =dedent("""
+            bla
+            bla bla
+                self.assertSomething(burgle)
+            AssertionError: nope
+
+            and then there's some stuff afterwards we don't care about
+            """).strip()
+        expected = Output(dedent("""
+            [...]
+                self.assertSomething(burgle)
+            AssertionError: nope
             """).strip()
         )
 

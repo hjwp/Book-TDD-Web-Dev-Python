@@ -133,15 +133,23 @@ def _replace_lines_from(old_lines, new_lines, start_pos):
     return '\n'.join(old_lines)
 
 
+def _number_of_chars_until_difference(string1, string2):
+    n = 0
+    for char1, char2 in zip(string1, string2):
+        if char1 != char2:
+            return n
+    return n
+
+
 def _replace_single_assertion(old_lines, new_lines):
     new_line = new_lines[0]
     assert new_line.startswith("self.assert")
+    line_finder = lambda l: _number_of_chars_until_difference(l, new_line)
+    likely_line = sorted(old_lines, key=line_finder)[-1]
     assertion = new_line.split("(")[0]
-    old_line = [
-        l for l in old_lines if l.strip().startswith(assertion)
-    ][0]
-    new_line = get_indent(old_line) + new_line
-    return '\n'.join(old_lines).replace(old_line, new_line)
+    assert assertion in likely_line, '%s not in %s' % (assertion, likely_line)
+    new_line = get_indent(likely_line) + new_line
+    return '\n'.join(old_lines).replace(likely_line, new_line)
 
 
 def _find_start_line(old_lines, new_lines):
@@ -175,6 +183,7 @@ def _replace_lines_in(old_lines, new_lines):
 
     else:
         return _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos)
+
 
 def write_to_file(codelisting, cwd):
     path = os.path.join(cwd, codelisting.filename)
@@ -319,6 +328,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def assert_console_output_correct(self, actual, expected, ls=False):
+        print 'checking expected output', expected
         self.assertEqual(
             type(expected), Output,
             "passed a non-Output to run-command:\n%s" % (expected,)
@@ -381,6 +391,14 @@ class ChapterTest(unittest.TestCase):
                     self.assertIn(raise_line, actual_text)
                     actual_text = actual_text.split(raise_line)[-1]
                     expected_text = expected_text.split(raise_line)[-1].strip()
+                elif 'self.assert' in expected_text:
+                    # long traceback, only care about output from assert onwards
+                    assert_line = [
+                        l for l in expected_lines if l.strip().startswith("self.assert")
+                    ][-1]
+                    self.assertIn(assert_line, actual_text)
+                    actual_text = actual_text.split(assert_line)[-1]
+                    expected_text = expected_text.split(assert_line)[-1].strip()
                 else:
                     exception_line = re.search(
                         r'^.+Exception:.+$', actual_text, re.MULTILINE
