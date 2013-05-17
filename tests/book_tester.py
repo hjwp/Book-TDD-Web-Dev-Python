@@ -5,6 +5,7 @@ import signal
 import subprocess
 import shutil
 import tempfile
+from textwrap import dedent
 import unittest
 from lxml import html
 
@@ -170,6 +171,9 @@ def _find_end_line(old_lines, new_lines):
 
 
 def _replace_lines_in(old_lines, new_lines):
+    if new_lines[0].strip() == '':
+        new_lines.pop(0)
+    new_lines = dedent('\n'.join(new_lines)).split('\n')
     if len(new_lines) == 1:
        return _replace_single_assertion(old_lines, new_lines)
 
@@ -491,19 +495,29 @@ class ChapterTest(unittest.TestCase):
         self.assert_console_output_correct(test_run, self.listings[pos])
 
 
-    def check_git_diff_and_commit(self, pos):
+    def check_commit(self, pos):
+        commit = self.run_command(self.listings[pos])
+        self.assertIn('insertions', commit)
+
+
+    def check_diff_or_status(self, pos):
         LIKELY_FILES = ['urls.py', 'tests.py', 'views.py', 'functional_tests.py']
-        self.assertIn('git diff', self.listings[pos])
-        git_diff = self.run_command(self.listings[pos])
         self.assertTrue(
-            any(l in git_diff for l in LIKELY_FILES),
-            'no likely files in diff output %s' % (git_diff,)
+            'diff' in self.listings[pos] or 'status' in self.listings[pos]
+        )
+        git_output = self.run_command(self.listings[pos])
+        self.assertTrue(
+            any(l in git_output for l in LIKELY_FILES),
+            'no likely files in diff output %s' % (git_output,)
         )
         for expected_file in LIKELY_FILES:
-            if expected_file in git_diff:
+            if expected_file in git_output:
                 self.assertIn(expected_file, self.listings[pos + 1])
                 self.listings[pos + 1].was_checked = True
-        commit = self.run_command(self.listings[pos + 2])
-        self.assertIn('insertions', commit)
+
+
+    def check_git_diff_and_commit(self, pos):
+        self.check_diff_or_status(pos)
+        self.check_commit(pos + 2)
 
 

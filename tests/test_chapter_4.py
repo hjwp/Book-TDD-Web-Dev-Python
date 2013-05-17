@@ -28,15 +28,6 @@ class Chapter4Test(ChapterTest):
         ft_run = self.run_command(self.listings[0])
         self.assert_console_output_correct(ft_run, self.listings[1])
 
-        print '*' * 80
-        #self.write_to_file(self.listings[2])
-        #self.fail(self.run_command(self.listings[3]))
-        #self.fail('last write_to_file is screwy')
-
-        #print self.tempdir
-        #import time
-        #time.sleep(200)
-
         self.check_test_code_cycle(2)
 
         self.check_git_diff_and_commit(5)
@@ -53,6 +44,16 @@ class Chapter4Test(ChapterTest):
         self.check_test_code_cycle(13)
         self.check_test_code_cycle(16)
         self.write_to_file(self.listings[19])
+
+        unit_tests = self.run_command(Command('python manage.py test lists'))
+        self.assertIn("OK", unit_tests)
+
+        self.check_diff_or_status(20)
+        add = self.run_command(self.listings[22])
+        self.listings[23].was_checked = True
+        self.check_diff_or_status(24)
+        add = self.run_command(self.listings[25])
+        self.check_commit(26)
 
         self.assert_all_listings_checked(self.listings)
 
