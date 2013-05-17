@@ -211,28 +211,33 @@ def write_to_file(codelisting, cwd):
                 else:
                     split_line = [l for l in new_lines if "[..." in l][0]
                     split_line_pos = new_lines.index(split_line)
-                    lines_before = new_lines[:split_line_pos]
-                    last_line_before = lines_before[-1]
-                    lines_after = new_lines[split_line_pos + 1:]
+                    if split_line_pos == 1:
+                        # single line before elipsis = new import
+                        new_contents = new_lines[0] + '\n'
+                        new_contents += _replace_lines_in(old_lines, new_lines[2:])
+                    else:
+                        lines_before = new_lines[:split_line_pos]
+                        last_line_before = lines_before[-1]
+                        lines_after = new_lines[split_line_pos + 1:]
 
-                    last_old_line = [
-                        l for l in old_lines if l.strip() == last_line_before.strip()
-                    ][0]
-                    last_old_line_pos = old_lines.index(last_old_line)
-                    old_lines_after = old_lines[last_old_line_pos + 1:]
+                        last_old_line = [
+                            l for l in old_lines if l.strip() == last_line_before.strip()
+                        ][0]
+                        last_old_line_pos = old_lines.index(last_old_line)
+                        old_lines_after = old_lines[last_old_line_pos + 1:]
 
-                    # special-case: stray browser.quit in chap. 2
-                    if 'rest of comments' in split_line:
-                        assert old_lines_after[-1] == 'browser.quit()'
-                        old_lines_after.pop()
+                        # special-case: stray browser.quit in chap. 2
+                        if 'rest of comments' in split_line:
+                            assert old_lines_after[-1] == 'browser.quit()'
+                            old_lines_after.pop()
 
-                    newline_indent = '\n' + get_indent(split_line)
+                        newline_indent = '\n' + get_indent(split_line)
 
-                    new_contents += '\n'.join(lines_before)
-                    new_contents += newline_indent
-                    new_contents += newline_indent.join(old_lines_after)
-                    new_contents += '\n'
-                    new_contents += '\n'.join(lines_after)
+                        new_contents += '\n'.join(lines_before)
+                        new_contents += newline_indent
+                        new_contents += newline_indent.join(old_lines_after)
+                        new_contents += '\n'
+                        new_contents += '\n'.join(lines_after)
 
             elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
                 #TODO replace this with smart block-replacer

@@ -337,8 +337,8 @@ class WriteToFileTest(unittest.TestCase):
             of stuff
             def foo():
                 return 2
-            """)
-        )
+            """
+        ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
 
 
