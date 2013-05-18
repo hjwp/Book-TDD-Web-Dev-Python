@@ -78,9 +78,9 @@ class WrapLongLineTest(unittest.TestCase):
 class ParseListingTest(unittest.TestCase):
 
     def test_recognises_code_listings(self):
-        code_listing = CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
-        listing_only = html.fromstring(code_listing).cssselect('div.listingblock')[0]
-        listings = parse_listing(listing_only)
+        code_html = CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
         self.assertEqual(len(listings), 1)
         listing = listings[0]
         self.assertEqual(type(listing), CodeListing)
