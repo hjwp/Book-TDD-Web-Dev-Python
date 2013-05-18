@@ -1,5 +1,4 @@
 from lxml import html
-from mock import Mock
 import os
 import shutil
 import tempfile
@@ -112,7 +111,6 @@ class ParseListingTest(unittest.TestCase):
             'AssertionError</code></pre>\r\n'
             '</div></div>&#13;\n'
         )
-        listing.getnext = Mock()
         parsed_listings = parse_listing(listing)
         self.assertEqual(
             parsed_listings,
@@ -140,7 +138,6 @@ class ParseListingTest(unittest.TestCase):
             'Initialized empty Git repository in /chapter_1/superlists/.git/</code></pre>\r\n'
             '</div></div>&#13;\n'
         )
-        listing.getnext = Mock()
         parsed_listings = parse_listing(listing)
         self.assertEqual(
             parsed_listings,
@@ -169,7 +166,6 @@ class ParseListingTest(unittest.TestCase):
             '$ <strong>git commit -am "Functional test now checks we can input a to-do item"</strong></code></pre>'
             '</div></div>&#13;'
         )
-        listing.getnext = Mock()
         commands = get_commands(listing)
         self.assertEqual(
             commands,
@@ -217,7 +213,6 @@ class ParseListingTest(unittest.TestCase):
                 </div></div>
                 """)
         )
-        listing.getnext = Mock()
         parsed_listings = parse_listing(listing)
         self.assertEqual(
             parsed_listings,
