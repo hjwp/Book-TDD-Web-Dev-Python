@@ -1,5 +1,5 @@
 Testing deployment using a staging site
------------------------
+---------------------------------------
 
 It's time to deploy the first version of our site and make it public.  They say
 that if you wait until you feel ready to ship, then you've waited too long.
@@ -15,13 +15,19 @@ they actually want to use it to make "top 10 best fly-fishing spots" lists, for
 which you don't need any kind of ``mark completed'' function. We won't know
 until we put it out there.
 
-Let's find out where testing comes into the process of deployment.
+In this chapter I'm going to go through and actually deploy my site to a real,
+live web server.  You might be tempted to skip this bit, but I strongly 
+encourage you to actually go through and do this too.  It's only by doing
+these things that we learn all the little gotchas.  Give it a buzzword
+name like "DevOps" if that's what it takes to convince you it's worth
+learning.
+
 
 TDD and the Danger Areas of deployment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Deploying a site to a live web server can be a tricky topic.  Oft heard is the
-forlorn cry -- *"but it works on my machine"*
+forlorn cry -- '``but it works on my machine'''.
 
 Some of the danger areas of deployment include:
 
@@ -51,26 +57,160 @@ But there are solutions to all of these.  In order:
   like live as possible.
 
 
+As always, start with a test
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's adapt our functional tests slightly so that it can be run against
+a staging site. We'll do it by slightly hacking an argument that is normally
+used to change the address which the test's temporary server gets run on:
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+class NewVisitorTest(LiveServerTestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for arg in sys.argv:
+            if 'liveserver' in arg:
+                cls.server_url = 'http://' + arg.split('=')[1]
+                return
+        LiveServerTestCase.setUpClass()
+        cls.server_url = cls.live_server_url
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.server_url == cls.live_server_url:
+            LiveServerTestCase.tearDownClass()
+
+
+    def setUp(self):
+        [...]
+----
+
+OK, when I said slightly hacking, I meant seriously hacking. Do you remember I
+said that `LiveServerTestCase` had certain limitations?  Well, one is that it
+always assumes you want to use its own test server.  I still want to be able to
+do that sometimes, but I also want to be able to selectively tell it not to
+bother, and to use a real server instead.  
+
+`setUpClass` is a similar method to `setUp`, also provided by `unittest`, which
+is used to do test setup for the whole class. This is where `LiveServerTest`
+usually starts up its test server.  We look for the 'liveserver' command-line
+argument (which are found in `sys.argv`, and if we find it, we tell our test
+class to skip the normal `setUpClass`, and just store away our staging server
+URL in a variable called `server_url` instead.
+
+This means we also need to change the three places we used to use
+`self.live_server_url`:
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+    def test_can_start_a_list_and_retrieve_it_later(self):
+        # Edith has heard about a cool new online to-do app. She goes
+        # to check out its homepage
+        self.browser.get(self.server_url)
+        [...]
+        # Francis visits the home page.  There is no sign of Edith's
+        # list
+        self.browser.get(self.server_url)
+        [...]
+
+    def test_layout_and_styling(self):
+        # Edith goes to the home page
+        self.browser.get(self.server_url)
+----
+
+We test that our little hack hasn't broken anything by running the functional
+tests "normally":
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests*] 
+[...]
+Ran 2 tests in 8.544s
+
+OK
+----
+
+And now we can try them against our staging server URL.  I'm hosting my staging
+server at 'book-example-staging.obeythetestinggoat.com':
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-staging.obeythetestinggoat.com*]
+$ python manage.py test functional_tests 
+Creating test database for alias 'default'...
+FF
+======================================================================
+FAIL: test_can_start_a_list_and_retrieve_it_later (functional_tests.tests.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_7/superlists/functional_tests/tests.py", line 44, in test_can_start_a_list_and_retrieve_it_later
+    self.assertIn('To-Do', self.browser.title)
+AssertionError: 'To-Do' not found in u'Domain name registration | Domain names | Web Hosting | 123-reg'
+
+======================================================================
+FAIL: test_layout_and_styling (functional_tests.tests.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_7/superlists/functional_tests/tests.py", line 118, in test_layout_and_styling
+    delta=3
+AssertionError: 0 != 470 within 3 delta
+
+ ---------------------------------------------------------------------
+Ran 2 tests in 16.480s
+
+FAILED (failures=2)
+Destroying test database for alias 'default'...
+----
+
+You can see that both tests are failing, as expected, since I haven't actually
+set up my staging site yet. In fact, you can see from the first traceback that
+the test is actually ending up on the home page of my domain registrar.
+
+
+NOTE: We're going to need a couple of domain names at this point in the book -
+they can both be subdomains of a single domain.  I'm going to use
+'book-example.obeythetestinggoat.comm' and
+'book-example-staging.obeythetestinggoat.com'.
+If you don't already own a domain, this is the time to register one! Again,
+this is something I really want you to 'actually' do.  If you've never
+registered a domain before, just pick any old registrar and buy a cheap one
+- it should only cost you $5! And I promise seeing your site on a "real"
+web site will be a thrill :-)
+
+TODO: commit
+
+
+Manually provisioning a server to host our site
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 We can separate out "deployment" into two tasks:
 - 'provisioning' a new server to be able to host the code
 - 'deploying' a new version of the code to an existing server.
 
 Some people like to use a brand new server for every deployment -- it's what we
 do at PythonAnywhere.  I think it's probably only necessary for larger, more 
-complex sites though.
+complex sites though, or major changes to an existing site.
 
 For a simple site like ours, it makes sense to separate the two tasks.  And, 
 although we eventually want both to be completely automated, we can probably
 live with a manual provisioning system for now.
 
+
 Choosing where to host our site
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 There are loads of different solutions out there these days, but they broadly
 fall into two camps:
 
 - running your own (possibly virtual) server
-- using a Platform-As-A-Service offering like Heroku, DotCloud or PythonAnywhere
+- using a Platform-As-A-Service (PaaS) offering like Heroku, DotCloud or PythonAnywhere
 
 Particularly for small sites, a PaaS offers a lot of advantages, and I would
 definitely recommend looking into them.  We're not going to use a PaaS in this
@@ -81,10 +221,261 @@ to deploy to each vary a lot -- learning about one doesn't tell you about the
 others... And any one of them might change their process radically, or simply
 go out of business by the time you get to read this book.
 
-Instead, we'll learn about good old-fashioned server admin, including SSH and
-Apache.  They're unlikely to ever go away, and knowing a tiny bit about them
-will get you some respect from all the grizzled dinosaurs out there.
+Instead, we'll learn just a tiny bit of good old-fashioned server admin,
+including SSH and Apache.  They're unlikely to ever go away, and knowing a bit
+about them will get you some respect from all the grizzled dinosaurs out there.
+
+Spinning up a server
+^^^^^^^^^^^^^^^^^^^^
+
+I'm not going to dictate how you do this -- whether you choose Amazon AWS,
+Rackspace, Digital Ocean, your own server in your own data centre or a
+Raspberry Pi in a cupboard behind the stairs, I'm going to assume you've
+managed to start up a server with some flavor of Linux on it, that it's on the
+Internet, and that you can SSH into it.  I'd recommend Ubuntu as a distro,
+because it has Python 2.7, and it has some specific ways of configuring 
+Apache which I'm going to make use of below.  If you know what you're doing,
+you can probably get away with using something else.
+
+Installing Apache + pals
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+All the cool kids are using things like Nginx, uWSGI or Gunicorn these days, 
+but we'll use rusty old Apache because it's been around for ages, which means
+it's easy to install on any platform and there's lots of help out there for it
+
+////
+TODO: switch to Arch
+I chose Centos as my distro, because it's one I'm not familiar with. I know
+some of you reading may have never done this stuff before, so I wanted to give
+myself at least some of that feeling of the unknown, to sympathise.
+
+Installing apache was a matter of running `yum install httpd`.  On Ubuntu
+or Debian, it's `apt-get install apache2`
+////
+
+Installing Apache on my server was a matter of doing an `apt-get`, and I could
+then see the default Apache "Hello World" screen:
+
+    apt-get install apache2
+
+.Apache - It works!
+image::images/apache_it_works.png[The default Apache "It Works!" page]
+
+We'll need three other bits of software on the server: mod_wsgi, Git and Pip:
+
+----
+apt-get install libapache2-mod-wsgi
+apt-get install git
+apt-get install python-pip
+----
+
+We'll also install a system-wide version of Django.  Later, we'll see how
+to use a Virtualenv so that different sites can run on different versions
+from the system version.
+
+----
+pip install django
+pip install virtualenv
+----
 
 
+Configuring domains for staging and live
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next, I don't want to be messing about with IP addresses all the time, so I
+decided to point a couple of sub-domains I own towards my new server.  One
+domain for "live", and one for staging
+
+.Domain setup
+image::images/domain_setup.png[Registrar control screens for two domains]
+
+
+Once these were setup, I checked they worked by visiting both domains, and
+seeing the same Apache "it works" screens.
+
+The final step is to get a copy of the staging site up and running, just
+to check whether we can get Apache's Python web app serving working. It's 
+called *mod_wsgi*, and there are some official instructions on how to get 
+it set up with Django here:
+
+https://docs.djangoproject.com/en/1.5/howto/deployment/wsgi/modwsgi/
+
+We're almost done with "provisioning" and can start thinking about
+the "deployment" part. Let's see if we can get the staging site set up,
+manually, on the server, and take some notes so that we know how to automate
+the process for future upgrades, and for deploying the live site.
+
+To get our code onto the server, we'll use git and go via one of the code
+sharing sites.  If you haven't already, push your code up to GitHub, BitBucket
+or similar.  They all have excellent instructions for beginners on how to
+do that.
+
+We start by checking out a copy of our repo in a temp directory.
+
+    cd /tmp/
+    # you should replace the next line with the URL to your own repo
+    git clone https://github.com/hjwp/book-example.git repo-checkout
+
+(You may need to do an `apt-get install git` if git isn't installed on 
+the server)
+
+We then make a directory for the source to live in.  Let's assume we have
+a home folder at '/home/harry' (this is likely to be the case on any
+shared hosting system). I'm going to set up my sites like this:
+
+----
+/home/harry
+├── sites
+│   ├── www.live.my-website.com
+│   │    ├── database
+│   │    │     └── database.sqlite
+│   │    ├── source
+│   │    │    ├── manage.py
+│   │    │    ├── superlists
+│   │    │    ├── etc...
+│   │    │    
+│   │    ├── static
+│   │    │    ├── base.css 
+│   │    │    ├── etc...
+│   │    │    
+│   │    └── virtualenv
+│   │         ├── lib
+│   │         ├── etc...
+│   │         
+│   ├── www.staging.my-website.com
+│   │    ├── database
+│   │    ├── etc...
+----
+ 
+Each site (staging, live, or any other website) has its own folder. Within that
+we have a separate folder for the source code, the database, and the static
+files.  The logic is that, while the source code might change from one version
+of the site to the next, the database will stay the same.  The static folder
+will also be outside the repo, and it's where we'll aim the `collectstatic`
+code at. Finally, the virtualenv gets its own subfolder too.
+
+Here's some bash commands that will set this all up. If you're not familiar
+with it, note the `export` command which lets me set up a "local variable"
+in bash:
+
+   export SITENAME=book-example-staging.obeythetestinggoat.com
+   mkdir -p /home/harry/sites/$SITENAME
+   cp -r repo-checkout /home/harry/sites/$SITENAME/source
+   mkdir /home/harry/sites/$SITENAME/database
+   mkdir /home/harry/sites/$SITENAME/static
+   mkdir /home/harry/sites/$SITENAME/virtualenv
+
+Next we need to set up an Apache "virtual host" for our staging site.  We'll
+leave the default one in place, and use it as a basis for our config.
+
+   cp /etc/apache2/sites-available/default /etc/apache2/sites-available/$SITENAME
+   vi /etc/apache2/sites-available/$SITENAME
+
+(On Debian-based distros, configuration is kept in several files in
+'/etc/apache2', on other distros you might find it's in a single file called
+'httpd.conf'. If you've decided to follow along on another distro, you can
+adapt these instructions by using an `Include` directive from 'httpd.conf' to
+pull in config from other files)
+
+I then cribbed instructions from 
+
+https://httpd.apache.org/docs/2.2/vhosts/name-based.html[the Apache
+Documentation on Name-based VirtualHosts], 
+https://code.google.com/p/modwsgi/wiki/QuickConfigurationGuide#Delegation_To_Daemon_Process[the
+mod_wsgi documentation] and
+https://docs.djangoproject.com/en/1.5/howto/deployment/wsgi/modwsgi/[the Django
+documentation]
+
+It took me a few goes!  It's been a while since I've used Apache.  By the end I
+had a working config that looked like this:
+
+
+[role="sourcecode"]
+.lists/tests.py
+[source,conf]
+----
+<VirtualHost *:80>
+    ServerName book-example-staging.obeythetestinggoat.com
+
+    WSGIDaemonProcess book-example-staging.obeythetestinggoat.com python-path=/home/harry/sites/book-example-staging.obeythetestinggoat.com/source:/home/harry/sites/book-example-staging.obeythetestinggoat.com/virtualenv/lib/python2.7/site-packages
+    WSGIProcessGroup book-example-staging.obeythetestinggoat.com
+    WSGIScriptAlias / /home/harry/sites/book-example-staging.obeythetestinggoat.com/source/superlists/wsgi.py
+
+    Alias /static/ /home/harry/sites/book-example-staging.obeythetestinggoat.com/static
+
+    <Directory /home/harry/sites/book-example-staging.obeythetestinggoat.com/source/superlists>
+        <Files wsgi.py>
+            Order allow,deny
+            Allow from all
+        </Files>
+    </Directory>
+
+</VirtualHost>
+----
+
+A lot of this stuff has been quite specific to Ubuntu and Apache -- to the
+specific provisioning solution I've chosen.  On almost any hosting provider,
+you're going to have to identify:
+
+- where your static files are
+- where your WSGI file is
+- where your database is
+- where your virtualenv is
+
+The Apache setup on this machine uses a folder called 'sites-available' to
+store config files in, but they're only actually made "active" by pointing a
+symlink to them from 'sites-enabled':
+
+   cd /etc/apache2/sites-enabled/
+   ln -s ../sites-available/$SITENAME 001-$SITENAME
+
+The `001` is important -- Apache cares about the order it finds things in.  At
+the moment there's still a link in there called '000-default' which points to
+the default "it worked" page.  I want to keep that for now.
+
+    root@obeyttg1:/etc/apache2/sites-enabled# ls -l
+    total 4
+    lrwxrwxrwx 1 root root 26 May 19 20:47 000-default -> ../sites-available/default
+    lrwxrwxrwx 1 root root 62 May 19 21:14 001-book-example-staging.obeythetestinggoat.com -> ../sites-available/book-example-staging.obeythetestinggoat.com
+
+At this stage, I'm hoping to see something that looks a bit like our site being
+served on the staging domain:
+
+    service apache restart
+
+
+.Staging site is up!
+image::images/staging_is_up.png[Our staging version is live... but looks ugly again]
+
+NOTE: The live domain should still show "It worked". It's worth checking this,
+to be sure that the configuration for live and staging are properly separate.
+
+Well, it's up but the CSS clearly hasn't worked. And also, if we try to submit
+a new list item, we'll see a database error.
+
+Configuring static files and the database
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+From this point we start to move from the "provisioning" area into the
+"deployment" area -- one way of telling the difference is that you tend to 
+need root permissions for the former, but we don't for the latter.
+
+Let's adjust our site to use the static folder we've defined, so that we can
+
+----
+echo "STATIC_ROOT = '/home/harry/sites/"$SITENAME"/static'" >> /home/harry/sites/$SITENAME/source/superlists/settings.py
+----
+
+Why use `echo >>` instead of just editing the file manually?  It will be easier
+to automate later on.  The 'settings.py' on the server will end up having two
+lines defining `STATIC_ROOT`, but the one we've just added to the end will take
+priority.
+
+Similarly, for the database, we use:
+
+----
+echo "DATABASES['default']['NAME'] = '/home/harry/sites/"$SITENAME"/database/database.sqlite'" >> /home/harry/sites/$SITENAME/source/superlists/settings.py
+----
 
 
