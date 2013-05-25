@@ -723,6 +723,23 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_assert_console_output_correct_for_short_expected_with_trailing_elipsis(self):
+        actual =dedent("""
+            bla
+            bla bla
+                self.assertSomething(burgle)
+            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it really goes on and on and on, so much so that it gets boring and we chop it off"""
+            ).strip()
+        expected = Output(dedent("""
+            AssertionError: a long assertion error which ends up wrapping so we have to
+            have it across two lines but then it really goes on and on [...]
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_assert_console_output_correct_ignores_diff_indexes(self):
         actual =dedent("""
             diff --git a/functional_tests.py b/functional_tests.py

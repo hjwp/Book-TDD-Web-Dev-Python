@@ -51,9 +51,15 @@ class Chapter4Test(ChapterTest):
         self.check_diff_or_status(20)
         add = self.run_command(self.listings[22])
         self.listings[23].was_checked = True
-        self.check_diff_or_status(24)
-        add = self.run_command(self.listings[25])
+        diff = self.run_command(self.listings[24])
+        self.assertIn('templates', diff)
+        self.listings[25].was_checked = True
         self.check_commit(26)
+
+        self.write_to_file(self.listings[27])
+        ft = self.run_command(Command('python functional_tests.py'))
+        print repr(ft)
+        self.assert_console_output_correct(ft, self.listings[28])
 
         self.assert_all_listings_checked(self.listings)
 

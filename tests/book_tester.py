@@ -349,97 +349,100 @@ class ChapterTest(unittest.TestCase):
         if ls:
             actual=actual.strip()
             self.assertItemsEqual(actual.split('\n'), expected.split())
+            expected.was_checked = True
+            return
 
-        else:
-            actual_text = actual.strip().replace('\t', '       ')
-            expected_text = expected.replace(' -----', '------')
-            actual_text = re.sub(
-                r"Ran (\d+) tests? in \d+\.\d\d\ds",
-                r"Ran \1 tests in X.Xs",
-                actual_text,
-            )
-            expected_text = re.sub(
-                r"Ran (\d+) tests? in \d+\.\d\d\ds",
-                r"Ran \1 tests in X.Xs",
-                expected_text,
-            )
-            actual_text = re.sub(
-                r"index .......\.\........ 100644",
-                r"index XXXXXXX\.\.XXXXXXX 100644",
-                actual_text,
-            )
-            expected_text = re.sub(
-                r"index .......\.\........ 100644",
-                r"index XXXXXXX\.\.XXXXXXX 100644",
-                expected_text,
-            )
-            actual_text = re.sub(
-                r"^[a-f0-9]{7} ",
-                r"XXXXXXX ",
-                actual_text,
-                flags=re.MULTILINE,
+        actual_text = actual.strip().replace('\t', '       ')
+        expected_text = expected.replace(' -----', '------')
+        actual_text = re.sub(
+            r"Ran (\d+) tests? in \d+\.\d\d\ds",
+            r"Ran \1 tests in X.Xs",
+            actual_text,
+        )
+        expected_text = re.sub(
+            r"Ran (\d+) tests? in \d+\.\d\d\ds",
+            r"Ran \1 tests in X.Xs",
+            expected_text,
+        )
+        actual_text = re.sub(
+            r"index .......\.\........ 100644",
+            r"index XXXXXXX\.\.XXXXXXX 100644",
+            actual_text,
+        )
+        expected_text = re.sub(
+            r"index .......\.\........ 100644",
+            r"index XXXXXXX\.\.XXXXXXX 100644",
+            expected_text,
+        )
+        actual_text = re.sub(
+            r"^[a-f0-9]{7} ",
+            r"XXXXXXX ",
+            actual_text,
+            flags=re.MULTILINE,
 
-            )
-            expected_text = re.sub(
-                r"^[a-f0-9]{7} ",
-                r"XXXXXXX ",
-                expected_text,
-                flags=re.MULTILINE,
-            )
+        )
+        expected_text = re.sub(
+            r"^[a-f0-9]{7} ",
+            r"XXXXXXX ",
+            expected_text,
+            flags=re.MULTILINE,
+        )
 
 
-            if expected_text.strip().startswith("[..."):
-                actual_lines = actual_text.strip().split('\n')
-                expected_lines = expected_text.strip().split('\n')
-                if 'raise' in expected_text:
-                    # long traceback, only care about output from raise onwards
-                    raise_line = [
-                        l for l in expected_lines if l.strip().startswith("raise")
-                    ][-1]
-                    self.assertIn(raise_line, actual_text)
-                    actual_text = actual_text.split(raise_line)[-1]
-                    expected_text = expected_text.split(raise_line)[-1].strip()
-                elif 'self.assert' in expected_text:
-                    # long traceback, only care about output from assert onwards
-                    assert_line = [
-                        l for l in expected_lines if l.strip().startswith("self.assert")
-                    ][-1]
-                    self.assertIn(assert_line, actual_text)
-                    actual_text = actual_text.split(assert_line)[-1]
-                    expected_text = expected_text.split(assert_line)[-1].strip()
+        if expected_text.strip().startswith("[..."):
+            actual_lines = actual_text.strip().split('\n')
+            expected_lines = expected_text.strip().split('\n')
+            if 'raise' in expected_text:
+                # long traceback, only care about output from raise onwards
+                raise_line = [
+                    l for l in expected_lines if l.strip().startswith("raise")
+                ][-1]
+                self.assertIn(raise_line, actual_text)
+                actual_text = actual_text.split(raise_line)[-1]
+                expected_text = expected_text.split(raise_line)[-1].strip()
+            elif 'self.assert' in expected_text:
+                # long traceback, only care about output from assert onwards
+                assert_line = [
+                    l for l in expected_lines if l.strip().startswith("self.assert")
+                ][-1]
+                self.assertIn(assert_line, actual_text)
+                actual_text = actual_text.split(assert_line)[-1]
+                expected_text = expected_text.split(assert_line)[-1].strip()
+            else:
+                exception_line = re.search(
+                    r'^.+Exception:.+$', actual_text, re.MULTILINE
+                )
+                if exception_line:
+                    exception_line = exception_line.group(0)
+                    actual_text = wrap_long_lines(exception_line)
+                    actual_text = actual_text.split('[...]')[0]
+                    expected_text = '\n'.join(expected_text.split('[...]')).strip()
                 else:
-                    exception_line = re.search(
-                        r'^.+Exception:.+$', actual_text, re.MULTILINE
-                    )
-                    if exception_line:
-                        exception_line = exception_line.group(0)
-                        actual_text = wrap_long_lines(exception_line)
-                        actual_text = actual_text.split('[...]')[0]
-                        expected_text = '\n'.join(expected_text.split('[...]')).strip()
-                    else:
-                        self.assertIn("OK", expected_lines)
-                        self.assertIn("OK", actual_lines)
-                        expected.was_checked = True
-                        return
+                    self.assertIn("OK", expected_lines)
+                    self.assertIn("OK", actual_lines)
+                    expected.was_checked = True
+                    return
+
+        if len(expected_text.split('\n')) < 3:
+            for expected_line in expected_text.split('\n'):
+                if expected_line.endswith("[...]"):
+                    expected_line = expected_line.split("[...]")[0]
+                self.assertIn(expected_line, actual_text)
+            expected.was_checked = True
+            return
 
 
-            if expected_text.endswith("[...]"):
-                expected_lines = expected_text.split('\n')[:-1]
-                expected_text = '\n'.join(l.strip() for l in expected_lines)
-                actual_lines = actual_text.split('\n')[:len(expected_lines)]
-                actual_text = '\n'.join(l.strip() for l in actual_lines)
+        if expected_text.endswith("[...]"):
+            expected_lines = expected_text.split('\n')[:-1]
+            expected_text = '\n'.join(l.strip() for l in expected_lines)
+            actual_lines = actual_text.split('\n')[:len(expected_lines)]
+            actual_text = '\n'.join(l.strip() for l in actual_lines)
 
-            if len(expected_text.split('\n')) < 3:
-                for expected_line in expected_text.split('\n'):
-                    self.assertIn(expected_line, actual_text)
-                expected.was_checked = True
-                return
-
-            if "Creating test database for alias 'default'..." in actual_text:
-                actual_lines = actual_text.split('\n')
-                actual_lines.remove("Creating test database for alias 'default'...")
-                actual_lines.insert(0, "Creating test database for alias 'default'...")
-                actual_text = '\n'.join(actual_lines)
+        if "Creating test database for alias 'default'..." in actual_text:
+            actual_lines = actual_text.split('\n')
+            actual_lines.remove("Creating test database for alias 'default'...")
+            actual_lines.insert(0, "Creating test database for alias 'default'...")
+            actual_text = '\n'.join(actual_lines)
 
             actual_text = wrap_long_lines(actual_text)
 
