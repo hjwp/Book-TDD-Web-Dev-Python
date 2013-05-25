@@ -133,23 +133,30 @@ def _replace_lines_from(old_lines, new_lines, start_pos):
     return '\n'.join(old_lines)
 
 
-def _number_of_chars_until_difference(string1, string2):
+def _number_of_identical_chars_at_beginning(string1, string2):
     n = 0
     for char1, char2 in zip(string1, string2):
         if char1 != char2:
             return n
+        n += 1
     return n
 
+def number_of_identical_chars(string1, string2):
+    string1, string2 = string1.strip(), string2.strip()
+    start_num = _number_of_identical_chars_at_beginning(string1, string2)
+    end_num = _number_of_identical_chars_at_beginning(
+            reversed(string1), reversed(string2)
+    )
+    return min(len(string1), start_num + end_num)
 
-def _replace_single_assertion(old_lines, new_lines):
+
+def _replace_single_line(old_lines, new_lines):
     new_line = new_lines[0]
-    assert new_line.startswith("self.assert")
-    line_finder = lambda l: _number_of_chars_until_difference(l, new_line)
+    line_finder = lambda l: number_of_identical_chars(l, new_line)
     likely_line = sorted(old_lines, key=line_finder)[-1]
-    assertion = new_line.split("(")[0]
-    assert assertion in likely_line, '%s not in %s' % (assertion, likely_line)
     new_line = get_indent(likely_line) + new_line
-    return '\n'.join(old_lines).replace(likely_line, new_line)
+    new_content = '\n'.join(old_lines).replace(likely_line, new_line)
+    return new_content
 
 
 def _find_start_line(old_lines, new_lines):
@@ -174,7 +181,7 @@ def _replace_lines_in(old_lines, new_lines):
         new_lines.pop(0)
     new_lines = dedent('\n'.join(new_lines)).split('\n')
     if len(new_lines) == 1:
-       return _replace_single_assertion(old_lines, new_lines)
+       return _replace_single_line(old_lines, new_lines)
 
     start_pos = _find_start_line(old_lines, new_lines)
     if start_pos is None:
@@ -484,13 +491,15 @@ class ChapterTest(unittest.TestCase):
                 )
 
 
-    def check_test_code_cycle(self, pos, test_command_in_listings=True):
+    def check_test_code_cycle(self, pos, test_command_in_listings=True, ft=False):
         self.write_to_file(self.listings[pos])
         self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
         if test_command_in_listings:
             pos += 1
             self.assertIn('test', self.listings[pos])
             test_run = self.run_command(self.listings[pos])
+        elif ft:
+            test_run = self.run_command(Command("python functional_tests.py"))
         else:
             test_run = self.run_command(Command("python manage.py test lists"))
         pos += 1

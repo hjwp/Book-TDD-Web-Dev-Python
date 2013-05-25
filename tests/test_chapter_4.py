@@ -56,10 +56,12 @@ class Chapter4Test(ChapterTest):
         self.listings[25].was_checked = True
         self.check_commit(26)
 
-        self.write_to_file(self.listings[27])
-        ft = self.run_command(Command('python functional_tests.py'))
-        print repr(ft)
-        self.assert_console_output_correct(ft, self.listings[28])
+        self.check_test_code_cycle(27, test_command_in_listings=False, ft=True)
+        self.check_test_code_cycle(29, test_command_in_listings=False, ft=True)
+        self.check_test_code_cycle(31, test_command_in_listings=False, ft=True)
+        #self.write_to_file(self.listings[27])
+        #ft = self.run_command(Command('python functional_tests.py'))
+        #self.assert_console_output_correct(ft, self.listings[28])
 
         self.assert_all_listings_checked(self.listings)
 

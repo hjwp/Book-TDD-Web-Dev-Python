@@ -11,6 +11,7 @@ from book_tester import (
     Command,
     Output,
     get_commands,
+    number_of_identical_chars,
     parse_listing,
     wrap_long_lines,
     write_to_file,
@@ -264,6 +265,29 @@ class GetCommandsTest(unittest.TestCase):
         )
 
 
+class LineFinderTest(unittest.TestCase):
+
+    def test_number_of_identical_chars(self):
+        self.assertEqual(
+            number_of_identical_chars('1234', '5678'),
+            0
+        )
+        self.assertEqual(
+            number_of_identical_chars('1234', '1235'),
+            3
+        )
+        self.assertEqual(
+            number_of_identical_chars('1234', '1243'),
+            2
+        )
+        self.assertEqual(
+            number_of_identical_chars('12345', '123WHATEVER45'),
+            5
+        )
+
+
+
+
 
 class WriteToFileTest(unittest.TestCase):
     def setUp(self):
@@ -505,6 +529,54 @@ class WriteToFileTest(unittest.TestCase):
 
                 # the end
             # is here
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_with_single_line_replacement(self):
+        old = dedent("""
+            def wiggle():
+                abc def
+                abcd fghi
+                jkl mno
+            """
+        ).lstrip()
+
+        new = dedent("""
+            abcd abcd
+            """
+        ).strip()
+
+        expected = dedent("""
+            def wiggle():
+                abc def
+                abcd abcd
+                jkl mno
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_with_single_line_replacement_finds_most_probable_line(self):
+        old = dedent("""
+            abc
+            abc daf ghi
+            abc dex xyz
+            jkl mno
+            """
+        ).lstrip()
+
+        new = dedent("""
+            abc deFFF ghi
+            """
+        ).strip()
+
+        expected = dedent("""
+            abc
+            abc deFFF ghi
+            abc dex xyz
+            jkl mno
             """
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
