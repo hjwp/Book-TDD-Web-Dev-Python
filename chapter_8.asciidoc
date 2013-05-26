@@ -237,88 +237,47 @@ because it has Python 2.7, and it has some specific ways of configuring
 Apache which I'm going to make use of below.  If you know what you're doing,
 you can probably get away with using something else.
 
-Installing Apache + pals
-^^^^^^^^^^^^^^^^^^^^^^^^
 
-All the cool kids are using things like Nginx, uWSGI or Gunicorn these days, 
-but we'll use rusty old Apache because it's been around for ages, which means
-it's easy to install on any platform and there's lots of help out there for it
+Installing Nginx
+^^^^^^^^^^^^^^^^
+
+We'll need a web server, and all the cool kids are using Nginx these days,
+so let's use that.  Having fought with Apache for many years, I can tell
+you it's a blessed relief in terms of the readability of its config files,
+if nothing else!
+
 
 ////
-TODO: switch to Arch
-I chose Centos as my distro, because it's one I'm not familiar with. I know
-some of you reading may have never done this stuff before, so I wanted to give
-myself at least some of that feeling of the unknown, to sympathise.
-
-Installing apache was a matter of running `yum install httpd`.  On Ubuntu
-or Debian, it's `apt-get install apache2`
+TODO: switch to Arch?
 ////
 
-Installing Apache on my server was a matter of doing an `apt-get`, and I could
-then see the default Apache "Hello World" screen:
+Installing Nginx on my server was a matter of doing an `apt-get`, and I could
+then see the default Nginx "Hello World" screen:
 
-    apt-get install apache2
+    apt-get install nginx
 
-.Apache - It works!
-image::images/apache_it_works.png[The default Apache "It Works!" page]
+.Nginx - It works!
+image::images/nginx_it_works.png[The default "Welcome to nginx!" page]
 
-We'll need three other bits of software on the server: mod_wsgi, Git and Pip:
-
-----
-apt-get install libapache2-mod-wsgi
-apt-get install git
-apt-get install python-pip
-----
-
-We'll also install a system-wide version of Django.  Later, we'll see how
-to use a Virtualenv so that different sites can run on different versions
-from the system version.
-
-----
-pip install django
-pip install virtualenv
-----
 
 
 Configuring domains for staging and live
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Next, I don't want to be messing about with IP addresses all the time, so I
-decided to point a couple of sub-domains I own towards my new server.  One
-domain for "live", and one for staging
+Next, we don't want to be messing about with IP addresses all the time, so we
+should point our staging and live domains to the server. At my registrar, the
+control screens looked a bit like this -- pointing a domain at a specific IP
+address is called an "A-Record" in the DNS system.  All registrars are slightly
+different, but a bit of clicking around should get you to yours...
 
 .Domain setup
 image::images/domain_setup.png[Registrar control screens for two domains]
 
-
-Once these were setup, I checked they worked by visiting both domains, and
-seeing the same Apache "it works" screens.
+To check this works, you can visit each domain in turn and check that you now
+see the Nginx "welcome" page.
 
 The final step is to get a copy of the staging site up and running, just
-to check whether we can get Apache's Python web app serving working. It's 
-called *mod_wsgi*, and there are some official instructions on how to get 
-it set up with Django here:
-
-https://docs.djangoproject.com/en/1.5/howto/deployment/wsgi/modwsgi/
-
-We're almost done with "provisioning" and can start thinking about
-the "deployment" part. Let's see if we can get the staging site set up,
-manually, on the server, and take some notes so that we know how to automate
-the process for future upgrades, and for deploying the live site.
-
-To get our code onto the server, we'll use git and go via one of the code
-sharing sites.  If you haven't already, push your code up to GitHub, BitBucket
-or similar.  They all have excellent instructions for beginners on how to
-do that.
-
-We start by checking out a copy of our repo in a temp directory.
-
-    cd /tmp/
-    # you should replace the next line with the URL to your own repo
-    git clone https://github.com/hjwp/book-example.git repo-checkout
-
-(You may need to do an `apt-get install git` if git isn't installed on 
-the server)
+to check whether we can get Nginx and Django to talk to each other.
 
 We then make a directory for the source to live in.  Let's assume we have
 a home folder at '/home/harry' (this is likely to be the case on any
@@ -353,18 +312,73 @@ we have a separate folder for the source code, the database, and the static
 files.  The logic is that, while the source code might change from one version
 of the site to the next, the database will stay the same.  The static folder
 will also be outside the repo, and it's where we'll aim the `collectstatic`
-code at. Finally, the virtualenv gets its own subfolder too.
+code at. Finally, the virtualenv gets its own subfolder too.  What's a
+virtualenv, I hear you ask? We'll find out shortly.
 
+To get our code onto the server, we'll use git and go via one of the code
+sharing sites.  If you haven't already, push your code up to GitHub, BitBucket
+or similar.  They all have excellent instructions for beginners on how to
+do that.  We'll need to make sure Git is installed on the server:
+
+    apt-get install git
+
+(You may need to do an `apt-get install git` if git isn't installed on 
+the server)
 Here's some bash commands that will set this all up. If you're not familiar
 with it, note the `export` command which lets me set up a "local variable"
 in bash:
 
-   export SITENAME=book-example-staging.obeythetestinggoat.com
-   mkdir -p /home/harry/sites/$SITENAME
-   cp -r repo-checkout /home/harry/sites/$SITENAME/source
-   mkdir /home/harry/sites/$SITENAME/database
-   mkdir /home/harry/sites/$SITENAME/static
-   mkdir /home/harry/sites/$SITENAME/virtualenv
+    export SITENAME=book-example-staging.obeythetestinggoat.com
+    mkdir -p /home/harry/sites/$SITENAME
+    mkdir /home/harry/sites/$SITENAME/database
+    mkdir /home/harry/sites/$SITENAME/static
+    mkdir /home/harry/sites/$SITENAME/virtualenv
+    cd ~/sites/$SITENAME
+    # you should replace the next line with the URL to your own repo
+    git clone https://github.com/hjwp/book-example.git source
+
+Now we've got the site installed, let's just try running the dev server -- this
+is a smoke test, to see if all the moving parts are connected:
+
+    $ python manage.py runserver
+    Traceback (most recent call last):
+      File "manage.py", line 8, in <module>
+        from django.core.management import execute_from_command_line
+    ImportError: No module named django.core.management
+
+Ah. Django isn't installed on the server.  We could install it at this point,
+but that would leave us with a problem:  if we ever wanted to upgrade Django
+when a new version comes out, it would be impossible to test the staging site
+with a different version from live.  Similarly, if there are other users on 
+the server, we'd all be forced to use the same version of Django.
+
+The solution is a "virtualenv" -- a neat way of having different versions of
+python packages installed in different places, in their own "virtual
+environments".
+
+You'll need to run this on the server:
+
+    apt-get install python-pip
+    pip install virtualenv
+
+And also on your own machine:
+
+    pip install virtualenv
+
+Let's get a virtualenv setup on our own PC first, as an experiment.  We'll 
+follow the same folder structure as we're planning for the server:
+
+[subs="specialcharacters,quotes"]
+----
+$ *virtualenv ../virtualenv*
+$ *source ../virtualenv/bin/activate*
+(virtualenv)$ python manage.py test
+# will show ImportError: No module named django
+# because Django isn't install inside the virtualenv
+(virtualenv)$ pip install django
+
+----
+
 
 Next we need to set up an Apache "virtual host" for our staging site.  We'll
 leave the default one in place, and use it as a basis for our config.
