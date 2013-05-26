@@ -56,11 +56,9 @@ class Chapter4Test(ChapterTest):
         diff = self.run_command(self.listings[37])
         self.assertIn('templates', diff)
         self.listings[37].was_checked = True
-        self.check_commit(38)
+        self.pos = 38
 
-        #self.write_to_file(self.listings[27])
-        #ft = self.run_command(Command('python functional_tests.py'))
-        #self.assert_console_output_correct(ft, self.listings[28])
+        self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
 
