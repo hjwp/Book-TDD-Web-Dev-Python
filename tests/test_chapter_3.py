@@ -98,9 +98,7 @@ class Chapter3Test(ChapterTest):
         gitlog = self.run_command(self.listings[57])
         self.assert_console_output_correct(gitlog, self.listings[58])
 
-        diff = self.run_command(Command('git diff -b repo/chapter_3'))
-        self.assertEqual(diff, '')
-
+        self.check_final_diff(3)
         self.assert_all_listings_checked(self.listings)
 
 

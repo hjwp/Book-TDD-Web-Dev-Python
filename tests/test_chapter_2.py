@@ -48,9 +48,7 @@ class Chapter2Test(ChapterTest):
         self.run_command(commit)
         listings[12].was_run = True # TODO
 
-        diff = self.run_command(Command('git diff -b repo/chapter_2'))
-        self.assertEqual(diff, '')
-
+        self.check_final_diff(2)
         self.assert_all_listings_checked(listings, [1,5])
 
 

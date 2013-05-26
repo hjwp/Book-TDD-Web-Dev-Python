@@ -238,7 +238,7 @@ def write_to_file(codelisting, cwd):
     else:
         old_contents = open(path).read()
         old_lines = old_contents.strip().split('\n')
-        new_lines = codelisting.contents.strip().split('\n')
+        new_lines = codelisting.contents.strip('\n').split('\n')
 
         if "[..." not in codelisting.contents:
             new_contents = _replace_lines_in(old_lines, new_lines)
@@ -344,6 +344,10 @@ class ChapterTest(unittest.TestCase):
         self.run_command(Command('git fetch repo'))
         self.run_command(Command('git checkout chapter_%s' % (chapter - 1,)))
 
+
+    def check_final_diff(self, chapter):
+        diff = self.run_command(Command('git diff -b repo/chapter_%d' % (chapter,)))
+        self.assertEqual(diff, '')
 
     def write_to_file(self, codelisting):
         self.assertEqual(

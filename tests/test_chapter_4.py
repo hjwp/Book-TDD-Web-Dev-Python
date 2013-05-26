@@ -60,6 +60,7 @@ class Chapter4Test(ChapterTest):
 
         self.recognise_listing_and_process_it()
 
+        self.check_final_diff(4)
         self.assert_all_listings_checked(self.listings)
 
 

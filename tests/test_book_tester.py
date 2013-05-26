@@ -691,6 +691,36 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
+    def test_indents_in_new_dont_confuse_things(self):
+        old = dedent("""
+            class Wibble():
+                def foo(self):
+                    # comment 1
+                    do something
+                    # comment 2
+                    do something else
+                    and keep going
+            """).lstrip()
+
+        new = (
+            "    # comment 2\n"
+            "    time.sleep(2)\n"
+            "    do something else\n"
+        )
+
+        expected = dedent("""
+            class Wibble():
+                def foo(self):
+                    # comment 1
+                    do something
+                    # comment 2
+                    time.sleep(2)
+                    do something else
+                    and keep going
+            """).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
 
 class ChapterTestTest(ChapterTest):
 
