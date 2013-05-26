@@ -593,6 +593,10 @@ class ChapterTest(unittest.TestCase):
             print "DIFF"
             self.check_diff_or_status(self.pos)
             self.pos += 2
+        elif listing.is_git_status():
+            print "STATUS"
+            self.check_diff_or_status(self.pos)
+            self.pos += 2
         elif listing.is_git_commit():
             print "COMMIT"
             self.check_commit(self.pos)
@@ -602,6 +606,16 @@ class ChapterTest(unittest.TestCase):
             print "CODE"
             self.write_to_file(listing)
             self.pos += 1
+
+        elif type(listing) == Output:
+            test_run = self.run_command(Command("python manage.py test lists"))
+            if 'OK' in  test_run:
+                test_run = self.run_command(Command("python functional_tests.py"))
+            self.assert_console_output_correct(test_run, listing)
+            self.pos += 1
+
+        else:
+            self.fail('not implemented for ' + listing)
 
 
 
