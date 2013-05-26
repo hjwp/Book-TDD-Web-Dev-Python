@@ -288,6 +288,8 @@ class ChapterTest(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.mkdtemp()
         self.processes = []
+        self.pos = 0
+        self.dev_server_running = False
 
 
     def tearDown(self):
@@ -506,6 +508,13 @@ class ChapterTest(unittest.TestCase):
         self.assert_console_output_correct(test_run, self.listings[pos])
 
 
+    def run_test_and_check_result(self):
+        self.assertIn('test', self.listings[self.pos])
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        test_run = self.run_command(self.listings[self.pos])
+        self.assert_console_output_correct(test_run, self.listings[self.pos + 1])
+
+
     def check_commit(self, pos):
         commit = self.run_command(self.listings[pos])
         self.assertIn('insertions', commit)
@@ -523,12 +532,61 @@ class ChapterTest(unittest.TestCase):
         )
         for expected_file in LIKELY_FILES:
             if expected_file in git_output:
-                self.assertIn(expected_file, self.listings[pos + 1])
+                comment = self.listings[pos + 1]
+                if not expected_file in comment:
+                    self.fail(
+                        "could not find %s in comment %r given git output\n%s" % (
+                            expected_file, comment, git_output)
+                    )
                 self.listings[pos + 1].was_checked = True
 
 
     def check_git_diff_and_commit(self, pos):
         self.check_diff_or_status(pos)
         self.check_commit(pos + 2)
+
+
+    def start_dev_server(self):
+        self.run_command(Command('python manage.py runserver'))
+        self.dev_server_running = True
+
+
+    def is_test(self, pos):
+        listing = self.listings[self.pos]
+        return type(listing) == Command and 'test' in listing
+
+
+    def is_git_diff(self, pos):
+        listing = self.listings[self.pos]
+        return type(listing) == Command and 'git diff' in listing
+
+    def is_git_status(self, pos):
+        listing = self.listings[self.pos]
+        return type(listing) == Command and 'git status' in listing
+
+    def is_git_commit(self, pos):
+        listing = self.listings[self.pos]
+        return type(listing) == Command and 'git commit' in listing
+
+    def recognise_listing_and_process_it(self):
+        listing = self.listings[self.pos]
+        if self.is_test(listing):
+            print "TEST RUN"
+            self.run_test_and_check_result()
+            self.pos += 2
+        elif self.is_git_diff(listing):
+            print "DIFF"
+            self.check_diff_or_status(self.pos)
+            self.pos += 2
+        elif self.is_git_commit(listing):
+            print "COMMIT"
+            self.check_commit(self.pos)
+            self.pos += 1
+
+        elif type(listing) == CodeListing:
+            print "CODE"
+            self.write_to_file(listing)
+            self.pos += 1
+
 
 

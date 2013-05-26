@@ -24,9 +24,12 @@ class Chapter4Test(ChapterTest):
 
         self.start_with_checkout(4)
 
-        self.run_command(Command('python manage.py runserver'))
-        ft_run = self.run_command(self.listings[0])
-        self.assert_console_output_correct(ft_run, self.listings[1])
+        #self.run_command(Command('python manage.py runserver'))
+        self.start_dev_server()
+
+        #ft_run = self.run_command(self.listings[0])
+        #self.assert_console_output_correct(ft_run, self.listings[1])
+        self.recognise_listing_and_process_it()
 
         self.check_test_code_cycle(2)
 
