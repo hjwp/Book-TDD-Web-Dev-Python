@@ -20,6 +20,15 @@ class CodeListing(object):
         self.contents = contents
         self.was_written = False
 
+    def is_git_diff(self):
+        return False
+    def is_git_status(self):
+        return False
+    def is_git_commit(self):
+        return False
+    def is_test(self):
+        return False
+
 
 
 class Command(unicode):
@@ -27,12 +36,35 @@ class Command(unicode):
         self.was_run = False
         unicode.__init__(a_string)
 
+    def is_git_diff(self):
+        return 'git diff' in self
+
+    def is_git_status(self):
+        return 'git status' in self
+
+    def is_git_commit(self):
+        return 'git commit' in self
+
+    def is_test(self):
+        return self.startswith('python') and 'test' in self
+
+
+
 
 
 class Output(unicode):
     def __init__(self, a_string):
         self.was_checked = False
         unicode.__init__(a_string)
+
+    def is_git_diff(self):
+        return False
+    def is_git_status(self):
+        return False
+    def is_git_commit(self):
+        return False
+    def is_test(self):
+        return False
 
 
 
@@ -551,34 +583,17 @@ class ChapterTest(unittest.TestCase):
         self.dev_server_running = True
 
 
-    def is_test(self, pos):
-        listing = self.listings[self.pos]
-        return type(listing) == Command and 'test' in listing
-
-
-    def is_git_diff(self, pos):
-        listing = self.listings[self.pos]
-        return type(listing) == Command and 'git diff' in listing
-
-    def is_git_status(self, pos):
-        listing = self.listings[self.pos]
-        return type(listing) == Command and 'git status' in listing
-
-    def is_git_commit(self, pos):
-        listing = self.listings[self.pos]
-        return type(listing) == Command and 'git commit' in listing
-
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
-        if self.is_test(listing):
+        if listing.is_test():
             print "TEST RUN"
             self.run_test_and_check_result()
             self.pos += 2
-        elif self.is_git_diff(listing):
+        elif listing.is_git_diff():
             print "DIFF"
             self.check_diff_or_status(self.pos)
             self.pos += 2
-        elif self.is_git_commit(listing):
+        elif listing.is_git_commit():
             print "COMMIT"
             self.check_commit(self.pos)
             self.pos += 1

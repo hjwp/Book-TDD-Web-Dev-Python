@@ -29,11 +29,10 @@ class Chapter4Test(ChapterTest):
 
         #ft_run = self.run_command(self.listings[0])
         #self.assert_console_output_correct(ft_run, self.listings[1])
-        self.recognise_listing_and_process_it()
-
-        self.check_test_code_cycle(2)
-
-        self.check_git_diff_and_commit(5)
+        #self.check_test_code_cycle(2)
+        #self.check_git_diff_and_commit(5)
+        while self.pos < 8:
+            self.recognise_listing_and_process_it()
 
         self.assertIn('wibble', self.listings[8])
         self.listings[8].was_checked = True
