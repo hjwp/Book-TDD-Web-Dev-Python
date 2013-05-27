@@ -169,10 +169,18 @@ FAILED (failures=2)
 Destroying test database for alias 'default'...
 ----
 
-You can see that both tests are failing, as expected, since I haven't actually
-set up my staging site yet. In fact, you can see from the first traceback that
-the test is actually ending up on the home page of my domain registrar.
+You can see that both tests are failing, as expected, since I haven't
+actually set up my staging site yet. In fact, you can see from the
+first traceback that the test is actually ending up on the home page of
+my domain registrar.
 
+Let's commit.
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* # should show to functional_tests.py
+$ *git commit -am"Hack FT runner to be able to test staging"
+----
 
 NOTE: We're going to need a couple of domain names at this point in the book -
 they can both be subdomains of a single domain.  I'm going to use
@@ -183,8 +191,6 @@ this is something I really want you to 'actually' do.  If you've never
 registered a domain before, just pick any old registrar and buy a cheap one
 - it should only cost you $5! And I promise seeing your site on a "real"
 web site will be a thrill :-)
-
-TODO: commit
 
 
 Manually provisioning a server to host our site
@@ -201,6 +207,13 @@ complex sites though, or major changes to an existing site.
 For a simple site like ours, it makes sense to separate the two tasks.  And, 
 although we eventually want both to be completely automated, we can probably
 live with a manual provisioning system for now.
+
+As you go through this chapter, you should be aware that provisioning is
+something that varies a lot, and that as a result there are few universal
+best practices for deployment.  So, rather than trying to remember the 
+specifics of what I'm doing here, you should be trying to understand the
+rationale, so that you can apply the same kind of thinking in the
+specific future circumstances you encounter.
 
 
 Choosing where to host our site
@@ -222,8 +235,9 @@ others... And any one of them might change their process radically, or simply
 go out of business by the time you get to read this book.
 
 Instead, we'll learn just a tiny bit of good old-fashioned server admin,
-including SSH and Apache.  They're unlikely to ever go away, and knowing a bit
-about them will get you some respect from all the grizzled dinosaurs out there.
+including SSH and web server config.  They're unlikely to ever go away, and
+knowing a bit about them will get you some respect from all the grizzled
+dinosaurs out there.
 
 Spinning up a server
 ^^^^^^^^^^^^^^^^^^^^
@@ -234,7 +248,7 @@ Raspberry Pi in a cupboard behind the stairs, I'm going to assume you've
 managed to start up a server with some flavor of Linux on it, that it's on the
 Internet, and that you can SSH into it.  I'd recommend Ubuntu as a distro,
 because it has Python 2.7, and it has some specific ways of configuring 
-Apache which I'm going to make use of below.  If you know what you're doing,
+Nginx which I'm going to make use of below.  If you know what you're doing,
 you can probably get away with using something else.
 
 
@@ -281,22 +295,35 @@ Configuring domains for staging and live
 
 Next, we don't want to be messing about with IP addresses all the time, so we
 should point our staging and live domains to the server. At my registrar, the
-control screens looked a bit like this -- pointing a domain at a specific IP
-address is called an "A-Record" in the DNS system.  All registrars are slightly
-different, but a bit of clicking around should get you to yours...
+control screens looked a bit like this:
 
 .Domain setup
 image::images/domain_setup.png[Registrar control screens for two domains]
 
+In the DNS system, pointing a domain at a specific IP address is called an
+"A-Record".  All registrars are slightly different, but a bit of clicking around
+should get you to the right screen in yours...
+
 To check this works, you can visit each domain in turn and check that you now
 see the Nginx "welcome" page.
 
-The final step is to get a copy of the staging site up and running, just
-to check whether we can get Nginx and Django to talk to each other.
 
-We then make a directory for the source to live in.  Let's assume we have
-a home folder at '/home/harry' (this is likely to be the case on any
-shared hosting system). I'm going to set up my sites like this:
+Deploying our code manually
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The next step is to get a copy of the staging site up and running, just
+to check whether we can get Nginx and Django to talk to each other.  As
+we do so, we're starting to do some of what you'd call "deployment", as
+well as provisioning, so we should be thinking about how we can automate the
+process, as we go.
+
+NOTE: One way of telling the difference between provisioning and deployment is
+that you tend to need root permissions for the former, but we don't for the
+latter.
+
+We need a directory for the source to live in.  Let's assume we have a home
+folder at '/home/harry' (this is likely to be the case on any shared hosting
+system). I'm going to set up my sites like this:
 
 ----
 /home/harry
@@ -329,6 +356,10 @@ of the site to the next, the database will stay the same.  The static folder
 is in the same relative location, '../static', that we set up at the end of
 the last chapter. Finally, the virtualenv gets its own subfolder too.  What's a
 virtualenv, I hear you ask? We'll find out shortly.
+
+
+Adjusting the database location
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 First let's change the location of our database in 'settings.py', and make sure
 we can get that working on our local PC.  I often end up defining a variable
@@ -364,9 +395,13 @@ $ ls ../database/
 database.sqlite
 ----
 
-That seems to work.
+That seems to work.  Let's commit it.
 
-TODO: commit
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* # should show changes in settings.py
+$ *git commit -am"move sqlite database outside of main source tree"
+----
 
 To get our code onto the server, we'll use git and go via one of the code
 sharing sites.  If you haven't already, push your code up to GitHub, BitBucket
@@ -397,11 +432,16 @@ is a smoke test, to see if all the moving parts are connected:
         from django.core.management import execute_from_command_line
     ImportError: No module named django.core.management
 
-Ah. Django isn't installed on the server.  We could install it at this point,
-but that would leave us with a problem:  if we ever wanted to upgrade Django
-when a new version comes out, it would be impossible to test the staging site
-with a different version from live.  Similarly, if there are other users on 
-the server, we'd all be forced to use the same version of Django.
+Ah. Django isn't installed on the server. 
+
+Creating a virtualenv
+~~~~~~~~~~~~~~~~~~~~~
+
+We could install it at this point, but that would leave us with a problem:  if
+we ever wanted to upgrade Django when a new version comes out, it would be
+impossible to test the staging site with a different version from live.
+Similarly, if there are other users on the server, we'd all be forced to use
+the same version of Django.
 
 The solution is a "virtualenv" -- a neat way of having different versions of
 python packages installed in different places, in their own "virtual
@@ -414,8 +454,7 @@ Let's try it out on own PC first:
 $ *pip install virtualenv*
 ----
 
-Let's get a virtualenv setup on our own PC first, as an experiment.  We'll 
-follow the same folder structure as we're planning for the server:
+We'll follow the same folder structure as we're planning for the server:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -465,9 +504,13 @@ And we can pull those changes down to the server
     0 errors found
     [...]
 
-That looks like it worked.  Let's now go and edit our nginx config to 
-tell it to send requests for our staging site along to Django. A minimal
-config looks like this:
+That looks like it worked.  
+
+Simple nginx configuration
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Let's now go and edit our nginx config to tell it to send requests for our
+staging site along to Django. A minimal config looks like this:
 
 
 [role="sourcecode"]
@@ -487,6 +530,10 @@ server {
     }
 }
 ----
+
+////
+TODO: log files
+////
 
 I saved this to a file called 'nginx-staging.conf' inside 'superlists', 
 and then added it to the enabled sites for the server by creating
@@ -529,13 +576,8 @@ as soon as they try and submit a new item, because we haven't set up the
 database. Let's do those two things now
 
 
-Configuring static files and the database
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-From this point we start to move from the "provisioning" area into the
-"deployment" area -- one way of telling the difference is that you tend to 
-need root permissions for the former, but we don't for the latter.
+Deploying static files and the database
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 We run a `collectstatic` and a `syncdb` to set up static files and the
 database. The `--noinput` suppresses the two little "are you sure" prompts:
