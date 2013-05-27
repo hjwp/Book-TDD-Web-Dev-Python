@@ -287,7 +287,14 @@ name","selector":"input"}' ; Stacktrace: [...]
 AssertionError: 'To-Do' not found in u'Welcome to nginx!'
 ----
 
-Progress!
+Progress!  
+
+While we've got root access, let's make sure the server has the three other
+pieces of software we need at the system level: Git, pip and virtualenv
+
+    apt-get install git
+    apt-get install python-pip
+    pip install virtualenv
 
 
 Configuring domains for staging and live
@@ -406,9 +413,7 @@ $ *git commit -am"move sqlite database outside of main source tree"
 To get our code onto the server, we'll use git and go via one of the code
 sharing sites.  If you haven't already, push your code up to GitHub, BitBucket
 or similar.  They all have excellent instructions for beginners on how to
-do that.  We'll need to make sure Git is installed on the server:
-
-    apt-get install git
+do that.  
 
 Here's some bash commands that will set this all up. If you're not familiar
 with it, note the `export` command which lets me set up a "local variable"
@@ -435,7 +440,7 @@ is a smoke test, to see if all the moving parts are connected:
 Ah. Django isn't installed on the server. 
 
 Creating a virtualenv
-~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^
 
 We could install it at this point, but that would leave us with a problem:  if
 we ever wanted to upgrade Django when a new version comes out, it would be
@@ -480,20 +485,20 @@ and add that to our repository:
 ----
 (virtualenv)$ *pip freeze > requirements.txt*
 (virtualenv)$ *git add requirements.txt*
-(virtualenv)$ *git commit -m"Add requirements.txt for virtualenv"*
+(virtualenv)$ *deactivate*
+$ *git commit -m"Add requirements.txt for virtualenv"*
 ----
 
 Next we do a `git push` to send our updates up to our code-sharing site
 
 [subs="specialcharacters,quotes"]
 ----
-(virtualenv)$ *git push* 
+$ *git push* 
 ----
 
 And we can pull those changes down to the server
 
     $ git pull
-    $ sudo pip install virtualenv
     $ virtualenv ../virtualenv/
     (virtualenv)$ source ../virtualenv/bin/activate
     (virtualenv)$ pip install -r requirements.txt 
@@ -514,8 +519,8 @@ staging site along to Django. A minimal config looks like this:
 
 
 [role="sourcecode"]
-.lists/tests.py
-[source,conf]
+.superlists/nginx-staging.conf
+[source,nginx]
 ----
 server {
     listen 80;
@@ -531,6 +536,11 @@ server {
 }
 ----
 
+This config says it will only work for our staging domain, it points the web
+server to the folder where our static files are, and then it says to "proxy"
+all other requests to the local port 8000 where it expects to find Django
+waiting to respond to requests.
+
 ////
 TODO: log files
 ////
@@ -539,24 +549,20 @@ I saved this to a file called 'nginx-staging.conf' inside 'superlists',
 and then added it to the enabled sites for the server by creating
 a symlink to it:
 
-   ln -s /home/harry/sites/$SITENAME/source/superlists/nginx-staging.conf /etc/nginx/sites-enabled/$SITENAME
+   (virtualenv)$ ln -s /home/harry/sites/$SITENAME/source/superlists/nginx-staging.conf /etc/nginx/sites-enabled/$SITENAME
 
 NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
 `server_names_hash_bucket_size 64;` to get my long domain name to work...
 
 And now to test it:
 
-    service nginx reload
-    python manage.py runserver
+    (virtualenv)$ service nginx reload
+    (virtualenv)$ python manage.py runserver
 
 That gets us as far as seeing the site, but static files aren't working:
 
 .Staging site is up!
 image::images/staging_is_up.png[Our staging version is live... but looks ugly again]
-
-NOTE: The live domain should still show "Welcome to nginx". It's worth checking
-this, to be sure that the configuration for live and staging are properly
-separate.
 
 Let's see what our functional tests say:
 
@@ -606,5 +612,64 @@ Ran 2 tests in 10.718s
 OK
 ----
 
-Hooray!
+Hooray!  We're reassured that the piping works, but we really can't be
+using the Django dev. server in production.  We also can't be relying
+on manually starting it up with `runserver`.
+
+Switching to Gunicorn
+^^^^^^^^^^^^^^^^^^^^^
+
+Do you know why the Django mascot is a pony?  The story is that Django
+comes with so many things you want -- an ORM, all sorts of middleware,
+the admin site -- "what else do you want, a pony?". Well, Gunicorn stands
+for "Green Unicorn", which I guess is what you'd want next if you already
+had a pony...
+
+    (virtualenv)$ pip install gunicorn
+
+Gunicorn will need to know a path to a WSGI server, which is usually
+a function called `application`.  Django provides one at 'superlists/wsgi.py'.
+We can try that out, and check that all the virtualenv magic works too, by
+deactivating the virtualenv and seeing if we can still serve our app using
+the `gunicorn` executable that pip just put in there for us:
+
+
+    (virtualenv)$ deactivate
+    $ ../virtualenv/bin/gunicorn superlists.wsgi:application
+    2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.17.4
+    2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
+    [...]
+
+That looks good!  
+
+
+Using upstart to make sure gunicorn starts on boot
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Our final step is to make sure that the server always starts
+up gunicorn on boot.  On Ubuntu, the way to do this is using upstart.
+
+[role="sourcecode"]
+.superlists/gunicorn-upstart-staging.conf
+[source,upstart]
+----
+description "Gunicorn server for book-example-staging.obeythetestinggoat.com"
+
+start on net-device-up
+stop on shutdown
+
+respawn
+
+chdir /home/harry/sites/book-example-staging.obeythetestinggoat.com/source
+exec ../virtualenv/bin/gunicorn superlists.wsgi:application
+----
+
+I copied this file into '/etc/init' on the server, calling it
+'/etc/init/gunicorn_staging.conf'
+
+Now we can start gunicorn with
+
+    sudo service gunicorn-staging start
+
+And you can even test that the site comes back up if you reboot the server.
 
