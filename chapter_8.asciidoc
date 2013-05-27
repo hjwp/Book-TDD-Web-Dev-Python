@@ -260,6 +260,21 @@ then see the default Nginx "Hello World" screen:
 image::images/nginx_it_works.png[The default "Welcome to nginx!" page]
 
 
+And in fact we can re-run our functional tests and see that their failure
+messages have changed slightly
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-staging.obeythetestinggoat.com*]
+[...]
+NoSuchElementException: Message: u'Unable to locate element: {"method":"tag
+name","selector":"input"}' ; Stacktrace: [...]
+[...]
+AssertionError: 'To-Do' not found in u'Welcome to nginx!'
+----
+
+Progress!
+
 
 Configuring domains for staging and live
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -311,9 +326,47 @@ Each site (staging, live, or any other website) has its own folder. Within that
 we have a separate folder for the source code, the database, and the static
 files.  The logic is that, while the source code might change from one version
 of the site to the next, the database will stay the same.  The static folder
-will also be outside the repo, and it's where we'll aim the `collectstatic`
-code at. Finally, the virtualenv gets its own subfolder too.  What's a
+is in the same relative location, '../static', that we set up at the end of
+the last chapter. Finally, the virtualenv gets its own subfolder too.  What's a
 virtualenv, I hear you ask? We'll find out shortly.
+
+First let's change the location of our database in 'settings.py', and make sure
+we can get that working on our local PC.  I often end up defining a variable
+called `PROJECT_ROOT` in 'settings.py' sooner or later:
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+
+PROJECT_ROOT = path.join(path.dirname(__file__), '..')
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': path.abspath(path.join(PROJECT_ROOT, '../database/database.sqlite')),
+        'USER': '',                      # Not used with sqlite3.
+[...]
+
+# Example: "/home/media/media.lawrence.com/static/"
+STATIC_ROOT = path.abspath(path.join(PROJECT_ROOT, '../static'))
+----
+
+Now let's try it locally:
+
+[subs="specialcharacters,quotes"]
+----
+$ *mkdir ../database*
+$ *python manage.py syncdb*
+Creating tables ...
+[...]
+$ ls ../database/
+database.sqlite
+----
+
+That seems to work.
+
+TODO: commit
 
 To get our code onto the server, we'll use git and go via one of the code
 sharing sites.  If you haven't already, push your code up to GitHub, BitBucket
@@ -322,8 +375,6 @@ do that.  We'll need to make sure Git is installed on the server:
 
     apt-get install git
 
-(You may need to do an `apt-get install git` if git isn't installed on 
-the server)
 Here's some bash commands that will set this all up. If you're not familiar
 with it, note the `export` command which lets me set up a "local variable"
 in bash:
@@ -356,14 +407,12 @@ The solution is a "virtualenv" -- a neat way of having different versions of
 python packages installed in different places, in their own "virtual
 environments".
 
-You'll need to run this on the server:
+Let's try it out on own PC first:
 
-    apt-get install python-pip
-    pip install virtualenv
-
-And also on your own machine:
-
-    pip install virtualenv
+[subs="specialcharacters,quotes"]
+----
+$ *pip install virtualenv*
+----
 
 Let's get a virtualenv setup on our own PC first, as an experiment.  We'll 
 follow the same folder structure as we're planning for the server:
@@ -395,121 +444,125 @@ and add that to our repository:
 (virtualenv)$ *git commit -m"Add requirements.txt for virtualenv"*
 ----
 
-While we're at it, 
+Next we do a `git push` to send our updates up to our code-sharing site
 
-
+[subs="specialcharacters,quotes"]
+----
 (virtualenv)$ *git push* 
+----
 
-Next we need to set up an Apache "virtual host" for our staging site.  We'll
-leave the default one in place, and use it as a basis for our config.
+And we can pull those changes down to the server
 
-   cp /etc/apache2/sites-available/default /etc/apache2/sites-available/$SITENAME
-   vi /etc/apache2/sites-available/$SITENAME
+    $ git pull
+    $ sudo pip install virtualenv
+    $ virtualenv ../virtualenv/
+    (virtualenv)$ source ../virtualenv/bin/activate
+    (virtualenv)$ pip install -r requirements.txt 
+    Downloading/unpacking Django==1.5.1 (from -r requirements.txt (line 1))
+    [...]
+    (virtualenv)$ python manage.py runserver
+    Validating models...
+    0 errors found
+    [...]
 
-(On Debian-based distros, configuration is kept in several files in
-'/etc/apache2', on other distros you might find it's in a single file called
-'httpd.conf'. If you've decided to follow along on another distro, you can
-adapt these instructions by using an `Include` directive from 'httpd.conf' to
-pull in config from other files)
-
-I then cribbed instructions from 
-
-https://httpd.apache.org/docs/2.2/vhosts/name-based.html[the Apache
-Documentation on Name-based VirtualHosts], 
-https://code.google.com/p/modwsgi/wiki/QuickConfigurationGuide#Delegation_To_Daemon_Process[the
-mod_wsgi documentation] and
-https://docs.djangoproject.com/en/1.5/howto/deployment/wsgi/modwsgi/[the Django
-documentation]
-
-It took me a few goes!  It's been a while since I've used Apache.  By the end I
-had a working config that looked like this:
+That looks like it worked.  Let's now go and edit our nginx config to 
+tell it to send requests for our staging site along to Django. A minimal
+config looks like this:
 
 
 [role="sourcecode"]
 .lists/tests.py
 [source,conf]
 ----
-<VirtualHost *:80>
-    ServerName book-example-staging.obeythetestinggoat.com
+server {
+    listen 80;
+    server_name book-example-staging.obeythetestinggoat.com;
 
-    WSGIDaemonProcess book-example-staging.obeythetestinggoat.com python-path=/home/harry/sites/book-example-staging.obeythetestinggoat.com/source:/home/harry/sites/book-example-staging.obeythetestinggoat.com/virtualenv/lib/python2.7/site-packages
-    WSGIProcessGroup book-example-staging.obeythetestinggoat.com
-    WSGIScriptAlias / /home/harry/sites/book-example-staging.obeythetestinggoat.com/source/superlists/wsgi.py
+    location /static {
+        alias /home/harry/sites/$server_name/static;
+    }
 
-    Alias /static/ /home/harry/sites/book-example-staging.obeythetestinggoat.com/static
-
-    <Directory /home/harry/sites/book-example-staging.obeythetestinggoat.com/source/superlists>
-        <Files wsgi.py>
-            Order allow,deny
-            Allow from all
-        </Files>
-    </Directory>
-
-</VirtualHost>
+    location / {
+        proxy_pass http://localhost:8000;
+    }
+}
 ----
 
-A lot of this stuff has been quite specific to Ubuntu and Apache -- to the
-specific provisioning solution I've chosen.  On almost any hosting provider,
-you're going to have to identify:
+I saved this to a file called 'nginx-staging.conf' inside 'superlists', 
+and then added it to the enabled sites for the server by creating
+a symlink to it:
 
-- where your static files are
-- where your WSGI file is
-- where your database is
-- where your virtualenv is
+   ln -s /home/harry/sites/$SITENAME/source/superlists/nginx-staging.conf /etc/nginx/sites-enabled/$SITENAME
 
-The Apache setup on this machine uses a folder called 'sites-available' to
-store config files in, but they're only actually made "active" by pointing a
-symlink to them from 'sites-enabled':
+NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
+`server_names_hash_bucket_size 64;` to get my long domain name to work...
 
-   cd /etc/apache2/sites-enabled/
-   ln -s ../sites-available/$SITENAME 001-$SITENAME
+And now to test it:
 
-The `001` is important -- Apache cares about the order it finds things in.  At
-the moment there's still a link in there called '000-default' which points to
-the default "it worked" page.  I want to keep that for now.
+    service nginx reload
+    python manage.py runserver
 
-    root@obeyttg1:/etc/apache2/sites-enabled# ls -l
-    total 4
-    lrwxrwxrwx 1 root root 26 May 19 20:47 000-default -> ../sites-available/default
-    lrwxrwxrwx 1 root root 62 May 19 21:14 001-book-example-staging.obeythetestinggoat.com -> ../sites-available/book-example-staging.obeythetestinggoat.com
-
-At this stage, I'm hoping to see something that looks a bit like our site being
-served on the staging domain:
-
-    service apache restart
-
+That gets us as far as seeing the site, but static files aren't working:
 
 .Staging site is up!
 image::images/staging_is_up.png[Our staging version is live... but looks ugly again]
 
-NOTE: The live domain should still show "It worked". It's worth checking this,
-to be sure that the configuration for live and staging are properly separate.
+NOTE: The live domain should still show "Welcome to nginx". It's worth checking
+this, to be sure that the configuration for live and staging are properly
+separate.
 
-Well, it's up but the CSS clearly hasn't worked. And also, if we try to submit
-a new list item, we'll see a database error.
+Let's see what our functional tests say:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-staging.obeythetestinggoat.com*]
+[...]
+NoSuchElementException: Message: u'Unable to locate element:
+{"method":"id","selector":"id_list_table"}' ; [...]
+[...]
+AssertionError: 125 != 497 within 3 delta
+FAILED (failures=1, errors=1)
+----
+
+The tests are telling us that our CSS isn't working, and are also failing
+as soon as they try and submit a new item, because we haven't set up the 
+database. Let's do those two things now
+
 
 Configuring static files and the database
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 
 From this point we start to move from the "provisioning" area into the
 "deployment" area -- one way of telling the difference is that you tend to 
 need root permissions for the former, but we don't for the latter.
 
-Let's adjust our site to use the static folder we've defined, so that we can
+We run a `collectstatic` and a `syncdb` to set up static files and the
+database. The `--noinput` suppresses the two little "are you sure" prompts:
 
 ----
-echo "STATIC_ROOT = '/home/harry/sites/"$SITENAME"/static'" >> /home/harry/sites/$SITENAME/source/superlists/settings.py
+(virtualenv)$ python manage.py collectstatic --noinput
+(virtualenv)$ python manage.py syncdb --noinput
+(virtualenv)$ ls ../static/
+base.css  bootstrap
+(virtualenv)$ ls ../database/
+database.sqlite
+(virtualenv)$ python manage.py runserver
 ----
 
-Why use `echo >>` instead of just editing the file manually?  It will be easier
-to automate later on.  The 'settings.py' on the server will end up having two
-lines defining `STATIC_ROOT`, but the one we've just added to the end will take
-priority.
+Now if you have a look at the site, things are looking much healthier. We
+can re-run our FTs:
 
-Similarly, for the database, we use:
-
+[subs="specialcharacters,macros"]
 ----
-echo "DATABASES['default']['NAME'] = '/home/harry/sites/"$SITENAME"/database/database.sqlite'" >> /home/harry/sites/$SITENAME/source/superlists/settings.py
+$ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-staging.obeythetestinggoat.com*]
+Creating test database for alias 'default'...
+..
+ ---------------------------------------------------------------------
+Ran 2 tests in 10.718s
+
+OK
 ----
 
+Hooray!
 
