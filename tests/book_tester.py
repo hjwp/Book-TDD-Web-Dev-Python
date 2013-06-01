@@ -146,7 +146,13 @@ def get_indent(line):
 
 
 def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
-    indented_new_lines = [get_indent(old_lines[start_pos]) + l for l in new_lines]
+    old_indent = get_indent(old_lines[start_pos])
+    new_indent = get_indent(new_lines[0])
+    if new_indent:
+        missing_indent = old_indent[:-len(new_indent)]
+    else:
+        missing_indent = old_indent
+    indented_new_lines = [missing_indent + l for l in new_lines]
     return '\n'.join(
         old_lines[:start_pos] +
         indented_new_lines +
@@ -194,7 +200,7 @@ def _replace_single_line(old_lines, new_lines):
 def _find_start_line(old_lines, new_lines):
     stripped_old_lines = [l.strip() for l in old_lines]
     try:
-        return stripped_old_lines.index(new_lines[0])
+        return stripped_old_lines.index(new_lines[0].strip())
     except ValueError:
         return None
 
@@ -445,6 +451,7 @@ class ChapterTest(unittest.TestCase):
                 self.assertIn(raise_line, actual_text)
                 actual_text = actual_text.split(raise_line)[-1]
                 expected_text = expected_text.split(raise_line)[-1].strip()
+
             elif 'self.assert' in expected_text:
                 # long traceback, only care about output from assert onwards
                 assert_line = [
@@ -476,12 +483,22 @@ class ChapterTest(unittest.TestCase):
             expected.was_checked = True
             return
 
-
         if expected_text.endswith("[...]"):
             expected_lines = expected_text.split('\n')[:-1]
             expected_text = '\n'.join(l.strip() for l in expected_lines)
             actual_lines = actual_text.split('\n')[:len(expected_lines)]
             actual_text = '\n'.join(l.strip() for l in actual_lines)
+
+        elif "[...]" in expected_text[1:]:
+            expected_lines = expected_text.split('\n')
+            split_line = [l for l in expected_lines if "[..." in l][0]
+            split_line_pos = expected_lines.index(split_line)
+            for line_before in expected_lines[:split_line_pos]:
+                self.assertIn(line_before, actual_text)
+            for line_after in expected_lines[:split_line_pos]:
+                self.assertIn(line_after, actual_text)
+            expected.was_checked = True
+            return
 
         if "Creating test database for alias 'default'..." in actual_text:
             actual_lines = actual_text.split('\n')
@@ -489,9 +506,9 @@ class ChapterTest(unittest.TestCase):
             actual_lines.insert(0, "Creating test database for alias 'default'...")
             actual_text = '\n'.join(actual_lines)
 
-            actual_text = wrap_long_lines(actual_text)
+        actual_text = wrap_long_lines(actual_text)
 
-            self.assertMultiLineEqual(actual_text, expected_text)
+        self.assertMultiLineEqual(actual_text, expected_text)
         expected.was_checked = True
 
 

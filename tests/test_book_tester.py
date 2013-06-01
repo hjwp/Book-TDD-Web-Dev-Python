@@ -720,18 +720,43 @@ class WriteToFileTest(unittest.TestCase):
             """).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
 
+    def test_double_indents_in_new_dont_confuse_things(self):
+        old = dedent("""
+            class Wibble():
+                def foo(self):
+                    if something:
+                        do something
+                # end of class
+            """).lstrip()
+
+        new = dedent(
+            """
+                if something:
+                    do something else
+            # end of class
+            """)
+
+        expected = dedent("""
+            class Wibble():
+                def foo(self):
+                    if something:
+                        do something else
+                # end of class
+            """).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
 
 
-class ChapterTestTest(ChapterTest):
 
-    def test_assert_console_output_correct_simple_case(self):
+class AssertConsoleOutputCorrectTest(ChapterTest):
+
+    def test_simple_case(self):
         actual = 'foo'
         expected = Output('foo')
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_ignores_test_run_times_and_test_dashes(self):
+    def test_ignores_test_run_times_and_test_dashes(self):
         actual =dedent("""
             bla bla bla
 
@@ -750,7 +775,7 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_handles_elipsis(self):
+    def test_handles_elipsis(self):
         actual =dedent("""
             bla
             bla bla
@@ -767,7 +792,7 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_with_start_elipsis_and_OK(self):
+    def test_with_start_elipsis_and_OK(self):
         actual =dedent("""
             bla
 
@@ -785,7 +810,7 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_with_elipsis_finds_assertionerrors(self):
+    def test_with_elipsis_finds_assertionerrors(self):
         actual =dedent("""
             bla
             bla bla
@@ -805,7 +830,7 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_with_start_elipsis_and_end_longline_elipsis(self):
+    def test_with_start_elipsis_and_end_longline_elipsis(self):
         actual =dedent("""
             bla
             bla bla
@@ -825,7 +850,7 @@ class ChapterTestTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-    def test_assert_console_output_correct_with_start_elipsis_and_end_longline_elipsis_with_assertionerror(self):
+    def test_with_start_elipsis_and_end_longline_elipsis_with_assertionerror(self):
         actual =dedent("""
             bla
                 self.assertSomething(bla)
@@ -842,7 +867,8 @@ class ChapterTestTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-    def test_assert_console_output_correct_for_short_expected_with_trailing_elipsis(self):
+
+    def test_for_short_expected_with_trailing_elipsis(self):
         actual =dedent("""
             bla
             bla bla
@@ -859,7 +885,32 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_ignores_diff_indexes(self):
+    def test_with_middle_elipsis(self):
+        actual =dedent("""
+            bla
+            bla bla
+            ERROR: the first line
+
+            some more blurg
+                something else
+                an indented penultimate line
+            KeyError: something
+            more stuff happens later
+            """
+            ).strip()
+        expected = Output(dedent("""
+            ERROR: the first line
+            [...]
+                an indented penultimate line
+            KeyError: something
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_ignores_diff_indexes(self):
         actual =dedent("""
             diff --git a/functional_tests.py b/functional_tests.py
             index d333591..1f55409 100644
@@ -876,7 +927,7 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_ignores_git_commit_numers_in_logs(self):
+    def test_ignores_git_commit_numers_in_logs(self):
         actual =dedent("""
             ea82222 Basic view now returns minimal HTML
             7159049 First unit test and url mapping, dummy view
@@ -906,7 +957,7 @@ class ChapterTestTest(ChapterTest):
             self.assert_console_output_correct(actual, expected)
 
 
-    def test_assert_console_output_correct_fixes_stdout_stderr_for_creating_db(self):
+    def test_fixes_stdout_stderr_for_creating_db(self):
         actual = dedent("""
             ======================================================================
             FAIL: test_basic_addition (lists.tests.SimpleTest)
@@ -939,7 +990,7 @@ class ChapterTestTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-    def test_assert_console_output_correct_handles_long_lines(self):
+    def test_handles_long_lines(self):
         actual = dedent("""
             A normal line
                 An indented line, that's longer than 80 chars. it goes on for a while you see.
@@ -958,7 +1009,7 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_for_minimal_expected(self):
+    def test_for_minimal_expected(self):
         actual = dedent("""
             Creating test database for alias 'default'...
             E
@@ -991,7 +1042,7 @@ class ChapterTestTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def test_assert_console_output_correct_for_long_traceback(self):
+    def test_for_long_traceback(self):
         with open(os.path.join(os.path.dirname(__file__), "actual_manage_py_test.output")) as f:
             actual = f.read().strip()
         expected = Output(dedent("""
