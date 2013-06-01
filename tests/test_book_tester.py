@@ -804,6 +804,7 @@ class ChapterTestTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+
     def test_assert_console_output_correct_with_start_elipsis_and_end_longline_elipsis(self):
         actual =dedent("""
             bla
@@ -824,6 +825,22 @@ class ChapterTestTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+    def test_assert_console_output_correct_with_start_elipsis_and_end_longline_elipsis_with_assertionerror(self):
+        actual =dedent("""
+            bla
+                self.assertSomething(bla)
+            AssertionError: a really long exception, which will eventually wrap into multiple lines, so much so that it gets boring after a while...
+
+            and then there's some stuff afterwards we don't care about
+            """).strip()
+        expected = Output(dedent("""
+            [...]
+            AssertionError: a really long exception, which will eventually [...]
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
 
     def test_assert_console_output_correct_for_short_expected_with_trailing_elipsis(self):
         actual =dedent("""

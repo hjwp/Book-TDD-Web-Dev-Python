@@ -26,6 +26,7 @@ class Chapter5Test(ChapterTest):
         self.start_dev_server()
 
         while self.pos < 100:
+            print self.pos
             self.recognise_listing_and_process_it()
 
         self.check_final_diff(5)

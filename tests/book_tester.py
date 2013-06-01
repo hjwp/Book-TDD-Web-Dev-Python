@@ -455,7 +455,7 @@ class ChapterTest(unittest.TestCase):
                 expected_text = expected_text.split(assert_line)[-1].strip()
             else:
                 exception_line = re.search(
-                    r'^.+Exception:.+$', actual_text, re.MULTILINE
+                    r'^.+Exception:.+$|^AssertionError: .+$', actual_text, re.MULTILINE
                 )
                 if exception_line:
                     exception_line = exception_line.group(0)
