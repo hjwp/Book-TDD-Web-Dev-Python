@@ -103,7 +103,7 @@ def wrap_long_lines(text):
 def parse_listing(listing):
     if  'sourcecode' in listing.get('class').split():
         filename = listing.cssselect('.title')[0].text_content().strip()
-        contents = listing.cssselect('.content')[0].text_content().strip().replace('\r\n', '\n')
+        contents = listing.cssselect('.content')[0].text_content().replace('\r\n', '\n').strip('\n')
         return [CodeListing(filename, contents)]
 
     else:
