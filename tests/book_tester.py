@@ -544,9 +544,13 @@ class ChapterTest(unittest.TestCase):
         self.assert_console_output_correct(test_run, self.listings[pos])
 
 
+    def _strip_out_any_pycs(self):
+        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+
+
     def run_test_and_check_result(self):
         self.assertIn('test', self.listings[self.pos])
-        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        self._strip_out_any_pycs()
         test_run = self.run_command(self.listings[self.pos])
         self.assert_console_output_correct(test_run, self.listings[self.pos + 1])
 
@@ -612,8 +616,10 @@ class ChapterTest(unittest.TestCase):
             self.pos += 1
 
         elif type(listing) == Output:
+            self._strip_out_any_pycs()
             test_run = self.run_command(Command("python manage.py test lists"))
             if 'OK' in  test_run:
+                print 'unit tests pass, must be an FT:\n', test_run
                 test_run = self.run_command(Command("python functional_tests.py"))
             self.assert_console_output_correct(test_run, listing)
             self.pos += 1
