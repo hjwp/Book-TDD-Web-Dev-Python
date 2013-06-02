@@ -525,7 +525,7 @@ staging site along to Django. A minimal config looks like this:
 
 
 [role="sourcecode"]
-.superlists/nginx-staging.conf
+.nginx-staging.conf
 [source,nginx]
 ----
 server {
@@ -656,7 +656,7 @@ Our final step is to make sure that the server always starts
 up gunicorn on boot.  On Ubuntu, the way to do this is using upstart.
 
 [role="sourcecode"]
-.superlists/gunicorn-upstart-staging.conf
+.gunicorn-staging.conf
 [source,bash]
 ----
 description "Gunicorn server for book-example-staging.obeythetestinggoat.com"
@@ -671,7 +671,7 @@ exec ../virtualenv/bin/gunicorn superlists.wsgi:application
 ----
 
 I copied this file into '/etc/init' on the server, calling it
-'/etc/init/gunicorn_staging.conf'
+'/etc/init/gunicorn-staging.conf'
 
 Now we can start gunicorn with
 
@@ -708,19 +708,26 @@ Todos:
 Assuming we're not ready to entirely automate our provisioning process, how
 should we save the results of our investigation so far?  I would say that 
 the nginx and upstart config files should probably be saved for later, in
-a way that makes it easy to re-use them later.
+a way that makes it easy to re-use them later.  Let's save them in a new
+subfolder in our repo:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *mkdir deploy_tools*
+----
 
 
 [role="sourcecode"]
-.superlists/nginx.template.conf
+.deploy_tools/nginx.template.conf
 [source,nginx]
 ----
 server {
     listen 80;
-    server_name SITE_NAME;
+    server_name SITENAME;
 
     location /static {
-        alias /home/harry/sites/SITE_NAME/static;
+        alias /home/harry/sites/SITENAME/static;
     }
 
     location / {
@@ -732,31 +739,29 @@ server {
 TODO: switch to using unix sockets.
 
 [role="sourcecode"]
-.superlists/gunicorn-upstart.template.conf
+.deploy_tools/gunicorn-upstart.template.conf
 [source,bash]
 ----
-description "Gunicorn server for SITE_NAME"
+description "Gunicorn server for SITENAME"
 
 start on net-device-up
 stop on shutdown
 
 respawn
 
-chdir /home/harry/sites/SITE_NAME/source
+chdir /home/harry/sites/SITENAME/source
 exec ../virtualenv/bin/gunicorn superlists.wsgi:application
 ----
 
 Then it's easy for us to use those two files to generate
 a new site, by doing a find & replace on  `SITENAME`
 
-(TODO: commit)
-
 For the rest, just keeping a few notes is OK. Why not keep
 them in a file in the repo?
 
 
 [role="sourcecode"]
-.superlists/provisioning_notes.md
+.deploy_tools/provisioning_notes.md
 [source,rst]
 ----
 Provisioning a new site
@@ -777,10 +782,12 @@ eg, on Ubuntu:
 ## Nginx Virtual Host config
 
 * see nginx.template.conf
+* replace SITENAME with, eg, staging.my-domain.com
 
 ## Upstart Job
 
 * see gunicorn-upstart.template.conf
+* replace SITENAME with, eg, staging.my-domain.com
 
 ## Folder structure:
 Assume we have a user account at /home/username
@@ -794,23 +801,148 @@ Assume we have a user account at /home/username
          └── virtualenv
 ----
 
+We can do a commit for those:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add deploy_tools*
+$ *git status* # see three new files
+$ *git commit -m"Notes and template config files for provisioning"*
+----
+
+Our source tree will now look something like this:
+
+----
+$ tree -I \*.pyc
+.
+├── deploy_tools
+│   ├── gunicorn-upstart.template.conf
+│   ├── nginx.template.conf
+│   └── provisioning_notes.md
+├── functional_tests
+│   ├── __init__.py
+│   ├── [...]
+├── lists
+│   ├── __init__.py
+│   ├── [...]
+├── manage.py
+├── requirements.txt
+└── superlists
+    ├── [...]
+----
+
+
 Automating deployment with fabric
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Fabric is a tool which lets you automate commands that you want to run on
-servers
+servers. You can install fabric system-wide -- it's not part of the core
+functionality of our site, so it doesn't need to go into our virtualenv and
+'requirements.txt'.
 
+[subs="specialcharacters,quotes"]
+----
+$ *pip install fabric*
+----
+
+The usual setup is to have a file called 'fabfile.py', which will
+contain one or more functions that can later be invoked from a command-line
+tool called `fab`, like this:
+
+----
+fab function_name,host=SERVER_ADDRESS
+----
+
+That will invoke the function called function_name, passing in a connection
+to the server at SERVER_ADDRESS.  There are many other options for specifying
+usernames and passwords, which you can find out about using `fab --help`
+
+The best way to see how it works is with an example.  Here's a fabfile I've 
+built which automates all the steps we went through in the deploy earlier.  The 
+main function is called `deploy`, that's the one we'll invoke from the command-line.
+It uses several helper functions.  `env.host` will contain the server address that
+we've passed in.
 
 [role="sourcecode"]
-.lists/tests.py
+.deploy_tools/fabfile.py
 [source,python]
 ----
+from fabric.contrib.files import exists
+from fabric.api import env, run
+from os import path
+
+
+REPO_URL = 'https://github.com/hjwp/book-example.git' #<1>
+SITES_FOLDER = '/home/harry/sites'
+
 def deploy():
-    _create_directory_structure_if_necessary(env.host)
+    _create_directory_structure_if_necessary(env.host) #<2>
     source_folder = path.join(SITES_FOLDER, env.host, 'source')
     _get_latest_source(source_folder)
     _update_virtualenv(source_folder)
     _update_static_files(source_folder)
     _update_database(source_folder)
+
+
+def _create_directory_structure_if_necessary(site_name):
+    base_folder = path.join(SITES_FOLDER, site_name)
+    run('mkdir -p %s' % (base_folder)) #<3><4>
+    for subfolder in ('database', 'static', 'virtualenv', 'source'):
+        run('mkdir -p %s/%s' % (base_folder, subfolder))
+
+def _get_latest_source(source_folder):
+    if exists(path.join(source_folder, '.git')): #<5><6>
+        run('cd %s && git pull' % (source_folder,)) #<7>
+        run('cd %s && git reset --hard' % (source_folder,))
+    else:
+        run('git clone %s %s' % (REPO_URL, source_folder))
+
+def _update_virtualenv(source_folder):
+    virtualenv_folder = path.join(source_folder, '../virtualenv')
+    if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<8>
+        run('virtualenv %s' % (virtualenv_folder,))
+    run('%s/bin/pip install -r %s/requirements.txt' % (
+            virtualenv_folder, source_folder
+    ))
+
+
+def _update_static_files(source_folder):
+    run('cd %s && ../virtualenv/bin/python manage.py collectstatic --noinput' % ( # <9>
+        source_folder,
+    ))
+
+
+def _update_database(source_folder):
+    run('cd %s && ../virtualenv/bin/python manage.py syncdb --noinput' % (
+        source_folder,
+    ))
+
+
 ----
+
+A few explanations of what's going on:
+
+<1> You'll want to update the `REPO_URL` variable with the URL of your
+own git repo on its code sharing site
+<2> `env.host` will contain the address of the server we've specified at the 
+command-line, eg 'book-example.obeythetestinggoat.com'.
+<3> `run` is the most common fabric command.  It says "run this shell command on
+the server".
+<4> `mkdir -p` is a useful flavor of `mkdir`, which is better than mkdir in two
+ways: it can create directories several levels deep, and it only creates them
+if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory 'foo' but
+also its parent directory 'bar' if it needs to.  It also won't complain if
+'bar' already exists.
+<5> `exists` checks whether a directory or file already exists on the server.
+<6> We look for the '.git' hidden folder to check whether the repo has already
+been cloned in a particular folder
+<7> Many commands start with a `cd` in order to set the current working directory.
+Fabric doesn't have any state, so it doesn't remember what directory you're in
+from one `run` to the next.
+<8> We look inside the virtualenv folder for the `pip` executable as a way of
+checking whether it already exists.
+<8> We use the virtualenv version of python whenever we need to run a Django 
+'manage.py' command, to make sure we get the virtualenv version of django, not
+the system one.
+
 
