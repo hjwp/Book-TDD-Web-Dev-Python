@@ -441,6 +441,7 @@ class ChapterTest(unittest.TestCase):
 
 
         if expected_text.strip().startswith("[..."):
+            print 'start elipsis'
             actual_lines = actual_text.strip().split('\n')
             expected_lines = expected_text.strip().split('\n')
             if 'raise' in expected_text:
@@ -461,11 +462,13 @@ class ChapterTest(unittest.TestCase):
                 actual_text = actual_text.split(assert_line)[-1]
                 expected_text = expected_text.split(assert_line)[-1].strip()
             else:
+                print 'looking for exception'
                 exception_line = re.search(
                     r'^.+Exception:.+$|^AssertionError: .+$', actual_text, re.MULTILINE
                 )
                 if exception_line:
                     exception_line = exception_line.group(0)
+                    print 'found exception', exception_line
                     actual_text = wrap_long_lines(exception_line)
                     actual_text = actual_text.split('[...]')[0]
                     expected_text = '\n'.join(expected_text.split('[...]')).strip()
