@@ -496,7 +496,33 @@ and add that to our repository:
 $ *git commit -m"Add requirements.txt for virtualenv"*
 ----
 
-Next we do a `git push` to send our updates up to our code-sharing site
+Have a look inside 'requirements.txt' if you're curious, it's just a list of
+the package names and versions.
+
+Setting ALLOWED_HOSTS
+^^^^^^^^^^^^^^^^^^^^^
+
+A final tweak before we push our changes up to the server. You remember
+the `ALLOWED_HOSTS` setting that we had to add in the last chapter?  We
+need to include our server address in the allowed hosts.  Thankfully,
+we can use a wildcard to cover any domain from our site:
+
+[role="sourcecode"]
+.superlists/settings.py
+[source,python]
+----
+# This next setting is needed when DEBUG=False
+ALLOWED_HOSTS = ['localhost', '.obeythetestinggoat.com']
+----
+
+We add that to version control:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am"Add our domain to allowed hosts in settings.py"*
+----
+
+And now we do a `git push` to send our updates up to our code-sharing site
 
 [subs="specialcharacters,quotes"]
 ----
@@ -552,11 +578,17 @@ waiting to respond to requests.
 TODO: log files
 ////
 
-I saved this to a file called 'nginx-staging.conf' inside 'superlists', 
-and then added it to the enabled sites for the server by creating
-a symlink to it:
+I saved this to a file called 'book-example-staging.obeythetestinggoat.com'
+inside '/etc/nginx/sites-available' folder, and then added it to the enabled
+sites for the server by creating a symlink to it:
 
-   (virtualenv)$ ln -s /home/harry/sites/$SITENAME/source/superlists/nginx-staging.conf /etc/nginx/sites-enabled/$SITENAME
+----
+$ ln -s ../sites-available/$SITENAME /etc/nginx/sites-enabled/$SITENAME
+----
+
+That's the Debian/Ubuntu preferred way of saving nginx configurations -- 
+the real file in 'site-available', and a symlink in 'sites-enabled', the
+idea is that it makes it easier to switch sites on or off.
 
 NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
 `server_names_hash_bucket_size 64;` to get my long domain name to work...
@@ -636,6 +668,7 @@ had a pony...
 
 Gunicorn will need to know a path to a WSGI server, which is usually
 a function called `application`.  Django provides one at 'superlists/wsgi.py'.
+
 We can try that out, and check that all the virtualenv magic works too, by
 deactivating the virtualenv and seeing if we can still serve our app using
 the `gunicorn` executable that pip just put in there for us:
@@ -648,6 +681,33 @@ the `gunicorn` executable that pip just put in there for us:
     [...]
 
 That looks good!  
+
+Switching to using Unix sockets
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When we want to serve both staging and live, we can't have both servers trying
+to use port 8000.  We could decide to allocate different ports, but that's a
+bit arbitrary, and it would be dangerously easy to get it wrong and start
+the staging server on the live port, or vice versa.
+
+A better solution is to use unix domain sockets -- they're like files on disk,
+but can be used by nginx and gunicorn to talk to each other.  We'll put our
+sockets in '/tmp'.  We change the proxy settings in nginx:
+
+[role="sourcecode"]
+./etc/nginx/sites-available/book-example-staging.obeythetestinggoat.com
+[source,nginx]
+----
+[...]
+    location / {
+        proxy_set_header Host $host;
+        proxy_pass http://unix:/tmp/book-example-staging.obeythetestinggoat.com.socket;
+    }
+}
+----
+
+`proxy_set_header` is needed to make sure gunicorn knows what domain
+it's running on.
 
 
 Using upstart to make sure gunicorn starts on boot
@@ -668,17 +728,36 @@ stop on shutdown
 respawn
 
 chdir /home/harry/sites/book-example-staging.obeythetestinggoat.com/source
-exec ../virtualenv/bin/gunicorn superlists.wsgi:application
+exec ../virtualenv/bin/gunicorn --bind /tmp/book-example-staging.obeythetestinggoat.com.socket superlists.wsgi:application
 ----
 
+You can see the exta `--bind` parameter which tells Gunicorn to listen
+to that Unix domain socket.
+
 I copied this file into '/etc/init' on the server, calling it
-'/etc/init/gunicorn-staging.conf'
+'/etc/init/gunicorn-book-example-staging.obeythetestinggoat.conf'
 
 Now we can start gunicorn with
 
-    sudo service gunicorn-staging start
+    sudo service gunicorn-book-example-staging.obeythetestinggoat.com start
 
-And you can even test that the site comes back up if you reboot the server.
+And you can even test that the site comes back up if you reboot the server!
+
+
+Adding gunicorn to our requirements.txt
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Back in the local copy of your repo, we should add gunicorn to the list
+of packages we need in our virtualenvs:
+
+[subs="specialcharacters,quotes"]
+----
+$ *source ../virtualenv/bin/activate*
+(virtualenv)$ pip install gunicorn
+(virtualenv)$ *pip freeze > requirements.txt*
+$ *git commit -am"Add gunicorn to virtualenv requirements"*
+$ *git push* 
+----
 
 
 Automating:
@@ -705,9 +784,6 @@ Deployment
 * restart gunicorn job
 * run FTs
 
-Todos:
-
-* add gunicorn to our requirements
 
 Assuming we're not ready to entirely automate our provisioning process, how
 should we save the results of our investigation so far?  I would say that 
@@ -735,12 +811,12 @@ server {
     }
 
     location / {
-        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_pass http://unix:/tmp/SITENAME.socket;
     }
 }
 ----
 
-TODO: switch to using unix sockets.
 
 [role="sourcecode"]
 .deploy_tools/gunicorn-upstart.template.conf
@@ -754,7 +830,7 @@ stop on shutdown
 respawn
 
 chdir /home/harry/sites/SITENAME/source
-exec ../virtualenv/bin/gunicorn superlists.wsgi:application
+exec ../virtualenv/bin/gunicorn --bind unix:/tmp/SITENAME.socket superlists.wsgi:application
 ----
 
 Then it's easy for us to use those two files to generate
@@ -896,8 +972,8 @@ def _create_directory_structure_if_necessary(site_name):
 
 def _get_latest_source(source_folder):
     if exists(path.join(source_folder, '.git')): #<5><6>
-        run('cd %s && git pull' % (source_folder,)) #<7>
         run('cd %s && git reset --hard' % (source_folder,))
+        run('cd %s && git pull' % (source_folder,)) #<7>
     else:
         run('git clone %s %s' % (REPO_URL, source_folder))
 
@@ -963,6 +1039,8 @@ $ pass:quotes[*fab deploy:host=book-example-staging.obeythetestinggoat.com*]
 [book-example-staging.obeythetestinggoat.com] run: mkdir -p /home/harry/sites/book-example-staging.obeythetestinggoat.com/static
 [book-example-staging.obeythetestinggoat.com] run: mkdir -p /home/harry/sites/book-example-staging.obeythetestinggoat.com/virtualenv
 [book-example-staging.obeythetestinggoat.com] run: mkdir -p /home/harry/sites/book-example-staging.obeythetestinggoat.com/source
+[book-example-staging.obeythetestinggoat.com] run: cd /home/harry/sites/book-example-staging.obeythetestinggoat.com/source && git reset --hard
+[book-example-staging.obeythetestinggoat.com] out: 
 [book-example-staging.obeythetestinggoat.com] run: cd /home/harry/sites/book-example-staging.obeythetestinggoat.com/source && git pull
 [book-example-staging.obeythetestinggoat.com] out: remote: Counting objects: 28, done.
 [book-example-staging.obeythetestinggoat.com] out: remote: Compressing objects: 100% (16/16), done.
@@ -981,8 +1059,6 @@ $ pass:quotes[*fab deploy:host=book-example-staging.obeythetestinggoat.com*]
 [book-example-staging.obeythetestinggoat.com] out:  create mode 100644 deploy_tools/gunicorn-upstart.template.conf
 [book-example-staging.obeythetestinggoat.com] out:  create mode 100644 deploy_tools/nginx.template.conf
 [book-example-staging.obeythetestinggoat.com] out:  create mode 100644 deploy_tools/provisioning_notes.md
-[book-example-staging.obeythetestinggoat.com] out: 
-[book-example-staging.obeythetestinggoat.com] run: cd /home/harry/sites/book-example-staging.obeythetestinggoat.com/source && git reset --hard
 [book-example-staging.obeythetestinggoat.com] out: HEAD is now at f6b7c73 tweaks to fabfile
 [book-example-staging.obeythetestinggoat.com] out: 
 [book-example-staging.obeythetestinggoat.com] run: /home/harry/sites/book-example-staging.obeythetestinggoat.com/source/../virtualenv/bin/pip install -r /home/harry/sites/book-example-staging.obeythetestinggoat.com/source/requirements.txt
@@ -1070,11 +1146,74 @@ up a new virtuaelnv from scratch, including a fresh install of pip and Django.
 The `collectstatic` actually creates new files this time, and the `syncdb` seems
 to have worked too.
 
-What else do we need to do to get our live site into production? We refer to our
-provisioning notes, which tell us to use the template files to create our nginx
-virtual host and the upstart script
+What else do we need to do to get our live site into production? We refer to
+our provisioning notes, which tell us to use the template files to create our
+nginx virtual host and the upstart script.  How about a little Unix
+command-line magic?
 
 ----
 sed "s/SITENAME/book-example.obeythetestinggoat.com/g" deploy_tools/nginx.template.conf | sudo tee /etc/nginx/sites-enabled/book-example.obeythetestinggoat.com
 ----
+
+`sed` ("stream editor" takes a stream of text and performs edits on it.  In
+this case we ask it to substitute the string 'SITENAME' for the address of
+our site, with the `s/replaceme/withthis/g` syntax.  We pipe (`|`) the output
+of that to a root-user process (sudo) which uses `tee` to write what's piped
+to it to a file, in this case the nginx sites-available virtualhost config
+file.
+
+We can now activate that file:
+
+----
+$ sudo ln -s ../sites-available/book-example.obeythetestinggoat.com /etc/nginx/sites-enabled/book-example.obeythetestinggoat.com
+----
+
+Now we write the upstart script:
+
+----
+sed "s/SITENAME/book-example.obeythetestinggoat.com/g" deploy_tools/nginx.template.conf | sudo tee /etc/init/gunicorn-book-example.obeythetestinggoat.com.conf
+----
+
+And now we start both services:
+
+----
+service nginx reload
+service gunicorn-book-example.obeythetestinggoat.com start
+----
+
+And we test our site.  It works, hooray! 
+
+
+Recap:
+~~~~~
+
+Lots of this is very specific to the setup I happened to have.  When you
+deploy sites, you might use apache instead of nginx, uwsgi instead of gunicorn,
+supervisor instead of upstart, and so on.  If you use a PaaS, some of these
+problems will be solved for you, others won't.
+
+There are some elements that will be common to all situations though:
+
+* you need to choose a place for your static files
+* you'll need specific config for your database
+* you need to run some kind of webserver, and set it to listen on some port
+or domain socket, and set it up so that it starts up automatically
+
+On the deployment side, you should find that much of what we've done is
+transferable to any situation:
+
+* during a deploy, you need a way to update your source code.  We're using
+`git pull`
+* you need a way to update your static files (`collectstatic`)
+* you need to update your database (`syncdb`)
+* you'll want to test that things work, by doing your deployment to a staging
+site first
+* you should be able to run your functional test suite against the staging site
+* you'll want to automate all of the steps involved in a deploy, to give yourself
+confidence that when you deploy to live, things will go just as smoothly as when
+you deployed to staging
+
+
+But you now have a live website!  Tell all your friends!  Tell your mum to have
+a look!  And, in the next chapter, it's back to coding again...
 
