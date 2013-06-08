@@ -15,12 +15,12 @@ Clearly the requirement here is that people want to have some kind of user
 account on the site.  So, without further ado, let's dive into authentication.
 
 NOTE: I have to admit, messing about with passwords is a bit 90's.  Storing
-passwords yourself is a bit of a risk, and we should definitely be using
+passwords yourself is a risk, and we should definitely be using
 something like OpenID or BrowserID.  Still, I find the former a bit creepy
 from a privacy point of view, and the latter definitely appeals but was 
 probably not quite ready yet at the time of writing.  And, we're not
-building Fort Knox.  And none of the auth plugins for Django seem to support
-Python 3 yet. 90s it is.
+building Fort Knox.  And none of the ready-made auth libraries for Django seem
+to support Python 3 yet. 90s it is.
 
 
 A functional test for login
@@ -75,5 +75,113 @@ comments:
         # When she logs back in, she can see her list on her home page
 ----
 
+You can see the personality of the functional test user coming through in this
+test.  They seem to have an almost supernatural ability to get everything wrong
+before they get it right. It's convenient for us though, because it makes sure
+that we handle all the error cases well.
 
+We can already see that we're going to be doing some very repetitive things --
+submitting username and password combinations, and checking on the resulting
+error messages.  Let's write a helper function straight away:
+
+[role="sourcecode"]
+.functional_tests/tests.py
+[source,python]
+----
+    def check_login_form_errors(
+        self, username, password, password_confirmation,
+        expected_username_error, expected_password_error
+    ):
+        self.browser.find_element_by_name('username').clear()
+        self.browser.find_element_by_name('username').send_keys(username)
+        self.browser.find_element_by_name('password').clear()
+        self.browser.find_element_by_name('password').send_keys(password)
+        self.browser.find_element_by_name('password_confirmation').clear()
+        self.browser.find_element_by_name('password_confirmation').send_keys(
+            password_confirmation
+        )
+        self.browser.find_element_by_css_selector('input[type=submit]').click()
+        self.assertEqual(
+            self.browser.find_element_by_id('id_username_error'),
+            expected_username_error
+        )
+        self.assertEqual(
+            self.browser.find_element_by_id('id_password_error'),
+            expected_password_error
+        )
+----
+
+And now we can use it in our test:
+
+[role="sourcecode"]
+.functional_tests/tests.py
+[source,python]
+----
+
+    def test_can_sign_up_and_save_a_list(self):
+        # Edith goes to the homepage and spots a sign-in link
+        self.browser.get(self.server_url)
+        self.browser.find_element_by_link_text('Sign in').click()
+
+        # She is taken to a login form, which has an option to
+        # register as a new user
+        self.browser.find_element_by_link_text('Register').click()
+
+        # First she tries to sign up without entering either a
+        # username or password
+        # She is politely told off -- you need both
+        self.check_login_form_errors(
+            "", "", "",
+            "You must choose a username", "You must choose a password"
+        )
+
+
+        # Now she tries to sign up with a username but no password
+        # She is told she needs to choose a password and confirm it
+        # The form hasn't forgotten her username though - that would
+        # be annoying
+        self.check_login_form_errors(
+            "edith", "", "",
+            "", "You must choose a password"
+        )
+        self.assertEqual(
+            self.browser.find_element_by_name('username').get_attribute('value'),
+            "edith"
+        )
+
+
+        # Now she tries to sign up with a username and password
+        # but no password confirmation
+        # She is told she needs to confirm her password
+        self.check_login_form_errors(
+            "edith", "sekrit", "",
+            "", "You password confirmation did not match"
+        )
+
+
+        # So, predictably, she gets her password confirmation wrong
+        # She is told she needs to confirm her password
+        self.check_login_form_errors(
+                "edith", "sekrit", "something else",
+                "", "You password confirmation did not match"
+        )
+
+
+        # In a final bout of stupidity -- it's almost as if she's doing
+        # it on purpose -- Edith signs up with matching passwords but
+        # no username
+        # She is told she needs a username
+        self.check_login_form_errors(
+            "", "sekrit", "sekrit",
+            "You must choose a username", ""
+        )
+
+        # She finally gets it all right, and is rewarded with a
+----
+
+And so we begin:
+
+----
+NoSuchElementException: Message: u'Unable to locate element: {"method":"link text","selector":"Sign in"}' ; Stacktrace: [...]
+----
 
