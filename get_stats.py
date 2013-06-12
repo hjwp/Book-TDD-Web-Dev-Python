@@ -10,7 +10,7 @@ FileWordCount = namedtuple('FileWordCount', ['date', 'subject', 'hash', 'lines',
 
 def get_log():
     commits = []
-    for line in subprocess.check_output(['git', 'log', '--format=%h|%s|%ci']).split('\n'):
+    for line in subprocess.check_output(['git', 'log', '--format=%h|%s|%ai']).split('\n'):
         if line:
             hash, subject, datestring = line.split('|')
             date = datetime.strptime(datestring[:16], '%Y-%m-%d %H:%M')
@@ -30,7 +30,7 @@ def get_wordcounts():
             contents = f.read()
         lines = len(contents.split('\n'))
         words = len(contents.split())
-        wordcounts.append(WordCount(filename, lines, words))
+        wordcounts.append(WordCount(filename, lines=lines, words=words))
     return wordcounts
 
 
@@ -46,8 +46,9 @@ def main():
 
         with open('worcounts.csv', 'w') as csvfile:
             fieldnames = ['date', 'subject', 'hash']
-            fieldnames.extend(sorted(filenames))
-            writer = csv.DictWriter(csvfile, fieldnames)
+            fieldnames.extend(sorted(filename + " (words)" for filename in filenames))
+            fieldnames.extend(sorted(filename + " (lines)" for filename in filenames))
+            writer = csv.DictWriter(csvfile, fieldnames, dialect="excel-tab")
             writer.writeheader()
             for commit, wordcounts in all_wordcounts.items():
                 row = {}
@@ -55,7 +56,8 @@ def main():
                 row['subject'] = commit.subject
                 row['date'] = commit.date
                 for wordcount in wordcounts:
-                    row[wordcount.filename] = wordcount.lines
+                    row[wordcount.filename + " (words)"] = wordcount.words
+                    row[wordcount.filename + " (lines)"] = wordcount.lines
                 writer.writerow(row)
 
     finally:
