@@ -79,7 +79,198 @@ TODO: dontify?
 So the next thing to do is add a link to each list item that takes the user to
 a new page where they can add notes to the list item.  How about this:
 
-    /lists/<list-id>/edit_notes/
+    /lists/<list-id>/item/<item-id>/edit_notes/
+
+In fact, how about a to-do list:
+
+* The list view should have links to individual edit_notes URLs
+* The edit_notes view should render a form with an editable
+text field and a submit button
+* The form should submit to another URL -- say
+`/lists/<list-id>/item/<item-id>/notes` -- to update the notes
+* Notes can be saved as a new attribute of the Item model (this decision
+would mean that we can only ever have one set of notes per list item, but we
+can always revisit it later)
 
 
+[source,python]
+.lists/tests.py
+
+----
+class EditNotesViewTest(TestCase):
+
+    def test_edit_notes_view_renders_form_to_edit_notes(self):
+        list1 = List.objects.create()
+        item1 = Item.objects.create(text='itemey 1', list=list1)
+        item2 = Item.objects.create(text='itemey 2', list=list1)
+
+        client = Client()
+        response = client.get(
+            '/lists/%d/item/%d/edit_notes/' % (list1.id, item2.id)
+        )
+
+        self.assertIn('action="/lists/%d/notes"' % (list1.id,), response.content)
+        self.assertIn('type=textfield', response.content)
+----
+
+Running this test gives us an unexpected  error:
+
+----
+ValueError: invalid literal for int() with base 10: '1/item/2/edit_notes'
+----
+
+Let's try and decode the traceback to see what's going on.
+
+Reading tracebacks
+~~~~~~~~~~~~~~~~~~
+
+A brief aside on reading tracebacks from unit tests.  When we get an unexpected
+failure like this, it can be baffling at first, but there are a few things you
+can look out for in each traceback to help you get your bearings:
+
+----
+======================================================================
+ERROR: test_edit_notes_view_renders_form_to_edit_notes
+(lists.tests.EditNotesViewTest) <2>
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_9/superlists/lists/tests.py",
+line 98, in test_edit_notes_view_renders_form_to_edit_notes <3>
+    '/lists/%d/item/%d/edit_notes/' % (list1.id, item2.id) <3>
+  File "/usr/local/lib/python2.7/dist-packages/django/test/client.py", line
+453, in get
+    response = super(Client, self).get(path, data=data, **extra)
+  File "/usr/local/lib/python2.7/dist-packages/django/test/client.py", line
+279, in get
+    return self.request(**r)
+  File "/usr/local/lib/python2.7/dist-packages/django/test/client.py", line
+424, in request
+    six.reraise(*exc_info)
+  File "/usr/local/lib/python2.7/dist-packages/django/core/handlers/base.py",
+line 115, in get_response
+    response = callback(request, *callback_args, **callback_kwargs)
+  File "/home/harry/Dropbox/book/source/chapter_9/superlists/lists/views.py",
+line 15, in view_list <4>
+    list = List.objects.get(id=list_id) <4>
+  File "/usr/local/lib/python2.7/dist-packages/django/db/models/manager.py",
+line 143, in get
+    return self.get_query_set().get(*args, **kwargs)
+  File "/usr/local/lib/python2.7/dist-packages/django/db/models/query.py", line
+379, in get
+    clone = self.filter(*args, **kwargs)
+  File "/usr/local/lib/python2.7/dist-packages/django/db/models/query.py", line
+655, in filter
+    return self._filter_or_exclude(False, *args, **kwargs)
+  File "/usr/local/lib/python2.7/dist-packages/django/db/models/query.py", line
+673, in _filter_or_exclude
+    clone.query.add_q(Q(*args, **kwargs))
+  File "/usr/local/lib/python2.7/dist-packages/django/db/models/sql/query.py",
+line 1266, in add_q
+    can_reuse=used_aliases, force_having=force_having)
+  File "/usr/local/lib/python2.7/dist-packages/django/db/models/sql/query.py",
+line 1197, in add_filter
+    connector)
+  File "/usr/local/lib/python2.7/dist-packages/django/db/models/sql/where.py",
+line 71, in add
+    value = obj.prepare(lookup_type, value)
+  File "/usr/local/lib/python2.7/dist-packages/django/db/models/sql/where.py",
+line 339, in prepare
+    return self.field.get_prep_lookup(lookup_type, value)
+  File
+"/usr/local/lib/python2.7/dist-packages/django/db/models/fields/__init__.py",
+line 322, in get_prep_lookup
+    return self.get_prep_value(value)
+  File
+"/usr/local/lib/python2.7/dist-packages/django/db/models/fields/__init__.py",
+line 555, in get_prep_value
+    return int(value)
+ValueError: invalid literal for int() with base 10: '1/item/2/edit_notes' <1>
+
+ ---------------------------------------------------------------------
+Ran 8 tests in 0.062s
+
+FAILED (errors=1)
+----
+
+<1> The first place you look is usually 'the error itself' -- sometimes that's
+all you need to see, and it will let you identify the problem immediately. But
+sometimes, like in this case, it's not quite self-evident.
+<2> The next thing to double-check is: 'which test is failing?'  Is it definitely
+the one we expected, ie the one we just wrote?  in this case, the answer is yes.
+<3> Then we look for two things:  first, the place in 'our test code' that
+caused the error. In this case it's the line where we make the HTTP request
+via the test client.
+<4> Then we look further down for where in 'our application code' we seem to
+have hit a problem.  In this case, we see it's line 15 in our 'views.py', in
+the view function called `view_list`
+
+That's a bit of a surprise -- why did we end up inside `view_list`?  We asked
+for a URL that looks like '/lists/1/item/2/edit_notes/'... And it seems
+to have ended up in `view_list`, thinking that it wanted to find a list
+whose `id` was `1/item/2/edit_notes`.  Something has gone wrong in our 
+URL mapping.
+
+We can look at 'lists/urls.py' and begin to guess why:
+
+[source,python]
+.lists/tests.py
+----
+from django.conf.urls import patterns, url
+
+urlpatterns = patterns('',
+    url(r'^(.+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(.+)/new_item$', 'lists.views.add_item', name='add_item'),
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+)
+----
+
+The `url` entry for `view_list` tries to capture the list ID using a capture
+group `(.+)`, which it turns out is too greedy -- that matches almost any
+sequence of characters, as long as it ends in a slash.  We need to tighten it
+up.  Currently, our list IDs are numeric, so we change our capture group to 
+only capture numerical digits (`\d`):
+
+
+[source,python]
+.lists/tests.py
+----
+from django.conf.urls import patterns, url
+
+urlpatterns = patterns('',
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(\d+)/new_item$', 'lists.views.add_item', name='add_item'),
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+)
+----
+
+I've changed the regex for `add_item` as well.  Let's try running the unit
+tests again:
+
+----
+FAIL: test_edit_notes_view_renders_form_to_edit_notes (lists.tests.EditNotesViewTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_9/superlists/lists/tests.py", line 102, in test_edit_notes_view_renders_form_to_edit_notes
+    self.assertIn('action="/lists/%d/notes"' % (list1.id,), response.content)
+AssertionError: 'action="/lists/1/notes"' not found in '<h1>Not Found</h1><p>The requested URL /lists/1/item/2/edit_notes/ was not found on this server.</p>'
+----
+
+
+TODO:  move this explanation to much earlier in the book.  It's too useful, make
+a deliberate mistake or something...
+
+
+That's better!  Now our test is ending up finding a "Not found" error page,
+which is the failure we expected -- we ask for a brand new URL we haven't coded
+a view for yet, and we get a page not found error.
+
+Let's re-run the FTs quickly to make sure we haven't broken anything... good, and
+now do a commit:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* # new FT, new unit test, 2 lines changed in urls.py
+$ *git commit -am"New FT + first unit test for notes, tweak urls list id regex"*
+----
 
