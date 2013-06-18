@@ -1,5 +1,10 @@
+from __future__ import print_function
 from selenium import webdriver
-browser = webdriver.Firefox()
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
+
 URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/pr01.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch01.html',
@@ -9,13 +14,26 @@ URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/ch05.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch06.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch07.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/ch08.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/ch09.html',
 ]
 
 
+browser = webdriver.Firefox()
+wait = WebDriverWait(browser, 3)
 try:
     for url in URLS:
         page = url.partition('1234000000754/')[2]
         browser.get(url)
+
+        browser.find_element_by_css_selector('#comments-link a').click()
+        try:
+            wait.until(expected_conditions.presence_of_element_located(
+                (By.CLASS_NAME, 'comment')
+            ))
+        except TimeoutException:
+            print("No comments on page %s" % (url,))
+
         elements = browser.find_elements_by_css_selector('.comment')
         for element in elements:
             metadata = element.find_element_by_css_selector('.comment-body-top').text
@@ -23,7 +41,7 @@ try:
             date = ' '.join(metadata.split()[3:])
 
             comment = element.find_element_by_css_selector('.comment-body-bottom').text
-            print page, '\t', by, '\t', date, '\t', comment
+            print('%s\t%s\t%s\t%s' % (page, by, date, comment))
 
 finally:
     browser.quit()
