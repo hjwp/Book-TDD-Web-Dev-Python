@@ -14,7 +14,7 @@ Let's see how that might work as an FT:
 def test_adding_notes(self):
     # Edith starts a new list
 
-    # She notices a link next to her first new item that says "add notes"
+    # She notices a link next to her first new item that says "edit notes"
     # so she clicks it
 
     # She is presented with a form that allows her to write in some notes
@@ -38,7 +38,7 @@ def test_adding_notes(self):
 Now let's start implementing the test, or at least the beginning of it:
 
 [source,python]
-.lists/tests.py
+.functional_tests/tests.py
 ----
 def test_adding_notes(self):
     # Edith starts a new list
@@ -46,9 +46,9 @@ def test_adding_notes(self):
     self.browser.find_element_by_id('id_new_item').send_keys("Buy milk\n")
     self.check_for_row_in_list_table("Buy milk")
 
-    # She notices a link next to her first new item that says "add notes"
+    # She notices a link next to her first new item that says "edit notes"
     # so she clicks it
-    self.browser.find_element_by_link_text("add notes").click()
+    self.browser.find_element_by_link_text("edit notes").click()
 
     # She is presented with a form that allows her to write in some notes
     self.browser.find_element_by_name('notes').send_keys(
@@ -68,7 +68,7 @@ And we're off!
 
 ----
 NoSuchElementException: Message: u'Unable to locate element: {"method":"link
-text","selector":"add notes"}' ; Stacktrace: [...]
+text","selector":"edit notes"}' ; Stacktrace: [...]
 ----
 
 ////
@@ -109,8 +109,11 @@ class EditNotesViewTest(TestCase):
             '/lists/%d/item/%d/edit_notes/' % (list1.id, item2.id)
         )
 
-        self.assertIn('action="/lists/%d/notes"' % (list1.id,), response.content)
-        self.assertIn('type=textfield', response.content)
+        self.assertIn(
+            'action="/lists/%d/item/%d/notes"' % (list1.id, item2.id),
+            response.content
+        )
+        self.assertIn('<input name="notes" type="textfield"', response.content)
 ----
 
 Running this test gives us an unexpected  error:
@@ -195,8 +198,9 @@ FAILED (errors=1)
 <1> The first place you look is usually 'the error itself' -- sometimes that's
 all you need to see, and it will let you identify the problem immediately. But
 sometimes, like in this case, it's not quite self-evident.
-<2> The next thing to double-check is: 'which test is failing?'  Is it definitely
-the one we expected, ie the one we just wrote?  in this case, the answer is yes.
+<2> The next thing to double-check is: 'which test is failing?'  Is it
+definitely the one we expected, ie the one we just wrote?  in this case, the
+answer is yes.
 <3> Then we look for two things:  first, the place in 'our test code' that
 caused the error. In this case it's the line where we make the HTTP request
 via the test client.
@@ -213,7 +217,7 @@ URL mapping.
 We can look at 'lists/urls.py' and begin to guess why:
 
 [source,python]
-.lists/tests.py
+.lists/urls.py
 ----
 from django.conf.urls import patterns, url
 
@@ -232,7 +236,7 @@ only capture numerical digits (`\d`):
 
 
 [source,python]
-.lists/tests.py
+.lists/urls.py
 ----
 from django.conf.urls import patterns, url
 
@@ -256,16 +260,16 @@ AssertionError: 'action="/lists/1/notes"' not found in '<h1>Not Found</h1><p>The
 ----
 
 
-TODO:  move this explanation to much earlier in the book.  It's too useful, make
-a deliberate mistake or something...
+TODO:  move this explanation to much earlier in the book.  It's too useful,
+make a deliberate mistake or something...
 
 
 That's better!  Now our test is ending up finding a "Not found" error page,
 which is the failure we expected -- we ask for a brand new URL we haven't coded
 a view for yet, and we get a page not found error.
 
-Let's re-run the FTs quickly to make sure we haven't broken anything... good, and
-now do a commit:
+Let's re-run the FTs quickly to make sure we haven't broken anything... good,
+and now do a commit:
 
 
 [subs="specialcharacters,quotes"]
@@ -274,3 +278,302 @@ $ *git diff* # new FT, new unit test, 2 lines changed in urls.py
 $ *git commit -am"New FT + first unit test for notes, tweak urls list id regex"*
 ----
 
+Now we can get onto creating a new URL and view for our notes editing page.
+
+We start by adding a new URL, with a regex that now has two capture groups for
+digits:
+
+[source,python]
+.lists/urls.py
+----
+urlpatterns = patterns('',
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(\d+)/new_item$', 'lists.views.add_item', name='add_item'),
+    url(r'^(\d+)/item/(\d+)/edit_notes/$', 'lists.views.edit_notes', name='edit_notes'),
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+)
+----
+
+That gives us a 
+
+----
+ViewDoesNotExist: Could not import lists.views.edit_notes. View does not exist
+in module lists.views.
+----
+
+So we add a dummy view in 'views.py':
+
+
+[source,python]
+.lists/views.py
+----
+def edit_notes():
+    pass
+----
+
+Notice the next error:
+
+
+----
+TypeError: edit_notes() takes no arguments (3 given)
+----
+
+Which tells us that the two capture groups are working -- we are passing
+in a total of 3 arguments to our new view, so it will need to have them
+all in its signature:
+
+
+
+[source,python]
+.lists/views.py
+----
+def edit_notes(request, list_id, item_id):
+    pass
+----
+
+Now we get
+
+----
+ValueError: The view lists.views.edit_notes didn't return an HttpResponse object.
+----
+
+We could return an empty 'HttpResponse', but let's skip that step while we're
+feeling confident, since we know we're definitely going to use a template, and
+do this:
+
+[source,python]
+.lists/views.py
+----
+def edit_notes(request, list_id, item_id):
+    return render(request, 'edit_notes.html')
+----
+
+Now we get
+
+----
+TemplateDoesNotExist: edit_notes.html
+----
+
+So
+
+[subs="specialcharacters,quotes"]
+----
+$ *touch lists/templates/edit_notes.html*
+----
+
+And now onto a more interesting test failure:
+
+----
+AssertionError: 'action="/lists/1/notes"' not found in ''
+----
+
+The test is checking that we have a form which points to the correct
+URL.  Let's start creating our new template, basing it on one of the exiting
+ones.  I'll start by tweaking the header test
+////
+TODO: test this
+////
+and the form's `action` attribute:
+
+[source,html]
+.lists/templates/edit_notes.html
+----
+{% extends 'base.html' %}
+
+{% block header_text %}Edit notes{% endblock %}
+
+{% block form %}
+    <form method="POST" action="/lists/{{ list.id }}/item/{{ item.id }}/notes">
+        {% csrf_token %}
+    </form>
+{% endblock %}
+----
+
+Re-using 'base.html' in this way might not give us the layout + styling we 
+ultimately want for this page, but it will probably do to get started.  What
+do our unit tests want next?
+
+----
+
+    self.assertIn('action="/lists/%d/notes"' % (list1.id,), response.content)
+AssertionError: 'action="/lists/1/notes"' not found in '<!DOCTYPE html>\n<html>[...]
+----
+
+Hmm, the form `action` isn't quite right.  Digging further through the error message,
+we can see why:
+
+----
+    <form method="POST" action="/lists//item//notes" >\n 
+----
+
+By default, Django's template language just replaces any unknown or missing
+variables with empty text, so, because we haven't passed in an `item` or a
+`list`, it can't possible generate a URL for us.  We'll need to pass them in
+in the context for the template.  We can use Django's testing tools to help
+check on them:
+
+[source,python]
+.lists/tests.py
+----
+    self.assertEqual(response.context['item'], item2)
+    self.assertIn(
+        'action="/lists/%d/item/%d/notes"' % (list1.id, item2.id),
+        response.content
+    )
+----
+
+Now we get
+
+    KeyError: 'item'
+
+So we pass through the item:
+
+
+[source,python]
+.lists/views.py
+----
+def edit_notes(request, list_id, item_id):
+    item = Item.objects.get(id=item_id)
+    return render(request, 'edit_notes.html', {'item': item})
+----
+
+
+That gets us closer, we still get an error but now, looking at the traceback,
+the form action is nearly there:
+
+    action="/lists//item/2/notes"
+
+Rather than pass a `list` object to the template as well, we can just get it
+from the item -- we tweak the template slightly:
+
+
+[source,html]
+.lists/templates/edit_notes.html
+----
+<form method="POST" action="/lists/{{ item.list.id }}/item/{{ item.id }}/notes">
+----
+
+And now we get a different failure!
+
+----
+    self.assertIn('<input name="notes" type="textfield"', response.content)
+AssertionError: '<input name="notes" type="textfield"' not found in [...]
+----
+
+So we need to add our `textfield`, which will allow us to input multi-line 
+comments:
+
+
+[source,html]
+.lists/templates/edit_notes.html
+----
+<form method="POST" action="/lists/{{ item.list.id }}/item/{{ item.id }}/notes">
+    {% csrf_token %}
+    <input name="notes" type="textfield"/>
+</form>
+----
+
+And that's a pass!  Is there any chance the FT will move forwards?
+
+    NoSuchElementException: Message: u'Unable to locate element: {"method":"link text","selector":"edit notes"}'
+
+Nope.  We still need to add links to our main page.  That will be in
+'list.html'.  Looking at it, it seems like a good time to change our
+list table so that it has several columns, including one for notes:
+
+[source,python]
+.lists/templates/list.html
+----
+{% block table %}
+    <table id="id_list_table">
+        {% for item in list.item_set.all %}
+            <tr>
+                <td>{{ forloop.counter }}:</td>
+                <td>{{ item.text }}</td>
+                <td><a href="/lists/{{ list.id }}/item/{{ item.id }}/edit_notes/">edit notes</td>
+            </tr>
+        {% endfor %}
+    </table>
+{% endblock %}
+----
+
+But I'm already anticipating this is going to cause problems...
+----
+======================================================================
+FAIL: test_adding_notes (functional_tests.tests.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_9/superlists/functional_tests/tests.py", line 137, in test_adding_notes
+    self.check_for_row_in_list_table("1: Buy milk")
+  File "/home/harry/Dropbox/book/source/chapter_9/superlists/functional_tests/tests.py", line 35, in check_for_row_in_list_table
+    self.assertIn(row_text, [row.text for row in rows])
+AssertionError: '1: Buy milk' not found in [u'1: Buy milk edit notes']
+
+======================================================================
+FAIL: test_can_start_a_list_and_retrieve_it_later (functional_tests.tests.NewVisitorTest)
+[...]
+    self.assertIn(row_text, [row.text for row in rows])
+AssertionError: '1: Buy peacock feathers' not found in [u'1: Buy peacock feathers edit notes']
+
+FAILED (failures=2)
+----
+
+Sure enough!  We've messed with the basic structure of our list table, and
+that affects several of our existing functional tests.  Thankfully, we've 
+already applied the DRY principle to our functional tests, so most of the
+code that examines the list table is already encapsulated in a single place,
+the `check_for_row_in_list_table` function.  Let's adjust it:
+
+
+[source,python]
+.functional_tests/tests.py
+----
+    def check_for_row_in_list_table(self, row_text):
+        table = self.browser.find_element_by_id('id_list_table')
+        rows = table.find_elements_by_tag_name('tr')
+        self.assertTrue(
+            any(row_text in row.text for row in rows),
+            "Could not find row with text %r, table text was:\n%s" % (
+                row_text, table.text
+            )
+
+        )
+----
+
+Notice that `assertTrue/any` coming back?  I knew there was a reason I'd
+started off using that -- I had an inkling that the rows in the table might
+contain more than just the plain text of the item, so we really want to check
+that the expected item text is contained in the row text -- hence the 
+`row_text in row.text`.  It was still probably premature of me to write that
+`any` formulation back then though -- I should have remembered YAGNI, always
+start with the simplest implementation that works.
+
+The new method gets the old tests passing, and our own test gets a little further:
+
+----
+  File "/home/harry/Dropbox/book/source/chapter_9/superlists/functional_tests/tests.py", line 155, in test_adding_notes
+    self.browser.find_element_by_css_selector('input[type=submit]').click()
+[...]
+NoSuchElementException: Message: u'Unable to locate element: {"method":"css selector","selector":"input[type=submit]"}' ; [...]
+----
+
+Ah yes, we forgot to add a submit button to our form.  Let's do that:
+
+[source,python]
+.lists/templates/edit_notes.html
+----
+    <form method="POST" action="/lists/{{ item.list.id }}/item/{{ item.id }}/notes">
+        {% csrf_token %}
+        <input name="notes" type="textfield"/>
+        <input type="submit" value="Save"/>
+    </form>
+----
+
+That gets us to the next stage:
+
+----
+AssertionError: 'You can find milk in a shop' not found in u'Not Found\nThe requested URL /lists/1/item/1/notes was not found on this server.'
+----
+
+Before we move on though, let's do a tiny bit of prettification.  Our addition
+of the 'edit notes' link to the table has made it look a bit awkard
