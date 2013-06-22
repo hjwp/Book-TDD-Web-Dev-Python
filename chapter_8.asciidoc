@@ -471,10 +471,29 @@ We'll follow the same folder structure as we're planning for the server:
 [subs="specialcharacters,quotes"]
 ----
 $ *virtualenv ../virtualenv*
+$ ls ../virtualenv/
+bin  include  lib  local
+----
+
+That will create a folder at '../virtualenv' which will contain its own
+copy of Python and `pip`, as well as a location to install Python packages
+to.  It's a self-contained ``virtual'' Python environment.  To start using
+it, we run a script called `activate`, which will change the system path
+and the Python path in such a way as to use the virtualenv's executables
+and packages:
+
+[subs="specialcharacters,quotes"]
+----
 $ *source ../virtualenv/bin/activate*
-(virtualenv)$ python manage.py test lists
-# will show ImportError: No module named django
-# because Django isn't installed inside the virtualenv
+(virtualenv)$ *python manage.py test lists*
+----
+
+That will show an `ImportError: No module named django` because Django isn't
+installed inside the virtualenv.  So, we can install it, and see that it
+ends up inside the virtualenv's 'site-packages' folder:
+
+[subs="specialcharacters,quotes"]
+----
 (virtualenv)$ *pip install django*
 [...]
 Successfully installed django
@@ -482,6 +501,10 @@ Cleaning up...
 (virtualenv)$ python manage.py test lists
 [...]
 OK
+$ ls ../virtualenv/lib/python2.7/site-packages/
+django                       setuptools-0.6c11-py2.7.egg
+Django-1.5.1-py2.7.egg-info  pip-1.3.1-py2.7.egg             setuptools.pth
+easy-install.pth             
 ----
 
 To "save" the list of packages we need in our virtualenv, and be able to 
@@ -507,7 +530,9 @@ And now we do a `git push` to send our updates up to our code-sharing site
 $ *git push* 
 ----
 
-And we can pull those changes down to the server
+And we can pull those changes down to the server, create a virtualenv on 
+the server, and use 'requirements.txt' along with `pip install -r` to 
+make the server virtualenv just like our local one:
 
     $ git pull
     $ virtualenv ../virtualenv/
@@ -537,24 +562,15 @@ server {
     listen 80;
     server_name book-example-staging.obeythetestinggoat.com;
 
-    location /static {
-        alias /home/harry/sites/book-example-staging.obeythetestinggoat.com/static;
-    }
-
     location / {
         proxy_pass http://localhost:8000;
     }
 }
 ----
 
-This config says it will only work for our staging domain, it points the web
-server to the folder where our static files are, and then it says to "proxy"
+This config says it will only work for our staging domain, and will "proxy"
 all other requests to the local port 8000 where it expects to find Django
 waiting to respond to requests.
-
-////
-TODO: log files
-////
 
 I saved this to a file called 'book-example-staging.obeythetestinggoat.com'
 inside '/etc/nginx/sites-available' folder, and then added it to the enabled
@@ -591,35 +607,28 @@ $ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-
 [...]
 NoSuchElementException: Message: u'Unable to locate element:
 {"method":"id","selector":"id_list_table"}' ; [...]
-[...]
-AssertionError: 125 != 497 within 3 delta
-FAILED (failures=1, errors=1)
+FAILED (errors=1)
 ----
 
-The tests are telling us that our CSS isn't working, and are also failing
-as soon as they try and submit a new item, because we haven't set up the 
-database. Let's do those two things now
+The tests are failing as soon as they try and submit a new item, because we
+haven't set up the database. Let's do that now.
 
 
 
-Deploying static files and the database
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Creating the database with syncdb
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-We run a `collectstatic` and a `syncdb` to set up static files and the
-database. The `--noinput` suppresses the two little "are you sure" prompts:
+We run `syncdb` using the `--noinput` argument to suppress the two little "are
+you sure" prompts:
 
 ----
-(virtualenv)$ python manage.py collectstatic --noinput
 (virtualenv)$ python manage.py syncdb --noinput
-(virtualenv)$ ls ../static/
-base.css  bootstrap
 (virtualenv)$ ls ../database/
 database.sqlite
 (virtualenv)$ python manage.py runserver
 ----
 
-Now if you have a look at the site, things are looking much healthier. We
-can re-run our FTs:
+Let's try the FTs again:
 
 [subs="specialcharacters,macros"]
 ----
@@ -632,9 +641,10 @@ Ran 2 tests in 10.718s
 OK
 ----
 
-Hooray!  We're reassured that the piping works, but we really can't be
+Hooray!  We're reassured that some of the piping works, but we really can't be
 using the Django dev. server in production.  We also can't be relying
 on manually starting it up with `runserver`.
+
 
 Switching to Gunicorn
 ^^^^^^^^^^^^^^^^^^^^^
@@ -661,7 +671,70 @@ the `gunicorn` executable that pip just put in there for us:
     2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
     [...]
 
-That looks good!  
+Now if you reload gunicorn and take a look at the site, you'll find the CSS is
+all broken.  In fact, if we run the functional tests, you'll see they tell us
+that something is wrong:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-staging.obeythetestinggoat.com*]
+[...]
+AssertionError: 125 != 497 within 3 delta
+FAILED (failures=1)
+----
+
+That's because although the Django dev server will serve static files magically
+for you, Gunicorn doesn't.  Now is the time to get Nginx to server static files
+for us.
+
+
+Getting Nginx to server static files
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+First we run `collectstatic` to copy all the static files to a folder where 
+Nginx can find them:
+
+----
+(virtualenv)$ python manage.py collectstatic --noinput
+(virtualenv)$ ls ../static/
+base.css  bootstrap
+----
+
+And now we tell Nginx to start serving those files directly:
+
+[role="sourcecode"]
+./etc/nginx/sites-available/book-example-staging.obeythetestinggoat.com
+[source,nginx]
+----
+server {
+    listen 80;
+    server_name book-example-staging.obeythetestinggoat.com;
+
+    location /static {
+        alias /home/harry/sites/book-exmaple-staging.obeythetestinggoat.com/static;
+    }
+
+    location / {
+        proxy_pass http://localhost:8000;
+    }
+}
+----
+
+
+Now if you have a look at the site, things are looking much healthier. We
+can re-run our FTs:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-staging.obeythetestinggoat.com*]
+Creating test database for alias 'default'...
+..
+ ---------------------------------------------------------------------
+Ran 2 tests in 10.718s
+
+OK
+----
+
 
 Switching to using Unix sockets
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -673,7 +746,7 @@ the staging server on the live port, or vice versa.
 
 A better solution is to use unix domain sockets -- they're like files on disk,
 but can be used by nginx and gunicorn to talk to each other.  We'll put our
-sockets in '/tmp'.  We change the proxy settings in nginx:
+sockets in '/tmp'.  Let's change the proxy settings in nginx:
 
 [role="sourcecode"]
 ./etc/nginx/sites-available/book-example-staging.obeythetestinggoat.com
@@ -687,24 +760,46 @@ sockets in '/tmp'.  We change the proxy settings in nginx:
 }
 ----
 
-`proxy_set_header` is needed to make sure gunicorn knows what domain
-it's running on.
+`proxy_set_header` is needed to make sure gunicorn and Django know what domain
+it's running on.  We need that for the `ALLOWED_HOSTS` security feature, which 
+we're about to switch on.  First, we re-run the functional test again, to make
+sure things still pass.
 
-
-Adding gunicorn to our requirements.txt
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Back in the local copy of your repo, we should add gunicorn to the list
-of packages we need in our virtualenvs:
-
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *source ../virtualenv/bin/activate*
-(virtualenv)$ pip install gunicorn
-(virtualenv)$ *pip freeze > requirements.txt*
-$ *git commit -am"Add gunicorn to virtualenv requirements"*
-$ *git push* 
+$ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-staging.obeythetestinggoat.com*]
+OK
 ----
+
+Switching DEBUG to False and setting ALLOWED_HOSTS
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+At the top of 'settings.py', you'll find the `DEBUG` setting.  In production,
+we should always set this to `False`.  When we do that, we also need to set
+another setting called `ALLOWED_HOSTS`. This was
+https://docs.djangoproject.com/en/1.5/ref/settings/#std:setting-ALLOWED_HOSTS[added
+as a security feature] in Django 1.5.  Unfortunately it doesn't have an entry
+with a helpful comment in the default 'settings.py', but we can add one
+ourselves:
+
+[role="sourcecode"]
+.superlists/settings.py
+[source,python]
+----
+# Django settings for superlists project.
+from os import path
+
+DEBUG = False
+TEMPLATE_DEBUG = DEBUG
+
+# This next setting is needed when DEBUG=False
+ALLOWED_HOSTS = ['book-example-staging.obeythetestinggoat.com']
+[...]
+----
+
+And, once again, we restart Gunicorn and run the FT to check things still work
+
+
 
 Using upstart to make sure gunicorn starts on boot
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -740,67 +835,35 @@ Now we can start gunicorn with
 And you can even test that the site comes back up if you reboot the server!
 
 
-TODO: at this point there will be a server error and the css will be broken.
+Saving our changes:  adding gunicorn to our requirements.txt
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Back in the local copy of your repo, we should add gunicorn to the list
+of packages we need in our virtualenvs:
 
-Switching DEBUG to False and setting ALLOWED_HOSTS
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-At the top of 'settings.py', you'll find the `DEBUG` setting.  In production,
-we should always set this to `False`.  When we do that, we also need to set
-another setting called `ALLOWED_HOSTS`. This was
-https://docs.djangoproject.com/en/1.5/ref/settings/#std:setting-ALLOWED_HOSTS[added
-as a security feature] in Django 1.5.  Unfortunately it doesn't have an entry
-with a helpful comment in the default 'settings.py', but we can add one
-ourselves:
-
-[role="sourcecode"]
-.superlists/settings.py
-[source,python]
+[subs="specialcharacters,quotes"]
 ----
-# Django settings for superlists project.
-from os import path
-
-DEBUG = False
-TEMPLATE_DEBUG = DEBUG
-
-# This next setting is needed when DEBUG=False
-ALLOWED_HOSTS = ['localhost', '.obeythetestinggoat.com']
-[...]
+$ *source ../virtualenv/bin/activate*
+(virtualenv)$ pip install gunicorn
+(virtualenv)$ *pip freeze > requirements.txt*
+(virtualenv)$ deactivate
+$ *git commit -am"Add gunicorn to virtualenv requirements"*
+$ *git push* 
 ----
 
-We add that to version control:
+////
+TOOD: add ALLOWED_HOSTS to version control?
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git commit -am"Set DEBUG to False and add domain to ALLOWED_HOSTS"*
 ----
+////
 
-Deploying static files 
-^^^^^^^^^^^^^^^^^^^^^^
 
-We run a `collectstatic --noinput` :
-
-----
-(virtualenv)$ python manage.py collectstatic --noinput
-(virtualenv)$ ls ../static/
-base.css  bootstrap
-----
-
-Now if you have a look at the site, things are looking much healthier. We
-can re-run our FTs:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test functional_tests --liveserver=book-example-staging.obeythetestinggoat.com*]
-Creating test database for alias 'default'...
-..
- ---------------------------------------------------------------------
-Ran 2 tests in 10.718s
-
-OK
-----
-
+////
+TODO: log files
+////
 
 
 Automating:
@@ -817,7 +880,6 @@ Provisioning:
 * add upstart job for gunicorn
 * create user account + home folder for user
 
-TODO: DEBUG = False
 
 Deployment
 
@@ -826,6 +888,7 @@ Deployment
 * pip install -r requirements.txt
 * syncdb for database
 * collectstatic for static files
+* set DEBUG = False and ALLOWED_HOSTS in settings.py
 * restart gunicorn job
 * run FTs
 
@@ -882,7 +945,7 @@ Then it's easy for us to use those two files to generate
 a new site, by doing a find & replace on  `SITENAME`
 
 For the rest, just keeping a few notes is OK. Why not keep
-them in a file in the repo?
+them in a file in the repo too?
 
 
 [role="sourcecode"]
@@ -1004,6 +1067,7 @@ def deploy():
     _create_directory_structure_if_necessary(env.host) #<2>
     source_folder = path.join(SITES_FOLDER, env.host, 'source')
     _get_latest_source(source_folder)
+    _update_settings(source_folder, env.host)
     _update_virtualenv(source_folder)
     _update_static_files(source_folder)
     _update_database(source_folder)
@@ -1022,9 +1086,14 @@ def _get_latest_source(source_folder):
     else:
         run('git clone %s %s' % (REPO_URL, source_folder))
 
+def _update_settings(source_folder, site_name):
+    settings_path = path.join(source_folder, 'superlists/settings.py')
+    sed(settings_path, "DEBUG = True", "DEBUG = False") #<8>
+    append(settings_path, 'ALLOWED_HOSTS = "%s"' % (site_name,)) #<8>
+
 def _update_virtualenv(source_folder):
     virtualenv_folder = path.join(source_folder, '../virtualenv')
-    if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<8>
+    if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<9>
         run('virtualenv %s' % (virtualenv_folder,))
     run('%s/bin/pip install -r %s/requirements.txt' % (
             virtualenv_folder, source_folder
@@ -1032,7 +1101,7 @@ def _update_virtualenv(source_folder):
 
 
 def _update_static_files(source_folder):
-    run('cd %s && ../virtualenv/bin/python manage.py collectstatic --noinput' % ( # <9>
+    run('cd %s && ../virtualenv/bin/python manage.py collectstatic --noinput' % ( # <10>
         source_folder,
     ))
 
@@ -1064,15 +1133,17 @@ been cloned in a particular folder
 <7> Many commands start with a `cd` in order to set the current working directory.
 Fabric doesn't have any state, so it doesn't remember what directory you're in
 from one `run` to the next.
-<8> We look inside the virtualenv folder for the `pip` executable as a way of
+<7> The fabric `sed` command does a string substitution in a file, here it's changing
+DEBUG from True to False.  `append` just adds a  line to the end of a file.
+<9> We look inside the virtualenv folder for the `pip` executable as a way of
 checking whether it already exists.
-<9> We use the virtualenv version of python whenever we need to run a Django 
+<10> We use the virtualenv version of python whenever we need to run a Django 
 'manage.py' command, to make sure we get the virtualenv version of django, not
 the system one.
 
 We can try this command out on our existing staging site -- the script should work
-for an existing site as well as for a new one.  If you liked your Latin, you might
-describe it as idempotent, which means it does nothing if run twice...
+for an existing site as well as for a new one.  If you like words with Latin roots, 
+you might describe it as idempotent, which means it does nothing if run twice...
 
 [subs="specialcharacters,macros"]
 ----
@@ -1127,13 +1198,19 @@ Done.
 Disconnecting from book-example-staging.obeythetestinggoat.com... done.
 ----
 
-If you look through that, you can see the `mkdir -p` commands going through
-happily, even though the directories already exist.  Next we do the `git pull`,
-which pulls down the couple of commits we just made.  Then we see the 
-`pip install -r requirements.txt`, which completes happily, noting that the 
-existing virtualenv already has all the packages we need.  The `collectstatic`
-also notices that the static files are already there, and the `syncdb` also
-completes without a hitch.
+////
+TODO: add output from sed and append
+////
+
+Awesome.  I love making computers spew out pages and pages of output like that
+(in fact I find it hard to stop myself from making little 70's computer '<brrp,
+brrrp, brrrp>' noises like Mother in Alien).  Anyway, we look through it,
+we can see it is doing our bidding: the `mkdir -p` commands go through
+happily, even though the directories already exist.  Next `git pull` pulls down
+the couple of commits we just made.  Then `pip install -r requirements.txt`,
+completes happily, noting that the existing virtualenv already has all the
+packages we need.  `collectstatic` also notices that the static files are
+all already there, and finally the `syncdb` completes without a hitch.
 
 So, let's try using it for our live site!
 
@@ -1185,11 +1262,12 @@ Done.
 Disconnecting from book-example.obeythetestinggoat.com... done.
 ----
 
-You can see the script follows a slightly different path, doing a `git clone`
-to bring down a brand new repo instead of the `git pull`.  It also needs to set
-up a new virtuaelnv from scratch, including a fresh install of pip and Django.
-The `collectstatic` actually creates new files this time, and the `syncdb` seems
-to have worked too.
+
+'Brrp brrp brpp'. You can see the script follows a slightly different path,
+doing a `git clone` to bring down a brand new repo instead of the `git pull`.
+It also needs to set up a new virtuaelnv from scratch, including a fresh
+install of pip and Django. The `collectstatic` actually creates new files this
+time, and the `syncdb` seems to have worked too.
 
 What else do we need to do to get our live site into production? We refer to
 our provisioning notes, which tell us to use the template files to create our
@@ -1200,7 +1278,8 @@ command-line magic?
 sed "s/SITENAME/book-example.obeythetestinggoat.com/g" deploy_tools/nginx.template.conf | sudo tee /etc/nginx/sites-enabled/book-example.obeythetestinggoat.com
 ----
 
-`sed` ("stream editor" takes a stream of text and performs edits on it.  In
+`sed` ("stream editor" takes a stream of text and performs edits on it. It's no
+accident that the fabric string substitution command has the same name.  In
 this case we ask it to substitute the string 'SITENAME' for the address of
 our site, with the `s/replaceme/withthis/g` syntax.  We pipe (`|`) the output
 of that to a root-user process (sudo) which uses `tee` to write what's piped
@@ -1235,7 +1314,7 @@ Recap:
 ~~~~~
 
 Lots of this, particularly on the provisioning side, was very specific to the
-setup I happened to have.  When you deploy sites, you might use apache instead
+setup I happened to use.  When you deploy sites, you might use apache instead
 of nginx, uwsgi instead of gunicorn, supervisor instead of upstart, and so on.
 If you use a PaaS, some of these problems will be solved for you, others won't.
 But I really wanted to take you through a practical example, so we could see
@@ -1246,7 +1325,6 @@ There are some elements that will be common to all situations though:
 * You need to choose a place for your static files
 * You'll need specific config for your database
 * You need to run some kind of webserver, set it to listen on some port
-or domain socket, and set it up so that it starts up automatically
 
 On the deployment side, you should find that much of what we've done is
 transferable to any situation:
@@ -1259,12 +1337,15 @@ South and schema migrations later)
 * You need to manage your dependencies, and make sure any packages you need
 are available on the server. We use a 'virtualenv' to isolate our various
 sites from each other.
+* You'll probably need to tweak some items in 'settings.py' when switching
+to production.
 * You'll want to 'test' that these things work, by doing your deployment to a
 staging site first
 * You should be able to run your functional test suite against a 'staging site'.
 * You'll want to 'automate' all of the steps involved in a deploy, to give
 yourself confidence that when you deploy to live, things will go just as
 smoothly as when you deployed to staging.
+
 
 Further reading:
 ~~~~~~~~~~~~~~~~
@@ -1297,14 +1378,13 @@ Possible changes:
 
 - talk about logging?
 - the switch to domain sockets makes things feel complicated?  But, on a PaaS
-you wouldn't have to worry about this...  Also, if I go for domain sockets from 
-the word go, then I can't start off using the dev server, so we also have to
-bite the virtualenv/gunicorn bullets at the same time.
+you wouldn't have to worry about this...  Also, if I go for domain sockets
+from the word go, then I can't start off using the dev server, so we also have
+to bite the virtualenv/gunicorn bullets at the same time.
 - am getting annoyed at using the full domain name in every single config file.
-Particularly for the upstart scripts, it sucks because they won't tab complete...
+Particularly for the upstart scripts, it sucks because they won't tab
+complete...
 - maybe use a shorter domain?  I could register obeyttg.com or similar... Also,
 maybe get the name "superlists" in there...
-
-
 
 
