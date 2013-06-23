@@ -92,6 +92,11 @@ text field and a submit button
 would mean that we can only ever have one set of notes per list item, but we
 can always revisit it later)
 
+We'll start with a unit test for our edit notes view.  The main thing to
+test about this view is that it's able to use the list id and item id
+specified in the URL to identify an actual list and item, and then 
+render a form which is able to POST back to the notes URL for that list 
+item:
 
 [source,python]
 .lists/tests.py
@@ -109,11 +114,11 @@ class EditNotesViewTest(TestCase):
             '/lists/%d/item/%d/edit_notes/' % (list1.id, item2.id)
         )
 
+        self.assertEqual(response.context['item'], item2)
         self.assertIn(
             'action="/lists/%d/item/%d/notes"' % (list1.id, item2.id),
             response.content
         )
-        self.assertIn('<input name="notes" type="textfield"', response.content)
 ----
 
 Running this test gives us an unexpected  error:
@@ -363,17 +368,29 @@ $ *touch lists/templates/edit_notes.html*
 
 And now onto a more interesting test failure:
 
+    KeyError: 'item'
+
+So we pass through the item:
+
+
+[source,python]
+.lists/views.py
+----
+def edit_notes(request, list_id, item_id):
+    item = Item.objects.get(id=item_id)
+    return render(request, 'edit_notes.html', {'item': item})
+----
+
+And then we get
+
 ----
 AssertionError: 'action="/lists/1/notes"' not found in ''
 ----
 
 The test is checking that we have a form which points to the correct
 URL.  Let's start creating our new template, basing it on one of the exiting
-ones.  I'll start by tweaking the header test
-////
-TODO: test this
-////
-and the form's `action` attribute:
+ones.  I'll start by tweaking the header test and the form's `action`
+attribute:
 
 [source,html]
 .lists/templates/edit_notes.html
@@ -396,72 +413,23 @@ do our unit tests want next?
 ----
 
     self.assertIn('action="/lists/%d/notes"' % (list1.id,), response.content)
-AssertionError: 'action="/lists/1/notes"' not found in '<!DOCTYPE html>\n<html>[...]
+AssertionError: 'action="/lists/1/item/2/notes"' not found in '<!DOCTYPE html>\n<html>[...]
 ----
 
-Hmm, the form `action` isn't quite right.  Digging further through the error message,
+Hmm, the form `action` isn't quite right.  Digging further through the error
+message,
 we can see why:
 
 ----
-    <form method="POST" action="/lists//item//notes" >\n 
+    <form method="POST" action="/lists//item/2/notes" >\n 
 ----
 
 By default, Django's template language just replaces any unknown or missing
-variables with empty text, so, because we haven't passed in an `item` or a
-`list`, it can't possible generate a URL for us.  We'll need to pass them in
-in the context for the template.  We can use Django's testing tools to help
-check on them:
-
-[source,python]
-.lists/tests.py
-----
-    self.assertEqual(response.context['item'], item2)
-    self.assertIn(
-        'action="/lists/%d/item/%d/notes"' % (list1.id, item2.id),
-        response.content
-    )
-----
-
-Now we get
-
-    KeyError: 'item'
-
-So we pass through the item:
-
-
-[source,python]
-.lists/views.py
-----
-def edit_notes(request, list_id, item_id):
-    item = Item.objects.get(id=item_id)
-    return render(request, 'edit_notes.html', {'item': item})
-----
-
-
-That gets us closer, we still get an error but now, looking at the traceback,
-the form action is nearly there:
-
-    action="/lists//item/2/notes"
-
-Rather than pass a `list` object to the template as well, we can just get it
-from the item -- we tweak the template slightly:
-
-
-[source,html]
-.lists/templates/edit_notes.html
-----
-<form method="POST" action="/lists/{{ item.list.id }}/item/{{ item.id }}/notes">
-----
-
-And now we get a different failure!
-
-----
-    self.assertIn('<input name="notes" type="textfield"', response.content)
-AssertionError: '<input name="notes" type="textfield"' not found in [...]
-----
-
-So we need to add our `textfield`, which will allow us to input multi-line 
-comments:
+variables with empty text, so, because we haven't passed in a
+`list`, it can't generate the right URL for us. Rather than pass a `list`
+object to the template as well, we can just get it from the `item` -- we tweak
+the template slightly, and while we're at it, well add a `textarea` to capture
+the notes with:
 
 
 [source,html]
@@ -469,7 +437,7 @@ comments:
 ----
 <form method="POST" action="/lists/{{ item.list.id }}/item/{{ item.id }}/notes">
     {% csrf_token %}
-    <input name="notes" type="textfield"/>
+    <textarea name="notes"></textarea>
 </form>
 ----
 
@@ -497,7 +465,11 @@ list table so that it has several columns, including one for notes:
 {% endblock %}
 ----
 
+//TODO: test this URL?
+//TODO: apply DRY to URLs, talk about {% url and get_absolute_url
+
 But I'm already anticipating this is going to cause problems...
+
 ----
 ======================================================================
 FAIL: test_adding_notes (functional_tests.tests.NewVisitorTest)
@@ -564,7 +536,7 @@ Ah yes, we forgot to add a submit button to our form.  Let's do that:
 ----
     <form method="POST" action="/lists/{{ item.list.id }}/item/{{ item.id }}/notes">
         {% csrf_token %}
-        <input name="notes" type="textfield"/>
+        <textarea name="notes"></textarea> 
         <input type="submit" value="Save"/>
     </form>
 ----
@@ -576,11 +548,11 @@ AssertionError: 'You can find milk in a shop' not found in u'Not Found\nThe requ
 ----
 
 Before we move on though, let's do a tiny bit of prettification.  One of the 
-problems with TDD is that you can let yourself become fixated on getting your tests
-to pass, and forget to try actually using your application yourself. Remember,
-'real' test is whether your users enjoy using your app, so it's important to 
-go and check it out yourself from time to time to pick up on things like design
-and usability issues.
+problems with TDD is that you can let yourself become fixated on getting your
+tests to pass, and forget to try actually using your application yourself.
+Remember, 'real' test is whether your users enjoy using your app, so it's
+important to go and check it out yourself from time to time to pick up on
+things like design and usability issues.
 
 Let's spin up the dev server with `manage.py runserver` and take a look around.
 Our addition of the 'edit notes' link to the table has made it look a bit
@@ -599,7 +571,7 @@ size of the parent container in 'base.html'.  Here's what I ended up with,
 which I'm reasonably happy with:
 
 [source,html]
-.lists/templates/edit_notes.html
+.lists/templates/list.html
 ----
 <table id="id_list_table" class="table table-hover">
     {% for item in list.item_set.all %}
@@ -620,7 +592,220 @@ which I'm reasonably happy with:
 image::images/list_table_multiple_items_better.png[List table looking better
 with multiple items]
 
-Here's a reasonable state.
+Similarly for the edit_notes page, we can go from this:
 
+.Notes editing page looking a little silly
+image::images/edit_notes_page_unformatted.png[Edit notes page has a tiny little edit box lost in a big sea]
+
+To this:
+
+.Notes editing page looking better
+image::images/edit_notes_page_better.png[Edit notes page a bit neater]
+
+Using this:
+
+[source,html]
+.lists/templates/edit_notes.html
+----
+{% extends 'base.html' %}
+
+{% block header_text %}Edit notes{% endblock %}
+
+{% block form %}
+    <h3>&quot;{{ item.text }}&quot;</h3>
+    <form method="POST" action="/lists/{{ item.list.id }}/item/{{ item.id }}/notes" class="form-inline">
+        {% csrf_token %}
+        <p>
+            <textarea name="notes" class="span5 offset1" rows="4"></textarea>
+            <input type="submit" class="btn btn-primary" value="Save"/>
+        </p>
+    </form>
+{% endblock %}
+----
+
+
+//TODO: retrospectively introduce a test for the h3
+
+Let's commit those formatting changes
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* # changes in list.html and edit_notes.html
+$ *git commit -am"Formatting tweaks for edit notes"*
+----
+
+Back to our FT -- is it still failing in the same place?
+
+----
+AssertionError: 'You can find milk in a shop' not found in u'Not Found\nThe requested URL /lists/1/item/1/notes was not found on this server.'
+----
+
+Sure enough. Time for a new unit test for another view, this one to handle POST
+submissions for notes:
+
+[source,python]
+.lists/tests.py
+----
+class UpdateNotesViewTest(TestCase):
+
+    def test_adding_new_notes_to_a_list(self):
+        list1 = List.objects.create()
+        item1 = Item.objects.create(text='itemey 1', list=list1)
+
+        client = Client()
+        response = client.post(
+            '/lists/%d/item/%d/notes' % (list1.id, item1.id),
+            data={'notes': 'some notes'}
+        )
+
+        item_in_db = Item.objects.get(id=item1.id)
+        self.assertEqual(item_in_db.notes, 'some notes')
+        self.assertRedirects(response, 'lists/%d/' % (list1.id,))
+----
+
+That gives:
+
+----
+AttributeError: 'Item' object has no attribute 'notes'
+----
+
+Items don't have notes yet.  Let's add them using our existing  `ListAndItemModelsTest`,
+in a new method:
+
+[source,python]
+.lists/tests.py
+----
+
+class ListAndItemModelsTest(TestCase):
+
+    def test_saving_and_retrieving_items(self):
+        [...]
+
+    def test_notes(self):
+        item = Item()
+        self.assertEqual(item.notes, '')
+----
+
+A very minimalist test compared to the previous one, but we don't need much over and above what 
+we've already tested.  Now we get a second failure concerning the attribute notes:
+
+----
+    self.assertEqual(item.notes, '')
+AttributeError: 'Item' object has no attribute 'notes'
+----
+
+
+We add the new field in 'models.py':
+
+[source,python]
+.lists/models.py
+----
+class Item(models.Model):
+    text = models.TextField()
+    list = models.ForeignKey(List)
+    notes = models.TextField()
+----
+
+That takes us back to a single unit test failure. Let's add the new model field
+as a self-contained commit.  Here's a cool new Git command: `git add -p` lets
+you selectively include some changes, but not all, from the working tree:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*git add -p*]
+diff --git a/lists/models.py b/lists/models.py
+index 6f3347c..0595981 100644
+--- a/lists/models.py
++++ b/lists/models.py
+@@ -6,3 +6,4 @@ class List(models.Model):
+ class Item(models.Model):
+     text = models.TextField()
+     list = models.ForeignKey(List)
++    notes = models.TextField()
+Stage this hunk [y,n,q,a,d,/,e,?]? pass:quotes[*y*]
+
+diff --git a/lists/tests.py b/lists/tests.py
+index 8eaee62..f489c47 100644
+--- a/lists/tests.py
++++ b/lists/tests.py
+@@ -104,7 +104,24 @@ class EditNotesViewTest(TestCase):
+             'action="/lists/%d/item/%d/notes"' % (list1.id, item2.id),
+             response.content
+         )
++
++class UpdateNotesViewTest(TestCase):
++
++    def test_adding_new_notes_to_a_list(self):
++        list1 = List.objects.create()
++        item1 = Item.objects.create(text='itemey 1', list=list1)
++
++        client = Client()
++        response = client.post(
++            '/lists/%d/item/%d/notes/' % (list1.id, item1.id),
++            data={'notes': 'some notes'}
++        )
++
++        item_in_db = Item.objects.get(id=item1.id)
++        self.assertEqual(item_in_db.notes, 'some notes')
++        self.assertRedirects(response, 'lists/%d/')
++
+ 
+ 
+Stage this hunk [y,n,q,a,d,/,e,?]? pass:quotes[*n*]
+@@ -136,3 +153,9 @@ class ListAndItemModelsTest(TestCase):
+         self.assertEqual(first_saved_item.list, list)
+         self.assertEqual(second_saved_item.text, 'Item the second')
+         self.assertEqual(second_saved_item.list, list)
++
++
++    def test_notes(self):
++        item = Item()
++        self.assertEqual(item.notes, '')
++
+Stage this hunk [y,n,q,a,d,/,e,?]? pass:quotes[*y*]
+$ pass:quotes[*git commit*]
+----
+
+Now let's create our edit_notes view:
+
+[source,python]
+.lists/urls.py
+----
+urlpatterns = patterns('',
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(\d+)/new_item$', 'lists.views.add_item', name='add_item'),
+    url(r'^(\d+)/item/(\d+)/edit_notes/$', 'lists.views.edit_notes', name='edit_notes'),
+    url(r'^(\d+)/item/(\d+)/notes$', 'lists.views.update_notes', name='update_notes'),
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+)
+----
+
+Now we enter a test/code cycle.  I'm not going to go into every single step for
+you, but it should take you at least 6 runs of the unit tests I should say.
+Especially if you, like me, you make a slightly silly mistake along the way:
+
+----
+    return redirect('/lists/%d/' % (list.id,))
+AttributeError: type object 'list' has no attribute 'id'
+----
+
+
+Here's my final view code:
+
+[source,python]
+.lists/views.py
+----
+def update_notes(request, list_id, item_id):
+    item = Item.objects.get(id=item_id)
+    item.notes = request.POST['notes']
+    item.save()
+    return redirect('/lists/%d/' % (item.list.id,))
+----
+
+And that gets us onto the next functional tst failure:
+
+----
+AssertionError: 'You can find milk in a shop' not found in u'Your To-Do list\n1: Buy milk\nedit notes'
+----
 
 
