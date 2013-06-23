@@ -193,7 +193,7 @@ $ *git commit -am"Hack FT runner to be able to test staging"*
 
 NOTE: We're going to need a couple of domain names at this point in the book -
 they can both be subdomains of a single domain.  I'm going to use
-'superlist.ottg.eu' and
+'superlists.ottg.eu' and
 'superlists-staging.ottg.eu'.
 If you don't already own a domain, this is the time to register one! Again,
 this is something I really want you to 'actually' do.  If you've never
@@ -514,8 +514,8 @@ and add that to our repository:
 [subs="specialcharacters,quotes"]
 ----
 (virtualenv)$ *pip freeze > requirements.txt*
-(virtualenv)$ *git add requirements.txt*
 (virtualenv)$ *deactivate*
+$ *git add requirements.txt*
 $ *git commit -m"Add requirements.txt for virtualenv"*
 ----
 
@@ -577,49 +577,54 @@ inside '/etc/nginx/sites-available' folder, and then added it to the enabled
 sites for the server by creating a symlink to it:
 
 ----
-$ ln -s ../sites-available/$SITENAME /etc/nginx/sites-enabled/$SITENAME
+(virtualenv)$ sudo ln -s ../sites-available/$SITENAME /etc/nginx/sites-enabled/$SITENAME
 ----
 
 That's the Debian/Ubuntu preferred way of saving nginx configurations -- 
-the real file in 'site-available', and a symlink in 'sites-enabled', the
-idea is that it makes it easier to switch sites on or off.
+the real config file in 'sites-available', and a symlink in 'sites-enabled',
+the idea is that it makes it easier to switch sites on or off.
 
 NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
-`server_names_hash_bucket_size 64;` to get my long domain name to work...
+`server_names_hash_bucket_size 64;` to get my long domain name to work.  You 
+may not have this problem; Nginx will warn you when you do a `reload` if it has
+any trouble with its config files.
 
 And now to test it:
 
-    (virtualenv)$ service nginx reload
+    (virtualenv)$ sudo service nginx reload
     (virtualenv)$ python manage.py runserver
 
-That gets us as far as seeing the site, but static files aren't working:
+A quick visual inspection confirms -- the site is up!
 
 .Staging site is up!
-image::images/staging_is_up.png[Our staging version is live... but looks ugly again]
+image::images/staging_is_up.png[The front page of the site, at least, is up]
 
 Let's see what our functional tests say:
-
-TODO: update this -- DEBUG is now True, so static files will work.
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
 [...]
+
 NoSuchElementException: Message: u'Unable to locate element:
-{"method":"id","selector":"id_list_table"}' ; [...]
-FAILED (errors=1)
+{"method":"id","selector":"id_list_table"}' ;[...]
+[...]
+
+AssertionError: 0 != 470 within 3 delta
 ----
 
 The tests are failing as soon as they try and submit a new item, because we
-haven't set up the database. Let's do that now.
+haven't set up the database. You'll probably have spotted the yellow Django
+debug telling us as much as the tests went through, or if you tried it manually.
 
+Let's set up the database then.
 
 
 Creating the database with syncdb
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 We run `syncdb` using the `--noinput` argument to suppress the two little "are
-you sure" prompts:
+you sure" prompts.  Press Ctrl+C to interrup the current `runserver`.
 
 ----
 (virtualenv)$ python manage.py syncdb --noinput
@@ -641,8 +646,11 @@ Ran 2 tests in 10.718s
 OK
 ----
 
-Hooray!  We're reassured that some of the piping works, but we really can't be
-using the Django dev. server in production.  We also can't be relying
+NOTE: if you see a "502 - Bad Gateway", it's probably because you forgot to
+restart the dev server with `manage.py runserver`
+
+Hooray!  Well, we're reassured that some of the piping works, but we really
+can't be using the Django dev. server in production.  We also can't be relying
 on manually starting it up with `runserver`.
 
 
@@ -651,7 +659,7 @@ Switching to Gunicorn
 
 Do you know why the Django mascot is a pony?  The story is that Django
 comes with so many things you want -- an ORM, all sorts of middleware,
-the admin site -- "what else do you want, a pony?". Well, Gunicorn stands
+the admin site -- that: "what else do you want, a pony?". Well, Gunicorn stands
 for "Green Unicorn", which I guess is what you'd want next if you already
 had a pony...
 
@@ -661,19 +669,26 @@ Gunicorn will need to know a path to a WSGI server, which is usually
 a function called `application`.  Django provides one at 'superlists/wsgi.py'.
 
 We can try that out, and check that all the virtualenv magic works too, by
-deactivating the virtualenv and seeing if we can still serve our app using
+'deactivating' the virtualenv and seeing if we can 'still' serve our app using
 the `gunicorn` executable that pip just put in there for us:
 
 
+    (virtualenv)$ which gunicorn
+    /home/harry/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn
     (virtualenv)$ deactivate
     $ ../virtualenv/bin/gunicorn superlists.wsgi:application
     2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.17.4
     2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
     [...]
 
-Now if you reload gunicorn and take a look at the site, you'll find the CSS is
-all broken.  In fact, if we run the functional tests, you'll see they tell us
-that something is wrong:
+Now if take a look at the site, you'll find the CSS is all broken:
+
+.Broken CSS
+image::images/staging_with_broken_css.png[The site is up, but CSS is broken]
+
+And if we run the functional tests, you'll see they confirm that something
+is wrong. The test for adding list items passes happily, but the test for 
+layout + styling fails.  Good job tests!
 
 [subs="specialcharacters,macros"]
 ----
@@ -683,9 +698,9 @@ AssertionError: 125 != 497 within 3 delta
 FAILED (failures=1)
 ----
 
-That's because although the Django dev server will serve static files magically
-for you, Gunicorn doesn't.  Now is the time to get Nginx to server static files
-for us.
+The reason that the CSS is broken is that although the Django dev server will
+serve static files magically for you, Gunicorn doesn't.  Now is the time to
+tell Nginx to do it instead.
 
 
 Getting Nginx to server static files
@@ -695,6 +710,7 @@ First we run `collectstatic` to copy all the static files to a folder where
 Nginx can find them:
 
 ----
+$ source ../virtualenv/bin/activate
 (virtualenv)$ python manage.py collectstatic --noinput
 (virtualenv)$ ls ../static/
 base.css  bootstrap
@@ -720,6 +736,12 @@ server {
 }
 ----
 
+Reload nginx and restart gunicorn...
+
+----
+$ sudo service nginx reload
+$ ../virtualenv/bin/gunicorn superlists.wsgi:application
+----
 
 Now if you have a look at the site, things are looking much healthier. We
 can re-run our FTs:
@@ -760,10 +782,20 @@ sockets in '/tmp'.  Let's change the proxy settings in nginx:
 }
 ----
 
-`proxy_set_header` is needed to make sure gunicorn and Django know what domain
+`proxy_set_header` is to make sure Gunicorn and Django know what domain
 it's running on.  We need that for the `ALLOWED_HOSTS` security feature, which 
-we're about to switch on.  First, we re-run the functional test again, to make
-sure things still pass.
+we're about to switch on.
+
+Now we restart Gunicorn, but this time telling it to listen on a socket instead
+of on the default port:
+
+----
+$ sudo service nginx reload
+$ ../virtualenv/bin/gunicorn --bind unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application
+----
+
+
+And again, we re-run the functional test again, to make sure things still pass.
 
 [subs="specialcharacters,macros"]
 ----
@@ -771,16 +803,23 @@ $ pass:quotes[*python manage.py test functional_tests --liveserver=superlists-st
 OK
 ----
 
+A couple more steps!
+
+
 Switching DEBUG to False and setting ALLOWED_HOSTS
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-At the top of 'settings.py', you'll find the `DEBUG` setting.  In production,
-we should always set this to `False`.  When we do that, we also need to set
-another setting called `ALLOWED_HOSTS`. This was
+Django's DEBUG mode is all very well for hacking about on your own server, but
+leaving those pages full of tracebacks available
+https://docs.djangoproject.com/en/1.5/ref/settings/#debug[isn't secure].
+
+You'll find the `DEBUG` setting at the top of 'settings.py'. When we set this
+to `False`, we also need to set another setting called `ALLOWED_HOSTS`. This
+was
 https://docs.djangoproject.com/en/1.5/ref/settings/#std:setting-ALLOWED_HOSTS[added
 as a security feature] in Django 1.5.  Unfortunately it doesn't have an entry
 with a helpful comment in the default 'settings.py', but we can add one
-ourselves:
+ourselves.  Do this on the server:
 
 [role="sourcecode"]
 .superlists/settings.py
@@ -797,15 +836,16 @@ ALLOWED_HOSTS = ['superlists-staging.ottg.eu']
 [...]
 ----
 
-And, once again, we restart Gunicorn and run the FT to check things still work
+And, once again, we restart Gunicorn and run the FT to check things still work.
 
 
 
 Using upstart to make sure gunicorn starts on boot
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Our final step is to make sure that the server always starts
-up gunicorn on boot.  On Ubuntu, the way to do this is using upstart.
+Our final step is to make sure that the server starts up gunicorn automatically
+on boot, and reloads it automatically if it crashes.  On Ubuntu, the way to do
+this is using upstart.
 
 [role="sourcecode"]
 .Upstart script for Gunicorn
@@ -819,14 +859,19 @@ stop on shutdown
 respawn
 
 chdir /home/harry/sites/superlists-staging.ottg.eu/source
-exec ../virtualenv/bin/gunicorn --bind /tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application
+exec ../virtualenv/bin/gunicorn \
+    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
+    superlists.wsgi:application
 ----
 
-You can see the exta `--bind` parameter which tells Gunicorn to listen
-to that Unix domain socket.
+Upstart is joyously simple to configure (especially if you've ever had the
+pleasure of writing an `init.d` script), and is fairly self-explanatory.
+The `start on net-device-up` makes sure Gunicorn only runs once the server
+has connected up to the internet.  `respawn` will restart Gunicorn
+automatically if it crashes, and `chdir` sets the working directory
 
-I copied this file into '/etc/init' on the server, calling it
-'/etc/init/gunicorn-superlists-staging.ottg.euf'
+I saved this file into '/etc/init' on the server, calling it
+'/etc/init/gunicorn-superlists-staging.ottg.eu'
 
 Now we can start gunicorn with
 
@@ -838,7 +883,7 @@ And you can even test that the site comes back up if you reboot the server!
 Saving our changes:  adding gunicorn to our requirements.txt
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Back in the local copy of your repo, we should add gunicorn to the list
+Back in the *local* copy of your repo, we should add gunicorn to the list
 of packages we need in our virtualenvs:
 
 [subs="specialcharacters,quotes"]
@@ -850,15 +895,6 @@ $ *source ../virtualenv/bin/activate*
 $ *git commit -am"Add gunicorn to virtualenv requirements"*
 $ *git push* 
 ----
-
-////
-TOOD: add ALLOWED_HOSTS to version control?
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am"Set DEBUG to False and add domain to ALLOWED_HOSTS"*
-----
-////
 
 
 ////
@@ -874,28 +910,29 @@ Let's re-cap on our provisioning and deployment procedures
 
 Provisioning:
 
+* assume we have a user account + home folder
 * apt-get nginx git python-pip
 * pip install virtualenv
 * add nginx config for virtual host
 * add upstart job for gunicorn
-* create user account + home folder for user
 
 
 Deployment
 
-* create directory structure
-* pull down source code into source
+* create directory structure in '~/sites'
+* pull down source code into folder named source
+* start virtualenv in '../virtualenv'
 * pip install -r requirements.txt
 * syncdb for database
 * collectstatic for static files
 * set DEBUG = False and ALLOWED_HOSTS in settings.py
 * restart gunicorn job
-* run FTs
+* run FTs to check everything works
 
 
 Assuming we're not ready to entirely automate our provisioning process, how
 should we save the results of our investigation so far?  I would say that 
-the nginx and upstart config files should probably be saved for later, in
+the nginx and upstart config files should probably be saved somewhere, in
 a way that makes it easy to re-use them later.  Let's save them in a new
 subfolder in our repo:
 
@@ -938,7 +975,9 @@ stop on shutdown
 respawn
 
 chdir /home/harry/sites/SITENAME/source
-exec ../virtualenv/bin/gunicorn --bind unix:/tmp/SITENAME.socket superlists.wsgi:application
+exec ../virtualenv/bin/gunicorn \
+    --bind unix:/tmp/SITENAME.socket \
+    superlists.wsgi:application
 ----
 
 Then it's easy for us to use those two files to generate
@@ -1045,11 +1084,11 @@ That will invoke the function called function_name, passing in a connection
 to the server at SERVER_ADDRESS.  There are many other options for specifying
 usernames and passwords, which you can find out about using `fab --help`
 
-The best way to see how it works is with an example.  Here's a fabfile I've 
-built which automates all the steps we went through in the deploy earlier.  The 
-main function is called `deploy`, that's the one we'll invoke from the command-line.
-It uses several helper functions.  `env.host` will contain the server address that
-we've passed in.
+The best way to see how it works is with an example.  Here's a fabfile I've
+built which automates all the steps we went through in the deploy earlier.  The
+main function is called `deploy`, that's the one we'll invoke from the
+command-line. It uses several helper functions.  `env.host` will contain the
+server address that we've passed in.
 
 [role="sourcecode"]
 .deploy_tools/fabfile.py
@@ -1081,19 +1120,19 @@ def _create_directory_structure_if_necessary(site_name):
 
 def _get_latest_source(source_folder):
     if exists(path.join(source_folder, '.git')): #<5><6>
-        run('cd %s && git reset --hard' % (source_folder,))
-        run('cd %s && git pull' % (source_folder,)) #<7>
+        run('cd %s && git reset --hard' % (source_folder,)) #<7><8>
+        run('cd %s && git pull' % (source_folder,)) #<8>
     else:
-        run('git clone %s %s' % (REPO_URL, source_folder))
+        run('git clone %s %s' % (REPO_URL, source_folder)) #<8>
 
 def _update_settings(source_folder, site_name):
     settings_path = path.join(source_folder, 'superlists/settings.py')
-    sed(settings_path, "DEBUG = True", "DEBUG = False") #<8>
-    append(settings_path, 'ALLOWED_HOSTS = "%s"' % (site_name,)) #<8>
+    sed(settings_path, "DEBUG = True", "DEBUG = False") #<9>
+    append(settings_path, 'ALLOWED_HOSTS = ["%s"]' % (site_name,)) #<10>
 
 def _update_virtualenv(source_folder):
     virtualenv_folder = path.join(source_folder, '../virtualenv')
-    if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<9>
+    if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<11>
         run('virtualenv %s' % (virtualenv_folder,))
     run('%s/bin/pip install -r %s/requirements.txt' % (
             virtualenv_folder, source_folder
@@ -1101,7 +1140,7 @@ def _update_virtualenv(source_folder):
 
 
 def _update_static_files(source_folder):
-    run('cd %s && ../virtualenv/bin/python manage.py collectstatic --noinput' % ( # <10>
+    run('cd %s && ../virtualenv/bin/python manage.py collectstatic --noinput' % ( # <12>
         source_folder,
     ))
 
@@ -1119,9 +1158,9 @@ A few explanations of what's going on:
 <1> You'll want to update the `REPO_URL` variable with the URL of your
 own git repo on its code sharing site
 <2> `env.host` will contain the address of the server we've specified at the 
-command-line, eg 'superlist.ottg.eu'.
-<3> `run` is the most common fabric command.  It says "run this shell command on
-the server".
+command-line, eg 'superlists.ottg.eu'.
+<3> `run` is the most common fabric command.  It says "run this shell command
+on the server".
 <4> `mkdir -p` is a useful flavor of `mkdir`, which is better than mkdir in two
 ways: it can create directories several levels deep, and it only creates them
 if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory 'foo' but
@@ -1130,14 +1169,20 @@ also its parent directory 'bar' if it needs to.  It also won't complain if
 <5> `exists` checks whether a directory or file already exists on the server.
 <6> We look for the '.git' hidden folder to check whether the repo has already
 been cloned in a particular folder
-<7> Many commands start with a `cd` in order to set the current working directory.
-Fabric doesn't have any state, so it doesn't remember what directory you're in
-from one `run` to the next.
-<8> The fabric `sed` command does a string substitution in a file, here it's changing
-DEBUG from True to False.  `append` just adds a  line to the end of a file.
-<9> We look inside the virtualenv folder for the `pip` executable as a way of
+<7> Many commands start with a `cd` in order to set the current working
+directory. Fabric doesn't have any state, so it doesn't remember what directory
+you're in from one `run` to the next.
+<8> We `reset --hard` to blow away any current changes on the server's tree,
+directory.  In both the `clone` and `git pull`, it's assumed that we want to
+deploy whatever the head of the 'master' branch is, so if you're using a 
+different branch this won't work.
+<9> The fabric `sed` command does a string substitution in a file, here it's
+changing DEBUG from True to False.  
+<10> `append` just adds a line to the end of a file (it's clever enough not to
+bother if the line is already there)
+<11> We look inside the virtualenv folder for the `pip` executable as a way of
 checking whether it already exists.
-<10> We use the virtualenv version of python whenever we need to run a Django 
+<12> We use the virtualenv version of python whenever we need to run a Django 
 'manage.py' command, to make sure we get the virtualenv version of django, not
 the system one.
 
@@ -1147,6 +1192,7 @@ you might describe it as idempotent, which means it does nothing if run twice...
 
 [subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*cd deploy_tools*]
 $ pass:quotes[*fab deploy:host=superlists-staging.ottg.eu*]
 [superlists-staging.ottg.eu] Executing task 'deploy'
 [superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu
@@ -1177,6 +1223,8 @@ $ pass:quotes[*fab deploy:host=superlists-staging.ottg.eu*]
 [superlists-staging.ottg.eu] out:  create mode 100644 deploy_tools/provisioning_notes.md
 [superlists-staging.ottg.eu] out: HEAD is now at f6b7c73 tweaks to fabfile
 [superlists-staging.ottg.eu] out: 
+[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py
+[superlists-staging.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists-staging.ottg.eu"]' >> /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py
 [superlists-staging.ottg.eu] run: /home/harry/sites/superlists-staging.ottg.eu/source/../virtualenv/bin/pip install -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt
 [superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): Django==1.5.1 in ./sites/superlists-staging.ottg.eu/virtualenv/lib/python2.7/site-packages (from -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt (line 1))
 [superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): argparse==1.2.1 in /usr/lib/python2.7 (from -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt (line 2))
@@ -1198,68 +1246,65 @@ Done.
 Disconnecting from superlists-staging.ottg.eu... done.
 ----
 
-////
-TODO: add output from sed and append
-////
-
 Awesome.  I love making computers spew out pages and pages of output like that
 (in fact I find it hard to stop myself from making little 70's computer '<brrp,
-brrrp, brrrp>' noises like Mother in Alien).  Anyway, we look through it,
+brrrp, brrrp>' noises like Mother in Alien).  If we look through it
 we can see it is doing our bidding: the `mkdir -p` commands go through
 happily, even though the directories already exist.  Next `git pull` pulls down
-the couple of commits we just made.  Then `pip install -r requirements.txt`,
-completes happily, noting that the existing virtualenv already has all the
-packages we need.  `collectstatic` also notices that the static files are
-all already there, and finally the `syncdb` completes without a hitch.
+the couple of commits we just made.  The `sed` and `echo >>` modify our
+'settings'py. Then `pip install -r requirements.txt`, completes happily, noting
+that the existing virtualenv already has all the packages we need.
+`collectstatic` also notices that the static files are all already there, and
+finally the `syncdb` completes without a hitch.
 
 So, let's try using it for our live site!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*fab deploy:host=superlist.ottg.eu*]
-[superlist.ottg.eu] Executing task 'deploy'
-[superlist.ottg.eu] run: mkdir -p /home/harry/sites/superlist.ottg.eu
-[superlist.ottg.eu] Login password for 'harry':  <1>
-[superlist.ottg.eu] run: mkdir -p /home/harry/sites/superlist.ottg.eu/database
-[superlist.ottg.eu] run: mkdir -p /home/harry/sites/superlist.ottg.eu/static
-[superlist.ottg.eu] run: mkdir -p /home/harry/sites/superlist.ottg.eu/virtualenv
-[superlist.ottg.eu] run: mkdir -p /home/harry/sites/superlist.ottg.eu/source
-[superlist.ottg.eu] run: git clone https://github.com/hjwp/book-example.git /home/harry/sites/superlist.ottg.eu/source
-[superlist.ottg.eu] out: Cloning into '/home/harry/sites/superlist.ottg.eu/source'...
-[superlist.ottg.eu] out: remote: Counting objects: 461, done.
-[superlist.ottg.eu] out: remote: Compressing objects: 100% (262/262), done.
-[superlist.ottg.eu] out: Receiving objects: 100% (461/461), 137.86 KiB, done.
-[superlist.ottg.eu] out: Resolving deltas: 100% (208/208), done.
-[superlist.ottg.eu] out: 
-[superlist.ottg.eu] run: virtualenv /home/harry/sites/superlist.ottg.eu/source/../virtualenv
-[superlist.ottg.eu] out: New python executable in /home/harry/sites/superlist.ottg.eu/source/../virtualenv/bin/python
-[superlist.ottg.eu] out: Installing setuptools............done.
-[superlist.ottg.eu] out: Installing pip...............done.
-[superlist.ottg.eu] out: 
-[superlist.ottg.eu] run: /home/harry/sites/superlist.ottg.eu/source/../virtualenv/bin/pip install -r /home/harry/sites/superlist.ottg.eu/source/requirements.txt
-[superlist.ottg.eu] out: Downloading/unpacking Django==1.5.1 (from -r /home/harry/sites/superlist.ottg.eu/source/requirements.txt (line 1))
-[superlist.ottg.eu] out:   Downloading Django-1.5.1.tar.gz (8.0MB): 8.0MB downloaded
-[superlist.ottg.eu] out:   Running setup.py egg_info for package Django
+$ pass:quotes[*fab deploy:host=superlists.ottg.eu*]
+[superlists.ottg.eu] Executing task 'deploy'
+[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu
+[superlists.ottg.eu] Login password for 'harry':  <1>
+[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/database
+[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/static
+[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/virtualenv
+[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/source
+[superlists.ottg.eu] run: git clone https://github.com/hjwp/book-example.git /home/harry/sites/superlists.ottg.eu/source
+[superlists.ottg.eu] out: Cloning into '/home/harry/sites/superlists.ottg.eu/source'...
+[superlists.ottg.eu] out: remote: Counting objects: 461, done.
+[superlists.ottg.eu] out: remote: Compressing objects: 100% (262/262), done.
+[superlists.ottg.eu] out: Receiving objects: 100% (461/461), 137.86 KiB, done.
+[superlists.ottg.eu] out: Resolving deltas: 100% (208/208), done.
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] run: virtualenv /home/harry/sites/superlists.ottg.eu/source/../virtualenv
+[superlists.ottg.eu] out: New python executable in /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/python
+[superlists.ottg.eu] out: Installing setuptools............done.
+[superlists.ottg.eu] out: Installing pip...............done.
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] run: /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/pip install -r /home/harry/sites/superlists.ottg.eu/source/requirements.txt
+[superlists.ottg.eu] out: Downloading/unpacking Django==1.5.1 (from -r /home/harry/sites/superlists.ottg.eu/source/requirements.txt (line 1))
+[superlists.ottg.eu] out:   Downloading Django-1.5.1.tar.gz (8.0MB): 8.0MB downloaded
+[superlists.ottg.eu] out:   Running setup.py egg_info for package Django
 [...]
-[superlist.ottg.eu] out: Successfully installed Django
-[superlist.ottg.eu] out: Cleaning up...
-[superlist.ottg.eu] out: 
-[superlist.ottg.eu] out: Copying '/home/harry/sites/superlist.ottg.eu/source/lists/static/base.css'
+[superlists.ottg.eu] out: Successfully installed Django
+[superlists.ottg.eu] out: Cleaning up...
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/base.css'
 [...]
-[superlist.ottg.eu] out: Copying '/home/harry/sites/superlist.ottg.eu/source/lists/static/bootstrap/img/glyphicons-halflings-white.png'
-[superlist.ottg.eu] out: 
-[superlist.ottg.eu] out: 9 static files copied.
-[superlist.ottg.eu] out: 
-[superlist.ottg.eu] run: cd /home/harry/sites/superlist.ottg.eu/source && ../virtualenv/bin/python manage.py syncdb --noinput
-[superlist.ottg.eu] out: Creating tables ...
-[superlist.ottg.eu] out: Creating table auth_permission
+[superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/bootstrap/img/glyphicons-halflings-white.png'
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] out: 9 static files copied.
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && ../virtualenv/bin/python manage.py syncdb --noinput
+[superlists.ottg.eu] out: Creating tables ...
+[superlists.ottg.eu] out: Creating table auth_permission
 [...]
-[superlist.ottg.eu] out: Installing indexes ...
-[superlist.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
-[superlist.ottg.eu] out: 
+[superlists.ottg.eu] out: Installing indexes ...
+[superlists.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
+[superlists.ottg.eu] out: 
 
 Done.
-Disconnecting from superlist.ottg.eu... done.
+Disconnecting from superlists.ottg.eu... done.
 ----
 
 
@@ -1275,7 +1320,7 @@ nginx virtual host and the upstart script.  How about a little Unix
 command-line magic?
 
 ----
-sed "s/SITENAME/superlist.ottg.eu/g" deploy_tools/nginx.template.conf | sudo tee /etc/nginx/sites-enabled/superlist.ottg.eu
+$ sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/nginx.template.conf | sudo tee /etc/nginx/sites-available/superlists.ottg.eu
 ----
 
 `sed` ("stream editor" takes a stream of text and performs edits on it. It's no
@@ -1289,20 +1334,20 @@ file.
 We can now activate that file:
 
 ----
-$ sudo ln -s ../sites-available/superlist.ottg.eu /etc/nginx/sites-enabled/superlist.ottg.eu
+$ sudo ln -s ../sites-available/superlists.ottg.eu /etc/nginx/sites-enabled/superlists.ottg.eu
 ----
 
 Now we write the upstart script:
 
 ----
-sed "s/SITENAME/superlist.ottg.eu/g" deploy_tools/nginx.template.conf | sudo tee /etc/init/gunicorn-superlist.ottg.eu.conf
+sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/gunicorn-upstart.template.conf | sudo tee /etc/init/gunicorn-superlists.ottg.eu.conf
 ----
 
 And now we start both services:
 
 ----
-service nginx reload
-service gunicorn-superlist.ottg.eu start
+sudo service nginx reload
+sudo service gunicorn-superlists.ottg.eu start
 ----
 
 And we take a look at our site.  It works, hooray! 
@@ -1341,7 +1386,7 @@ sites from each other.
 to production.
 * You'll want to 'test' that these things work, by doing your deployment to a
 staging site first
-* You should be able to run your functional test suite against a 'staging site'.
+* You should be able to run your functional test suite against the 'staging site'.
 * You'll want to 'automate' all of the steps involved in a deploy, to give
 yourself confidence that when you deploy to live, things will go just as
 smoothly as when you deployed to staging.
@@ -1384,7 +1429,5 @@ to bite the virtualenv/gunicorn bullets at the same time.
 - am getting annoyed at using the full domain name in every single config file.
 Particularly for the upstart scripts, it sucks because they won't tab
 complete...
-- maybe use a shorter domain?  I could register obeyttg.com or similar... Also,
-maybe get the name "superlists" in there...
 
 
