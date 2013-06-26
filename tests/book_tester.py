@@ -69,35 +69,66 @@ class Output(unicode):
 
 
 def wrap_long_lines(text):
-    if any(len(l) > 80 for l in text.split('\n')):
+    if all(len(l) < 80 for l in text.split('\n')):
+        return text
 
-        fixed_text = ''
-        for line in text.split('\n'):
-            if len(line) < 80:
-                fixed_text += line + '\n'
-            elif " " not in line:
-                textlist = list(text)
-                newline = ''
-                while textlist:
-                    if len(newline) < 79:
-                        newline += textlist.pop(0)
-                    else:
-                        fixed_text += newline + "\n"
-                        newline = ""
-                fixed_text += newline
-            else:
-                broken_line = ''
-                broken_line += get_indent(line)
+    fixed_text = ''
+    for line in text.split('\n'):
+        if len(line) < 80:
+            fixed_text += line + '\n'
+        elif ' ' not in line:
+            textlist = list(line)
+            newline = ''
+            while textlist:
+                if len(newline) < 79:
+                    newline += textlist.pop(0)
+                else:
+                    fixed_text += newline + "\n"
+                    newline = ""
+            fixed_text += newline
+        else:
+            broken_line = ''
+            broken_line += get_indent(line)
 
-                for word in line.split():
-                    if len(broken_line + " " + word) < 80:
-                        broken_line += word + " "
-                    else:
-                        fixed_text += broken_line.rstrip() + "\n"
-                        broken_line = word + " "
-                fixed_text += broken_line.strip() + "\n"
-        return fixed_text.strip()
-    return text
+            for word in line.split():
+                print repr(broken_line + " " + word)
+                print len(broken_line + " " + word)
+                if len(broken_line + " " + word) < 80:
+                    broken_line += word + " "
+                else:
+                    fixed_text += broken_line.rstrip() + "\n"
+                    broken_line = word + " "
+            fixed_text += broken_line.strip() + "\n"
+    return fixed_text.strip()
+
+
+def fix_test_dashes(output):
+    return output.replace(' ' + '-' * 69, '-' * 70)
+
+
+def strip_git_hashes(output):
+    fixed_indexes = re.sub(
+        r"index .......\.\........ 100644",
+        r"index XXXXXXX\.\.XXXXXXX 100644",
+        output,
+    )
+    fixed_commit_numbers = re.sub(
+            r"^[a-f0-9]{7} ",
+            r"XXXXXXX ",
+            fixed_indexes,
+            flags=re.MULTILINE,
+
+    )
+    return fixed_commit_numbers
+
+
+def strip_test_speed(output):
+    return re.sub(
+        r"Ran (\d+) tests? in \d+\.\d\d\ds",
+        r"Ran \1 tests in X.Xs",
+        output,
+    )
+
 
 
 def parse_listing(listing):
@@ -392,6 +423,31 @@ class ChapterTest(unittest.TestCase):
             type(expected), Output,
             "passed a non-Output to run-command:\n%s" % (expected,)
         )
+        actual_fixed = wrap_long_lines(actual)
+        if 'ViewDoesNotExist' in actual:
+            print 'actual', actual
+            print 'actual_fixed', actual_fixed
+        actual_fixed = strip_test_speed(actual_fixed)
+        actual_fixed = strip_git_hashes(actual_fixed)
+
+        expected_fixed = fix_test_dashes(expected)
+        expected_fixed = strip_test_speed(expected_fixed)
+        expected_fixed = strip_git_hashes(expected_fixed)
+
+        actual_lines = actual_fixed.split('\n')
+        expected_lines = expected_fixed.split('\n')
+
+        for line in expected_lines:
+            if "[..." not in line:
+                if line.startswith(' '):
+                    self.assertIn(line, actual_lines)
+                else:
+                    self.assertIn(line.strip(), [l.strip() for l in actual_lines])
+
+        expected.was_checked = True
+        return
+
+
 
         # special case for git init
         if self.tempdir in actual:
