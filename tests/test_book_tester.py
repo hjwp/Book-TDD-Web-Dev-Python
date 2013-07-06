@@ -877,6 +877,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+
     def test_with_start_elipsis_and_end_longline_elipsis_with_assertionerror(self):
         actual =dedent("""
             bla
@@ -910,6 +911,21 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
+
+
+    def test_elipsis_lines_still_checked(self):
+        actual =dedent("""
+            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it changes and ends up saying something different from what was expected so we shoulf fail
+            """
+            ).strip()
+        expected = Output(dedent("""
+            AssertionError: a long assertion error which ends up wrapping so we have to
+            have it across two lines but then it really goes on and on [...]
+            """).strip()
+        )
+
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(actual, expected)
 
 
     def test_with_middle_elipsis(self):
@@ -947,6 +963,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
     def test_working_directory_substitution(self):
         expected = Output('bla bla /workspace/foo stuff')
         actual = 'bla bla %s/foo stuff' % (self.tempdir,)
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_tabs(self):
+        expected = Output('#       bla bla')
+        actual = '#\tbla bla'
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 

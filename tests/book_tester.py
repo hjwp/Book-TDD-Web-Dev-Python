@@ -439,15 +439,21 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_test_speed(expected_fixed)
         expected_fixed = strip_git_hashes(expected_fixed)
 
+        if '\t' in actual_fixed:
+            actual_fixed = re.sub(r'\s+', ' ', actual_fixed)
+            expected_fixed = re.sub(r'\s+', ' ', expected_fixed)
+
         actual_lines = actual_fixed.split('\n')
         expected_lines = expected_fixed.split('\n')
 
         for line in expected_lines:
-            if "[..." not in line:
-                if line.startswith(' '):
-                    self.assertIn(line, actual_lines)
-                else:
-                    self.assertIn(line.strip(), [l.strip() for l in actual_lines])
+            if line.startswith('[...'):
+                continue
+            if line.endswith('[...]'):
+                line = line.rstrip('[...]')
+                self.assertIn(line, [l[:len(line)] for l in actual_lines])
+            else:
+                self.assertIn(line.rstrip(), [l.rstrip() for l in actual_lines])
 
         expected.was_checked = True
         return
