@@ -29,6 +29,10 @@ class CodeListing(object):
     def is_test(self):
         return False
 
+    def __repr__(self):
+        return '<CodeListing %s: %s...>' % (self.filename, self.contents.split('\n')[0])
+
+
 
 
 class Command(unicode):
@@ -452,8 +456,11 @@ class ChapterTest(unittest.TestCase):
             if line.endswith('[...]'):
                 line = line.rstrip('[...]')
                 self.assertIn(line, [l[:len(line)] for l in actual_lines])
+            elif line.startswith(' '):
+                self.assertIn(line, actual_lines)
             else:
-                self.assertIn(line.rstrip(), [l.rstrip() for l in actual_lines])
+                self.assertIn(line, [l.strip() for l in actual_lines])
+
 
         expected.was_checked = True
         return
