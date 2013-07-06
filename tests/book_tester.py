@@ -422,6 +422,9 @@ class ChapterTest(unittest.TestCase):
             "passed a non-Output to run-command:\n%s" % (expected,)
         )
 
+        if self.tempdir in actual:
+            actual = actual.replace(self.tempdir, '/workspace')
+
         if ls:
             actual=actual.strip()
             self.assertItemsEqual(actual.split('\n'), expected.split())
@@ -448,13 +451,6 @@ class ChapterTest(unittest.TestCase):
 
         expected.was_checked = True
         return
-
-
-
-        # special case for git init
-        if self.tempdir in actual:
-            actual = actual.replace(self.tempdir, '/workspace')
-
 
         actual_text = actual.strip().replace('\t', '       ')
         expected_text = expected.replace(' -----', '------')

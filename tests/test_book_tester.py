@@ -944,6 +944,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_working_directory_substitution(self):
+        expected = Output('bla bla /workspace/foo stuff')
+        actual = 'bla bla %s/foo stuff' % (self.tempdir,)
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_ignores_diff_indexes(self):
         actual =dedent("""
             diff --git a/functional_tests.py b/functional_tests.py
