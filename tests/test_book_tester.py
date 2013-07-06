@@ -937,6 +937,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_ls(self):
+        expected = Output('superlists          functional_tests.py')
+        actual = 'functional_tests.py\nsuperlists\n'
+        self.assert_console_output_correct(actual, expected, ls=True)
+        self.assertTrue(expected.was_checked)
+
+
     def test_ignores_diff_indexes(self):
         actual =dedent("""
             diff --git a/functional_tests.py b/functional_tests.py

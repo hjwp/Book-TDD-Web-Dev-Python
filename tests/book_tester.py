@@ -421,10 +421,14 @@ class ChapterTest(unittest.TestCase):
             type(expected), Output,
             "passed a non-Output to run-command:\n%s" % (expected,)
         )
+
+        if ls:
+            actual=actual.strip()
+            self.assertItemsEqual(actual.split('\n'), expected.split())
+            expected.was_checked = True
+            return
+
         actual_fixed = wrap_long_lines(actual)
-        if 'ViewDoesNotExist' in actual:
-            print 'actual', actual
-            print 'actual_fixed', actual_fixed
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
 
@@ -451,11 +455,6 @@ class ChapterTest(unittest.TestCase):
         if self.tempdir in actual:
             actual = actual.replace(self.tempdir, '/workspace')
 
-        if ls:
-            actual=actual.strip()
-            self.assertItemsEqual(actual.split('\n'), expected.split())
-            expected.was_checked = True
-            return
 
         actual_text = actual.strip().replace('\t', '       ')
         expected_text = expected.replace(' -----', '------')
