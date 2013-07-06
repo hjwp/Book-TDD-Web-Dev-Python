@@ -20,7 +20,7 @@ from examples import CODE_LISTING_WITH_CAPTION
 
 class WrapLongLineTest(unittest.TestCase):
 
-    def DONTtest_wrap_long_lines_with_words(self):
+    def test_wrap_long_lines_with_words(self):
         self.assertEqual(wrap_long_lines('normal line'), 'normal line')
         text = (
             "This is a short line\n"
@@ -38,13 +38,20 @@ class WrapLongLineTest(unittest.TestCase):
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
 
-    def DONTtest_wrap_long_lines_with_words_2(self):
+    def test_wrap_long_lines_with_words_2(self):
         text = "ViewDoesNotExist: Could not import superlists.views.home. Parent module superlists.views does not exist."
         expected_text = "ViewDoesNotExist: Could not import superlists.views.home. Parent module\nsuperlists.views does not exist."
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
 
-    def DONTtest_wrap_long_lines_with_unbroken_chars(self):
+    def test_wrap_long_lines_with_words_3(self):
+
+        text = '  File "/usr/local/lib/python2.7/dist-packages/django/db/backends/__init__.py", line 442, in supports_transactions'
+        expected_text = '  File "/usr/local/lib/python2.7/dist-packages/django/db/backends/__init__.py",\nline 442, in supports_transactions'
+        self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
+
+
+    def test_wrap_long_lines_with_unbroken_chars(self):
         text = "." * 479
         expected_text = (
                 "." * 79 + "\n" +
@@ -58,7 +65,7 @@ class WrapLongLineTest(unittest.TestCase):
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
 
-    def DONTtest_wrap_long_lines_with_unbroken_chars_2(self):
+    def test_wrap_long_lines_with_unbroken_chars_2(self):
         text = (
             "E\n"
             "======================================================================\n"
@@ -73,7 +80,7 @@ class WrapLongLineTest(unittest.TestCase):
 
 
 
-    def DONTtest_wrap_long_lines_with_indent(self):
+    def test_wrap_long_lines_with_indent(self):
         text = (
             "This is a short line\n"
             "   This is a long line with an indent which should wrap just "
@@ -97,7 +104,7 @@ class WrapLongLineTest(unittest.TestCase):
 
 class ParseListingTest(unittest.TestCase):
 
-    def DONTtest_recognises_code_listings(self):
+    def test_recognises_code_listings(self):
         code_html = CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
@@ -121,7 +128,7 @@ class ParseListingTest(unittest.TestCase):
         self.assertFalse('\r' in listing.contents)
 
 
-    def DONTtest_can_extract_one_command_and_its_output(self):
+    def test_can_extract_one_command_and_its_output(self):
         listing = html.fromstring(
             '<div class="listingblock">\r\n'
             '<div class="content">\r\n'
@@ -147,7 +154,7 @@ class ParseListingTest(unittest.TestCase):
         self.assertEqual(type(parsed_listings[1]), Output)
 
 
-    def DONTtest_extracting_multiple(self):
+    def test_extracting_multiple(self):
         listing = html.fromstring(
             '<div class="listingblock">\r\n'
             '<div class="content">\r\n'
@@ -179,7 +186,7 @@ class ParseListingTest(unittest.TestCase):
         self.assertEqual(type(parsed_listings[5]), Output)
 
 
-    def DONTtest_post_command_comment_with_multiple_spaces(self):
+    def test_post_command_comment_with_multiple_spaces(self):
         listing = html.fromstring(
             '<div class="listingblock">'
             '<div class="content">'
@@ -211,7 +218,7 @@ class ParseListingTest(unittest.TestCase):
 
 
 
-    def DONTtest_specialcase_for_asterisk(self):
+    def test_specialcase_for_asterisk(self):
         listing = html.fromstring(
             '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>git rm --cached superlists/</strong>*<strong>.pyc</strong>\r\nrm <em>superlists/__init__.pyc</em>\r\nrm <em>superlists/settings.pyc</em>\r\nrm <em>superlists/urls.pyc</em>\r\nrm <em>superlists/wsgi.pyc</em>\r\n\r\n$ <strong>echo "*.pyc" &gt; .gitignore</strong></code></pre>\r\n</div></div>&#13;\n'
         )
@@ -224,7 +231,7 @@ class ParseListingTest(unittest.TestCase):
         )
 
 
-    def DONTtest_catches_command_with_trailing_comment(self):
+    def test_catches_command_with_trailing_comment(self):
         listing = html.fromstring(
             dedent("""
                 <div class="listingblock">
@@ -248,7 +255,7 @@ class ParseListingTest(unittest.TestCase):
 
 class GetCommandsTest(unittest.TestCase):
 
-    def DONTtest_extracting_one_command(self):
+    def test_extracting_one_command(self):
         listing = html.fromstring(
             '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>python functional_tests.py</strong>\r\nTraceback (most recent call last):\r\n  File "functional_tests.py", line 6, in &lt;module&gt;\r\n    assert \'Django\' in browser.title\r\nAssertionError</code></pre>\r\n</div></div>&#13;\n'
         )
@@ -257,7 +264,7 @@ class GetCommandsTest(unittest.TestCase):
             ['python functional_tests.py']
         )
 
-    def DONTtest_extracting_multiple(self):
+    def test_extracting_multiple(self):
         listing = html.fromstring(
             '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>ls</strong>\r\nsuperlists          functional_tests.py\r\n$ <strong>mv functional_tests.py superlists/</strong>\r\n$ <strong>cd superlists</strong>\r\n$ <strong>git init .</strong>\r\nInitialized empty Git repository in /chapter_1/superlists/.git/</code></pre>\r\n</div></div>&#13;\n'
         )
@@ -272,7 +279,7 @@ class GetCommandsTest(unittest.TestCase):
         )
 
 
-    def DONTtest_specialcase_for_asterisk(self):
+    def test_specialcase_for_asterisk(self):
         listing = html.fromstring(
             '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>git rm --cached superlists/</strong>*<strong>.pyc</strong>\r\nrm <em>superlists/__init__.pyc</em>\r\nrm <em>superlists/settings.pyc</em>\r\nrm <em>superlists/urls.pyc</em>\r\nrm <em>superlists/wsgi.pyc</em>\r\n\r\n$ <strong>echo "*.pyc" &gt; .gitignore</strong></code></pre>\r\n</div></div>&#13;\n'
         )
@@ -287,7 +294,7 @@ class GetCommandsTest(unittest.TestCase):
 
 class LineFinderTest(unittest.TestCase):
 
-    def DONTtest_number_of_identical_chars(self):
+    def test_number_of_identical_chars(self):
         self.assertEqual(
             number_of_identical_chars('1234', '5678'),
             0
@@ -316,7 +323,7 @@ class WriteToFileTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tempdir)
 
-    def DONTtest_simple_case(self):
+    def test_simple_case(self):
         listing = CodeListing(filename='foo.py', contents='abc\ndef')
         write_to_file(listing, self.tempdir)
         with open(os.path.join(self.tempdir, listing.filename)) as f:
@@ -324,7 +331,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assertTrue(listing.was_written)
 
 
-    def DONTtest_strips_line_callouts(self):
+    def test_strips_line_callouts(self):
         listing = CodeListing(
             filename='foo.py',
             contents= 'hello\nbla bla #\n'
@@ -347,14 +354,14 @@ class WriteToFileTest(unittest.TestCase):
             self.assertMultiLineEqual(f.read(), expected_contents)
 
 
-    def DONTtest_existing_file_bears_no_relation_means_replaced(self):
+    def test_existing_file_bears_no_relation_means_replaced(self):
         old = '#abc\n#def\n#ghi\n#jkl\n'
         new = '#mno\n#pqr\n#stu\n#vvv\n'
         expected = new
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_with_new_first_line_then_elipsis_then_block(self):
+    def test_with_new_first_line_then_elipsis_then_block(self):
         old = dedent("""
             top line
             # some stuff
@@ -382,7 +389,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_with_new_contents_then_indented_elipsis_then_appendix(self):
+    def test_with_new_contents_then_indented_elipsis_then_appendix(self):
         old = '#abc\n#def\n#ghi\n#jkl\n'
         new = (
             '#abc\n'
@@ -404,7 +411,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_for_existing_file_replaces_matching_lines(self):
+    def test_for_existing_file_replaces_matching_lines(self):
         old = dedent("""
             class Foo(object):
                 def method_1(self):
@@ -434,7 +441,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_for_existing_file_doesnt_swallow_whitespace(self):
+    def test_for_existing_file_doesnt_swallow_whitespace(self):
         old = dedent("""
             one = (
                 1,
@@ -475,7 +482,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_longer_new_file_starts_replacing_from_first_different_line(self):
+    def test_longer_new_file_starts_replacing_from_first_different_line(self):
         old = dedent("""
             # line 1
             # line 2
@@ -504,7 +511,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_for_existing_file_inserting_new_lines_between_comments(self):
+    def test_for_existing_file_inserting_new_lines_between_comments(self):
         old = dedent("""
             # test 1
             a = foo()
@@ -554,7 +561,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_with_single_line_replacement(self):
+    def test_with_single_line_replacement(self):
         old = dedent("""
             def wiggle():
                 abc def
@@ -578,7 +585,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_with_single_line_replacement_finds_most_probable_line(self):
+    def test_with_single_line_replacement_finds_most_probable_line(self):
         old = dedent("""
             abc
             abc daf ghi
@@ -602,11 +609,11 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_with_single_line_assertion_replacement(self):
+    def test_with_single_line_assertion_replacement(self):
         old = dedent("""
             class Wibble(unittest.TestCase):
 
-                def DONTtest_number_1(self):
+                def test_number_1(self):
                     self.assertEqual(1 + 1, 2)
             """
         ).lstrip()
@@ -619,21 +626,21 @@ class WriteToFileTest(unittest.TestCase):
         expected = dedent("""
             class Wibble(unittest.TestCase):
 
-                def DONTtest_number_1(self):
+                def test_number_1(self):
                     self.assertEqual(1 + 1, 3)
             """
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_with_single_line_assertion_replacement_finds_right_one(self):
+    def test_with_single_line_assertion_replacement_finds_right_one(self):
         old = dedent("""
             class Wibble(unittest.TestCase):
 
-                def DONTtest_number_1(self):
+                def test_number_1(self):
                     self.assertEqual(1 + 1, 2)
 
-                def DONTtest_number_2(self):
+                def test_number_2(self):
                     self.assertEqual(1 + 2, 3)
             """
         ).lstrip()
@@ -646,17 +653,17 @@ class WriteToFileTest(unittest.TestCase):
         expected = dedent("""
             class Wibble(unittest.TestCase):
 
-                def DONTtest_number_1(self):
+                def test_number_1(self):
                     self.assertEqual(1 + 1, 2)
 
-                def DONTtest_number_2(self):
+                def test_number_2(self):
                     self.assertEqual(1 + 2, 4)
             """
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_changing_function_signature_and_stripping_comment(self):
+    def test_changing_function_signature_and_stripping_comment(self):
         old = dedent(
             """
             # stuff
@@ -677,7 +684,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_with_two_elipsis_dedented_change(self):
+    def test_with_two_elipsis_dedented_change(self):
         old = dedent("""
             class Wibble(object):
 
@@ -711,7 +718,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def DONTtest_indents_in_new_dont_confuse_things(self):
+    def test_indents_in_new_dont_confuse_things(self):
         old = dedent("""
             class Wibble():
                 def foo(self):
@@ -740,7 +747,7 @@ class WriteToFileTest(unittest.TestCase):
             """).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
 
-    def DONTtest_double_indents_in_new_dont_confuse_things(self):
+    def test_double_indents_in_new_dont_confuse_things(self):
         old = dedent("""
             class Wibble():
                 def foo(self):
@@ -769,14 +776,14 @@ class WriteToFileTest(unittest.TestCase):
 
 class AssertConsoleOutputCorrectTest(ChapterTest):
 
-    def DONTtest_simple_case(self):
+    def test_simple_case(self):
         actual = 'foo'
         expected = Output('foo')
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_ignores_test_run_times_and_test_dashes(self):
+    def test_ignores_test_run_times_and_test_dashes(self):
         actual =dedent("""
             bla bla bla
 
@@ -795,7 +802,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_handles_elipsis(self):
+    def test_handles_elipsis(self):
         actual =dedent("""
             bla
             bla bla
@@ -812,7 +819,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_with_start_elipsis_and_OK(self):
+    def test_with_start_elipsis_and_OK(self):
         actual =dedent("""
             bla
 
@@ -830,7 +837,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_with_elipsis_finds_assertionerrors(self):
+    def test_with_elipsis_finds_assertionerrors(self):
         actual =dedent("""
             bla
             bla bla
@@ -850,7 +857,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_with_start_elipsis_and_end_longline_elipsis(self):
+    def test_with_start_elipsis_and_end_longline_elipsis(self):
         actual =dedent("""
             bla
             bla bla
@@ -870,7 +877,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-    def DONTtest_with_start_elipsis_and_end_longline_elipsis_with_assertionerror(self):
+    def test_with_start_elipsis_and_end_longline_elipsis_with_assertionerror(self):
         actual =dedent("""
             bla
                 self.assertSomething(bla)
@@ -888,7 +895,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_for_short_expected_with_trailing_elipsis(self):
+    def test_for_short_expected_with_trailing_elipsis(self):
         actual =dedent("""
             bla
             bla bla
@@ -905,7 +912,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_with_middle_elipsis(self):
+    def test_with_middle_elipsis(self):
         actual =dedent("""
             bla
             bla bla
@@ -930,7 +937,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_ignores_diff_indexes(self):
+    def test_ignores_diff_indexes(self):
         actual =dedent("""
             diff --git a/functional_tests.py b/functional_tests.py
             index d333591..1f55409 100644
@@ -947,7 +954,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_ignores_git_commit_numers_in_logs(self):
+    def test_ignores_git_commit_numers_in_logs(self):
         actual =dedent("""
             ea82222 Basic view now returns minimal HTML
             7159049 First unit test and url mapping, dummy view
@@ -977,7 +984,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             self.assert_console_output_correct(actual, expected)
 
 
-    def DONTtest_fixes_stdout_stderr_for_creating_db(self):
+    def test_fixes_stdout_stderr_for_creating_db(self):
         actual = dedent("""
             ======================================================================
             FAIL: test_basic_addition (lists.tests.SimpleTest)
@@ -1010,7 +1017,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-    def DONTtest_handles_long_lines(self):
+    def test_handles_long_lines(self):
         actual = dedent("""
             A normal line
                 An indented line, that's longer than 80 chars. it goes on for a while you see.
@@ -1029,7 +1036,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
-    def DONTtest_for_minimal_expected(self):
+    def test_for_minimal_expected(self):
         actual = dedent(
             """
             Creating test database for alias 'default'...

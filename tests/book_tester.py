@@ -91,15 +91,13 @@ def wrap_long_lines(text):
             broken_line += get_indent(line)
 
             for word in line.split():
-                print repr(broken_line + " " + word)
-                print len(broken_line + " " + word)
-                if len(broken_line + " " + word) < 80:
+                if len(broken_line + " " + word) < 81:
                     broken_line += word + " "
                 else:
                     fixed_text += broken_line.rstrip() + "\n"
                     broken_line = word + " "
-            fixed_text += broken_line.strip() + "\n"
-    return fixed_text.strip()
+            fixed_text += broken_line.rstrip() + "\n"
+    return fixed_text.rstrip()
 
 
 def fix_test_dashes(output):
