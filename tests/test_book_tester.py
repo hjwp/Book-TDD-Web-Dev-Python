@@ -331,16 +331,6 @@ class WriteToFileTest(unittest.TestCase):
         self.assertTrue(listing.was_written)
 
 
-    def test_strips_line_callouts(self):
-        listing = CodeListing(
-            filename='foo.py',
-            contents= 'hello\nbla bla #\n'
-        )
-        write_to_file(listing, self.tempdir)
-        with open(os.path.join(self.tempdir, listing.filename)) as f:
-            self.assertEqual(f.read(), 'hello\nbla bla\n')
-
-
     def assert_write_to_file_gives(
         self, old_contents, new_contents, expected_contents
     ):
@@ -351,7 +341,18 @@ class WriteToFileTest(unittest.TestCase):
         write_to_file(listing, self.tempdir)
 
         with open(os.path.join(self.tempdir, listing.filename)) as f:
-            self.assertMultiLineEqual(f.read(), expected_contents)
+            actual = f.read()
+            self.assertMultiLineEqual(actual, expected_contents)
+
+    def test_strips_line_callouts(self):
+        contents= 'hello\nbla #'
+        self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
+
+
+    def test_doesnt_mess_with_multiple_newlines(self):
+        contents= 'hello\n\n\nbla'
+        self.assert_write_to_file_gives('', contents, 'hello\n\n\nbla\n')
+
 
 
     def test_existing_file_bears_no_relation_means_replaced(self):

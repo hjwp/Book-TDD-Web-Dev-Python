@@ -340,9 +340,9 @@ def write_to_file(codelisting, cwd):
                 new_contents += newline_indent.join(new_lines[2:-2])
                 new_contents += '\n'.join(old_lines[old_lines_resume_pos - 1:])
 
-    new_contents = '\n'.join(
-        l.rstrip(' #') for l in new_contents.split('\n')
-    )
+    # strip callouts and redundant whitespace
+    new_contents = re.sub(r' +#$', '', new_contents, flags=re.MULTILINE)
+    new_contents = re.sub(r'^ +$', '', new_contents, flags=re.MULTILINE)
 
     if not new_contents.endswith('\n'):
         new_contents += '\n'
@@ -386,7 +386,8 @@ class ChapterTest(unittest.TestCase):
 
     def check_final_diff(self, chapter):
         diff = self.run_command(Command('git diff -b repo/chapter_%d' % (chapter,)))
-        self.assertEqual(diff, '')
+        if diff != '':
+            raise AssertionError('Final diff was not empty, was:\n%s' % (diff,))
 
     def write_to_file(self, codelisting):
         self.assertEqual(
@@ -418,6 +419,12 @@ class ChapterTest(unittest.TestCase):
         output, return_code = process.communicate()
         return output.decode('utf8')
 
+
+    def assertLineIn(self, line, lines):
+        if line not in lines:
+            raise AssertionError('%s not found in:\n%s' % (
+                repr(line), '\n'.join(repr(l) for l in lines))
+            )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
         print 'checking expected output', expected
@@ -454,12 +461,12 @@ class ChapterTest(unittest.TestCase):
             if line.startswith('[...'):
                 continue
             if line.endswith('[...]'):
-                line = line.rstrip('[...]')
-                self.assertIn(line, [l[:len(line)] for l in actual_lines])
+                line = line.rstrip('[...]').rstrip()
+                self.assertLineIn(line, [l[:len(line)] for l in actual_lines])
             elif line.startswith(' '):
-                self.assertIn(line, actual_lines)
+                self.assertLineIn(line, actual_lines)
             else:
-                self.assertIn(line, [l.strip() for l in actual_lines])
+                self.assertLineIn(line, [l.strip() for l in actual_lines])
 
 
         expected.was_checked = True
