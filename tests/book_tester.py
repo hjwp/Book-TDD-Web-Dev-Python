@@ -78,8 +78,10 @@ def wrap_long_lines(text):
 
     fixed_text = ''
     for line in text.split('\n'):
+
         if len(line) < 80:
             fixed_text += line + '\n'
+
         elif ' ' not in line:
             textlist = list(line)
             newline = ''
@@ -90,17 +92,19 @@ def wrap_long_lines(text):
                     fixed_text += newline + "\n"
                     newline = ""
             fixed_text += newline
+
         else:
             broken_line = ''
-            broken_line += get_indent(line)
-
-            for word in line.split():
-                if len(broken_line + " " + word) < 81:
-                    broken_line += word + " "
-                else:
-                    fixed_text += broken_line.rstrip() + "\n"
-                    broken_line = word + " "
+            last_space_pos = 0
+            for pos, c in enumerate(line):
+                broken_line += c
+                if c == ' ':
+                    last_space_pos = pos
+                if len(broken_line) > 79:
+                    fixed_text += broken_line[:last_space_pos] + "\n"
+                    broken_line = broken_line[last_space_pos + 1:]
             fixed_text += broken_line.rstrip() + "\n"
+
     return fixed_text.rstrip()
 
 
@@ -426,7 +430,7 @@ class ChapterTest(unittest.TestCase):
         )
         print 'writing to file', codelisting.filename
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
-        print 'wrote', open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read()
+        print open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read()
 
 
     def run_command(self, command, cwd=None):

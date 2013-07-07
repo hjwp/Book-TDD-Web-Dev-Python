@@ -51,6 +51,13 @@ class WrapLongLineTest(unittest.TestCase):
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
 
+    def test_wrap_long_lines_doesnt_swallow_spaces(self):
+        text  =  "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars  by  a  country  mile"
+        expected_text = "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars \nby  a  country  mile"
+        #TODO: handle trailing space corner case?
+        self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
+
+
     def test_wrap_long_lines_with_unbroken_chars(self):
         text = "." * 479
         expected_text = (
@@ -100,6 +107,7 @@ class WrapLongLineTest(unittest.TestCase):
             "79 chars in length"
         )
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
+
 
 
 class ParseListingTest(unittest.TestCase):
