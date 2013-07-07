@@ -362,16 +362,16 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def test_with_new_first_line_then_elipsis_then_block(self):
+    def test_adding_import_at_top_then_elipsis_then_new_stuff(self):
         old = dedent("""
-            top line
+            import topline
             # some stuff
             class C():
                 def foo():
                     return 1
             """)
         new = dedent("""
-            a new top line
+            import newtopline
             [...]
 
                 def foo():
@@ -379,8 +379,100 @@ class WriteToFileTest(unittest.TestCase):
             """
         )
         expected = dedent("""
-            a new top line
-            top line
+            import newtopline
+            import topline
+            # some stuff
+            class C():
+                def foo():
+                    return 2
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_adding_import_at_top_sorts_alphabetically_respecting_django_and_locals(self):
+        old = dedent("""
+            import atopline
+
+            from django import monkeys
+            from django import chickens
+
+            from lists.views import thing
+
+            # some stuff
+            class C():
+                def foo():
+                    return 1
+            """)
+        new = dedent("""
+            import btopline
+            [...]
+
+                def foo():
+                    return 2
+            """
+        )
+        expected = dedent("""
+            import atopline
+            import btopline
+
+            from django import chickens
+            from django import monkeys
+
+            from lists.views import thing
+
+            # some stuff
+            class C():
+                def foo():
+                    return 2
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+        new = dedent("""
+            from django import dickens
+            [...]
+
+                def foo():
+                    return 2
+            """
+        )
+        expected = dedent("""
+            import atopline
+
+            from django import chickens
+            from django import dickens
+            from django import monkeys
+
+            from lists.views import thing
+
+            # some stuff
+            class C():
+                def foo():
+                    return 2
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+        new = dedent("""
+            from lists.zoos import thing
+            [...]
+
+                def foo():
+                    return 2
+            """
+        )
+        expected = dedent("""
+            import atopline
+
+            from django import chickens
+            from django import monkeys
+
+            from lists.views import thing
+            from lists.zoos import thing
+
             # some stuff
             class C():
                 def foo():

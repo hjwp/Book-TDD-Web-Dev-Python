@@ -265,6 +265,36 @@ def _replace_lines_in(old_lines, new_lines):
     else:
         return _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos)
 
+def insert_new_import(import_line, old_lines):
+    print 'inserting new import'
+    general_imports = []
+    django_imports = []
+    project_imports = []
+    other_lines = []
+    last_import = reversed([l for l in old_lines if 'import' in l]).next()
+    found_last_import = False
+    for line in old_lines + [import_line]:
+        if line == last_import:
+            found_last_import = True
+        if line.startswith('from django'):
+            django_imports.append(line)
+        elif line.startswith('from lists'):
+            project_imports.append(line)
+        elif 'import' in line:
+            general_imports.append(line)
+        elif line == '' and not found_last_import:
+            pass
+        else:
+            other_lines.append(line)
+    general_imports.sort()
+    if general_imports and django_imports or general_imports and project_imports:
+        general_imports.append('')
+    django_imports.sort()
+    if django_imports and project_imports:
+        django_imports.append('')
+    project_imports.sort()
+    return general_imports + django_imports + project_imports + other_lines
+
 
 def write_to_file(codelisting, cwd):
     path = os.path.join(cwd, codelisting.filename)
@@ -294,8 +324,8 @@ def write_to_file(codelisting, cwd):
                     split_line_pos = new_lines.index(split_line)
                     if split_line_pos == 1:
                         # single line before elipsis = new import
-                        new_contents = new_lines[0] + '\n'
-                        new_contents += _replace_lines_in(old_lines, new_lines[2:])
+                        lines_with_import = insert_new_import(new_lines[0], old_lines)
+                        new_contents = _replace_lines_in(lines_with_import, new_lines[2:])
                     else:
                         lines_before = new_lines[:split_line_pos]
                         last_line_before = lines_before[-1]
