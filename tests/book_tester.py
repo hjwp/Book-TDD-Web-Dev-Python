@@ -300,6 +300,19 @@ def insert_new_import(import_line, old_lines):
     return general_imports + django_imports + project_imports + other_lines
 
 
+SPECIAL_CASES = {
+    "self.assertIn('1: Buy peacock feathers', [row.text for row in rows])":
+    (
+        r'(\s+)self.assertTrue\(\n'
+        r"\s+any\(row.text == '1: Buy peacock feathers' for row in rows\),\n"
+        r'\s+"New to-do item did not appear in table -- its text was:\\n%s" % \(\n'
+        r'\s+table.text,\n'
+        r'\s+\)\n'
+        r'\s+\)\n'
+    )
+}
+
+
 def write_to_file(codelisting, cwd):
     path = os.path.join(cwd, codelisting.filename)
     if not os.path.exists(path):
@@ -308,12 +321,20 @@ def write_to_file(codelisting, cwd):
         if not os.path.exists(dir):
             os.makedirs(dir)
 
+
+
     else:
         old_contents = open(path).read()
         old_lines = old_contents.strip().split('\n')
         new_lines = codelisting.contents.strip('\n').split('\n')
 
-        if "[..." not in codelisting.contents:
+        if codelisting.contents.strip() in SPECIAL_CASES:
+            to_replace = SPECIAL_CASES[codelisting.contents.strip()]
+            replace_with = r'\1' + codelisting.contents.strip() + '\n'
+            assert re.search(to_replace, old_contents), 'could not find \n%r\n in \n%r\n' % (to_replace, old_contents)
+            new_contents = re.sub(to_replace, replace_with, old_contents)
+
+        elif "[..." not in codelisting.contents:
             new_contents = _replace_lines_in(old_lines, new_lines)
 
         else:

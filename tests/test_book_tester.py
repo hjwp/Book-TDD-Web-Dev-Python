@@ -874,6 +874,34 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
+    def test_special_case_assertIn_row_for_rows_chap_5(self):
+        old = dedent("""
+            class Case(object):
+                def foo():
+                    bla
+                    self.assertTrue(
+                        any(row.text == '1: Buy peacock feathers' for row in rows),
+                        "New to-do item did not appear in table -- its text was:\n%s" % (
+                            table.text,
+                        )
+                    )
+                    stuff
+            """.lstrip()
+        )
+
+        new = "self.assertIn('1: Buy peacock feathers', [row.text for row in rows])\n"
+
+        expected = dedent("""
+            class Case(object):
+                def foo():
+                    bla
+                    self.assertIn('1: Buy peacock feathers', [row.text for row in rows])
+                    stuff
+            """.lstrip()
+        )
+        self.assert_write_to_file_gives(old, new, expected)
+
+
 
 class AssertConsoleOutputCorrectTest(ChapterTest):
 
