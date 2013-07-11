@@ -6,16 +6,13 @@ from book_tester import (
     CodeListing,
     Command,
     Output,
-    parsed_html,
-    parse_listing,
 )
 
 class Chapter4Test(ChapterTest):
+    chapter_no = 4
 
     def test_listings_and_commands_and_output(self):
-        chapter_4 = parsed_html.cssselect('div.sect1')[4]
-        listings_nodes = chapter_4.cssselect('div.listingblock')
-        self.listings = [p for n in listings_nodes for p in parse_listing(n)]
+        self.parse_listings()
 
         # sanity checks
         self.assertEqual(type(self.listings[0]), Command)

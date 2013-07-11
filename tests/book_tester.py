@@ -458,6 +458,12 @@ class ChapterTest(unittest.TestCase):
         self.run_command(Command('git checkout chapter_%s' % (chapter - 1,)))
 
 
+    def parse_listings(self):
+        chapter = parsed_html.cssselect('div.sect1')[self.chapter_no]
+        listings_nodes = chapter.cssselect('div.listingblock')
+        self.listings = [p for n in listings_nodes for p in parse_listing(n)]
+
+
     def check_final_diff(self, chapter):
         diff = self.run_command(Command('git diff -b repo/chapter_%d' % (chapter,)))
         if diff != '':
