@@ -20,6 +20,7 @@ class CodeListing(object):
         self.filename = filename
         self.contents = contents
         self.was_written = False
+        self.skip = False
 
     def is_git_diff(self):
         return False
@@ -39,6 +40,7 @@ class CodeListing(object):
 class Command(unicode):
     def __init__(self, a_string):
         self.was_run = False
+        self.skip = False
         unicode.__init__(a_string)
 
     def is_git_diff(self):
@@ -60,6 +62,7 @@ class Command(unicode):
 class Output(unicode):
     def __init__(self, a_string):
         self.was_checked = False
+        self.skip = False
         unicode.__init__(a_string)
 
     def is_git_diff(self):
@@ -401,8 +404,10 @@ def write_to_file(codelisting, cwd):
 
             elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
                 new_contents = _replace_lines_in(old_lines, new_lines[1:-1])
+            else:
+                raise Exception("I don't know how to deal with this")
 
-    # strip callouts and redundant whitespace
+    # strip callouts and trailing whitespace
     new_contents = re.sub(r' +#$', '', new_contents, flags=re.MULTILINE)
     new_contents = re.sub(r'^ +$', '', new_contents, flags=re.MULTILINE)
 
@@ -749,7 +754,11 @@ class ChapterTest(unittest.TestCase):
 
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
-        if listing.is_test():
+        if listing.skip:
+            print "SKIP"
+            listing.was_checked = True
+            self.pos += 1
+        elif listing.is_test():
             print "TEST RUN"
             self.run_test_and_check_result()
             self.pos += 2

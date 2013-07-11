@@ -25,6 +25,9 @@ class Chapter5Test(ChapterTest):
         self.start_with_checkout(5)
         self.start_dev_server()
 
+        # skips
+        self.listings[58].skip = True
+
         while self.pos < 100:
             print self.pos
             self.recognise_listing_and_process_it()
