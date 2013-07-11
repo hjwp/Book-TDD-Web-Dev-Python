@@ -801,6 +801,19 @@ class ChapterTest(unittest.TestCase):
             self.listings[self.pos + 3].was_checked = True
             self.pos += 4
 
+        elif type(listing) == Command:
+            output = self.run_command(listing)
+            next_listing = self.listings[self.pos + 1]
+            if type(next_listing) == Output:
+                self.assert_console_output_correct(output, next_listing)
+                next_listing.was_checked = True
+                listing.was_checked = True
+                self.pos += 2
+            else:
+                listing.was_checked = True
+                self.pos += 1
+
+
         elif type(listing) == CodeListing:
             print "CODE"
             self.write_to_file(listing)

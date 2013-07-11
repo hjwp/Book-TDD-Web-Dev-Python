@@ -27,8 +27,9 @@ class Chapter5Test(ChapterTest):
 
         # skips
         self.listings[58].skip = True
+        self.listings[67].skip = True
 
-        while self.pos < 100:
+        while self.pos < 76:
             print self.pos
             self.recognise_listing_and_process_it()
 
