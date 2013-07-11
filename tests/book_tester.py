@@ -331,7 +331,7 @@ def write_to_file(codelisting, cwd):
         if codelisting.contents.strip() in SPECIAL_CASES:
             to_replace = SPECIAL_CASES[codelisting.contents.strip()]
             replace_with = r'\1' + codelisting.contents.strip() + '\n'
-            assert re.search(to_replace, old_contents), 'could not find \n%r\n in \n%r\n' % (to_replace, old_contents)
+            assert re.search(to_replace, old_contents), 'could not find \n%s\n in \n%r\n' % (to_replace, old_contents)
             new_contents = re.sub(to_replace, replace_with, old_contents)
 
         elif "[..." not in codelisting.contents:
@@ -350,7 +350,12 @@ def write_to_file(codelisting, cwd):
                     if split_line_pos == 1:
                         # single line before elipsis = new import
                         lines_with_import = insert_new_import(new_lines[0], old_lines)
-                        new_contents = _replace_lines_in(lines_with_import, new_lines[2:])
+                        new_lines_remaining = '\n'.join(new_lines[2:]).strip('\n').split('\n')
+                        start_pos = _find_start_line(old_lines, new_lines_remaining)
+                        if start_pos is None:
+                            new_contents = '\n'.join(lines_with_import) + '\n\n\n' + '\n'.join(new_lines_remaining)
+                        else:
+                            new_contents = _replace_lines_in(lines_with_import, new_lines_remaining)
                     else:
                         lines_before = new_lines[:split_line_pos]
                         last_line_before = lines_before[-1]
@@ -700,6 +705,11 @@ class ChapterTest(unittest.TestCase):
 
 
     def check_commit(self, pos):
+        if self.listings[pos].endswith('commit -a'):
+            self.listings[pos] = Command(
+                self.listings[pos] + 'm "commit for listing %d"' % (self.pos,)
+            )
+
         commit = self.run_command(self.listings[pos])
         self.assertIn('insertions', commit)
 
@@ -711,11 +721,11 @@ class ChapterTest(unittest.TestCase):
         )
         git_output = self.run_command(self.listings[pos])
         self.assertTrue(
-            any(l in git_output for l in LIKELY_FILES),
+            any('/' + l in git_output for l in LIKELY_FILES),
             'no likely files in diff output %s' % (git_output,)
         )
         for expected_file in LIKELY_FILES:
-            if expected_file in git_output:
+            if '/' + expected_file in git_output:
                 comment = self.listings[pos + 1]
                 if not expected_file in comment:
                     self.fail(

@@ -370,7 +370,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def test_adding_import_at_top_then_elipsis_then_new_stuff(self):
+    def test_adding_import_at_top_then_elipsis_then_modified_stuff(self):
         old = dedent("""
             import topline
             # some stuff
@@ -393,6 +393,38 @@ class WriteToFileTest(unittest.TestCase):
             class C():
                 def foo():
                     return 2
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_adding_import_at_top_then_elipsis_then_totally_new_stuff(self):
+        old = dedent("""
+            import topline
+
+            # some stuff
+            class C():
+                pass
+            """)
+        new = dedent("""
+            import newtopline
+            [...]
+
+            class Nu():
+                pass
+            """
+        )
+        expected = dedent("""
+            import newtopline
+            import topline
+
+            # some stuff
+            class C():
+                pass
+
+
+            class Nu():
+                pass
             """
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
@@ -881,7 +913,7 @@ class WriteToFileTest(unittest.TestCase):
                     bla
                     self.assertTrue(
                         any(row.text == '1: Buy peacock feathers' for row in rows),
-                        "New to-do item did not appear in table -- its text was:\n%s" % (
+                        "New to-do item did not appear in table -- its text was:\\n%s" % (
                             table.text,
                         )
                     )
