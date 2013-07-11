@@ -53,7 +53,7 @@ class WrapLongLineTest(unittest.TestCase):
 
     def test_wrap_long_lines_doesnt_swallow_spaces(self):
         text  =  "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars  by  a  country  mile"
-        expected_text = "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars \nby  a  country  mile"
+        expected_text = "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars\nby  a  country  mile"
         #TODO: handle trailing space corner case?
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
@@ -94,7 +94,7 @@ class WrapLongLineTest(unittest.TestCase):
             "before the word that takes it over 79 chars in length\n"
             "   This is a short indented line\n"
             "This is a long line which should wrap just before the word that "
-            "takes it over 79 chars in length\n"
+            "takes it over 79 chars in length"
         )
         expected_text = (
             "This is a short line\n"

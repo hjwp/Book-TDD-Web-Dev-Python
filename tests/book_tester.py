@@ -5,7 +5,7 @@ import signal
 import subprocess
 import shutil
 import tempfile
-from textwrap import dedent
+from textwrap import dedent, wrap
 import unittest
 from lxml import html
 
@@ -73,39 +73,11 @@ class Output(unicode):
 
 
 def wrap_long_lines(text):
-    if all(len(l) < 80 for l in text.split('\n')):
-        return text
-
-    fixed_text = ''
-    for line in text.split('\n'):
-
-        if len(line) < 80:
-            fixed_text += line + '\n'
-
-        elif ' ' not in line:
-            textlist = list(line)
-            newline = ''
-            while textlist:
-                if len(newline) < 79:
-                    newline += textlist.pop(0)
-                else:
-                    fixed_text += newline + "\n"
-                    newline = ""
-            fixed_text += newline
-
-        else:
-            broken_line = ''
-            last_space_pos = 0
-            for pos, c in enumerate(line):
-                broken_line += c
-                if c == ' ':
-                    last_space_pos = pos
-                if len(broken_line) > 79:
-                    fixed_text += broken_line[:last_space_pos] + "\n"
-                    broken_line = broken_line[last_space_pos + 1:]
-            fixed_text += broken_line.rstrip() + "\n"
-
-    return fixed_text.rstrip()
+    paragraphs = text.split('\n')
+    return '\n'.join(
+        '\n'.join(wrap(p, 79, break_long_words=True, break_on_hyphens=False))
+        for p in paragraphs
+    )
 
 
 def fix_test_dashes(output):
