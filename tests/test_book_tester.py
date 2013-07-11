@@ -11,6 +11,7 @@ from book_tester import (
     Command,
     Output,
     _find_last_line_for_class,
+    _replace_function,
     get_commands,
     number_of_identical_chars,
     parse_listing,
@@ -47,6 +48,50 @@ class ClassFinderTest(unittest.TestCase):
 
         lineno = _find_last_line_for_class(source, 'ClassB')
         self.assertEqual(lineno, 13)
+
+
+
+class ReplaceFunctionTest(unittest.TestCase):
+
+    def test_changing_the_end_of_a_method(self):
+        old = dedent("""
+            class A(object):
+                def method1(self):
+                    # do step 1
+                    # do step 2
+                    # do step 3
+                    # do step 4
+                    # do step 5
+                    pass
+
+                def method2(self):
+                    # do stuff
+                    pass
+            """
+        )
+        new = dedent("""
+            def method1(self):
+                # do step 1
+                # do step 2
+                # do step A
+                # do step B
+            """
+        ).strip()
+        expected = dedent("""
+            class A(object):
+                def method1(self):
+                    # do step 1
+                    # do step 2
+                    # do step A
+                    # do step B
+
+                def method2(self):
+                    # do stuff
+                    pass
+            """
+        )
+        result = _replace_function(old.split('\n'), new.split('\n'))
+        self.assertMultiLineEqual(result, expected)
 
 
 
@@ -713,6 +758,45 @@ class WriteToFileTest(unittest.TestCase):
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
 
+
+    def test_changing_the_end_of_a_method(self):
+        old = dedent("""
+            class A(object):
+                def method1(self):
+                    # do step 1
+                    # do step 2
+                    # do step 3
+                    # do step 4
+                    # do step 5
+                    pass
+
+                def method2(self):
+                    # do stuff
+                    pass
+            """
+        ).lstrip()
+        new = dedent("""
+            def method1(self):
+                # do step 1
+                # do step 2
+                # do step A
+                # do step B
+            """
+        ).strip()
+        expected = dedent("""
+            class A(object):
+                def method1(self):
+                    # do step 1
+                    # do step 2
+                    # do step A
+                    # do step B
+
+                def method2(self):
+                    # do stuff
+                    pass
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
 
     def test_for_existing_file_inserting_new_lines_between_comments(self):
         old = dedent("""

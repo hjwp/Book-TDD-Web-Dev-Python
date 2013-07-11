@@ -170,6 +170,23 @@ def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
     )
 
 
+def _replace_function(old_lines, new_lines):
+    source = '\n'.join(old_lines)
+    function_name = re.search(r'def (\w+)\(\w*\):', new_lines[0].strip()).group(1)
+    all_nodes = list(ast.walk(ast.parse(source)))
+    functions = [n for n in all_nodes if isinstance(n, ast.FunctionDef)]
+    our_function = (c for c in functions if c.name == function_name).next()
+    last_line_in_our_function = max(
+            getattr(thing, 'lineno', 0) for thing in ast.walk(our_function)
+    )
+    indent = get_indent(old_lines[our_function.lineno - 1])
+    return '\n'.join(
+        old_lines[:our_function.lineno - 1] +
+        [indent + l for l in new_lines] +
+        old_lines[last_line_in_our_function:]
+    )
+
+
 def _replace_lines_from(old_lines, new_lines, start_pos):
     start_line_in_old = old_lines[start_pos]
     indent = get_indent(start_line_in_old)
@@ -237,7 +254,10 @@ def _replace_lines_in(old_lines, new_lines):
 
     end_pos = _find_end_line(old_lines, new_lines)
     if end_pos is None:
-        return _replace_lines_from(old_lines, new_lines, start_pos)
+        if new_lines[0].strip().startswith('def '):
+            return _replace_function(old_lines, new_lines)
+        else:
+            return _replace_lines_from(old_lines, new_lines, start_pos)
 
     else:
         return _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos)
