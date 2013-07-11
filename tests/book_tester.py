@@ -393,13 +393,11 @@ def write_to_file(codelisting, cwd):
                             assert old_lines_after[-1] == 'browser.quit()'
                             old_lines_after.pop()
 
-                        newline_indent = '\n' + get_indent(split_line)
-
-                        new_contents += '\n'.join(lines_before)
-                        new_contents += newline_indent
-                        new_contents += newline_indent.join(old_lines_after)
-                        new_contents += '\n'
-                        new_contents += '\n'.join(lines_after)
+                        new_contents += '\n'.join(
+                            lines_before +
+                            [get_indent(split_line) + l for l in old_lines_after] +
+                            lines_after
+                        )
 
             elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
                 new_contents = _replace_lines_in(old_lines, new_lines[1:-1])
