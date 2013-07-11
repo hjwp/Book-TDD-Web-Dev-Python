@@ -798,6 +798,7 @@ class WriteToFileTest(unittest.TestCase):
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
 
+
     def test_for_existing_file_inserting_new_lines_between_comments(self):
         old = dedent("""
             # test 1

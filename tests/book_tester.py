@@ -257,10 +257,12 @@ def _replace_lines_in(old_lines, new_lines):
         if new_lines[0].strip().startswith('def '):
             return _replace_function(old_lines, new_lines)
         else:
+            #TODO: can we get rid of this?
             return _replace_lines_from(old_lines, new_lines, start_pos)
 
     else:
         return _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos)
+
 
 def insert_new_import(import_line, old_lines):
     print 'inserting new import'
@@ -400,24 +402,7 @@ def write_to_file(codelisting, cwd):
                         new_contents += '\n'.join(lines_after)
 
             elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
-                #TODO replace this with smart block-replacer
-                first_line_to_find = new_lines[1]
-                last_old_line = [
-                    l for l in old_lines if l.strip() == first_line_to_find.strip()
-                ][0]
-                last_old_line_pos = old_lines.index(last_old_line)
-
-                second_line_to_find = new_lines[-2]
-                old_resume_line = [
-                    l for l in old_lines if l.strip() == second_line_to_find.strip()
-                ][0]
-                old_lines_resume_pos = old_lines.index(old_resume_line)
-
-                newline_indent = '\n' + get_indent(last_old_line)
-                new_contents += '\n'.join(old_lines[:last_old_line_pos + 1])
-                new_contents += newline_indent
-                new_contents += newline_indent.join(new_lines[2:-2])
-                new_contents += '\n'.join(old_lines[old_lines_resume_pos - 1:])
+                new_contents = _replace_lines_in(old_lines, new_lines[1:-1])
 
     # strip callouts and redundant whitespace
     new_contents = re.sub(r' +#$', '', new_contents, flags=re.MULTILINE)
