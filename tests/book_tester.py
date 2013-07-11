@@ -30,6 +30,8 @@ class CodeListing(object):
         return False
     def is_test(self):
         return False
+    def is_interactive_syncdb(self):
+        return False
 
     def __repr__(self):
         return '<CodeListing %s: %s...>' % (self.filename, self.contents.split('\n')[0])
@@ -55,6 +57,9 @@ class Command(unicode):
     def is_test(self):
         return self.startswith('python') and 'test' in self
 
+    def is_interactive_syncdb(self):
+        return self == 'python manage.py syncdb'
+
 
 
 
@@ -72,6 +77,8 @@ class Output(unicode):
     def is_git_commit(self):
         return False
     def is_test(self):
+        return False
+    def is_interactive_syncdb(self):
         return False
 
 
@@ -466,7 +473,7 @@ class ChapterTest(unittest.TestCase):
         print open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read()
 
 
-    def run_command(self, command, cwd=None):
+    def run_command(self, command, cwd=None, user_input=None):
         self.assertEqual(type(command), Command,
             "passed a non-Command to run-command:\n%s" % (command,)
         )
@@ -476,6 +483,7 @@ class ChapterTest(unittest.TestCase):
         process = subprocess.Popen(
             command, shell=True, cwd=cwd, executable='/bin/bash',
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            stdin=subprocess.PIPE,
             preexec_fn=os.setsid
         )
         command.was_run = True
@@ -483,7 +491,11 @@ class ChapterTest(unittest.TestCase):
         self.processes.append(process)
         if 'runserver' in command:
             return #test this another day
-        output, return_code = process.communicate()
+        if user_input and not user_input.endswith('\n'):
+            user_input += '\n'
+        #import time
+        #time.sleep(1)
+        output, return_code = process.communicate(user_input)
         return output.decode('utf8')
 
 
@@ -774,6 +786,20 @@ class ChapterTest(unittest.TestCase):
             print "COMMIT"
             self.check_commit(self.pos)
             self.pos += 1
+        elif listing.is_interactive_syncdb():
+            expected_output_start = self.listings[self.pos + 1]
+            user_input = self.listings[self.pos + 2]
+            expected_output_end = self.listings[self.pos + 3]
+            expected_output = Output(expected_output_start + ' ' + expected_output_end)
+
+            self.assertTrue(isinstance(user_input, Command))
+            output = self.run_command(listing, user_input=user_input)
+            self.assert_console_output_correct(output, expected_output)
+            listing.was_checked = True
+            self.listings[self.pos + 1].was_checked = True
+            self.listings[self.pos + 2].was_checked = True
+            self.listings[self.pos + 3].was_checked = True
+            self.pos += 4
 
         elif type(listing) == CodeListing:
             print "CODE"

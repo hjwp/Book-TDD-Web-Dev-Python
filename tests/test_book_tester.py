@@ -1090,6 +1090,21 @@ class WriteToFileTest(unittest.TestCase):
 
 
 
+class RunCommandTest(ChapterTest):
+
+    def test_running_interactive_command(self):
+        self.run_command(Command('mkdir superlists'), cwd=self.tempdir)
+
+        command = Command(
+            "python -c \"print 'input please?'; a = raw_input();print 'OK' if a=='yes' else 'NO'\""
+        )
+        output = self.run_command(command, user_input='no')
+        self.assertIn('NO', output)
+        output = self.run_command(command, user_input='yes')
+        self.assertIn('OK', output)
+
+
+
 class AssertConsoleOutputCorrectTest(ChapterTest):
 
     def test_simple_case(self):
