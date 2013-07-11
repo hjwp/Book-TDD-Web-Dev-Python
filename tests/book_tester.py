@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import ast
 import os
 import re
 import signal
@@ -272,6 +273,35 @@ def insert_new_import(import_line, old_lines):
     return general_imports + django_imports + project_imports + other_lines
 
 
+def add_import_and_new_lines(new_lines, old_lines):
+    lines_with_import = insert_new_import(new_lines[0], old_lines)
+    new_lines_remaining = '\n'.join(new_lines[2:]).strip('\n').split('\n')
+    start_pos = _find_start_line(old_lines, new_lines_remaining)
+    if start_pos is None:
+        return '\n'.join(lines_with_import) + '\n\n\n' + '\n'.join(new_lines_remaining)
+    else:
+        return _replace_lines_in(lines_with_import, new_lines_remaining)
+
+
+def _find_last_line_for_class(source, classname):
+    all_nodes = list(ast.walk(ast.parse(source)))
+    classes = [n for n in all_nodes if isinstance(n, ast.ClassDef)]
+    our_class = (c for c in classes if c.name == classname).next()
+    last_line_in_our_class = max(
+            getattr(thing, 'lineno', 0) for thing in ast.walk(our_class)
+    )
+    return last_line_in_our_class
+
+
+def add_to_class(new_lines, old_lines):
+    classname = re.search(r'class (\w+)\(\w+\):', new_lines[0]).group(1)
+    insert_point = _find_last_line_for_class('\n'.join(old_lines), classname)
+    return '\n'.join(
+        old_lines[:insert_point] + new_lines[2:] + old_lines[insert_point:]
+    )
+
+
+
 SPECIAL_CASES = {
     "self.assertIn('1: Buy peacock feathers', [row.text for row in rows])":
     (
@@ -320,14 +350,11 @@ def write_to_file(codelisting, cwd):
                     split_line = [l for l in new_lines if "[..." in l][0]
                     split_line_pos = new_lines.index(split_line)
                     if split_line_pos == 1:
-                        # single line before elipsis = new import
-                        lines_with_import = insert_new_import(new_lines[0], old_lines)
-                        new_lines_remaining = '\n'.join(new_lines[2:]).strip('\n').split('\n')
-                        start_pos = _find_start_line(old_lines, new_lines_remaining)
-                        if start_pos is None:
-                            new_contents = '\n'.join(lines_with_import) + '\n\n\n' + '\n'.join(new_lines_remaining)
-                        else:
-                            new_contents = _replace_lines_in(lines_with_import, new_lines_remaining)
+                        if 'import' in new_lines[0]:
+                            new_contents = add_import_and_new_lines(new_lines, old_lines)
+                        elif 'class' in new_lines[0]:
+                            new_contents = add_to_class(new_lines, old_lines)
+
                     else:
                         lines_before = new_lines[:split_line_pos]
                         last_line_before = lines_before[-1]

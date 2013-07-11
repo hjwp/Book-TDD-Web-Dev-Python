@@ -10,6 +10,7 @@ from book_tester import (
     CodeListing,
     Command,
     Output,
+    _find_last_line_for_class,
     get_commands,
     number_of_identical_chars,
     parse_listing,
@@ -17,6 +18,37 @@ from book_tester import (
     write_to_file,
 )
 from examples import CODE_LISTING_WITH_CAPTION
+
+
+class ClassFinderTest(unittest.TestCase):
+
+    def test_find_last_line_for_class(self):
+        source = dedent(
+            """
+            import topline
+
+            class ClassA(object):
+                def metha(self):
+                    pass
+
+                def metha2(self):
+                    pass
+
+            class ClassB(object):
+                def methb(self):
+                    pass
+            """
+        )
+
+        lineno = _find_last_line_for_class(source, 'ClassA')
+        self.assertEqual(lineno, 9)
+        # sanity-check
+        self.assertEqual(source.split('\n')[lineno -1].strip(), 'pass')
+
+        lineno = _find_last_line_for_class(source, 'ClassB')
+        self.assertEqual(lineno, 13)
+
+
 
 class WrapLongLineTest(unittest.TestCase):
 
@@ -425,6 +457,44 @@ class WriteToFileTest(unittest.TestCase):
 
             class Nu():
                 pass
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_elipsis_indicating_which_class_to_add_new_method_to(self):
+        old = dedent("""
+            import topline
+
+            class A(object):
+                def metha(self):
+                    pass
+
+            class B(object):
+                def methb(self):
+                    pass
+            """)
+        new = dedent("""
+            class A(object):
+                [...]
+
+                def metha2(self):
+                    pass
+            """
+        )
+        expected = dedent("""
+            import topline
+
+            class A(object):
+                def metha(self):
+                    pass
+
+                def metha2(self):
+                    pass
+
+            class B(object):
+                def methb(self):
+                    pass
             """
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
