@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import ast
 import os
@@ -16,22 +17,13 @@ parsed_html = html.fromstring(raw_html)
 
 
 class CodeListing(object):
+    type = 'code listing'
+
     def __init__(self, filename, contents):
         self.filename = filename
         self.contents = contents
         self.was_written = False
         self.skip = False
-
-    def is_git_diff(self):
-        return False
-    def is_git_status(self):
-        return False
-    def is_git_commit(self):
-        return False
-    def is_test(self):
-        return False
-    def is_interactive_syncdb(self):
-        return False
 
     def __repr__(self):
         return '<CodeListing %s: %s...>' % (self.filename, self.contents.split('\n')[0])
@@ -45,42 +37,37 @@ class Command(unicode):
         self.skip = False
         unicode.__init__(a_string)
 
-    def is_git_diff(self):
-        return 'git diff' in self
+    @property
+    def type(self):
+        for git_cmd in ('git diff', 'git status', 'git commit'):
+            if git_cmd in self:
+                return git_cmd
+        if self.startswith('python') and 'test' in self:
+            return 'test'
+        if self == 'python manage.py syncdb':
+            return 'interactive syncdb'
+        else:
+            return 'other command'
 
-    def is_git_status(self):
-        return 'git status' in self
-
-    def is_git_commit(self):
-        return 'git commit' in self
-
-    def is_test(self):
-        return self.startswith('python') and 'test' in self
-
-    def is_interactive_syncdb(self):
-        return self == 'python manage.py syncdb'
-
+    def __repr__(self):
+        return '<Command %s>' % (unicode.__repr__(self),)
 
 
 
 
 class Output(unicode):
+
     def __init__(self, a_string):
         self.was_checked = False
         self.skip = False
         unicode.__init__(a_string)
 
-    def is_git_diff(self):
-        return False
-    def is_git_status(self):
-        return False
-    def is_git_commit(self):
-        return False
-    def is_test(self):
-        return False
-    def is_interactive_syncdb(self):
-        return False
-
+    @property
+    def type(self):
+        if u'├' in self:
+            return 'tree'
+        else:
+            return 'output'
 
 
 def wrap_long_lines(text):
@@ -673,12 +660,13 @@ class ChapterTest(unittest.TestCase):
         actual_tree = self.run_command(Command('tree -I *.pyc --noreport'), cwd)
         print 'checking tree', expected_tree
         # special case for first listing:
+        original_tree = expected_tree
         if expected_tree.startswith('superlists/'):
             expected_tree = Output(
                 expected_tree.replace('superlists/', '.', 1)
             )
         self.assert_console_output_correct(actual_tree, expected_tree)
-        return expected_tree
+        original_tree.was_checked = True
 
 
     def assert_all_listings_checked(self, listings, exceptions=[]):
@@ -776,23 +764,25 @@ class ChapterTest(unittest.TestCase):
             print "SKIP"
             listing.was_checked = True
             self.pos += 1
-        elif listing.is_test():
+        elif listing.type == 'test':
             print "TEST RUN"
             self.run_test_and_check_result()
             self.pos += 2
-        elif listing.is_git_diff():
+        elif listing.type == 'git diff':
             print "DIFF"
             self.check_diff_or_status(self.pos)
             self.pos += 2
-        elif listing.is_git_status():
+        elif listing.type == 'git status':
             print "STATUS"
             self.check_diff_or_status(self.pos)
             self.pos += 2
-        elif listing.is_git_commit():
+        elif listing.type == 'git commit':
             print "COMMIT"
             self.check_commit(self.pos)
             self.pos += 1
-        elif listing.is_interactive_syncdb():
+
+        elif listing.type == 'interactive syncdb':
+            print "INTERACTIVE SYNCDB"
             expected_output_start = self.listings[self.pos + 1]
             user_input = self.listings[self.pos + 2]
             expected_output_end = self.listings[self.pos + 3]
@@ -807,7 +797,13 @@ class ChapterTest(unittest.TestCase):
             self.listings[self.pos + 3].was_checked = True
             self.pos += 4
 
-        elif type(listing) == Command:
+        elif listing.type == 'tree':
+            print "TREE"
+            self.assert_directory_tree_correct(listing)
+            self.pos += 1
+
+        elif listing.type == 'other command':
+            print "A COMMAND"
             output = self.run_command(listing)
             next_listing = self.listings[self.pos + 1]
             if type(next_listing) == Output:
@@ -820,12 +816,12 @@ class ChapterTest(unittest.TestCase):
                 self.pos += 1
 
 
-        elif type(listing) == CodeListing:
+        elif listing.type == 'code listing':
             print "CODE"
             self.write_to_file(listing)
             self.pos += 1
 
-        elif type(listing) == Output:
+        elif listing.type == 'output':
             self._strip_out_any_pycs()
             test_run = self.run_command(Command("python manage.py test lists"))
             if 'OK' in  test_run:

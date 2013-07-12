@@ -37,7 +37,7 @@ class Chapter1Test(ChapterTest):
 
         self.run_command(listings[3], cwd=self.tempdir) # startproject
 
-        listings[4] = self.assert_directory_tree_correct(listings[4])
+        self.assert_directory_tree_correct(listings[4])
 
         runserver_output = self.run_command(listings[5])
         #self.assert_console_output_correct(runserver_output, listings[6])
