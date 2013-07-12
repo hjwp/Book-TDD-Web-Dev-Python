@@ -106,6 +106,13 @@ def strip_test_speed(output):
     )
 
 
+def fix_creating_database_line(actual_text):
+    if "Creating test database for alias 'default'..." in actual_text:
+        actual_lines = actual_text.split('\n')
+        actual_lines.remove("Creating test database for alias 'default'...")
+        actual_lines.insert(0, "Creating test database for alias 'default'...")
+        actual_text = '\n'.join(actual_lines)
+    return actual_text
 
 def parse_listing(listing):
     if  'sourcecode' in listing.get('class').split():
@@ -342,12 +349,12 @@ def write_to_file(codelisting, cwd):
         if not os.path.exists(dir):
             os.makedirs(dir)
 
-
-
     else:
         old_contents = open(path).read()
         old_lines = old_contents.strip().split('\n')
         new_lines = codelisting.contents.strip('\n').split('\n')
+        # strip callouts
+        new_lines = [re.sub(r' +#$', '', l) for l in new_lines]
 
         if codelisting.contents.strip() in SPECIAL_CASES:
             to_replace = SPECIAL_CASES[codelisting.contents.strip()]
@@ -401,9 +408,9 @@ def write_to_file(codelisting, cwd):
             else:
                 raise Exception("I don't know how to deal with this")
 
-    # strip callouts and trailing whitespace
-    new_contents = re.sub(r' +#$', '', new_contents, flags=re.MULTILINE)
+    # strip trailing whitespace
     new_contents = re.sub(r'^ +$', '', new_contents, flags=re.MULTILINE)
+
 
     if not new_contents.endswith('\n'):
         new_contents += '\n'
@@ -517,6 +524,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = wrap_long_lines(actual)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
+        actual_fixed = fix_creating_database_line(actual_fixed)
 
         expected_fixed = fix_test_dashes(expected)
         expected_fixed = strip_test_speed(expected_fixed)
@@ -540,119 +548,9 @@ class ChapterTest(unittest.TestCase):
             else:
                 self.assertLineIn(line, [l.strip() for l in actual_lines])
 
+        if len(expected_lines) > 4 and '[...' not in expected_fixed:
+            self.assertMultiLineEqual(actual_fixed.strip(), expected_fixed.strip())
 
-        expected.was_checked = True
-        return
-
-        actual_text = actual.strip().replace('\t', '       ')
-        expected_text = expected.replace(' -----', '------')
-        actual_text = re.sub(
-            r"Ran (\d+) tests? in \d+\.\d\d\ds",
-            r"Ran \1 tests in X.Xs",
-            actual_text,
-        )
-        expected_text = re.sub(
-            r"Ran (\d+) tests? in \d+\.\d\d\ds",
-            r"Ran \1 tests in X.Xs",
-            expected_text,
-        )
-        actual_text = re.sub(
-            r"index .......\.\........ 100644",
-            r"index XXXXXXX\.\.XXXXXXX 100644",
-            actual_text,
-        )
-        expected_text = re.sub(
-            r"index .......\.\........ 100644",
-            r"index XXXXXXX\.\.XXXXXXX 100644",
-            expected_text,
-        )
-        actual_text = re.sub(
-            r"^[a-f0-9]{7} ",
-            r"XXXXXXX ",
-            actual_text,
-            flags=re.MULTILINE,
-
-        )
-        expected_text = re.sub(
-            r"^[a-f0-9]{7} ",
-            r"XXXXXXX ",
-            expected_text,
-            flags=re.MULTILINE,
-        )
-
-
-        if expected_text.strip().startswith("[..."):
-            print 'start elipsis'
-            actual_lines = actual_text.strip().split('\n')
-            expected_lines = expected_text.strip().split('\n')
-            if 'raise' in expected_text:
-                # long traceback, only care about output from raise onwards
-                raise_line = [
-                    l for l in expected_lines if l.strip().startswith("raise")
-                ][-1]
-                self.assertIn(raise_line, actual_text)
-                actual_text = actual_text.split(raise_line)[-1]
-                expected_text = expected_text.split(raise_line)[-1].strip()
-
-            elif 'self.assert' in expected_text:
-                # long traceback, only care about output from assert onwards
-                assert_line = [
-                    l for l in expected_lines if l.strip().startswith("self.assert")
-                ][-1]
-                self.assertIn(assert_line, actual_text)
-                actual_text = actual_text.split(assert_line)[-1]
-                expected_text = expected_text.split(assert_line)[-1].strip()
-            else:
-                print 'looking for exception'
-                exception_line = re.search(
-                    r'^.+Exception:.+$|^AssertionError: .+$', actual_text, re.MULTILINE
-                )
-                if exception_line:
-                    exception_line = exception_line.group(0)
-                    print 'found exception', exception_line
-                    actual_text = wrap_long_lines(exception_line)
-                    actual_text = actual_text.split('[...]')[0]
-                    expected_text = '\n'.join(expected_text.split('[...]')).strip()
-                else:
-                    self.assertIn("OK", expected_lines)
-                    self.assertIn("OK", actual_lines)
-                    expected.was_checked = True
-                    return
-
-        if len(expected_text.split('\n')) < 3:
-            for expected_line in expected_text.split('\n'):
-                if expected_line.endswith("[...]"):
-                    expected_line = expected_line.split("[...]")[0]
-                self.assertIn(expected_line, actual_text)
-            expected.was_checked = True
-            return
-
-        if expected_text.endswith("[...]"):
-            expected_lines = expected_text.split('\n')[:-1]
-            expected_text = '\n'.join(l.strip() for l in expected_lines)
-            actual_lines = actual_text.split('\n')[:len(expected_lines)]
-            actual_text = '\n'.join(l.strip() for l in actual_lines)
-
-        elif "[...]" in expected_text[1:]:
-            expected_lines = expected_text.split('\n')
-            split_line = [l for l in expected_lines if "[..." in l][0]
-            split_line_pos = expected_lines.index(split_line)
-            for line_before in expected_lines[:split_line_pos]:
-                self.assertIn(line_before, actual_text)
-            for line_after in expected_lines[:split_line_pos]:
-                self.assertIn(line_after, actual_text)
-            expected.was_checked = True
-            return
-
-        if "Creating test database for alias 'default'..." in actual_text:
-            actual_lines = actual_text.split('\n')
-            actual_lines.remove("Creating test database for alias 'default'...")
-            actual_lines.insert(0, "Creating test database for alias 'default'...")
-            actual_text = '\n'.join(actual_lines)
-
-        actual_text = wrap_long_lines(actual_text)
-
-        self.assertMultiLineEqual(actual_text, expected_text)
         expected.was_checked = True
 
 
