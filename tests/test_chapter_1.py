@@ -67,16 +67,17 @@ class Chapter1Test(ChapterTest):
 
         rm_cached_output = self.run_command(listings[20])
         self.assert_console_output_correct(rm_cached_output, listings[21])
-        self.run_command(listings[22])
+        self.run_command(listings[22]) # ignore __pycache__
+        self.run_command(listings[23]) # ignore pycs
 
-        git_status_output = self.run_command(listings[23])
-        self.assert_console_output_correct(git_status_output, listings[24])
+        git_status_output = self.run_command(listings[24])
+        self.assert_console_output_correct(git_status_output, listings[25])
 
-        self.run_command(listings[25])
+        self.run_command(listings[26])
         #self.run_command(listings[26]) #git commit, no am
-        commit = Command(listings[26] + ' -am"first commit"')
+        commit = Command(listings[27] + ' -am"first commit"')
         self.run_command(commit)
-        listings[26].was_run = True # TODO
+        listings[27].was_run = True # TODO
         local_repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../source/chapter_1/superlists'))
         self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
         self.run_command(Command('git fetch repo'))
