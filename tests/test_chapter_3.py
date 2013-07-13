@@ -92,10 +92,7 @@ class Chapter3Test(ChapterTest):
 
         self.run_command(Command('python3 manage.py runserver'))
         ft_run = self.run_command(self.listings[52])
-        # TODO: fix this firefox/selenium socket error thing
-        #self.assert_console_output_correct(ft_run, self.listings[53])
-        self.listings[53].was_checked = True
-
+        self.assert_console_output_correct(ft_run, self.listings[53])
 
         self.check_git_diff_and_commit(54)
 
