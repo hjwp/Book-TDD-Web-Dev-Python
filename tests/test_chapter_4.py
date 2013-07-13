@@ -35,7 +35,7 @@ class Chapter4Test(ChapterTest):
         while self.pos < 20:
             self.recognise_listing_and_process_it()
 
-        unit_tests = self.run_command(Command('python manage.py test lists'))
+        unit_tests = self.run_command(Command('python3 manage.py test lists'))
         self.assertIn("OK", unit_tests)
 
         self.recognise_listing_and_process_it()

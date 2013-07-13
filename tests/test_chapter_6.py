@@ -24,7 +24,7 @@ class Chapter6Test(ChapterTest):
         self.start_dev_server()
 
         # other prep
-        self.run_command(Command('python manage.py syncdb --noinput'))
+        self.run_command(Command('python3 manage.py syncdb --noinput'))
 
         # skips
         #self.listings[58].skip = True

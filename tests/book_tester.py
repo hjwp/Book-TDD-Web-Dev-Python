@@ -12,7 +12,8 @@ import unittest
 from lxml import html
 
 base_dir = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
-raw_html = open(os.path.join(base_dir, 'book.html')).read()
+with open(os.path.join(base_dir, 'book.html')) as f:
+    raw_html = f.read()
 parsed_html = html.fromstring(raw_html)
 
 
@@ -104,6 +105,20 @@ def strip_test_speed(output):
         r"Ran \1 tests in X.Xs",
         output,
     )
+
+
+def fix_dict_repr_order(string):
+    dict_finder = r"({'\w+': .+, '\w+': .+})"
+    if not re.search(dict_finder, string):
+        return string
+
+    for dict_repr in re.findall(dict_finder, string):
+        items = re.search(
+            r"{('\w+': .+), ('\w+': .+)}",
+            dict_repr,
+        ).groups()
+        string = string.replace(dict_repr, "{%s}" % (', '.join(sorted(items)),))
+    return string
 
 
 def fix_creating_database_line(actual_text):
@@ -471,7 +486,8 @@ class ChapterTest(unittest.TestCase):
         )
         print('writing to file', codelisting.filename)
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
-        print(open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read())
+        with open(os.path.join(self.tempdir, 'superlists', codelisting.filename)) as f:
+            print(f.read())
 
 
     def run_command(self, command, cwd=None, user_input=None):
@@ -522,11 +538,13 @@ class ChapterTest(unittest.TestCase):
             self.assertCountEqual(actual.split('\n'), expected.split())
             expected.was_checked = True
             return
-
+        #print('actual before')
+        #print(actual)
         actual_fixed = wrap_long_lines(actual)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
+        actual_fixed = fix_dict_repr_order(actual_fixed)
 
         expected_fixed = fix_test_dashes(expected)
         expected_fixed = strip_test_speed(expected_fixed)
@@ -535,6 +553,8 @@ class ChapterTest(unittest.TestCase):
         if '\t' in actual_fixed:
             actual_fixed = re.sub(r'\s+', ' ', actual_fixed)
             expected_fixed = re.sub(r'\s+', ' ', expected_fixed)
+        #print('actual fixed')
+        #print(actual_fixed)
 
         actual_lines = actual_fixed.split('\n')
         expected_lines = expected_fixed.split('\n')
@@ -594,6 +614,7 @@ class ChapterTest(unittest.TestCase):
     def check_test_code_cycle(self, pos, test_command_in_listings=True, ft=False):
         self.write_to_file(self.listings[pos])
         self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        self.run_command(Command("find . -name __pycache__ -exec rm -r {} \;"))
         if test_command_in_listings:
             pos += 1
             self.assertIn('test', self.listings[pos])
