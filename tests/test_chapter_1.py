@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
 import unittest
@@ -16,9 +17,9 @@ class Chapter1Test(ChapterTest):
 
     def write_to_file(self, codelisting):
         # override write to file, in this chapter cwd is root tempdir
-        print 'writing to file', codelisting.filename
+        print('writing to file', codelisting.filename)
         write_to_file(codelisting, os.path.join(self.tempdir))
-        print 'wrote', open(os.path.join(self.tempdir, codelisting.filename)).read()
+        print('wrote', open(os.path.join(self.tempdir, codelisting.filename)).read())
 
 
     def test_listings_and_commands_and_output(self):

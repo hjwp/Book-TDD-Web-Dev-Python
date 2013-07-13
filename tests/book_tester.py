@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import ast
 import os
@@ -31,11 +31,11 @@ class CodeListing(object):
 
 
 
-class Command(unicode):
+class Command(str):
     def __init__(self, a_string):
         self.was_run = False
         self.skip = False
-        unicode.__init__(a_string)
+        str.__init__(a_string)
 
     @property
     def type(self):
@@ -50,17 +50,17 @@ class Command(unicode):
             return 'other command'
 
     def __repr__(self):
-        return '<Command %s>' % (unicode.__repr__(self),)
+        return '<Command %s>' % (str.__repr__(self),)
 
 
 
 
-class Output(unicode):
+class Output(str):
 
     def __init__(self, a_string):
         self.was_checked = False
         self.skip = False
-        unicode.__init__(a_string)
+        str.__init__(a_string)
 
     @property
     def type(self):
@@ -127,7 +127,7 @@ def parse_listing(listing):
         output_after_command = ''
         for line in lines:
             line_start, hash, line_comments = line.partition(" #")
-            commands_in_this_line = filter(line_start.strip().endswith, commands)
+            commands_in_this_line = list(filter(line_start.strip().endswith, commands))
             if commands_in_this_line:
                 if output_after_command:
                     outputs.append(Output(output_after_command.rstrip()))
@@ -179,7 +179,7 @@ def _replace_function(old_lines, new_lines):
     function_name = re.search(r'def (\w+)\(\w*\):', new_lines[0].strip()).group(1)
     all_nodes = list(ast.walk(ast.parse(source)))
     functions = [n for n in all_nodes if isinstance(n, ast.FunctionDef)]
-    our_function = (c for c in functions if c.name == function_name).next()
+    our_function = next(c for c in functions if c.name == function_name)
     last_line_in_our_function = max(
             getattr(thing, 'lineno', 0) for thing in ast.walk(our_function)
     )
@@ -269,12 +269,12 @@ def _replace_lines_in(old_lines, new_lines):
 
 
 def insert_new_import(import_line, old_lines):
-    print 'inserting new import'
+    print('inserting new import')
     general_imports = []
     django_imports = []
     project_imports = []
     other_lines = []
-    last_import = reversed([l for l in old_lines if 'import' in l]).next()
+    last_import = next(reversed([l for l in old_lines if 'import' in l]))
     found_last_import = False
     for line in old_lines + [import_line]:
         if line == last_import:
@@ -312,7 +312,7 @@ def add_import_and_new_lines(new_lines, old_lines):
 def _find_last_line_for_class(source, classname):
     all_nodes = list(ast.walk(ast.parse(source)))
     classes = [n for n in all_nodes if isinstance(n, ast.ClassDef)]
-    our_class = (c for c in classes if c.name == classname).next()
+    our_class = next(c for c in classes if c.name == classname)
     last_line_in_our_class = max(
             getattr(thing, 'lineno', 0) for thing in ast.walk(our_class)
     )
@@ -350,7 +350,8 @@ def write_to_file(codelisting, cwd):
             os.makedirs(dir)
 
     else:
-        old_contents = open(path).read()
+        with open(path) as f:
+            old_contents = f.read()
         old_lines = old_contents.strip().split('\n')
         new_lines = codelisting.contents.strip('\n').split('\n')
         # strip callouts
@@ -468,9 +469,9 @@ class ChapterTest(unittest.TestCase):
             type(codelisting), CodeListing,
             "passed a non-Codelisting to write_to_file:\n%s" % (codelisting,)
         )
-        print 'writing to file', codelisting.filename
+        print('writing to file', codelisting.filename)
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
-        print open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read()
+        print(open(os.path.join(self.tempdir, 'superlists', codelisting.filename)).read())
 
 
     def run_command(self, command, cwd=None, user_input=None):
@@ -479,12 +480,13 @@ class ChapterTest(unittest.TestCase):
         )
         if cwd is None:
             cwd = os.path.join(self.tempdir, 'superlists')
-        print 'running command', command
+        print('running command', command)
         process = subprocess.Popen(
             command, shell=True, cwd=cwd, executable='/bin/bash',
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE,
-            preexec_fn=os.setsid
+            preexec_fn=os.setsid,
+            universal_newlines=True,
         )
         command.was_run = True
         process._command = command
@@ -496,7 +498,7 @@ class ChapterTest(unittest.TestCase):
         #import time
         #time.sleep(1)
         output, return_code = process.communicate(user_input)
-        return output.decode('utf8')
+        return output
 
 
     def assertLineIn(self, line, lines):
@@ -506,7 +508,7 @@ class ChapterTest(unittest.TestCase):
             )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
-        print 'checking expected output', expected
+        print('checking expected output', expected)
         self.assertEqual(
             type(expected), Output,
             "passed a non-Output to run-command:\n%s" % (expected,)
@@ -517,7 +519,7 @@ class ChapterTest(unittest.TestCase):
 
         if ls:
             actual=actual.strip()
-            self.assertItemsEqual(actual.split('\n'), expected.split())
+            self.assertCountEqual(actual.split('\n'), expected.split())
             expected.was_checked = True
             return
 
@@ -556,7 +558,7 @@ class ChapterTest(unittest.TestCase):
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.run_command(Command('tree -I *.pyc --noreport'), cwd)
-        print 'checking tree', expected_tree
+        print('checking tree', expected_tree)
         # special case for first listing:
         original_tree = expected_tree
         if expected_tree.startswith('superlists/'):
@@ -659,28 +661,28 @@ class ChapterTest(unittest.TestCase):
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
         if listing.skip:
-            print "SKIP"
+            print("SKIP")
             listing.was_checked = True
             self.pos += 1
         elif listing.type == 'test':
-            print "TEST RUN"
+            print("TEST RUN")
             self.run_test_and_check_result()
             self.pos += 2
         elif listing.type == 'git diff':
-            print "DIFF"
+            print("DIFF")
             self.check_diff_or_status(self.pos)
             self.pos += 2
         elif listing.type == 'git status':
-            print "STATUS"
+            print("STATUS")
             self.check_diff_or_status(self.pos)
             self.pos += 2
         elif listing.type == 'git commit':
-            print "COMMIT"
+            print("COMMIT")
             self.check_commit(self.pos)
             self.pos += 1
 
         elif listing.type == 'interactive syncdb':
-            print "INTERACTIVE SYNCDB"
+            print("INTERACTIVE SYNCDB")
             expected_output_start = self.listings[self.pos + 1]
             user_input = self.listings[self.pos + 2]
             expected_output_end = self.listings[self.pos + 3]
@@ -696,12 +698,12 @@ class ChapterTest(unittest.TestCase):
             self.pos += 4
 
         elif listing.type == 'tree':
-            print "TREE"
+            print("TREE")
             self.assert_directory_tree_correct(listing)
             self.pos += 1
 
         elif listing.type == 'other command':
-            print "A COMMAND"
+            print("A COMMAND")
             output = self.run_command(listing)
             next_listing = self.listings[self.pos + 1]
             if type(next_listing) == Output:
@@ -715,7 +717,7 @@ class ChapterTest(unittest.TestCase):
 
 
         elif listing.type == 'code listing':
-            print "CODE"
+            print("CODE")
             self.write_to_file(listing)
             self.pos += 1
 
@@ -723,7 +725,7 @@ class ChapterTest(unittest.TestCase):
             self._strip_out_any_pycs()
             test_run = self.run_command(Command("python3 manage.py test lists"))
             if 'OK' in  test_run:
-                print 'unit tests pass, must be an FT:\n', test_run
+                print('unit tests pass, must be an FT:\n', test_run)
                 test_run = self.run_command(Command("python3 functional_tests.py"))
             self.assert_console_output_correct(test_run, listing)
             self.pos += 1
