@@ -429,14 +429,15 @@ class WriteToFileTest(unittest.TestCase):
             actual = f.read()
             self.assertMultiLineEqual(actual, expected_contents)
 
+
     def test_strips_line_callouts(self):
         contents= 'hello\nbla #'
-        self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
+        self.assert_write_to_file_gives('hello\n', contents, 'hello\nbla\n')
 
 
     def test_doesnt_mess_with_multiple_newlines(self):
         contents= 'hello\n\n\nbla'
-        self.assert_write_to_file_gives('', contents, 'hello\n\n\nbla\n')
+        self.assert_write_to_file_gives('hello\n', contents, 'hello\n\n\nbla\n')
 
 
 
@@ -1073,8 +1074,8 @@ class WriteToFileTest(unittest.TestCase):
                         )
                     )
                     stuff
-            """.lstrip()
-        )
+            """
+        ).lstrip()
 
         new = "self.assertIn('1: Buy peacock feathers', [row.text for row in rows])\n"
 
@@ -1084,8 +1085,46 @@ class WriteToFileTest(unittest.TestCase):
                     bla
                     self.assertIn('1: Buy peacock feathers', [row.text for row in rows])
                     stuff
-            """.lstrip()
-        )
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_replacing_an_import_and_a_class_parent(self):
+        old = dedent("""
+            import b1
+            import b2
+            import b3
+
+            class Thing(b1.Thingy):
+                def foo():
+                    bla
+                    stuff
+            """
+        ).lstrip()
+
+        new = dedent("""
+            import a1
+            import b2
+            import b3
+
+            class Thing(a1.Thingy):
+                [...]
+            """
+        ).lstrip()
+
+        expected = dedent("""
+            import a1
+            import b2
+            import b3
+
+            class Thing(a1.Thingy):
+                def foo():
+                    bla
+                    stuff
+            """
+        ).lstrip()
+        print 'GO'
         self.assert_write_to_file_gives(old, new, expected)
 
 

@@ -160,6 +160,7 @@ def get_indent(line):
 
 
 def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
+    print 'replace lines from', start_pos, 'to', end_pos
     old_indent = get_indent(old_lines[start_pos])
     new_indent = get_indent(new_lines[0])
     if new_indent:
@@ -175,11 +176,12 @@ def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
 
 
 def _replace_function(old_lines, new_lines):
+    print 'replace function'
     source = '\n'.join(old_lines)
     function_name = re.search(r'def (\w+)\(\w*\):', new_lines[0].strip()).group(1)
     all_nodes = list(ast.walk(ast.parse(source)))
     functions = [n for n in all_nodes if isinstance(n, ast.FunctionDef)]
-    our_function = (c for c in functions if c.name == function_name).next()
+    our_function = next(c for c in functions if c.name == function_name)
     last_line_in_our_function = max(
             getattr(thing, 'lineno', 0) for thing in ast.walk(our_function)
     )
@@ -192,6 +194,7 @@ def _replace_function(old_lines, new_lines):
 
 
 def _replace_lines_from(old_lines, new_lines, start_pos):
+    print 'replace lines from start pos', start_pos
     start_line_in_old = old_lines[start_pos]
     indent = get_indent(start_line_in_old)
     for ix, new_line in enumerate(new_lines):
@@ -220,6 +223,7 @@ def number_of_identical_chars(string1, string2):
 
 
 def _replace_single_line(old_lines, new_lines):
+    print 'replace single line'
     new_line = new_lines[0]
     line_finder = lambda l: number_of_identical_chars(l, new_line)
     likely_line = sorted(old_lines, key=line_finder)[-1]
@@ -246,6 +250,7 @@ def _find_end_line(old_lines, new_lines):
 
 
 def _replace_lines_in(old_lines, new_lines):
+    print 'replace lines in'
     if new_lines[0].strip() == '':
         new_lines.pop(0)
     new_lines = dedent('\n'.join(new_lines)).split('\n')
@@ -254,7 +259,14 @@ def _replace_lines_in(old_lines, new_lines):
 
     start_pos = _find_start_line(old_lines, new_lines)
     if start_pos is None:
-        return '\n'.join(new_lines)
+        if any(l in old_lines for l in new_lines):
+            print 'special case -- new top line'
+            # for now, special case: 1st line is new, second is common
+            assert new_lines[1] == old_lines[1]
+            return new_lines[0] + '\n' +  _replace_lines_in(old_lines[1:], new_lines[1:])
+        else:
+            print 'totally new content'
+            return '\n'.join(new_lines)
 
     end_pos = _find_end_line(old_lines, new_lines)
     if end_pos is None:
@@ -274,7 +286,7 @@ def insert_new_import(import_line, old_lines):
     django_imports = []
     project_imports = []
     other_lines = []
-    last_import = reversed([l for l in old_lines if 'import' in l]).next()
+    last_import = next(reversed([l for l in old_lines if 'import' in l]))
     found_last_import = False
     for line in old_lines + [import_line]:
         if line == last_import:
@@ -312,7 +324,7 @@ def add_import_and_new_lines(new_lines, old_lines):
 def _find_last_line_for_class(source, classname):
     all_nodes = list(ast.walk(ast.parse(source)))
     classes = [n for n in all_nodes if isinstance(n, ast.ClassDef)]
-    our_class = (c for c in classes if c.name == classname).next()
+    our_class = next(c for c in classes if c.name == classname)
     last_line_in_our_class = max(
             getattr(thing, 'lineno', 0) for thing in ast.walk(our_class)
     )
