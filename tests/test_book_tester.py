@@ -217,7 +217,7 @@ class ParseListingTest(unittest.TestCase):
         listing = html.fromstring(
             '<div class="listingblock">\r\n'
             '<div class="content">\r\n'
-            '<pre><code>$ <strong>python functional_tests.py</strong>\r\n'
+            '<pre><code>$ <strong>python3 functional_tests.py</strong>\r\n'
             'Traceback (most recent call last):\r\n'
             '  File "functional_tests.py", line 6, in &lt;module&gt;\r\n'
             '    assert \'Django\' in browser.title\r\n'
@@ -228,7 +228,7 @@ class ParseListingTest(unittest.TestCase):
         self.assertEqual(
             parsed_listings,
             [
-                'python functional_tests.py',
+                'python3 functional_tests.py',
                 'Traceback (most recent call last):\n'
                 '  File "functional_tests.py", line 6, in <module>\n'
                 '    assert \'Django\' in browser.title\n'
@@ -342,11 +342,11 @@ class GetCommandsTest(unittest.TestCase):
 
     def test_extracting_one_command(self):
         listing = html.fromstring(
-            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>python functional_tests.py</strong>\r\nTraceback (most recent call last):\r\n  File "functional_tests.py", line 6, in &lt;module&gt;\r\n    assert \'Django\' in browser.title\r\nAssertionError</code></pre>\r\n</div></div>&#13;\n'
+            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>python3 functional_tests.py</strong>\r\nTraceback (most recent call last):\r\n  File "functional_tests.py", line 6, in &lt;module&gt;\r\n    assert \'Django\' in browser.title\r\nAssertionError</code></pre>\r\n</div></div>&#13;\n'
         )
         self.assertEqual(
             get_commands(listing),
-            ['python functional_tests.py']
+            ['python3 functional_tests.py']
         )
 
     def test_extracting_multiple(self):
@@ -1096,7 +1096,7 @@ class RunCommandTest(ChapterTest):
         self.run_command(Command('mkdir superlists'), cwd=self.tempdir)
 
         command = Command(
-            "python -c \"print 'input please?'; a = raw_input();print 'OK' if a=='yes' else 'NO'\""
+            "python3 -c \"print 'input please?'; a = raw_input();print 'OK' if a=='yes' else 'NO'\""
         )
         output = self.run_command(command, user_input='no')
         self.assertIn('NO', output)

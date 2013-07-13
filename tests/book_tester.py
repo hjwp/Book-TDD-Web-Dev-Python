@@ -44,7 +44,7 @@ class Command(unicode):
                 return git_cmd
         if self.startswith('python') and 'test' in self:
             return 'test'
-        if self == 'python manage.py syncdb':
+        if self == 'python3 manage.py syncdb':
             return 'interactive syncdb'
         else:
             return 'other command'
@@ -597,9 +597,9 @@ class ChapterTest(unittest.TestCase):
             self.assertIn('test', self.listings[pos])
             test_run = self.run_command(self.listings[pos])
         elif ft:
-            test_run = self.run_command(Command("python functional_tests.py"))
+            test_run = self.run_command(Command("python3 functional_tests.py"))
         else:
-            test_run = self.run_command(Command("python manage.py test lists"))
+            test_run = self.run_command(Command("python3 manage.py test lists"))
         pos += 1
         self.assert_console_output_correct(test_run, self.listings[pos])
 
@@ -652,7 +652,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def start_dev_server(self):
-        self.run_command(Command('python manage.py runserver'))
+        self.run_command(Command('python3 manage.py runserver'))
         self.dev_server_running = True
 
 
@@ -721,10 +721,10 @@ class ChapterTest(unittest.TestCase):
 
         elif listing.type == 'output':
             self._strip_out_any_pycs()
-            test_run = self.run_command(Command("python manage.py test lists"))
+            test_run = self.run_command(Command("python3 manage.py test lists"))
             if 'OK' in  test_run:
                 print 'unit tests pass, must be an FT:\n', test_run
-                test_run = self.run_command(Command("python functional_tests.py"))
+                test_run = self.run_command(Command("python3 functional_tests.py"))
             self.assert_console_output_correct(test_run, listing)
             self.pos += 1
 
