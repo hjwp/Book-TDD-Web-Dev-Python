@@ -38,7 +38,7 @@ class Chapter2Test(ChapterTest):
 
         second_ft_run = self.run_command(listings[7])
         # TODO: re-enable this, fix socket cleanup error
-        #self.assert_console_output_correct(second_ft_run, listings[8])
+        self.assert_console_output_correct(second_ft_run, listings[8])
 
         self.write_to_file(listings[9])
 
@@ -50,7 +50,7 @@ class Chapter2Test(ChapterTest):
         listings[12].was_run = True # TODO
 
         self.check_final_diff(2)
-        self.assert_all_listings_checked(listings, [1,8,5])
+        self.assert_all_listings_checked(listings, [1,5])
 
 
 
