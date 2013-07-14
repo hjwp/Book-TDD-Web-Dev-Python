@@ -4,9 +4,7 @@ import unittest
 
 from book_tester import (
     ChapterTest,
-    CodeListing,
     Command,
-    Output,
 )
 
 class Chapter6Test(ChapterTest):
@@ -30,7 +28,7 @@ class Chapter6Test(ChapterTest):
         #self.listings[58].skip = True
 
         while self.pos < 100:
-            print self.pos
+            print(self.pos)
             self.recognise_listing_and_process_it()
 
         self.check_final_diff(self.chapter_no)
