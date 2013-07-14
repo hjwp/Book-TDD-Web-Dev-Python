@@ -1196,14 +1196,14 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             bla bla
             loads more stuff
                 raise MyException('eek')
-            MyException: a really long exception, which will eventually wrap into multiple lines, so much so that it gets boring after a while...
+            MyException: a really long exception, which will eventually wrap into multiple lines, so much so that it just gets boring after a while and we just stop caring...
 
             and then there's some stuff afterwards we don't care about
             """).strip()
         expected = Output(dedent("""
             [...]
             MyException: a really long exception, which will eventually wrap into multiple
-            lines, so much so that [...]
+            lines, so much so that it just gets boring after a while and [...]
             """).strip()
         )
 
