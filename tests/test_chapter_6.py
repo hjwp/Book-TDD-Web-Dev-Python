@@ -27,6 +27,28 @@ class Chapter6Test(ChapterTest):
         # skips
         self.listings[18].skip = True
 
+
+        while self.pos < 37:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
+
+        assert 'egrep' in self.listings[37]
+        egrep = self.run_command(self.listings[37])
+        self.assertCountEqual(egrep.strip().split('\n'), self.listings[38].split('\n'))
+        self.listings[37].was_checked = True
+        self.listings[38].was_checked = True
+
+        self.fail('remove a test method from a view!')
+
+        while self.pos < 43:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
+
+        # command followed by unrelated output
+        self.run_command(self.listings[43])
+        self.listings[43].was_checked = True
+        self.pos = 44
+
         while self.pos < 100:
             print(self.pos)
             self.recognise_listing_and_process_it()

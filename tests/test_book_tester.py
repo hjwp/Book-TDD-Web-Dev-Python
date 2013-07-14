@@ -386,6 +386,7 @@ class ParseListingTest(unittest.TestCase):
         self.assertEqual(type(parsed_listings[1]), Output)
 
 
+
 class GetCommandsTest(unittest.TestCase):
 
     def test_extracting_one_command(self):
@@ -425,6 +426,7 @@ class GetCommandsTest(unittest.TestCase):
         )
 
 
+
 class LineFinderTest(unittest.TestCase):
 
     def test_number_of_identical_chars(self):
@@ -444,8 +446,6 @@ class LineFinderTest(unittest.TestCase):
             number_of_identical_chars('12345', '123WHATEVER45'),
             5
         )
-
-
 
 
 
@@ -487,12 +487,40 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives('', contents, 'hello\n\n\nbla\n')
 
 
-
     def test_existing_file_bears_no_relation_means_replaced(self):
         old = '#abc\n#def\n#ghi\n#jkl\n'
         new = '#mno\n#pqr\n#stu\n#vvv\n'
         expected = new
         self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_existing_file_has_views_means_apppend(self):
+        old = dedent(
+            """
+            from django.stuff import things
+
+            def a_view(request, param):
+                pass
+            """).lstrip()
+        new = dedent(
+            """
+            def another_view(request):
+                pass
+            """).strip()
+
+        expected = dedent(
+            """
+            from django.stuff import things
+
+            def a_view(request, param):
+                pass
+
+
+            def another_view(request):
+                pass
+            """).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
 
 
     def test_leading_elipsis_is_ignored(self):

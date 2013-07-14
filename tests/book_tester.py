@@ -292,9 +292,16 @@ def _replace_lines_in(old_lines, new_lines):
 
     start_pos = _find_start_line(old_lines, new_lines)
     if start_pos is None:
+        print('no start line in', old_lines)
         if 'import' in new_lines[0] and 'import' in old_lines[0]:
             new_contents = new_lines[0] + '\n'
             return new_contents + _replace_lines_in(old_lines[1:], new_lines[1:])
+
+        view_finder = re.compile(r'^def \w+\(request.*\):$')
+        if view_finder.match(new_lines[0]):
+            if any(view_finder.match(l) for l in old_lines):
+                return '\n'.join(old_lines) + '\n\n\n' + '\n'.join(new_lines)
+
         return '\n'.join(new_lines)
 
     end_pos = _find_end_line(old_lines, new_lines)
@@ -780,7 +787,7 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'output':
             self._strip_out_any_pycs()
             test_run = self.run_command(Command("python3 manage.py test lists"))
-            if 'OK' in  test_run:
+            if 'OK' in  test_run and not 'OK' in listing:
                 print('unit tests pass, must be an FT:\n', test_run)
                 if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
                     test_run = self.run_command(Command("python3 manage.py test functional_tests"))
