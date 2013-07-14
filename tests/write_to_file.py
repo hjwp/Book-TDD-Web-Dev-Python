@@ -151,6 +151,14 @@ def _replace_lines_in(old_lines, new_lines):
             if any(view_finder.match(l) for l in old_lines):
                 return '\n'.join(old_lines) + '\n\n\n' + '\n'.join(new_lines)
 
+        class_finder = re.compile(r'^class \w+\(.+\):$', re.MULTILINE)
+        if class_finder.match(new_lines[0]):
+            print('found class in input')
+            print(class_finder.findall('\n'.join(old_lines)))
+            if len(class_finder.findall('\n'.join(old_lines))) > 1:
+                print('found classes')
+                return '\n'.join(old_lines) + '\n\n\n\n' + '\n'.join(new_lines)
+
         return '\n'.join(new_lines)
 
     end_pos = _find_end_line(old_lines, new_lines)

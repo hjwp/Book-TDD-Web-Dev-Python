@@ -227,6 +227,7 @@ class WriteToFileTest(unittest.TestCase):
             actual = f.read()
             self.assertMultiLineEqual(actual, expected_contents)
 
+
     def test_strips_line_callouts(self):
         contents= 'hello\nbla #'
         self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
@@ -269,6 +270,64 @@ class WriteToFileTest(unittest.TestCase):
             def another_view(request):
                 pass
             """).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_existing_file_has_single_class_means_replace(self):
+        old = dedent(
+            """
+            class Jimmy(object):
+                pass
+            """).lstrip()
+        new = dedent(
+            """
+            class Carruthers(object):
+                pass
+            """).strip()
+
+        expected = dedent(
+            """
+            class Carruthers(object):
+                pass
+            """).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_existing_file_has_multiple_classes_means_append(self):
+        old = dedent(
+            """
+            class Jimmy(object):
+                pass
+
+
+
+            class Bob(object):
+                pass
+            """
+        ).lstrip()
+        new = dedent(
+            """
+            class Carruthers(object):
+                pass
+            """
+        ).strip()
+
+        expected = dedent(
+            """
+            class Jimmy(object):
+                pass
+
+
+
+            class Bob(object):
+                pass
+
+
+
+            class Carruthers(object):
+                pass
+            """).lstrip()
+
         self.assert_write_to_file_gives(old, new, expected)
 
 
