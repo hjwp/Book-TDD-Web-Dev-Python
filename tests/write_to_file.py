@@ -63,6 +63,19 @@ def _replace_function(old_lines, new_lines):
     )
 
 
+def remove_function(source, function_name):
+    print('removing function %s from \n%s' % (function_name, source))
+    old_lines = source.split('\n')
+    function = _get_function(source, function_name)
+    last_line = _find_last_line_in_function(source, function_name)
+    new_source = '\n'.join(
+        old_lines[:function.lineno - 1] +
+        old_lines[last_line + 1:]
+    )
+    new_source = re.sub(r'\n\n\n\n+', r'\n\n\n', new_source)
+    return new_source
+
+
 def _replace_lines_from(old_lines, new_lines, start_pos):
     print('replace lines from line', start_pos)
     start_line_in_old = old_lines[start_pos]
@@ -298,7 +311,6 @@ def write_to_file(codelisting, cwd):
 
     # strip trailing whitespace
     new_contents = re.sub(r'^ +$', '', new_contents, flags=re.MULTILINE)
-
 
     if not new_contents.endswith('\n'):
         new_contents += '\n'

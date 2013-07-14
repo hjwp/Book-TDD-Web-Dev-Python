@@ -12,6 +12,7 @@ from write_to_file import (
     _find_last_line_in_function,
     _replace_function,
     number_of_identical_chars,
+    remove_function,
     write_to_file,
 )
 
@@ -132,6 +133,47 @@ class ReplaceFunctionTest(unittest.TestCase):
         print('TEST REPLACE FN')
         result = _replace_function(old.split('\n'), new.split('\n'))
         self.assertMultiLineEqual(result, expected)
+
+
+class RemoveFunctionTest(unittest.TestCase):
+
+    def test_removing_a_function(self):
+        source = dedent(
+            """
+            def fn1(args):
+                # do stuff
+                pass
+
+
+            def fn2(arg2, arg3):
+                # do things
+                return 2
+
+
+            def fn3():
+                # do nothing
+                # really
+                pass
+            """
+        )
+
+        expected = dedent(
+            """
+            def fn1(args):
+                # do stuff
+                pass
+
+
+            def fn3():
+                # do nothing
+                # really
+                pass
+            """
+        )
+
+        self.assertEqual(remove_function(source, 'fn2'), expected)
+
+
 
 
 
