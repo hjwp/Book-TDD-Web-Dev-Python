@@ -410,42 +410,43 @@ def write_to_file(codelisting, cwd):
             new_contents = _replace_lines_in(old_lines, new_lines)
 
         else:
-            new_contents = ''
             if codelisting.contents.count("[...") == 1:
-                if codelisting.contents.strip().endswith("[...]"):
-                    new_lines = new_lines[:-1]
-                    new_contents = _replace_lines_in(old_lines, new_lines)
+                split_line = [l for l in new_lines if "[..." in l][0]
+                split_line_pos = new_lines.index(split_line)
+
+                if split_line_pos == 0:
+                    new_contents = _replace_lines_in(old_lines, new_lines[1:])
+
+                elif split_line == new_lines[-1]:
+                    new_contents = _replace_lines_in(old_lines, new_lines[:-1])
+
+                elif split_line_pos == 1:
+                    if 'import' in new_lines[0]:
+                        new_contents = add_import_and_new_lines(new_lines, old_lines)
+                    elif 'class' in new_lines[0]:
+                        new_contents = add_to_class(new_lines, old_lines)
 
                 else:
-                    split_line = [l for l in new_lines if "[..." in l][0]
-                    split_line_pos = new_lines.index(split_line)
-                    if split_line_pos == 1:
-                        if 'import' in new_lines[0]:
-                            new_contents = add_import_and_new_lines(new_lines, old_lines)
-                        elif 'class' in new_lines[0]:
-                            new_contents = add_to_class(new_lines, old_lines)
+                    lines_before = new_lines[:split_line_pos]
+                    last_line_before = lines_before[-1]
+                    lines_after = new_lines[split_line_pos + 1:]
 
-                    else:
-                        lines_before = new_lines[:split_line_pos]
-                        last_line_before = lines_before[-1]
-                        lines_after = new_lines[split_line_pos + 1:]
+                    last_old_line = [
+                        l for l in old_lines if l.strip() == last_line_before.strip()
+                    ][0]
+                    last_old_line_pos = old_lines.index(last_old_line)
+                    old_lines_after = old_lines[last_old_line_pos + 1:]
 
-                        last_old_line = [
-                            l for l in old_lines if l.strip() == last_line_before.strip()
-                        ][0]
-                        last_old_line_pos = old_lines.index(last_old_line)
-                        old_lines_after = old_lines[last_old_line_pos + 1:]
+                    # special-case: stray browser.quit in chap. 2
+                    if 'rest of comments' in split_line:
+                        assert old_lines_after[-1] == 'browser.quit()'
+                        old_lines_after.pop()
 
-                        # special-case: stray browser.quit in chap. 2
-                        if 'rest of comments' in split_line:
-                            assert old_lines_after[-1] == 'browser.quit()'
-                            old_lines_after.pop()
-
-                        new_contents += '\n'.join(
-                            lines_before +
-                            [get_indent(split_line) + l for l in old_lines_after] +
-                            lines_after
-                        )
+                    new_contents = '\n'.join(
+                        lines_before +
+                        [get_indent(split_line) + l for l in old_lines_after] +
+                        lines_after
+                    )
 
             elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
                 new_contents = _replace_lines_in(old_lines, new_lines[1:-1])
@@ -672,6 +673,10 @@ class ChapterTest(unittest.TestCase):
             self.listings[pos] = Command(
                 self.listings[pos] + 'm "commit for listing %d"' % (self.pos,)
             )
+        elif self.listings[pos].endswith('commit'):
+            self.listings[pos] = Command(
+                self.listings[pos] + ' -am "commit for listing %d"' % (self.pos,)
+            )
 
         commit = self.run_command(self.listings[pos])
         self.assertIn('insertions', commit)
@@ -688,16 +693,19 @@ class ChapterTest(unittest.TestCase):
             any('/' + l in git_output for l in LIKELY_FILES),
             'no likely files in diff output %s' % (git_output,)
         )
+        self.pos += 1
+        comment = self.listings[pos + 1]
+        if comment.type != 'output':
+            return
         for expected_file in LIKELY_FILES:
             if '/' + expected_file in git_output:
-                comment = self.listings[pos + 1]
                 if not expected_file in comment:
                     self.fail(
                         "could not find %s in comment %r given git output\n%s" % (
                             expected_file, comment, git_output)
                     )
                 self.listings[pos + 1].was_checked = True
-        self.pos += 2
+        self.pos += 1
 
 
     def check_git_diff_and_commit(self, pos):
@@ -774,7 +782,10 @@ class ChapterTest(unittest.TestCase):
             test_run = self.run_command(Command("python3 manage.py test lists"))
             if 'OK' in  test_run:
                 print('unit tests pass, must be an FT:\n', test_run)
-                test_run = self.run_command(Command("python3 functional_tests.py"))
+                if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
+                    test_run = self.run_command(Command("python3 manage.py test functional_tests"))
+                else:
+                    test_run = self.run_command(Command("python3 functional_tests.py"))
             self.assert_console_output_correct(test_run, listing)
             self.pos += 1
 

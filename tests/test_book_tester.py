@@ -495,6 +495,41 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
+    def test_leading_elipsis_is_ignored(self):
+        old = dedent("""
+            class C():
+                def foo():
+                    # bla 1
+                    # bla 2
+                    # bla 3
+                    # bla 4
+                    return 1
+
+            # the end
+            """)
+        new = dedent("""
+            [...]
+            # bla 2
+            # bla 3b
+            # bla 4b
+            return 1
+            """
+        )
+        expected = dedent("""
+            class C():
+                def foo():
+                    # bla 1
+                    # bla 2
+                    # bla 3b
+                    # bla 4b
+                    return 1
+
+            # the end
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
     def test_adding_import_at_top_then_elipsis_then_modified_stuff(self):
         old = dedent("""
             import topline

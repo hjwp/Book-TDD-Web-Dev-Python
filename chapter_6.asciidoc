@@ -195,7 +195,7 @@ FAIL: test_can_start_a_list_and_retrieve_it_later
 (functional_tests.tests.NewVisitorTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/workspace/superlists/functional_tests/tests.py", line 64, in
+  File "/workspace/superlists/functional_tests/tests.py", line 61, in
 test_can_start_a_list_and_retrieve_it_later
     self.fail('Finish the test!')
 AssertionError: Finish the test!
@@ -391,8 +391,10 @@ the next block of code like this:
     # to-do list table
     inputbox.send_keys(Keys.ENTER)
     edith_list_url = self.browser.current_url
-    self.assertRegexpMatches(edith_list_url, '/lists/.+')
+    self.assertRegex(edith_list_url, '/lists/.+')
     self.check_for_row_in_list_table('1: Buy peacock feathers')
+
+    # There is still a text box inviting her to add another item. She
     [...]
 ----
 
@@ -435,7 +437,7 @@ them with a new ending to our FT:
 
     # Francis gets his own unique URL
     francis_list_url = self.browser.current_url
-    self.assertRegexpMatches(francis_list_url, '/lists/.+') #<2>
+    self.assertRegex(francis_list_url, '/lists/.+') #<2>
     self.assertNotEqual(francis_list_url, edith_list_url)
 
     # Again, there is no trace of Edith's list
@@ -452,7 +454,7 @@ them with a new ending to our FT:
 the User Story. They're a message to our future selves, which might otherwise
 be wondering why the heck we're quitting the browser and starting a new one...
 
-<2> `assertRegexpMatches` is a helper function from `unittest` that checks
+<2> `assertRegex` is a helper function from `unittest` that checks
 whether a string matches a regular expression. We use it to check our new
 REST-ish design has been implemented. Find out more in the 
 http://docs.python.org/2/library/unittest.html[unittest documentation]
@@ -461,8 +463,8 @@ Other than that, the changes are fairly self-explanatory. Let's see how they do
 when we run our FTs:
 
 ----
-AssertionError: Regexp didn't match: '/lists/.+' not found in
-u'http://localhost:8081/'
+AssertionError: Regex didn't match: '/lists/.+' not found in
+'http://localhost:8081/'
 ----
 
 As expected.  Let's do a commit, and then go and build some new models
@@ -542,6 +544,9 @@ def home_page(request):
     if request.method == 'POST':
         Item.objects.create(text=request.POST['item_text'])
         return redirect('/lists/the-only-list-in-the-world/')
+
+    items = Item.objects.all()
+    return render(request, 'home.html', {'items': items})
 ----
 
 Of course that will now totally break the functional test, because there is no
@@ -590,24 +595,26 @@ class ListViewTest(TestCase):
         Item.objects.create(text='itemey 1')
         Item.objects.create(text='itemey 2')
 
-        client = Client()
-        response = client.get('/lists/the-only-list-in-the-world/')
+        client = Client() #<1>
+        response = client.get('/lists/the-only-list-in-the-world/') #<1>
 
-        self.assertIn('itemey 1', response.content)
-        self.assertIn('itemey 2', response.content)
+        self.assertContains(response, 'itemey 1') #<2>
+        self.assertContains(response, 'itemey 2') #<2>
 
 ----
 
-Instead of calling the view function directly, we instantiate a test client
+<1> Instead of calling the view function directly, we instantiate a test client
 with `Client()`, and then we call `.get` with the URL we're testing -- it's 
 actually a very similar API to the one that Selenium uses. 
+
+<2> Instead of using the slightly annoying `assertIn` / `response.content.decode()`
+dance, Django provides the `assertContains` method which know how to deal with
+responses and the bytes of their content.
 
 Let's try running the test now:
 
 ----
-    self.assertIn('itemey 1', response.content)
-AssertionError: 'itemey 1' not found in '<h1>Not Found</h1><p>The requested URL
-/lists/the-only-list-in-the-world/ was not found on this server.</p>'
+AssertionError: 404 != 200 : Couldn't retrieve content: Response code was 404
 ----
 
 Our singleton list URL doesn't exist yet.  We fix that in 'superlists/urls.py'
@@ -628,8 +635,10 @@ urlpatterns = patterns('',
 Running the tests again, we get:
 
 ----
-ViewDoesNotExist: Could not import lists.views.view_list. View does not exist
-in module lists.views.
+AttributeError: 'module' object has no attribute 'view_list'
+[...]
+django.core.exceptions.ViewDoesNotExist: Could not import
+lists.views.view_list. View does not exist in module lists.views.
 ----
 
 Nicely self-explanatory.  Let's create a dummy view function in 'lists/views.py'

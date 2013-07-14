@@ -25,7 +25,7 @@ class Chapter6Test(ChapterTest):
         self.run_command(Command('python3 manage.py syncdb --noinput'))
 
         # skips
-        #self.listings[58].skip = True
+        self.listings[18].skip = True
 
         while self.pos < 100:
             print(self.pos)
