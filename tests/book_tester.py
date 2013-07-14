@@ -664,6 +664,7 @@ class ChapterTest(unittest.TestCase):
         self._strip_out_any_pycs()
         test_run = self.run_command(self.listings[self.pos])
         self.assert_console_output_correct(test_run, self.listings[self.pos + 1])
+        self.pos += 2
 
 
     def check_commit(self, pos):
@@ -674,6 +675,7 @@ class ChapterTest(unittest.TestCase):
 
         commit = self.run_command(self.listings[pos])
         self.assertIn('insertions', commit)
+        self.pos += 1
 
 
     def check_diff_or_status(self, pos):
@@ -695,6 +697,7 @@ class ChapterTest(unittest.TestCase):
                             expected_file, comment, git_output)
                     )
                 self.listings[pos + 1].was_checked = True
+        self.pos += 2
 
 
     def check_git_diff_and_commit(self, pos):
@@ -716,19 +719,15 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'test':
             print("TEST RUN")
             self.run_test_and_check_result()
-            self.pos += 2
         elif listing.type == 'git diff':
             print("DIFF")
             self.check_diff_or_status(self.pos)
-            self.pos += 2
         elif listing.type == 'git status':
             print("STATUS")
             self.check_diff_or_status(self.pos)
-            self.pos += 2
         elif listing.type == 'git commit':
             print("COMMIT")
             self.check_commit(self.pos)
-            self.pos += 1
 
         elif listing.type == 'interactive syncdb':
             print("INTERACTIVE SYNCDB")
