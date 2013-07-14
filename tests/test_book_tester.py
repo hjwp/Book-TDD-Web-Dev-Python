@@ -13,6 +13,7 @@ from book_tester import (
     Output,
     fix_dict_repr_order,
     _find_last_line_for_class,
+    _find_last_line_in_function,
     _replace_function,
     get_commands,
     number_of_identical_chars,
@@ -55,6 +56,43 @@ class ClassFinderTest(unittest.TestCase):
 
 class ReplaceFunctionTest(unittest.TestCase):
 
+    def test_finding_last_line_in_function(self):
+        source = dedent("""
+            def myfn():
+                a += 1
+                return b
+            """).strip()
+        self.assertEqual(_find_last_line_in_function(source, 'myfn'), 2)
+
+
+    def test_finding_last_line_in_function_with_brackets(self):
+        source = dedent("""
+            def myfn():
+                a += 1
+                return (
+                    '2'
+                )
+            """).strip()
+        self.assertEqual(_find_last_line_in_function(source, 'myfn'), 4)
+
+
+    def test_finding_last_line_in_function_with_brackets_before_another(self):
+        print('HERE' * 10)
+        source = dedent("""
+            def myfn():
+                a += 1
+                return (
+                    '2'
+                )
+
+            # bla
+
+            def anotherfn():
+                pass
+            """).strip()
+        self.assertEqual(_find_last_line_in_function(source, 'myfn'), 4)
+
+
     def test_changing_the_end_of_a_method(self):
         old = dedent("""
             class A(object):
@@ -63,8 +101,10 @@ class ReplaceFunctionTest(unittest.TestCase):
                     # do step 2
                     # do step 3
                     # do step 4
-                    # do step 5
-                    pass
+                    return (
+                        'something'
+                    )
+
 
                 def method2(self):
                     # do stuff
@@ -76,7 +116,9 @@ class ReplaceFunctionTest(unittest.TestCase):
                 # do step 1
                 # do step 2
                 # do step A
-                # do step B
+                return (
+                    'something else'
+                )
             """
         ).strip()
         expected = dedent("""
@@ -85,13 +127,17 @@ class ReplaceFunctionTest(unittest.TestCase):
                     # do step 1
                     # do step 2
                     # do step A
-                    # do step B
+                    return (
+                        'something else'
+                    )
+
 
                 def method2(self):
                     # do stuff
                     pass
             """
         )
+        print('TEST REPLACE FN')
         result = _replace_function(old.split('\n'), new.split('\n'))
         self.assertMultiLineEqual(result, expected)
 
@@ -472,6 +518,42 @@ class WriteToFileTest(unittest.TestCase):
             class C():
                 def foo():
                     return 2
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
+    def test_adding_import_at_top_without_elipsis_then_modified_stuff(self):
+        old = dedent("""
+            import anoldthing
+            import bthing
+            import cthing
+
+            class C(cthing.Bar):
+                def foo():
+                    return 1
+
+                    # more stuff...
+            """)
+        new = dedent("""
+            import anewthing
+            import bthing
+            import cthing
+
+            class C(anewthing.Baz):
+                def foo():
+                    [...]
+            """)
+        expected = dedent("""
+            import anewthing
+            import bthing
+            import cthing
+
+            class C(anewthing.Baz):
+                def foo():
+                    return 1
+
+                    # more stuff...
             """
         ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)

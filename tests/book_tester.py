@@ -175,6 +175,7 @@ def get_indent(line):
 
 
 def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
+    print('replace lines from line', start_pos, 'to line', end_pos)
     old_indent = get_indent(old_lines[start_pos])
     new_indent = get_indent(new_lines[0])
     if new_indent:
@@ -189,24 +190,45 @@ def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
     )
 
 
+def _get_function(source, function_name):
+    functions = [
+        n for n in ast.walk(ast.parse(source))
+        if isinstance(n, ast.FunctionDef)
+    ]
+    return next(c for c in functions if c.name == function_name)
+
+
+def _find_last_line_in_function(source, function_name):
+    function = _get_function(source, function_name)
+    last_line_no = max(
+        getattr(n, 'lineno', -1) for n in ast.walk(function)
+    )
+    lines = source.split('\n')
+    if len(lines) > last_line_no:
+        for line in lines[last_line_no:]:
+            if not line:
+                break
+            last_line_no += 1
+    return last_line_no - 1
+
+
 def _replace_function(old_lines, new_lines):
+    print('replace function')
     source = '\n'.join(old_lines)
     function_name = re.search(r'def (\w+)\(\w*\):', new_lines[0].strip()).group(1)
-    all_nodes = list(ast.walk(ast.parse(source)))
-    functions = [n for n in all_nodes if isinstance(n, ast.FunctionDef)]
-    our_function = next(c for c in functions if c.name == function_name)
-    last_line_in_our_function = max(
-            getattr(thing, 'lineno', 0) for thing in ast.walk(our_function)
-    )
-    indent = get_indent(old_lines[our_function.lineno - 1])
+    function = _get_function(source, function_name)
+    last_line = _find_last_line_in_function(source, function_name)
+
+    indent = get_indent(old_lines[function.lineno - 1])
     return '\n'.join(
-        old_lines[:our_function.lineno - 1] +
+        old_lines[:function.lineno - 1] +
         [indent + l for l in new_lines] +
-        old_lines[last_line_in_our_function:]
+        old_lines[last_line + 1:]
     )
 
 
 def _replace_lines_from(old_lines, new_lines, start_pos):
+    print('replace lines from line', start_pos)
     start_line_in_old = old_lines[start_pos]
     indent = get_indent(start_line_in_old)
     for ix, new_line in enumerate(new_lines):
@@ -235,6 +257,7 @@ def number_of_identical_chars(string1, string2):
 
 
 def _replace_single_line(old_lines, new_lines):
+    print('replace single line')
     new_line = new_lines[0]
     line_finder = lambda l: number_of_identical_chars(l, new_line)
     likely_line = sorted(old_lines, key=line_finder)[-1]
@@ -269,6 +292,9 @@ def _replace_lines_in(old_lines, new_lines):
 
     start_pos = _find_start_line(old_lines, new_lines)
     if start_pos is None:
+        if 'import' in new_lines[0] and 'import' in old_lines[0]:
+            new_contents = new_lines[0] + '\n'
+            return new_contents + _replace_lines_in(old_lines[1:], new_lines[1:])
         return '\n'.join(new_lines)
 
     end_pos = _find_end_line(old_lines, new_lines)
@@ -315,6 +341,7 @@ def insert_new_import(import_line, old_lines):
 
 
 def add_import_and_new_lines(new_lines, old_lines):
+    print('add import and new lines')
     lines_with_import = insert_new_import(new_lines[0], old_lines)
     new_lines_remaining = '\n'.join(new_lines[2:]).strip('\n').split('\n')
     start_pos = _find_start_line(old_lines, new_lines_remaining)
@@ -335,6 +362,7 @@ def _find_last_line_for_class(source, classname):
 
 
 def add_to_class(new_lines, old_lines):
+    print('adding to class')
     classname = re.search(r'class (\w+)\(\w+\):', new_lines[0]).group(1)
     insert_point = _find_last_line_for_class('\n'.join(old_lines), classname)
     return '\n'.join(
