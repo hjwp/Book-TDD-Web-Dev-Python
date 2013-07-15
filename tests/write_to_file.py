@@ -151,9 +151,16 @@ def _replace_lines_in(old_lines, new_lines):
             new_contents = new_lines[0] + '\n'
             return new_contents + _replace_lines_in(old_lines[1:], new_lines[1:])
 
-        view_finder = re.compile(r'^def \w+\(request.*\):$')
+        view_finder = re.compile(r'^def (\w+)\(request.*\):$')
         if view_finder.match(new_lines[0]):
             if any(view_finder.match(l) for l in old_lines):
+                view_name = view_finder.search(new_lines[0]).group(1)
+                old_views = []
+                for old_line in old_lines:
+                    if view_finder.match(old_line):
+                        old_views.append(view_finder.match(old_line).group(1))
+                if view_name in old_views:
+                    return _replace_function(old_lines, new_lines)
                 return '\n'.join(old_lines) + '\n\n\n' + '\n'.join(new_lines)
 
         class_finder = re.compile(r'^class \w+\(.+\):$', re.MULTILINE)

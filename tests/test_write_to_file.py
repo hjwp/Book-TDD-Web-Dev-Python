@@ -924,6 +924,66 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
+    def test_with_single_line_assertion_replacement_real_views_example(self):
+        old = dedent("""
+            from lists.models import Item
+            from lists.models import Item, List
+
+            def home_page(request):
+                return render(request, 'home.html')
+
+
+            def view_list(request, list_id):
+                list = List.objects.get(id=list_id)
+                items = Item.objects.filter(list=list)
+                return render(request, 'list.html', {'items': items})
+
+
+            def new_list(request):
+                list = List.objects.create()
+                Item.objects.create(text=request.POST['item_text'], list=list)
+                return redirect('/lists/%d/' % (list.id,))
+
+
+            def add_item(request):
+                pass
+            """
+        ).lstrip()
+
+        new = dedent(
+            """
+            def add_item(request, list_id):
+                pass
+            """
+        )
+
+        expected = dedent("""
+            from lists.models import Item
+            from lists.models import Item, List
+
+            def home_page(request):
+                return render(request, 'home.html')
+
+
+            def view_list(request, list_id):
+                list = List.objects.get(id=list_id)
+                items = Item.objects.filter(list=list)
+                return render(request, 'list.html', {'items': items})
+
+
+            def new_list(request):
+                list = List.objects.create()
+                Item.objects.create(text=request.POST['item_text'], list=list)
+                return redirect('/lists/%d/' % (list.id,))
+
+
+            def add_item(request, list_id):
+                pass
+            """
+        ).lstrip()
+        self.assert_write_to_file_gives(old, new, expected)
+
+
     def test_changing_function_signature_and_stripping_comment(self):
         old = dedent(
             """
