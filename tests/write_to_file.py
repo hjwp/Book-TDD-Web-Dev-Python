@@ -252,9 +252,20 @@ SPECIAL_CASES = {
 
 
 def write_to_file(codelisting, cwd):
-    path = os.path.join(cwd, codelisting.filename)
+    if ',' in codelisting.filename:
+        files = codelisting.filename.split(', ')
+    else:
+        files = [codelisting.filename]
+    new_contents = codelisting.contents
+    for filename in files:
+        path = os.path.join(cwd, filename)
+        _write_to_file(path, new_contents)
+        with open(os.path.join(path)) as f:
+            print(f.read())
+
+
+def _write_to_file(path, new_contents):
     if not os.path.exists(path):
-        new_contents = codelisting.contents
         dir = os.path.dirname(path)
         if not os.path.exists(dir):
             os.makedirs(dir)
@@ -263,21 +274,21 @@ def write_to_file(codelisting, cwd):
         with open(path) as f:
             old_contents = f.read()
         old_lines = old_contents.strip().split('\n')
-        new_lines = codelisting.contents.strip('\n').split('\n')
+        new_lines = new_contents.strip('\n').split('\n')
         # strip callouts
         new_lines = [re.sub(r' +#$', '', l) for l in new_lines]
 
-        if codelisting.contents.strip() in SPECIAL_CASES:
-            to_replace = SPECIAL_CASES[codelisting.contents.strip()]
-            replace_with = r'\1' + codelisting.contents.strip() + '\n'
+        if new_contents.strip() in SPECIAL_CASES:
+            to_replace = SPECIAL_CASES[new_contents.strip()]
+            replace_with = r'\1' + new_contents.strip() + '\n'
             assert re.search(to_replace, old_contents), 'could not find \n%s\n in \n%r\n' % (to_replace, old_contents)
             new_contents = re.sub(to_replace, replace_with, old_contents)
 
-        elif "[..." not in codelisting.contents:
+        elif "[..." not in new_contents:
             new_contents = _replace_lines_in(old_lines, new_lines)
 
         else:
-            if codelisting.contents.count("[...") == 1:
+            if new_contents.count("[...") == 1:
                 split_line = [l for l in new_lines if "[..." in l][0]
                 split_line_pos = new_lines.index(split_line)
 
@@ -315,7 +326,7 @@ def write_to_file(codelisting, cwd):
                         lines_after
                     )
 
-            elif codelisting.contents.startswith("[...]") and codelisting.contents.endswith("[...]"):
+            elif new_contents.startswith("[...]") and new_contents.endswith("[...]"):
                 new_contents = _replace_lines_in(old_lines, new_lines[1:-1])
             else:
                 raise Exception("I don't know how to deal with this")
@@ -326,8 +337,7 @@ def write_to_file(codelisting, cwd):
     if not new_contents.endswith('\n'):
         new_contents += '\n'
 
-    with open(os.path.join(cwd, codelisting.filename), 'w') as f:
+    with open(os.path.join(path), 'w') as f:
         f.write(new_contents)
 
-    codelisting.was_written = True
 

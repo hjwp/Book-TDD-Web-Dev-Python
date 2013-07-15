@@ -129,8 +129,6 @@ class ChapterTest(unittest.TestCase):
         )
         print('writing to file', codelisting.filename)
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
-        with open(os.path.join(self.tempdir, 'superlists', codelisting.filename)) as f:
-            print(f.read())
 
 
     def run_command(self, command, cwd=None, user_input=None):
