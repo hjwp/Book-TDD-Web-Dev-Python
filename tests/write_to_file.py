@@ -54,7 +54,7 @@ def _find_last_line_in_function(source, function_name):
 def _replace_function(old_lines, new_lines):
     print('replace function')
     source = '\n'.join(old_lines)
-    function_name = re.search(r'def (\w+)\(\w*\):', new_lines[0].strip()).group(1)
+    function_name = re.search(r'def (\w+)\(.*\):', new_lines[0].strip()).group(1)
     function = _get_function(source, function_name)
     last_line = _find_last_line_in_function(source, function_name)
 
@@ -119,10 +119,12 @@ def _replace_single_line(old_lines, new_lines):
 
 
 def _find_start_line(old_lines, new_lines):
+    stripped_start_line = new_lines[0].strip()
     stripped_old_lines = [l.strip() for l in old_lines]
     try:
-        return stripped_old_lines.index(new_lines[0].strip())
+        return stripped_old_lines.index(stripped_start_line)
     except ValueError:
+        print('could not find start line %r' % (stripped_start_line,))
         return None
 
 
@@ -144,7 +146,7 @@ def _replace_lines_in(old_lines, new_lines):
 
     start_pos = _find_start_line(old_lines, new_lines)
     if start_pos is None:
-        print('no start line in', old_lines)
+        print('no start line found')
         if 'import' in new_lines[0] and 'import' in old_lines[0]:
             new_contents = new_lines[0] + '\n'
             return new_contents + _replace_lines_in(old_lines[1:], new_lines[1:])
@@ -262,6 +264,7 @@ def write_to_file(codelisting, cwd):
         _write_to_file(path, new_contents)
         with open(os.path.join(path)) as f:
             print(f.read())
+    codelisting.was_written = True
 
 
 def _write_to_file(path, new_contents):

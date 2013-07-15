@@ -89,7 +89,7 @@ class ReplaceFunctionTest(unittest.TestCase):
     def test_changing_the_end_of_a_method(self):
         old = dedent("""
             class A(object):
-                def method1(self):
+                def method1(self, stuff):
                     # do step 1
                     # do step 2
                     # do step 3
@@ -105,7 +105,7 @@ class ReplaceFunctionTest(unittest.TestCase):
             """
         )
         new = dedent("""
-            def method1(self):
+            def method1(self, stuff):
                 # do step 1
                 # do step 2
                 # do step A
@@ -116,7 +116,7 @@ class ReplaceFunctionTest(unittest.TestCase):
         ).strip()
         expected = dedent("""
             class A(object):
-                def method1(self):
+                def method1(self, stuff):
                     # do step 1
                     # do step 2
                     # do step A
@@ -200,6 +200,8 @@ class LineFinderTest(unittest.TestCase):
 
 
 class WriteToFileTest(unittest.TestCase):
+    maxDiff = None
+
     def setUp(self):
         self.tempdir = tempfile.mkdtemp()
 
@@ -305,6 +307,9 @@ class WriteToFileTest(unittest.TestCase):
     def test_existing_file_has_multiple_classes_means_append(self):
         old = dedent(
             """
+            import apples
+            import pears
+
             class Jimmy(object):
                 pass
 
@@ -323,6 +328,9 @@ class WriteToFileTest(unittest.TestCase):
 
         expected = dedent(
             """
+            import apples
+            import pears
+
             class Jimmy(object):
                 pass
 
