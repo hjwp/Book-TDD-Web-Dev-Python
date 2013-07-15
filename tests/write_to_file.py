@@ -31,7 +31,10 @@ def _get_function(source, function_name):
         n for n in ast.walk(ast.parse(source))
         if isinstance(n, ast.FunctionDef)
     ]
-    return next(c for c in functions if c.name == function_name)
+    try:
+        return next(c for c in functions if c.name == function_name)
+    except StopIteration:
+        raise Exception('Could not find function named %s' % (function_name,))
 
 
 def _find_last_line_in_function(source, function_name):

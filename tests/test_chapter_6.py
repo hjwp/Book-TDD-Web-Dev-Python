@@ -41,14 +41,17 @@ class Chapter6Test(ChapterTest):
         self.listings[38].was_checked = True
         self.pos = 39
 
-        with open(os.path.join(self.tempdir, 'superlists/lists/tests.py')) as f:
-            old_views = f.read()
-        new_views = remove_function(
-                old_views,
-                'test_home_page_displays_all_list_items'
+        def remove_function_from(function_name, filename):
+            with open(os.path.join(self.tempdir, filename)) as f:
+                old_views = f.read()
+            new_views = remove_function(old_views, function_name)
+            with open(os.path.join(self.tempdir, filename), 'w') as f:
+                f.write(new_views)
+
+        remove_function_from(
+            'test_home_page_displays_all_list_items',
+            'superlists/lists/tests.py'
         )
-        with open(os.path.join(self.tempdir, 'superlists/lists/tests.py'), 'w') as f:
-            f.write(new_views)
 
         while self.pos < 43:
             print(self.pos)
@@ -71,8 +74,12 @@ class Chapter6Test(ChapterTest):
         self.listings[53].was_checked = True
         self.pos = 54
 
-        self.listings[58].skip = True
-        self.listings[59].skip = True
+        self.listings[58].skip = True # irrelevant comment
+        self.listings[59].skip = True # move function
+        remove_function_from(
+            'test_home_page_can_save_a_POST_request',
+            'superlists/lists/tests.py'
+        )
         while self.pos < 100:
             print(self.pos)
             self.recognise_listing_and_process_it()
