@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-from lxml import html
 import os
 from textwrap import dedent
 import unittest
 
 from book_tester import (
     ChapterTest,
-    CodeListing,
-    Command,
-    Output,
     fix_dict_repr_order,
-    get_commands,
-    parse_listing,
     wrap_long_lines,
 )
+from book_parser import (
+    Command,
+    Output,
+)
 from test_write_to_file import *
-from examples import CODE_LISTING_WITH_CAPTION
+from test_book_parser import *
 
 
 
@@ -108,198 +106,6 @@ class WrapLongLineTest(unittest.TestCase):
             "79 chars in length"
         )
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
-
-
-
-class ParseListingTest(unittest.TestCase):
-
-    def test_recognises_code_listings(self):
-        code_html = CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
-        node = html.fromstring(code_html)
-        listings = parse_listing(node)
-        self.assertEqual(len(listings), 1)
-        listing = listings[0]
-        self.assertEqual(type(listing), CodeListing)
-        self.assertEqual(listing.filename, 'functional_tests.py')
-        self.assertEqual(
-            listing.contents,
-            dedent(
-                """
-                from selenium import webdriver
-
-                browser = webdriver.Firefox()
-                browser.get('http://localhost:8000')
-
-                assert 'Django' in browser.title
-                """
-            ).strip()
-        )
-        self.assertFalse('\r' in listing.contents)
-
-
-    def test_can_extract_one_command_and_its_output(self):
-        listing = html.fromstring(
-            '<div class="listingblock">\r\n'
-            '<div class="content">\r\n'
-            '<pre><code>$ <strong>python3 functional_tests.py</strong>\r\n'
-            'Traceback (most recent call last):\r\n'
-            '  File "functional_tests.py", line 6, in &lt;module&gt;\r\n'
-            '    assert \'Django\' in browser.title\r\n'
-            'AssertionError</code></pre>\r\n'
-            '</div></div>&#13;\n'
-        )
-        parsed_listings = parse_listing(listing)
-        self.assertEqual(
-            parsed_listings,
-            [
-                'python3 functional_tests.py',
-                'Traceback (most recent call last):\n'
-                '  File "functional_tests.py", line 6, in <module>\n'
-                '    assert \'Django\' in browser.title\n'
-                'AssertionError'
-            ]
-        )
-        self.assertEqual(type(parsed_listings[0]), Command)
-        self.assertEqual(type(parsed_listings[1]), Output)
-
-
-    def test_extracting_multiple(self):
-        listing = html.fromstring(
-            '<div class="listingblock">\r\n'
-            '<div class="content">\r\n'
-            '<pre><code>$ <strong>ls</strong>\r\n'
-            'superlists          functional_tests.py\r\n'
-            '$ <strong>mv functional_tests.py superlists/</strong>\r\n'
-            '$ <strong>cd superlists</strong>\r\n'
-            '$ <strong>git init .</strong>\r\n'
-            'Initialized empty Git repository in /chapter_1/superlists/.git/</code></pre>\r\n'
-            '</div></div>&#13;\n'
-        )
-        parsed_listings = parse_listing(listing)
-        self.assertEqual(
-            parsed_listings,
-            [
-                'ls',
-                'superlists          functional_tests.py',
-                'mv functional_tests.py superlists/',
-                'cd superlists',
-                'git init .',
-                'Initialized empty Git repository in /chapter_1/superlists/.git/'
-            ]
-        )
-        self.assertEqual(type(parsed_listings[0]), Command)
-        self.assertEqual(type(parsed_listings[1]), Output)
-        self.assertEqual(type(parsed_listings[2]), Command)
-        self.assertEqual(type(parsed_listings[3]), Command)
-        self.assertEqual(type(parsed_listings[4]), Command)
-        self.assertEqual(type(parsed_listings[5]), Output)
-
-
-    def test_post_command_comment_with_multiple_spaces(self):
-        listing = html.fromstring(
-            '<div class="listingblock">'
-            '<div class="content">'
-            '<pre><code>$ <strong>git diff</strong>  # should show changes to functional_tests.py\n'
-            '$ <strong>git commit -am "Functional test now checks we can input a to-do item"</strong></code></pre>'
-            '</div></div>&#13;'
-        )
-        commands = get_commands(listing)
-        self.assertEqual(
-            commands,
-            [
-                'git diff',
-                'git commit -am "Functional test now checks we can input a to-do item"',
-            ]
-        )
-
-        parsed_listings = parse_listing(listing)
-        self.assertEqual(
-            parsed_listings,
-            [
-                'git diff',
-                '# should show changes to functional_tests.py',
-                'git commit -am "Functional test now checks we can input a to-do item"',
-            ]
-        )
-        self.assertEqual(type(parsed_listings[0]), Command)
-        self.assertEqual(type(parsed_listings[1]), Output)
-        self.assertEqual(type(parsed_listings[2]), Command)
-
-
-
-    def test_specialcase_for_asterisk(self):
-        listing = html.fromstring(
-            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>git rm --cached superlists/</strong>*<strong>.pyc</strong>\r\nrm <em>superlists/__init__.pyc</em>\r\nrm <em>superlists/settings.pyc</em>\r\nrm <em>superlists/urls.pyc</em>\r\nrm <em>superlists/wsgi.pyc</em>\r\n\r\n$ <strong>echo "*.pyc" &gt; .gitignore</strong></code></pre>\r\n</div></div>&#13;\n'
-        )
-        self.assertEqual(
-            get_commands(listing),
-            [
-                'git rm --cached superlists/*.pyc',
-                'echo "*.pyc" > .gitignore',
-            ]
-        )
-
-
-    def test_catches_command_with_trailing_comment(self):
-        listing = html.fromstring(
-            dedent("""
-                <div class="listingblock">
-                    <div class="content">
-                        <pre><code>$ <strong>git diff --staged</strong> # will show you the diff that you're about to commit
-                </code></pre>
-                </div></div>
-                """)
-        )
-        parsed_listings = parse_listing(listing)
-        self.assertEqual(
-            parsed_listings,
-            [
-                "git diff --staged",
-                "# will show you the diff that you're about to commit",
-            ]
-        )
-        self.assertEqual(type(parsed_listings[0]), Command)
-        self.assertEqual(type(parsed_listings[1]), Output)
-
-
-
-class GetCommandsTest(unittest.TestCase):
-
-    def test_extracting_one_command(self):
-        listing = html.fromstring(
-            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>python3 functional_tests.py</strong>\r\nTraceback (most recent call last):\r\n  File "functional_tests.py", line 6, in &lt;module&gt;\r\n    assert \'Django\' in browser.title\r\nAssertionError</code></pre>\r\n</div></div>&#13;\n'
-        )
-        self.assertEqual(
-            get_commands(listing),
-            ['python3 functional_tests.py']
-        )
-
-    def test_extracting_multiple(self):
-        listing = html.fromstring(
-            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>ls</strong>\r\nsuperlists          functional_tests.py\r\n$ <strong>mv functional_tests.py superlists/</strong>\r\n$ <strong>cd superlists</strong>\r\n$ <strong>git init .</strong>\r\nInitialized empty Git repository in /chapter_1/superlists/.git/</code></pre>\r\n</div></div>&#13;\n'
-        )
-        self.assertEqual(
-            get_commands(listing),
-            [
-                'ls',
-                'mv functional_tests.py superlists/',
-                'cd superlists',
-                'git init .',
-            ]
-        )
-
-
-    def test_specialcase_for_asterisk(self):
-        listing = html.fromstring(
-            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>git rm --cached superlists/</strong>*<strong>.pyc</strong>\r\nrm <em>superlists/__init__.pyc</em>\r\nrm <em>superlists/settings.pyc</em>\r\nrm <em>superlists/urls.pyc</em>\r\nrm <em>superlists/wsgi.pyc</em>\r\n\r\n$ <strong>echo "*.pyc" &gt; .gitignore</strong></code></pre>\r\n</div></div>&#13;\n'
-        )
-        self.assertEqual(
-            get_commands(listing),
-            [
-                'git rm --cached superlists/*.pyc',
-                'echo "*.pyc" > .gitignore',
-            ]
-        )
 
 
 
@@ -746,9 +552,6 @@ class FixDictReprOrderingTest(unittest.TestCase):
             "bla {'a': 2, 'b': 1}\n"
             "wiz {'c': 3, 'd': 9}\n"
     )
-
-
-
 
 
 
