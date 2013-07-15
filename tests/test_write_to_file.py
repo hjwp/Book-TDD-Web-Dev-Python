@@ -213,7 +213,7 @@ class WriteToFileTest(unittest.TestCase):
             self.assertEqual(f.read(), listing.contents + '\n')
         self.assertTrue(listing.was_written)
 
-    def test_multipl_files(self):
+    def test_multiple_files(self):
         listing = CodeListing(filename='foo.py, bar.py', contents='abc\ndef')
         write_to_file(listing, self.tempdir)
         with open(os.path.join(self.tempdir, 'foo.py')) as f:

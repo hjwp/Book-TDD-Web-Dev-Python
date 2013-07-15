@@ -11,13 +11,19 @@ parsed_html = html.fromstring(raw_html)
 
 
 class CodeListing(object):
-    type = 'code listing'
 
     def __init__(self, filename, contents):
         self.filename = filename
         self.contents = contents
         self.was_written = False
         self.skip = False
+
+    @property
+    def type(self):
+        if any(l.count('@@') > 1 for l in self.contents.split('\n')):
+            return 'diff'
+        else:
+            return 'code listing'
 
     def __repr__(self):
         return '<CodeListing %s: %s...>' % (self.filename, self.contents.split('\n')[0])

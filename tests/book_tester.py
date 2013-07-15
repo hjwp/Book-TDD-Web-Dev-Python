@@ -122,6 +122,7 @@ class ChapterTest(unittest.TestCase):
         if diff != '':
             raise AssertionError('Final diff was not empty, was:\n%s' % (diff,))
 
+
     def write_to_file(self, codelisting):
         self.assertEqual(
             type(codelisting), CodeListing,
@@ -129,6 +130,24 @@ class ChapterTest(unittest.TestCase):
         )
         print('writing to file', codelisting.filename)
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
+
+
+    def apply_patch(self, codelisting):
+        tf = tempfile.NamedTemporaryFile(delete=False)
+        tf.write(codelisting.contents.encode('utf8'))
+        tf.close()
+        print('patch:\n', codelisting.contents)
+        patch_output = self.run_command(
+            Command('patch %s %s' % (codelisting.filename, tf.name))
+        )
+        print(patch_output)
+        self.assertNotIn('malformed', patch_output)
+        self.assertNotIn('failed', patch_output.lower())
+        codelisting.was_checked = True
+        with open(os.path.join(self.tempdir, 'superlists', codelisting.filename)) as f:
+            print(f.read())
+        os.remove(tf.name)
+        self.pos += 1
 
 
     def run_command(self, command, cwd=None, user_input=None):
@@ -309,6 +328,10 @@ class ChapterTest(unittest.TestCase):
         comment = self.listings[pos + 1]
         if comment.type != 'output':
             return
+        if not any(f in comment for f in LIKELY_FILES):
+            print('WARNING -- git comment without files: %s' % (comment,))
+            self.pos += 1
+            return
         for expected_file in LIKELY_FILES:
             if '/' + expected_file in git_output:
                 if not expected_file in comment:
@@ -383,6 +406,9 @@ class ChapterTest(unittest.TestCase):
                 listing.was_checked = True
                 self.pos += 1
 
+        elif listing.type == 'diff':
+            print("DIFF")
+            self.apply_patch(listing)
 
         elif listing.type == 'code listing':
             print("CODE")
