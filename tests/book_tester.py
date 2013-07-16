@@ -340,6 +340,7 @@ class ChapterTest(unittest.TestCase):
                             expected_file, comment, git_output)
                     )
                 self.listings[pos + 1].was_checked = True
+        comment.was_checked = True
         self.pos += 1
 
 
@@ -358,6 +359,7 @@ class ChapterTest(unittest.TestCase):
         if listing.skip:
             print("SKIP")
             listing.was_checked = True
+            listing.was_written = True
             self.pos += 1
         elif listing.type == 'test':
             print("TEST RUN")

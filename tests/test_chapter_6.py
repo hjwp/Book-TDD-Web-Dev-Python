@@ -3,6 +3,7 @@
 import os
 import unittest
 
+from book_parser import CodeListing
 from book_tester import (
     ChapterTest,
     Command,
@@ -89,16 +90,35 @@ class Chapter6Test(ChapterTest):
         self.listings[82].skip = True
         self.listings[83].skip = True
 
+        self.listings[75].was_checked = True  # brief git comment
         self.listings[88].skip = True # "decoding its traceback"
 
-        while self.pos < 999:
+        while self.pos < 118:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
+        listing = self.listings[118]
+        new_form = '<form method="POST" action="/lists/{{ list.id }}/new_item" >'
+        self.assertIn(new_form, listing.contents)
+        self.write_to_file(CodeListing(
+            filename=listing.filename,
+            contents=new_form
+        ))
+        new_iter = '{% for item in list.item_set.all %}'
+        self.assertIn(new_iter, listing.contents)
+        self.write_to_file(CodeListing(
+            filename=listing.filename,
+            contents=new_iter
+        ))
+        listing.was_checked = True
+        self.pos += 1
 
+        while self.pos < 131:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
 
-        self.check_final_diff(self.chapter_no)
         self.assert_all_listings_checked(self.listings)
+        self.check_final_diff(self.chapter_no)
 
 
 if __name__ == '__main__':

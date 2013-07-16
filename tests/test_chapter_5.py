@@ -31,8 +31,8 @@ class Chapter5Test(ChapterTest):
             print(self.pos)
             self.recognise_listing_and_process_it()
 
-        self.check_final_diff(5)
         self.assert_all_listings_checked(self.listings)
+        self.check_final_diff(5)
 
 
 if __name__ == '__main__':
