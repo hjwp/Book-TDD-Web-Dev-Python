@@ -5,6 +5,7 @@ import os
 import re
 from textwrap import dedent
 
+from source_updater import Source
 
 def get_indent(line):
     return (len(line) - len(line.lstrip())) * " "
@@ -161,7 +162,7 @@ def _replace_lines_in(old_lines, new_lines):
                         old_views.append(view_finder.match(old_line).group(1))
                 if view_name in old_views:
                     return _replace_function(old_lines, new_lines)
-                return '\n'.join(old_lines) + '\n\n\n' + '\n'.join(new_lines)
+                return '\n'.join(old_lines) + '\n\n' + '\n'.join(new_lines)
 
         class_finder = re.compile(r'^class \w+\(.+\):$', re.MULTILINE)
         if class_finder.match(new_lines[0]):
@@ -169,7 +170,7 @@ def _replace_lines_in(old_lines, new_lines):
             print(class_finder.findall('\n'.join(old_lines)))
             if len(class_finder.findall('\n'.join(old_lines))) > 1:
                 print('found classes')
-                return '\n'.join(old_lines) + '\n\n\n\n' + '\n'.join(new_lines)
+                return '\n'.join(old_lines) + '\n\n\n' + '\n'.join(new_lines)
 
         return '\n'.join(new_lines)
 
@@ -275,15 +276,16 @@ def write_to_file(codelisting, cwd):
 
 
 def _write_to_file(path, new_contents):
+    source = Source.from_path(path)
+
     if not os.path.exists(path):
         dir = os.path.dirname(path)
         if not os.path.exists(dir):
             os.makedirs(dir)
 
     else:
-        with open(path) as f:
-            old_contents = f.read()
-        old_lines = old_contents.strip().split('\n')
+        old_contents = source.contents
+        old_lines = source.lines
         new_lines = new_contents.strip('\n').split('\n')
         # strip callouts
         new_lines = [re.sub(r' +#$', '', l) for l in new_lines]
@@ -343,6 +345,9 @@ def _write_to_file(path, new_contents):
 
     # strip trailing whitespace
     new_contents = re.sub(r'^ +$', '', new_contents, flags=re.MULTILINE)
+    source.new_contents = new_contents
+    source.write()
+    return
 
     if not new_contents.endswith('\n'):
         new_contents += '\n'

@@ -262,12 +262,14 @@ class WriteToFileTest(unittest.TestCase):
 
             def a_view(request, param):
                 pass
-            """).lstrip()
+            """
+        ).lstrip()
         new = dedent(
             """
             def another_view(request):
                 pass
-            """).strip()
+            """
+        ).strip()
 
         expected = dedent(
             """
@@ -279,7 +281,8 @@ class WriteToFileTest(unittest.TestCase):
 
             def another_view(request):
                 pass
-            """).lstrip()
+            """
+        ).lstrip()
         self.assert_write_to_file_gives(old, new, expected)
 
 
@@ -359,7 +362,8 @@ class WriteToFileTest(unittest.TestCase):
                     return 1
 
             # the end
-            """)
+            """
+        ).lstrip()
         new = dedent("""
             [...]
             # bla 2
@@ -387,6 +391,7 @@ class WriteToFileTest(unittest.TestCase):
         old = dedent("""
             import topline
             # some stuff
+
             class C():
                 def foo():
                     return 1
@@ -403,6 +408,7 @@ class WriteToFileTest(unittest.TestCase):
             import newtopline
             import topline
             # some stuff
+
             class C():
                 def foo():
                     return 2
@@ -454,7 +460,8 @@ class WriteToFileTest(unittest.TestCase):
             # some stuff
             class C():
                 pass
-            """)
+            """
+        ).lstrip()
         new = dedent("""
             import newtopline
             [...]
@@ -470,6 +477,7 @@ class WriteToFileTest(unittest.TestCase):
             # some stuff
             class C():
                 pass
+
 
 
             class Nu():
@@ -490,7 +498,8 @@ class WriteToFileTest(unittest.TestCase):
             class B(object):
                 def methb(self):
                     pass
-            """)
+            """
+        ).lstrip()
         new = dedent("""
             class A(object):
                 [...]
@@ -626,6 +635,7 @@ class WriteToFileTest(unittest.TestCase):
             '    #def\n'
             '    #ghi\n'
             '    #jkl\n'
+            '\n'
             '# then add this\n'
         )
         self.assert_write_to_file_gives(old, new, expected)
