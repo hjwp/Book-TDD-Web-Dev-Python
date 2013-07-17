@@ -94,6 +94,22 @@ class FunctionFinderTest(unittest.TestCase):
         assert [f.name for f in s.views] == ['a_view', 'another_view']
 
 
+    def test_finds_classes(self):
+        s = Source._from_contents(dedent(
+            """
+            import thingy
+
+            class Jimbob(object):
+                pass
+
+            # stuff
+            class Harlequin(thingy.Thing):
+                pass
+            """
+        ))
+        assert [c.name for c in s.classes] == ['Jimbob', 'Harlequin']
+
+
 
 class SourceUpdateTest(unittest.TestCase):
 
@@ -112,34 +128,6 @@ class SourceUpdateTest(unittest.TestCase):
         s.update('hello\nbla #')
         assert s.to_write == 'hello\nbla\n'
 
-
-    def DONTtest_existing_file_has_views_means_apppend(self):
-        source = Source._from_contents(
-            """
-            from django.stuff import things
-
-            def a_view(request, param):
-                pass
-            """
-        )
-        source.update(dedent(
-            """
-            def another_view(request):
-                pass
-            """).strip()
-        )
-        assert source.to_write == dedent(
-            """
-            from django.stuff import things
-
-            def a_view(request, param):
-                pass
-
-
-            def another_view(request):
-                pass
-            """
-        )
 
 
 if __name__ == '__main__':

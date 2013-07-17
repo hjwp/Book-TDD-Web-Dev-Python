@@ -152,8 +152,8 @@ def _replace_lines_in(old_lines, new_lines):
             new_contents = new_lines[0] + '\n'
             return new_contents + _replace_lines_in(old_lines[1:], new_lines[1:])
 
+        source = Source._from_contents('\n'.join(old_lines))
         if VIEW_FINDER.match(new_lines[0]):
-            source = Source._from_contents('\n'.join(old_lines))
             if source.views:
                 view_name = VIEW_FINDER.search(new_lines[0]).group(1)
                 if view_name in [v.name for v in source.views]:
@@ -163,8 +163,7 @@ def _replace_lines_in(old_lines, new_lines):
         class_finder = re.compile(r'^class \w+\(.+\):$', re.MULTILINE)
         if class_finder.match(new_lines[0]):
             print('found class in input')
-            print(class_finder.findall('\n'.join(old_lines)))
-            if len(class_finder.findall('\n'.join(old_lines))) > 1:
+            if len(source.classes) > 1:
                 print('found classes')
                 return '\n'.join(old_lines) + '\n\n\n' + '\n'.join(new_lines)
 
