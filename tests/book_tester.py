@@ -130,6 +130,10 @@ class ChapterTest(unittest.TestCase):
         )
         print('writing to file', codelisting.filename)
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
+        filenames = codelisting.filename.split(', ')
+        for filename in filenames:
+            with open(os.path.join(self.tempdir, 'superlists', filename)) as f:
+                print(f.read())
 
 
     def apply_patch(self, codelisting):
@@ -148,6 +152,7 @@ class ChapterTest(unittest.TestCase):
             print(f.read())
         os.remove(tf.name)
         self.pos += 1
+        codelisting.was_written = True
 
 
     def run_command(self, command, cwd=None, user_input=None):
@@ -385,8 +390,8 @@ class ChapterTest(unittest.TestCase):
             output = self.run_command(listing, user_input=user_input)
             self.assert_console_output_correct(output, expected_output)
             listing.was_checked = True
+            user_input.was_run = True
             self.listings[self.pos + 1].was_checked = True
-            self.listings[self.pos + 2].was_checked = True
             self.listings[self.pos + 3].was_checked = True
             self.pos += 4
 

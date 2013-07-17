@@ -70,7 +70,6 @@ class ReplaceFunctionTest(unittest.TestCase):
 
 
     def test_finding_last_line_in_function_with_brackets_before_another(self):
-        print('HERE' * 10)
         source = dedent("""
             def myfn():
                 a += 1

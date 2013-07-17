@@ -269,8 +269,8 @@ def write_to_file(codelisting, cwd):
     for filename in files:
         path = os.path.join(cwd, filename)
         _write_to_file(path, new_contents)
-        with open(os.path.join(path)) as f:
-            print(f.read())
+        #with open(os.path.join(path)) as f:
+        #    print(f.read())
     codelisting.was_written = True
 
 

@@ -91,7 +91,9 @@ class Chapter6Test(ChapterTest):
         self.listings[83].skip = True
 
         self.listings[75].was_checked = True  # brief git comment
+        self.listings[77].was_checked = True  # brief git comment
         self.listings[88].skip = True # "decoding its traceback"
+        self.listings[91].was_checked = True  # brief git comment
 
         while self.pos < 118:
             print(self.pos)
@@ -110,7 +112,7 @@ class Chapter6Test(ChapterTest):
             filename=listing.filename,
             contents=new_iter
         ))
-        listing.was_checked = True
+        listing.was_written = True
         self.pos += 1
 
         while self.pos < 131:
