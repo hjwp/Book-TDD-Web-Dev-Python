@@ -208,6 +208,7 @@ class WriteToFileTest(unittest.TestCase):
         shutil.rmtree(self.tempdir)
 
     def test_simple_case(self):
+        #done
         listing = CodeListing(filename='foo.py', contents='abc\ndef')
         write_to_file(listing, self.tempdir)
         with open(os.path.join(self.tempdir, listing.filename)) as f:
@@ -239,11 +240,13 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_strips_line_callouts(self):
+        #done
         contents= 'hello\nbla #'
         self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
 
 
     def test_doesnt_mess_with_multiple_newlines(self):
+        #done
         contents= 'hello\n\n\nbla'
         self.assert_write_to_file_gives('', contents, 'hello\n\n\nbla\n')
 
@@ -417,7 +420,7 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-    def test_adding_import_at_top_without_elipsis_then_modified_stuff(self):
+    def DONTtest_adding_import_at_top_without_elipsis_then_modified_stuff(self):
         old = dedent("""
             import anoldthing
             import bthing

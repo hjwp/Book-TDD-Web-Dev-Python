@@ -5,7 +5,7 @@ import os
 import re
 from textwrap import dedent
 
-from source_updater import Source
+from source_updater import Source, VIEW_FINDER
 
 def get_indent(line):
     return (len(line) - len(line.lstrip())) * " "
@@ -152,15 +152,11 @@ def _replace_lines_in(old_lines, new_lines):
             new_contents = new_lines[0] + '\n'
             return new_contents + _replace_lines_in(old_lines[1:], new_lines[1:])
 
-        view_finder = re.compile(r'^def (\w+)\(request.*\):$')
-        if view_finder.match(new_lines[0]):
-            if any(view_finder.match(l) for l in old_lines):
-                view_name = view_finder.search(new_lines[0]).group(1)
-                old_views = []
-                for old_line in old_lines:
-                    if view_finder.match(old_line):
-                        old_views.append(view_finder.match(old_line).group(1))
-                if view_name in old_views:
+        if VIEW_FINDER.match(new_lines[0]):
+            source = Source._from_contents('\n'.join(old_lines))
+            if source.views:
+                view_name = VIEW_FINDER.search(new_lines[0]).group(1)
+                if view_name in [v.name for v in source.views]:
                     return _replace_function(old_lines, new_lines)
                 return '\n'.join(old_lines) + '\n\n' + '\n'.join(new_lines)
 
@@ -345,7 +341,7 @@ def _write_to_file(path, new_contents):
 
     # strip trailing whitespace
     new_contents = re.sub(r'^ +$', '', new_contents, flags=re.MULTILINE)
-    source.new_contents = new_contents
+    source.update(new_contents)
     source.write()
     return
 

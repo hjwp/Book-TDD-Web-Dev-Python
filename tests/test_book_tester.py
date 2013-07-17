@@ -14,6 +14,7 @@ from book_parser import (
 )
 from test_write_to_file import *
 from test_book_parser import *
+from test_source_updater import *
 
 
 

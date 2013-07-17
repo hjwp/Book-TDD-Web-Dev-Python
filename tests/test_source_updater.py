@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import unittest
 import tempfile
+from textwrap import dedent
 
 
 from source_updater import Source
@@ -36,11 +37,61 @@ class SourceTest(unittest.TestCase):
     def test_write_writes_new_content_to_path(self):
         s = Source()
         tf = tempfile.NamedTemporaryFile()
-        s.new_contents = 'abc\ndef'
+        s.to_write = 'abc\ndef'
         s.path = tf.name
         s.write()
         with open(tf.name) as f:
-            self.assertEqual(f.read(), s.new_contents)
+            self.assertEqual(f.read(), s.to_write)
+
+
+class FunctionFinderTest(unittest.TestCase):
+
+    def test_function_object(self):
+        s = Source._from_contents(dedent(
+            """
+            def a_function(stuff, args):
+                pass
+            """
+        ))
+        f = s.functions[0]
+        self.assertEqual(f.name, 'a_function')
+        self.assertEqual(f.full_line, 'def a_function(stuff, args):')
+
+
+    def test_finds_functions(self):
+        s = Source._from_contents(dedent(
+            """
+            def firstfn(stuff, args):
+                pass
+
+            # stuff
+
+            def second_fn():
+                pass
+            """
+        ))
+        assert [f.name for f in s.functions] == ['firstfn', 'second_fn']
+
+
+    def test_finds_views(self):
+        s = Source._from_contents(dedent(
+            """
+            def firstfn(stuff, args):
+                pass
+
+            # stuff
+            def a_view(request):
+                pass
+
+            def second_fn():
+                pass
+
+            def another_view(request, stuff):
+                pass
+            """
+        ))
+        assert [f.name for f in s.functions] == ['firstfn', 'a_view', 'second_fn', 'another_view']
+        assert [f.name for f in s.views] == ['a_view', 'another_view']
 
 
 
@@ -49,12 +100,46 @@ class SourceUpdateTest(unittest.TestCase):
     def test_update_with_empty_contents(self):
         s = Source()
         s.update('new stuff\n')
-        self.assertEqual(s.new_contents, 'new stuff\n')
+        self.assertEqual(s.to_write, 'new stuff\n')
 
     def test_adds_final_newline_if_necessary(self):
         s = Source()
         s.update('new stuff')
-        self.assertEqual(s.new_contents, 'new stuff\n')
+        self.assertEqual(s.to_write, 'new stuff\n')
+
+    def test_strips_line_callouts(self):
+        s = Source()
+        s.update('hello\nbla #')
+        assert s.to_write == 'hello\nbla\n'
+
+
+    def DONTtest_existing_file_has_views_means_apppend(self):
+        source = Source._from_contents(
+            """
+            from django.stuff import things
+
+            def a_view(request, param):
+                pass
+            """
+        )
+        source.update(dedent(
+            """
+            def another_view(request):
+                pass
+            """).strip()
+        )
+        assert source.to_write == dedent(
+            """
+            from django.stuff import things
+
+            def a_view(request, param):
+                pass
+
+
+            def another_view(request):
+                pass
+            """
+        )
 
 
 if __name__ == '__main__':
