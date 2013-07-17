@@ -5,11 +5,11 @@ import os
 import re
 from textwrap import dedent
 
-from source_updater import Source, VIEW_FINDER
-
-def get_indent(line):
-    return (len(line) - len(line.lstrip())) * " "
-
+from source_updater import (
+    VIEW_FINDER,
+    get_indent,
+    Source,
+)
 
 def _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos):
     print('replace lines from line', start_pos, 'to line', end_pos)
@@ -51,20 +51,6 @@ def _find_last_line_in_function(source, function_name):
             last_line_no += 1
     return last_line_no - 1
 
-
-def _replace_function(old_lines, new_lines):
-    print('replace function')
-    source = '\n'.join(old_lines)
-    function_name = re.search(r'def (\w+)\(.*\):', new_lines[0].strip()).group(1)
-    function = _get_function(source, function_name)
-    last_line = _find_last_line_in_function(source, function_name)
-
-    indent = get_indent(old_lines[function.lineno - 1])
-    return '\n'.join(
-        old_lines[:function.lineno - 1] +
-        [indent + l for l in new_lines] +
-        old_lines[last_line + 1:]
-    )
 
 
 def remove_function(source, function_name):
@@ -139,6 +125,7 @@ def _find_end_line(old_lines, new_lines):
 
 
 def _replace_lines_in(old_lines, new_lines):
+    source = Source._from_contents('\n'.join(old_lines))
     if new_lines[0].strip() == '':
         new_lines.pop(0)
     new_lines = dedent('\n'.join(new_lines)).split('\n')
@@ -152,12 +139,11 @@ def _replace_lines_in(old_lines, new_lines):
             new_contents = new_lines[0] + '\n'
             return new_contents + _replace_lines_in(old_lines[1:], new_lines[1:])
 
-        source = Source._from_contents('\n'.join(old_lines))
         if VIEW_FINDER.match(new_lines[0]):
             if source.views:
                 view_name = VIEW_FINDER.search(new_lines[0]).group(1)
-                if view_name in [v.name for v in source.views]:
-                    return _replace_function(old_lines, new_lines)
+                if view_name in source.views:
+                    return source.replace_function(new_lines)
                 return '\n'.join(old_lines) + '\n\n' + '\n'.join(new_lines)
 
         class_finder = re.compile(r'^class \w+\(.+\):$', re.MULTILINE)
@@ -172,7 +158,8 @@ def _replace_lines_in(old_lines, new_lines):
     end_pos = _find_end_line(old_lines, new_lines)
     if end_pos is None:
         if new_lines[0].strip().startswith('def '):
-            return _replace_function(old_lines, new_lines)
+            return source.replace_function(new_lines)
+
         else:
             #TODO: can we get rid of this?
             return _replace_lines_from(old_lines, new_lines, start_pos)

@@ -10,7 +10,6 @@ from book_tester import CodeListing
 from write_to_file import (
     _find_last_line_for_class,
     _find_last_line_in_function,
-    _replace_function,
     number_of_identical_chars,
     remove_function,
     write_to_file,
@@ -46,92 +45,6 @@ class ClassFinderTest(unittest.TestCase):
         self.assertEqual(lineno, 13)
 
 
-
-class ReplaceFunctionTest(unittest.TestCase):
-
-    def test_finding_last_line_in_function(self):
-        source = dedent("""
-            def myfn():
-                a += 1
-                return b
-            """).strip()
-        self.assertEqual(_find_last_line_in_function(source, 'myfn'), 2)
-
-
-    def test_finding_last_line_in_function_with_brackets(self):
-        source = dedent("""
-            def myfn():
-                a += 1
-                return (
-                    '2'
-                )
-            """).strip()
-        self.assertEqual(_find_last_line_in_function(source, 'myfn'), 4)
-
-
-    def test_finding_last_line_in_function_with_brackets_before_another(self):
-        source = dedent("""
-            def myfn():
-                a += 1
-                return (
-                    '2'
-                )
-
-            # bla
-
-            def anotherfn():
-                pass
-            """).strip()
-        self.assertEqual(_find_last_line_in_function(source, 'myfn'), 4)
-
-
-    def test_changing_the_end_of_a_method(self):
-        old = dedent("""
-            class A(object):
-                def method1(self, stuff):
-                    # do step 1
-                    # do step 2
-                    # do step 3
-                    # do step 4
-                    return (
-                        'something'
-                    )
-
-
-                def method2(self):
-                    # do stuff
-                    pass
-            """
-        )
-        new = dedent("""
-            def method1(self, stuff):
-                # do step 1
-                # do step 2
-                # do step A
-                return (
-                    'something else'
-                )
-            """
-        ).strip()
-        expected = dedent("""
-            class A(object):
-                def method1(self, stuff):
-                    # do step 1
-                    # do step 2
-                    # do step A
-                    return (
-                        'something else'
-                    )
-
-
-                def method2(self):
-                    # do stuff
-                    pass
-            """
-        )
-        print('TEST REPLACE FN')
-        result = _replace_function(old.split('\n'), new.split('\n'))
-        self.assertMultiLineEqual(result, expected)
 
 
 class RemoveFunctionTest(unittest.TestCase):

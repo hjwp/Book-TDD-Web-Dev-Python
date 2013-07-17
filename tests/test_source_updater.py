@@ -44,6 +44,7 @@ class SourceTest(unittest.TestCase):
             self.assertEqual(f.read(), s.to_write)
 
 
+
 class FunctionFinderTest(unittest.TestCase):
 
     def test_function_object(self):
@@ -53,7 +54,7 @@ class FunctionFinderTest(unittest.TestCase):
                 pass
             """
         ))
-        f = s.functions[0]
+        f = s.functions['a_function']
         self.assertEqual(f.name, 'a_function')
         self.assertEqual(f.full_line, 'def a_function(stuff, args):')
 
@@ -70,7 +71,7 @@ class FunctionFinderTest(unittest.TestCase):
                 pass
             """
         ))
-        assert [f.name for f in s.functions] == ['firstfn', 'second_fn']
+        assert list(s.functions) == ['firstfn', 'second_fn']
 
 
     def test_finds_views(self):
@@ -90,8 +91,8 @@ class FunctionFinderTest(unittest.TestCase):
                 pass
             """
         ))
-        assert [f.name for f in s.functions] == ['firstfn', 'a_view', 'second_fn', 'another_view']
-        assert [f.name for f in s.views] == ['a_view', 'another_view']
+        assert list(s.functions) == ['firstfn', 'a_view', 'second_fn', 'another_view']
+        assert list(s.views) == ['a_view', 'another_view']
 
 
     def test_finds_classes(self):
@@ -107,7 +108,97 @@ class FunctionFinderTest(unittest.TestCase):
                 pass
             """
         ))
-        assert [c.name for c in s.classes] == ['Jimbob', 'Harlequin']
+        assert list(s.classes) == ['Jimbob', 'Harlequin']
+
+
+
+class ReplaceFunctionTest(unittest.TestCase):
+
+    def test_finding_last_line_in_function(self):
+        source = Source._from_contents(dedent("""
+            def myfn():
+                a += 1
+                return b
+            """).strip()
+        )
+        assert source.functions['myfn'].last_line ==  2
+
+
+    def test_finding_last_line_in_function_with_brackets(self):
+        source = Source._from_contents(dedent("""
+            def myfn():
+                a += 1
+                return (
+                    '2'
+                )
+            """).strip()
+        )
+        assert source.functions['myfn'].last_line ==  4
+
+
+    def test_finding_last_line_in_function_with_brackets_before_another(self):
+        source = Source._from_contents(dedent("""
+            def myfn():
+                a += 1
+                return (
+                    '2'
+                )
+
+            # bla
+
+            def anotherfn():
+                pass
+            """).strip()
+        )
+        assert source.functions['myfn'].last_line ==  4
+
+
+    def test_changing_the_end_of_a_method(self):
+        source = Source._from_contents(dedent("""
+            class A(object):
+                def method1(self, stuff):
+                    # do step 1
+                    # do step 2
+                    # do step 3
+                    # do step 4
+                    return (
+                        'something'
+                    )
+
+
+                def method2(self):
+                    # do stuff
+                    pass
+            """).lstrip()
+        )
+        new = dedent("""
+            def method1(self, stuff):
+                # do step 1
+                # do step 2
+                # do step A
+                return (
+                    'something else'
+                )
+            """
+        ).strip()
+        expected = dedent("""
+            class A(object):
+                def method1(self, stuff):
+                    # do step 1
+                    # do step 2
+                    # do step A
+                    return (
+                        'something else'
+                    )
+
+
+                def method2(self):
+                    # do stuff
+                    pass
+            """
+        ).lstrip()
+        to_write = source.replace_function(new.split('\n'))
+        assert to_write == expected
 
 
 
