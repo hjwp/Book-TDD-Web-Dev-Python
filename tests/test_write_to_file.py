@@ -47,48 +47,6 @@ class ClassFinderTest(unittest.TestCase):
 
 
 
-class RemoveFunctionTest(unittest.TestCase):
-
-    def test_removing_a_function(self):
-        source = dedent(
-            """
-            def fn1(args):
-                # do stuff
-                pass
-
-
-            def fn2(arg2, arg3):
-                # do things
-                return 2
-
-
-            def fn3():
-                # do nothing
-                # really
-                pass
-            """
-        )
-
-        expected = dedent(
-            """
-            def fn1(args):
-                # do stuff
-                pass
-
-
-            def fn3():
-                # do nothing
-                # really
-                pass
-            """
-        )
-
-        self.assertEqual(remove_function(source, 'fn2'), expected)
-
-
-
-
-
 class LineFinderTest(unittest.TestCase):
 
     def test_number_of_identical_chars(self):

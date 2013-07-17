@@ -3,12 +3,12 @@
 import os
 import unittest
 
+from source_updater import Source
 from book_parser import CodeListing
 from book_tester import (
     ChapterTest,
     Command,
 )
-from write_to_file import remove_function
 
 class Chapter6Test(ChapterTest):
     chapter_no = 6
@@ -43,11 +43,9 @@ class Chapter6Test(ChapterTest):
         self.pos = 39
 
         def remove_function_from(function_name, filename):
-            with open(os.path.join(self.tempdir, filename)) as f:
-                old_views = f.read()
-            new_views = remove_function(old_views, function_name)
-            with open(os.path.join(self.tempdir, filename), 'w') as f:
-                f.write(new_views)
+            source = Source.from_path(os.path.join(self.tempdir, filename))
+            source.remove_function(function_name)
+            source.write()
 
         remove_function_from(
             'test_home_page_displays_all_list_items',

@@ -199,6 +199,47 @@ class ReplaceFunctionTest(unittest.TestCase):
         ).lstrip()
         to_write = source.replace_function(new.split('\n'))
         assert to_write == expected
+        assert source.to_write == expected
+
+
+class RemoveFunctionTest(unittest.TestCase):
+
+    def test_removing_a_function(self):
+        source = Source._from_contents(dedent(
+            """
+            def fn1(args):
+                # do stuff
+                pass
+
+
+            def fn2(arg2, arg3):
+                # do things
+                return 2
+
+
+            def fn3():
+                # do nothing
+                # really
+                pass
+            """).lstrip()
+        )
+
+        expected = dedent(
+            """
+            def fn1(args):
+                # do stuff
+                pass
+
+
+            def fn3():
+                # do nothing
+                # really
+                pass
+            """
+        ).lstrip()
+
+        assert source.remove_function('fn2') == expected
+        assert source.to_write == expected
 
 
 

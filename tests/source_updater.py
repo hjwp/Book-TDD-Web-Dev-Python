@@ -96,13 +96,26 @@ class Source(object):
 
     def replace_function(self, new_lines):
         function_name = re.search(r'def (\w+)\(.*\):', new_lines[0].strip()).group(1)
+        print('replacing function', function_name)
         old_function = self.functions[function_name]
         indent = get_indent(old_function.full_line)
-        return '\n'.join(
+        self.to_write = '\n'.join(
             self.lines[:old_function.start_line] +
             [indent + l for l in new_lines] +
             self.lines[old_function.last_line + 1:]
         )
+        return self.to_write
+
+
+    def remove_function(self, function_name):
+        print('removing function %s from \n%s' % (function_name, self.contents))
+        function = self.functions[function_name]
+        self.to_write = '\n'.join(
+            self.lines[:function.start_line] +
+            self.lines[function.last_line + 1:]
+        )
+        self.to_write = re.sub(r'\n\n\n\n+', r'\n\n\n', self.to_write)
+        return self.to_write
 
 
     def update(self, new_contents):

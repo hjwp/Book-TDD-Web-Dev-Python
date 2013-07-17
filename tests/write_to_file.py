@@ -38,33 +38,6 @@ def _get_function(source, function_name):
         raise Exception('Could not find function named %s' % (function_name,))
 
 
-def _find_last_line_in_function(source, function_name):
-    function = _get_function(source, function_name)
-    last_line_no = max(
-        getattr(n, 'lineno', -1) for n in ast.walk(function)
-    )
-    lines = source.split('\n')
-    if len(lines) > last_line_no:
-        for line in lines[last_line_no:]:
-            if not line:
-                break
-            last_line_no += 1
-    return last_line_no - 1
-
-
-
-def remove_function(source, function_name):
-    print('removing function %s from \n%s' % (function_name, source))
-    old_lines = source.split('\n')
-    function = _get_function(source, function_name)
-    last_line = _find_last_line_in_function(source, function_name)
-    new_source = '\n'.join(
-        old_lines[:function.lineno - 1] +
-        old_lines[last_line + 1:]
-    )
-    new_source = re.sub(r'\n\n\n\n+', r'\n\n\n', new_source)
-    return new_source
-
 
 def _replace_lines_from(old_lines, new_lines, start_pos):
     print('replace lines from line', start_pos)
