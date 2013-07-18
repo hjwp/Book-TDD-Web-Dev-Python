@@ -76,7 +76,7 @@ class Source(object):
     def functions(self):
         if not hasattr(self, '_functions'):
             self._functions = OrderedDict()
-            for node in ast.walk(ast.parse(self.contents)):
+            for node in ast.walk(self.ast):
                 if isinstance(node, ast.FunctionDef):
                     block = Block(node, self.contents)
                     self._functions[block.name] = block
@@ -89,14 +89,56 @@ class Source(object):
 
 
     @property
+    def ast(self):
+        if not hasattr(self, '_ast'):
+            self._ast = ast.parse(self.contents)
+        return self._ast
+
+
+    @property
     def classes(self):
         if not hasattr(self, '_classes'):
             self._classes = OrderedDict()
-            for node in ast.walk(ast.parse(self.contents)):
+            for node in ast.walk(self.ast):
                 if isinstance(node, ast.ClassDef):
                     block = Block(node, self.contents)
                     self._classes[block.name] = block
         return self._classes
+
+
+    @property
+    def _import_nodes(self):
+        for node in ast.walk(self.ast):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                yield node
+
+    @property
+    def imports(self):
+        for node in self._import_nodes:
+            yield self.lines[node.lineno -1]
+
+    @property
+    def django_imports(self):
+        return [i for i in self.imports if i.startswith('from django')]
+
+    @property
+    def project_imports(self):
+        return [i for i in self.imports if i.startswith('from lists')]
+
+    @property
+    def general_imports(self):
+        return [i for i in self.imports if i not in self.django_imports and i not in self.project_imports]
+
+    @property
+    def first_nonimport_line(self):
+        first_nonimport = next(
+            l for l in self.lines
+            if l and l not in self.imports and not l.startswith('#')
+        )
+        pos = self.lines.index(first_nonimport)
+        if pos < max(n.lineno for n in self._import_nodes):
+            raise SourceUpdateError()
+        return pos
 
 
     def replace_function(self, new_lines):
@@ -134,10 +176,10 @@ class Source(object):
 
     def find_start_line(self, new_lines):
         if not new_lines:
-            raise SourceUpdateError
+            raise SourceUpdateError()
         start_line = new_lines[0].strip()
         if start_line == '':
-            raise SourceUpdateError
+            raise SourceUpdateError()
 
         try:
             return [l.strip() for l in self.lines].index(start_line.strip())
@@ -147,10 +189,10 @@ class Source(object):
 
     def find_end_line(self, new_lines):
         if not new_lines:
-            raise SourceUpdateError
+            raise SourceUpdateError()
         end_line = new_lines[-1].strip()
         if end_line == '':
-            raise SourceUpdateError
+            raise SourceUpdateError()
         start_line = self.find_start_line(new_lines)
 
         try:

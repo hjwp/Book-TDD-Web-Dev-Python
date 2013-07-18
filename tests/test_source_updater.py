@@ -242,6 +242,82 @@ class RemoveFunctionTest(unittest.TestCase):
         assert source.to_write == expected
 
 
+class ImportFindingTest(unittest.TestCase):
+
+    def test_finding_different_types_of_import(self):
+        source = Source._from_contents(dedent(
+            """
+            import trees
+            from django.core.widgets import things, more_things
+            import cars
+            from datetime import datetime
+
+            from django.monkeys import banana_eating
+
+            from lists.views import Thing
+
+            not_an_import = 'import things'
+
+            def foo():
+                # normal code
+                pass
+            """
+        ))
+
+        assert set(source.imports) == {
+            "import trees",
+            "from django.core.widgets import things, more_things",
+            "import cars",
+            "from datetime import datetime",
+            "from django.monkeys import banana_eating",
+            "from lists.views import Thing",
+        }
+        assert set(source.django_imports) == {
+            "from django.core.widgets import things, more_things",
+            "from django.monkeys import banana_eating",
+        }
+        assert set(source.project_imports) == {
+            "from lists.views import Thing",
+        }
+        assert set(source.general_imports) == {
+            "import trees",
+            "from datetime import datetime",
+            "import cars",
+        }
+
+
+    def test_first_nonimport_line(self):
+        source = Source._from_contents(dedent(
+            """
+            # by me
+            import trees
+            from django.core.widgets import things, more_things
+            # more imports here
+
+            from django.monkeys import banana_eating
+            from lists.views import Thing
+
+            not_an_import = 'bla'
+            # the end
+            """).lstrip()
+        )
+
+        assert source.first_nonimport_line == 8
+
+    def test_first_nonimport_line_raises_if_imports_in_a_mess(self):
+        source = Source._from_contents(dedent(
+            """
+            import trees
+            def foo():
+                return 'monkeys'
+            import monkeys
+            """).lstrip()
+        )
+        with self.assertRaises(SourceUpdateError):
+            source.first_nonimport_line
+
+
+
 
 class LineFindingTests(unittest.TestCase):
 
