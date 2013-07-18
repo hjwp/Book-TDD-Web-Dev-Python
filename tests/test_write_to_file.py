@@ -9,9 +9,7 @@ from book_tester import CodeListing
 
 from write_to_file import (
     _find_last_line_for_class,
-    _find_last_line_in_function,
     number_of_identical_chars,
-    remove_function,
     write_to_file,
 )
 

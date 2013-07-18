@@ -78,25 +78,6 @@ def _replace_single_line(old_lines, new_lines):
     return new_content
 
 
-def _find_start_line(old_lines, new_lines):
-    stripped_start_line = new_lines[0].strip()
-    stripped_old_lines = [l.strip() for l in old_lines]
-    try:
-        return stripped_old_lines.index(stripped_start_line)
-    except ValueError:
-        print('could not find start line %r' % (stripped_start_line,))
-        return None
-
-
-def _find_end_line(old_lines, new_lines):
-    start_pos = _find_start_line(old_lines, new_lines)
-    stripped_old_lines = [l.strip() for l in old_lines][start_pos:]
-    try:
-        return stripped_old_lines.index(new_lines[-1].strip()) + start_pos
-    except ValueError:
-        return None
-
-
 def _replace_lines_in(old_lines, new_lines):
     source = Source._from_contents('\n'.join(old_lines))
     if new_lines[0].strip() == '':
@@ -105,7 +86,7 @@ def _replace_lines_in(old_lines, new_lines):
     if len(new_lines) == 1:
        return _replace_single_line(old_lines, new_lines)
 
-    start_pos = _find_start_line(old_lines, new_lines)
+    start_pos = source.find_start_line(new_lines)
     if start_pos is None:
         print('no start line found')
         if 'import' in new_lines[0] and 'import' in old_lines[0]:
@@ -128,7 +109,7 @@ def _replace_lines_in(old_lines, new_lines):
 
         return '\n'.join(new_lines)
 
-    end_pos = _find_end_line(old_lines, new_lines)
+    end_pos = source.find_end_line(new_lines)
     if end_pos is None:
         if new_lines[0].strip().startswith('def '):
             return source.replace_function(new_lines)
@@ -173,10 +154,11 @@ def insert_new_import(import_line, old_lines):
 
 
 def add_import_and_new_lines(new_lines, old_lines):
+    source = Source._from_contents('\n'.join(old_lines))
     print('add import and new lines')
     lines_with_import = insert_new_import(new_lines[0], old_lines)
     new_lines_remaining = '\n'.join(new_lines[2:]).strip('\n').split('\n')
-    start_pos = _find_start_line(old_lines, new_lines_remaining)
+    start_pos = source.find_start_line(new_lines_remaining)
     if start_pos is None:
         return '\n'.join(lines_with_import) + '\n\n\n' + '\n'.join(new_lines_remaining)
     else:
@@ -302,12 +284,4 @@ def _write_to_file(path, new_contents):
     new_contents = re.sub(r'^ +$', '', new_contents, flags=re.MULTILINE)
     source.update(new_contents)
     source.write()
-    return
-
-    if not new_contents.endswith('\n'):
-        new_contents += '\n'
-
-    with open(os.path.join(path), 'w') as f:
-        f.write(new_contents)
-
 

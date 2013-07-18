@@ -4,7 +4,7 @@ import tempfile
 from textwrap import dedent
 
 
-from source_updater import Source
+from source_updater import Source, SourceUpdateError
 
 
 class SourceTest(unittest.TestCase):
@@ -240,6 +240,73 @@ class RemoveFunctionTest(unittest.TestCase):
 
         assert source.remove_function('fn2') == expected
         assert source.to_write == expected
+
+
+
+class LineFindingTests(unittest.TestCase):
+
+    def test_finding_start_line(self):
+        source = Source._from_contents(dedent(
+            """
+            stuff
+            things
+            bla
+            bla bla
+                indented
+            more
+            then end
+            """).lstrip()
+        )
+
+        assert source.find_start_line(['stuff', 'whatever']) == 0
+        assert source.find_start_line(['bla bla', 'whatever']) == 3
+        assert source.find_start_line(['indented', 'whatever']) == 4
+        assert source.find_start_line(['    indented', 'whatever']) == 4
+        assert source.find_start_line(['no such line', 'whatever']) == None
+        with self.assertRaises(SourceUpdateError):
+            source.find_start_line([''])
+        with self.assertRaises(SourceUpdateError):
+            source.find_start_line([])
+
+
+    def test_finding_end_line(self):
+        source = Source._from_contents(dedent(
+            """
+            stuff
+            things
+            bla
+                bla bla
+                indented
+                more
+            then end
+            """).lstrip()
+        )
+
+        assert source.find_end_line(['stuff', 'things']) == 1
+        assert source.find_end_line(['bla bla', 'whatever', 'more']) == 5
+        assert source.find_end_line(['bla bla', 'whatever']) == None
+        assert source.find_end_line(['no such line', 'whatever']) == None
+        with self.assertRaises(SourceUpdateError):
+            source.find_end_line([])
+        with self.assertRaises(SourceUpdateError):
+            source.find_end_line(['whatever',''])
+
+
+    def test_finding_end_line_depends_on_start(self):
+        source = Source._from_contents(dedent(
+            """
+            stuff
+            things
+            bla
+
+            more stuff
+            things
+            bla
+            then end
+            """).lstrip()
+        )
+
+        assert source.find_end_line(['more stuff', 'things', 'bla']) == 6
 
 
 

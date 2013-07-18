@@ -7,6 +7,11 @@ import re
 
 VIEW_FINDER = re.compile(r'^def (\w+)\(request.*\):$')
 
+
+class SourceUpdateError(Exception):
+    pass
+
+
 def get_indent(line):
     return (len(line) - len(line.lstrip())) * " "
 
@@ -125,6 +130,37 @@ class Source(object):
         self.to_write = self.new_contents
         if not self.to_write.endswith('\n'):
             self.to_write += '\n'
+
+
+    def find_start_line(self, new_lines):
+        if not new_lines:
+            raise SourceUpdateError
+        start_line = new_lines[0].strip()
+        if start_line == '':
+            raise SourceUpdateError
+
+        try:
+            return [l.strip() for l in self.lines].index(start_line.strip())
+        except ValueError:
+            print('no start line match for', start_line)
+
+
+    def find_end_line(self, new_lines):
+        if not new_lines:
+            raise SourceUpdateError
+        end_line = new_lines[-1].strip()
+        if end_line == '':
+            raise SourceUpdateError
+        start_line = self.find_start_line(new_lines)
+
+        try:
+            from_start = [l.strip() for l in self.lines[start_line:]].index(end_line.strip())
+            return start_line + from_start
+        except ValueError:
+            print('no end line match for', end_line)
+
+
+
 
 
     def write(self):
