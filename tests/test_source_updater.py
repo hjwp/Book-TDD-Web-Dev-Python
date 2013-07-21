@@ -37,11 +37,11 @@ class SourceTest(unittest.TestCase):
     def test_write_writes_new_content_to_path(self):
         s = Source()
         tf = tempfile.NamedTemporaryFile()
-        s.to_write = 'abc\ndef'
+        s.get_updated_contents = lambda: 'abc\ndef'
         s.path = tf.name
         s.write()
         with open(tf.name) as f:
-            self.assertEqual(f.read(), s.to_write)
+            self.assertEqual(f.read(), s.get_updated_contents())
 
 
 
@@ -199,7 +199,7 @@ class ReplaceFunctionTest(unittest.TestCase):
         ).lstrip()
         to_write = source.replace_function(new.split('\n'))
         assert to_write == expected
-        assert source.to_write == expected
+        assert source.get_updated_contents() == expected
 
 
 class RemoveFunctionTest(unittest.TestCase):
@@ -239,10 +239,10 @@ class RemoveFunctionTest(unittest.TestCase):
         ).lstrip()
 
         assert source.remove_function('fn2') == expected
-        assert source.to_write == expected
+        assert source.get_updated_contents() == expected
 
 
-class ImportFindingTest(unittest.TestCase):
+class ImportsTest(unittest.TestCase):
 
     def test_finding_different_types_of_import(self):
         source = Source._from_contents(dedent(
@@ -286,14 +286,11 @@ class ImportFindingTest(unittest.TestCase):
         }
 
 
-    def test_first_nonimport_line(self):
+    def test_find_first_nonimport_line(self):
         source = Source._from_contents(dedent(
             """
-            # by me
             import trees
             from django.core.widgets import things, more_things
-            # more imports here
-
             from django.monkeys import banana_eating
             from lists.views import Thing
 
@@ -302,9 +299,10 @@ class ImportFindingTest(unittest.TestCase):
             """).lstrip()
         )
 
-        assert source.first_nonimport_line == 8
+        assert source.find_first_nonimport_line() == 5
 
-    def test_first_nonimport_line_raises_if_imports_in_a_mess(self):
+
+    def test_find_first_nonimport_line_raises_if_imports_in_a_mess(self):
         source = Source._from_contents(dedent(
             """
             import trees
@@ -314,7 +312,200 @@ class ImportFindingTest(unittest.TestCase):
             """).lstrip()
         )
         with self.assertRaises(SourceUpdateError):
-            source.first_nonimport_line
+            source.find_first_nonimport_line()
+
+    def test_fixed_imports(self):
+        source = Source._from_contents(dedent(
+            """
+            import btopline
+            import atopline
+            """).lstrip()
+        )
+        assert source.fixed_imports == dedent(
+            """
+            import atopline
+            import btopline
+            """).lstrip()
+
+        source = Source._from_contents(dedent(
+            """
+            import atopline
+
+            from django.monkeys import monkeys
+            from django.chickens import chickens
+            """).lstrip()
+        )
+        assert source.fixed_imports == dedent(
+            """
+            import atopline
+
+            from django.chickens import chickens
+            from django.monkeys import monkeys
+            """).lstrip()
+
+        source = Source._from_contents(dedent(
+            """
+            from lists.views import thing
+            import atopline
+            """).lstrip()
+        )
+        assert source.fixed_imports == dedent(
+            """
+            import atopline
+
+            from lists.views import thing
+            """).lstrip()
+
+        source = Source._from_contents(dedent(
+            """
+            from lists.views import thing
+
+            from django.db import models
+            import atopline
+
+            from django.aardvarks import Wilbur
+
+            """).lstrip()
+        )
+        assert source.fixed_imports == dedent(
+            """
+            import atopline
+
+            from django.aardvarks import Wilbur
+            from django.db import models
+
+            from lists.views import thing
+            """).lstrip()
+
+
+    def test_add_import(self):
+        source = Source._from_contents(dedent(
+            """
+            import atopline
+
+            from django.monkeys import monkeys
+            from django.chickens import chickens
+
+            from lists.views import thing
+
+            # some stuff
+            class C():
+                def foo():
+                    return 1
+            """).lstrip()
+        )
+        source.add_imports([
+            "import btopline"
+        ])
+
+        assert source.fixed_imports == dedent(
+            """
+            import atopline
+            import btopline
+
+            from django.chickens import chickens
+            from django.monkeys import monkeys
+
+            from lists.views import thing
+            """
+        ).lstrip()
+
+        source.add_imports([
+            "from django.dickens import ChuzzleWit"
+        ])
+        assert source.fixed_imports == dedent(
+            """
+            import atopline
+            import btopline
+
+            from django.chickens import chickens
+            from django.dickens import ChuzzleWit
+            from django.monkeys import monkeys
+
+            from lists.views import thing
+            """
+        ).lstrip()
+
+
+    def test_add_import_chooses_longer_lines(self):
+        source = Source._from_contents(dedent(
+            """
+            import atopline
+            from django.chickens import chickens
+            from lists.views import thing
+            # some stuff
+            """).lstrip()
+        )
+        source.add_imports([
+            "from django.chickens import chickens, eggs"
+        ])
+
+        assert source.fixed_imports == dedent(
+            """
+            import atopline
+
+            from django.chickens import chickens, eggs
+
+            from lists.views import thing
+            """
+        ).lstrip()
+
+
+    def test_add_import_ends_up_in_updated_contents_when_appending(self):
+        source = Source._from_contents(dedent(
+            """
+            import atopline
+
+            # some stuff
+            class C():
+                def foo():
+                    return 1
+            """).lstrip()
+        )
+        source.add_imports([
+            "from django.db import models"
+        ])
+
+        assert source.contents == dedent(
+            """
+            import atopline
+
+            from django.db import models
+
+            # some stuff
+            class C():
+                def foo():
+                    return 1
+            """
+        ).lstrip()
+
+
+    def test_add_import_ends_up_in_updated_contents_when_prepending(self):
+        source = Source._from_contents(dedent(
+            """
+            import btopline
+
+            # some stuff
+            class C():
+                def foo():
+                    return 1
+            """).lstrip()
+        )
+        source.add_imports([
+            "import atopline"
+        ])
+
+        assert source.contents == dedent(
+            """
+            import atopline
+            import btopline
+
+            # some stuff
+            class C():
+                def foo():
+                    return 1
+            """
+        ).lstrip()
 
 
 
@@ -391,17 +582,17 @@ class SourceUpdateTest(unittest.TestCase):
     def test_update_with_empty_contents(self):
         s = Source()
         s.update('new stuff\n')
-        self.assertEqual(s.to_write, 'new stuff\n')
+        self.assertEqual(s.get_updated_contents(), 'new stuff\n')
 
     def test_adds_final_newline_if_necessary(self):
         s = Source()
         s.update('new stuff')
-        self.assertEqual(s.to_write, 'new stuff\n')
+        self.assertEqual(s.get_updated_contents(), 'new stuff\n')
 
     def test_strips_line_callouts(self):
         s = Source()
         s.update('hello\nbla #')
-        assert s.to_write == 'hello\nbla\n'
+        assert s.get_updated_contents() == 'hello\nbla\n'
 
 
 

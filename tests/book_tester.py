@@ -133,6 +133,7 @@ class ChapterTest(unittest.TestCase):
         filenames = codelisting.filename.split(', ')
         for filename in filenames:
             with open(os.path.join(self.tempdir, 'superlists', filename)) as f:
+                print('wrote:')
                 print(f.read())
 
 

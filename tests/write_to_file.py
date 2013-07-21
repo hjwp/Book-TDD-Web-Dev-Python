@@ -122,41 +122,12 @@ def _replace_lines_in(old_lines, new_lines):
         return _replace_lines_from_to(old_lines, new_lines, start_pos, end_pos)
 
 
-def insert_new_import(import_line, old_lines):
-    print('inserting new import')
-    general_imports = []
-    django_imports = []
-    project_imports = []
-    other_lines = []
-    last_import = next(reversed([l for l in old_lines if 'import' in l]))
-    found_last_import = False
-    for line in old_lines + [import_line]:
-        if line == last_import:
-            found_last_import = True
-        if line.startswith('from django'):
-            django_imports.append(line)
-        elif line.startswith('from lists'):
-            project_imports.append(line)
-        elif 'import' in line:
-            general_imports.append(line)
-        elif line == '' and not found_last_import:
-            pass
-        else:
-            other_lines.append(line)
-    general_imports.sort()
-    if general_imports and django_imports or general_imports and project_imports:
-        general_imports.append('')
-    django_imports.sort()
-    if django_imports and project_imports:
-        django_imports.append('')
-    project_imports.sort()
-    return general_imports + django_imports + project_imports + other_lines
-
 
 def add_import_and_new_lines(new_lines, old_lines):
     source = Source._from_contents('\n'.join(old_lines))
     print('add import and new lines')
-    lines_with_import = insert_new_import(new_lines[0], old_lines)
+    source.add_imports(new_lines[:1])
+    lines_with_import = source.get_updated_contents().split('\n')
     new_lines_remaining = '\n'.join(new_lines[2:]).strip('\n').split('\n')
     start_pos = source.find_start_line(new_lines_remaining)
     if start_pos is None:
@@ -266,8 +237,9 @@ def _write_to_file(path, new_contents):
 
                     # special-case: stray browser.quit in chap. 2
                     if 'rest of comments' in split_line:
-                        assert old_lines_after[-1] == 'browser.quit()'
-                        old_lines_after.pop()
+                        assert 'browser.quit()' in [l.strip() for l in old_lines_after]
+                        assert old_lines_after[-2] == 'browser.quit()'
+                        old_lines_after = old_lines_after[:-2]
 
                     new_contents = '\n'.join(
                         lines_before +

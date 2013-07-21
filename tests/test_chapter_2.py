@@ -48,8 +48,8 @@ class Chapter2Test(ChapterTest):
         self.run_command(commit)
         listings[12].was_run = True # TODO
 
-        self.check_final_diff(2)
         self.assert_all_listings_checked(listings, [1,5])
+        self.check_final_diff(2)
 
 
 

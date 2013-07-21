@@ -279,6 +279,7 @@ class WriteToFileTest(unittest.TestCase):
         expected = dedent("""
             import newtopline
             import topline
+
             # some stuff
 
             class C():
@@ -402,8 +403,8 @@ class WriteToFileTest(unittest.TestCase):
         old = dedent("""
             import atopline
 
-            from django import monkeys
-            from django import chickens
+            from django.monkeys import monkeys
+            from django.chickens import chickens
 
             from lists.views import thing
 
@@ -424,8 +425,8 @@ class WriteToFileTest(unittest.TestCase):
             import atopline
             import btopline
 
-            from django import chickens
-            from django import monkeys
+            from django.chickens import chickens
+            from django.monkeys import monkeys
 
             from lists.views import thing
 
@@ -439,7 +440,7 @@ class WriteToFileTest(unittest.TestCase):
 
 
         new = dedent("""
-            from django import dickens
+            from django.dickens import dickens
             [...]
 
                 def foo():
@@ -449,9 +450,9 @@ class WriteToFileTest(unittest.TestCase):
         expected = dedent("""
             import atopline
 
-            from django import chickens
-            from django import dickens
-            from django import monkeys
+            from django.chickens import chickens
+            from django.dickens import dickens
+            from django.monkeys import monkeys
 
             from lists.views import thing
 
@@ -475,8 +476,8 @@ class WriteToFileTest(unittest.TestCase):
         expected = dedent("""
             import atopline
 
-            from django import chickens
-            from django import monkeys
+            from django.chickens import chickens
+            from django.monkeys import monkeys
 
             from lists.views import thing
             from lists.zoos import thing
@@ -807,7 +808,6 @@ class WriteToFileTest(unittest.TestCase):
 
     def test_with_single_line_assertion_replacement_real_views_example(self):
         old = dedent("""
-            from lists.models import Item
             from lists.models import Item, List
 
             def home_page(request):
@@ -839,7 +839,6 @@ class WriteToFileTest(unittest.TestCase):
         )
 
         expected = dedent("""
-            from lists.models import Item
             from lists.models import Item, List
 
             def home_page(request):
