@@ -148,11 +148,10 @@ def _find_last_line_for_class(source, classname):
 
 def add_to_class(new_lines, old_lines):
     print('adding to class')
+    source = Source._from_contents('\n'.join(old_lines))
     classname = re.search(r'class (\w+)\(\w+\):', new_lines[0]).group(1)
-    insert_point = _find_last_line_for_class('\n'.join(old_lines), classname)
-    return '\n'.join(
-        old_lines[:insert_point] + new_lines[2:] + old_lines[insert_point:]
-    )
+    source.add_to_class(classname, new_lines[2:])
+    return source.get_updated_contents()
 
 
 

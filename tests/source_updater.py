@@ -4,6 +4,7 @@ import ast
 from collections import OrderedDict
 import os
 import re
+from textwrap import dedent
 
 VIEW_FINDER = re.compile(r'^def (\w+)\(request.*\):$')
 
@@ -21,9 +22,12 @@ class Block(object):
     def __init__(self, node, source):
         self.name = node.name
         self.node = node
-        self.source = source
-        self.full_line = self.source.split('\n')[self.node.lineno -1]
+        self.full_source = source
         self.start_line = self.node.lineno - 1
+        self.full_line = self.full_source.split('\n')[self.start_line]
+        self.source = '\n'.join(
+            self.full_source.split('\n')[self.start_line:self.last_line + 1]
+        )
 
 
     @property
@@ -36,7 +40,7 @@ class Block(object):
         last_line_no = max(
             getattr(n, 'lineno', -1) for n in ast.walk(self.node)
         )
-        lines = self.source.split('\n')
+        lines = self.full_source.split('\n')
         if len(lines) > last_line_no:
             for line in lines[last_line_no:]:
                 if line.strip() == '':
@@ -213,6 +217,20 @@ class Source(object):
             return [l.strip() for l in self.lines].index(start_line.strip())
         except ValueError:
             print('no start line match for', start_line)
+
+
+    def add_to_class(self, classname, new_lines):
+        new_lines = dedent('\n'.join(new_lines)).strip().split('\n')
+        klass = self.classes[classname]
+        lines_before_class = '\n'.join(self.lines[:klass.start_line])
+        print('lines before\n', lines_before_class)
+        lines_after_class = '\n'.join(self.lines[klass.last_line + 1:])
+        print('lines after\n', lines_after_class)
+        new_class = klass.source + '\n\n\n' + '\n'.join(
+                '    ' + l for l in new_lines
+        )
+        print('new class\n', new_class)
+        self.contents = lines_before_class + '\n' + new_class + '\n' + lines_after_class
 
 
     def find_end_line(self, new_lines):

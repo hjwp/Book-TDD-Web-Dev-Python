@@ -242,6 +242,121 @@ class RemoveFunctionTest(unittest.TestCase):
         assert source.get_updated_contents() == expected
 
 
+class AddToClassTest(unittest.TestCase):
+
+    def test_finding_class_info(self):
+        source = Source._from_contents(dedent(
+            """
+            import topline
+
+            class ClassA(object):
+                def metha(self):
+                    pass
+
+                def metha2(self):
+                    pass
+
+            class ClassB(object):
+                def methb(self):
+                    pass
+            """).lstrip()
+        )
+
+        assert source.classes['ClassA'].start_line == 2
+        assert source.classes['ClassA'].last_line == 7
+        assert source.classes['ClassA'].source == dedent(
+            """
+            class ClassA(object):
+                def metha(self):
+                    pass
+
+                def metha2(self):
+                    pass
+            """).strip()
+
+        assert source.classes['ClassB'].last_line == 11
+        assert source.classes['ClassB'].source == dedent(
+            """
+            class ClassB(object):
+                def methb(self):
+                    pass
+            """).strip()
+
+
+    def test_addding_to_class(self):
+        source = Source._from_contents(dedent("""
+            import topline
+
+            class A(object):
+                def metha(self):
+                    pass
+
+
+
+            class B(object):
+                def methb(self):
+                    pass
+            """).lstrip()
+        )
+        source.add_to_class('A', dedent(
+            """
+            def metha2(self):
+                pass
+            """).strip().split('\n')
+        )
+
+        expected = dedent("""
+            import topline
+
+            class A(object):
+                def metha(self):
+                    pass
+
+
+                def metha2(self):
+                    pass
+
+
+
+            class B(object):
+                def methb(self):
+                    pass
+            """
+        ).lstrip()
+        assert source.contents == expected
+
+
+    def test_addding_to_class_fixes_indents_and_superfluous_lines(self):
+        source = Source._from_contents(dedent("""
+            import topline
+
+            class A(object):
+                def metha(self):
+                    pass
+            """).lstrip()
+        )
+        source.add_to_class('A', [
+            "",
+            "    def metha2(self):",
+            "        pass",
+        ])
+
+        expected = dedent("""
+            import topline
+
+            class A(object):
+                def metha(self):
+                    pass
+
+
+                def metha2(self):
+                    pass
+            """
+        ).lstrip()
+        assert source.contents == expected
+
+
+
 class ImportsTest(unittest.TestCase):
 
     def test_finding_different_types_of_import(self):

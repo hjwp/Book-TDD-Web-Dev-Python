@@ -388,6 +388,7 @@ class WriteToFileTest(unittest.TestCase):
                 def metha(self):
                     pass
 
+
                 def metha2(self):
                     pass
 
