@@ -179,7 +179,11 @@ class ChapterTest(unittest.TestCase):
             user_input += '\n'
         #import time
         #time.sleep(1)
-        output, return_code = process.communicate(user_input)
+        output, _ = process.communicate(user_input)
+        if process.returncode and 'test' not in command:
+            print('process %s return a non-zero code (%s)' % (command, process.returncode))
+            print('output:\n', output)
+            raise Exception('process %s return a non-zero code (%s)' % (command, process.returncode))
         return output
 
 
