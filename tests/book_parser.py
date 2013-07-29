@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import re
 from lxml import html
 
 
@@ -11,9 +12,15 @@ parsed_html = html.fromstring(raw_html)
 
 
 class CodeListing(object):
+    COMMIT_REF_FINDER = r'^(.+) \((ch\d\dl\d\d\d\.?\d?)\)$'
 
     def __init__(self, filename, contents):
-        self.filename = filename
+        if re.match(CodeListing.COMMIT_REF_FINDER, filename):
+            self.filename = re.match(CodeListing.COMMIT_REF_FINDER, filename).group(1)
+            self.commit_ref = re.match(CodeListing.COMMIT_REF_FINDER, filename).group(2)
+        else:
+            self.filename = filename
+            self.commit_ref = None
         self.contents = contents
         self.was_written = False
         self.skip = False

@@ -10,11 +10,14 @@ from book_parser import (
     get_commands,
     parse_listing,
 )
-from examples import CODE_LISTING_WITH_CAPTION
+from examples import (
+    CODE_LISTING_WITH_CAPTION,
+    CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF
+)
 
 
 
-class ParseListingTest(unittest.TestCase):
+class ParseCodeListingTest(unittest.TestCase):
 
     def test_recognises_code_listings(self):
         code_html = CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
@@ -38,7 +41,22 @@ class ParseListingTest(unittest.TestCase):
             ).strip()
         )
         self.assertFalse('\r' in listing.contents)
+        self.assertEqual(listing.commit_ref, None)
 
+
+    def test_recognises_git_commit_refs(self):
+        code_html = CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        self.assertEqual(len(listings), 1)
+        listing = listings[0]
+        self.assertEqual(type(listing), CodeListing)
+        self.assertEqual(listing.filename, 'functional_tests/tests.py')
+        self.assertEqual(listing.commit_ref, 'ch07l001')
+
+
+
+class ParseListingTest(unittest.TestCase):
 
     def test_can_extract_one_command_and_its_output(self):
         listing = html.fromstring(
