@@ -27,17 +27,20 @@ class StartWithCheckoutTest(unittest.TestCase):
         assert remotes == ['repo']
         branch = sourcetree.run_command('git branch').strip()
         assert branch == '* chapter_20'
+        assert sourcetree.chapter == 21
 
 
+class ApplyFromGitRefTest(unittest.TestCase):
 
-    def DONTtest_from_real_git_stuff(self):
-        repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'testrepo'))
-        tempdir = tempfile.mkdtemp()
-        subprocess.check_output('git init .', shell=True, cwd=tempdir)
-        subprocess.check_output('git remote add repo %s' % (repo_path,), shell=True, cwd=tempdir)
-        subprocess.check_output('git fetch repo', shell=True, cwd=tempdir)
-        subprocess.check_output('git checkout repo/master^', shell=True, cwd=tempdir)
-        subprocess.check_output('git reset', shell=True, cwd=tempdir)
+    def test_from_real_git_stuff(self):
+        sourcetree = SourceTree()
+        sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
+            os.path.dirname(__file__), 'testrepo'
+        ))
+        sourcetree.start_with_checkout(21)
+        sourcetree.run_command('git checkout repo/chapter_20^')
+        sourcetree.run_command('git reset')
+
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """
             file 1 line 1
@@ -47,9 +50,9 @@ class StartWithCheckoutTest(unittest.TestCase):
         )
         listing.commit_ref = 'ch17l021'
 
-        apply_git_ref(listing, tempdir)
+        sourcetree.apply_listing_from_commit(listing)
 
-        with open(tempdir + '/file1.txt') as f:
+        with open(sourcetree.tempdir + '/superlists/file1.txt') as f:
             assert f.read() == dedent(
                 """
                 file 1 line 1

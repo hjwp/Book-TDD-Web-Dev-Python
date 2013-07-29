@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 import os
 import re
-import signal
-import subprocess
-import shutil
 import tempfile
 from textwrap import wrap
 import unittest

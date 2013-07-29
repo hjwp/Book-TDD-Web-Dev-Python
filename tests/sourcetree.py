@@ -61,6 +61,14 @@ class SourceTree(object):
         self.run_command('git remote add repo %s' % (self.get_local_repo_path(chapter),))
         self.run_command('git fetch repo')
         self.run_command('git checkout chapter_%s' % (chapter - 1,))
+        self.chapter = chapter
 
+
+    def apply_listing_from_commit(self, listing):
+        self.run_command(
+            'git checkout repo/chapter_%s^{/%s} -- %s' % (
+                self.chapter - 1, listing.commit_ref, listing.filename),
+
+        )
 
 
