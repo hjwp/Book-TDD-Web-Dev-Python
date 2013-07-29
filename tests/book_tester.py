@@ -208,7 +208,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
-        actual_tree = self.run_command(Command('tree -I *.pyc --noreport'), cwd)
+        actual_tree = self.sourcetree.run_command('tree -I *.pyc --noreport', cwd)
         print('checking tree', expected_tree)
         # special case for first listing:
         original_tree = expected_tree
@@ -372,7 +372,7 @@ class ChapterTest(unittest.TestCase):
             print("A COMMAND")
             output = self.run_command(listing)
             next_listing = self.listings[self.pos + 1]
-            if type(next_listing) == Output:
+            if next_listing.type == 'output':
                 self.assert_console_output_correct(output, next_listing)
                 next_listing.was_checked = True
                 listing.was_checked = True

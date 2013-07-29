@@ -28,6 +28,13 @@ class SourceTree(object):
     def run_command(self, command, cwd=None, user_input=None, ignore_errors=False):
         if cwd is None:
             cwd = os.path.join(self.tempdir, 'superlists')
+
+        if command == 'wget -O bootstrap.zip https://codeload.github.com/twbs/bootstrap/zip/v2.3.2':
+            shutil.copy(
+                os.path.join(os.path.dirname(__file__), '../downloads/bootstrap-2-rezipped.zip'),
+                os.path.join(cwd, 'bootstrap.zip')
+            )
+            return
         process = subprocess.Popen(
             command, shell=True, cwd=cwd, executable='/bin/bash',
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -69,7 +76,7 @@ class SourceTree(object):
 
     def apply_listing_from_commit(self, listing):
         commit_spec = 'repo/chapter_%s^{/--%s--}' % (
-                self.chapter -1, listing.commit_ref,
+                self.chapter, listing.commit_ref,
         )
 
         files = self.run_command(
@@ -84,16 +91,18 @@ class SourceTree(object):
         new_lines = [
             l[1:] for l in commit_info.split('\n')
             if l.startswith('+')
-            and not l[1] == '+'
             and l[1:].strip()
+            and not l[1] == '+'
         ]
+        stripped_new_lines = [l.strip() for l in new_lines]
+        stripped_listing_lines = [l.strip() for l in listing.contents.split('\n')]
         for new_line in new_lines:
-            if new_line not in listing.contents.split('\n'):
+            if new_line.strip() not in stripped_listing_lines:
                 raise ApplyCommitException(
                     'could not find line %s in listing %s' % (new_line, listing.contents)
                 )
-        new_lines_in_listing_order = sorted(new_lines, key=listing.contents.index)
-        if new_lines_in_listing_order != new_lines:
+        new_lines_in_listing_order = sorted(stripped_new_lines, key=stripped_listing_lines.index)
+        if new_lines_in_listing_order != stripped_new_lines:
             print('listing:\n', listing.contents)
             print('commit:\n', commit_info)
             raise ApplyCommitException('listing lines in wrong order')
@@ -117,5 +126,7 @@ class SourceTree(object):
             'git checkout %s -- %s' % (commit_spec, listing.filename),
 
         )
+        print('applied commit')
+        print(commit_info)
 
 

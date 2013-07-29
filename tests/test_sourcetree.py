@@ -1,6 +1,6 @@
+from mock import patch
 import unittest
 import subprocess
-import tempfile
 from textwrap import dedent
 import os
 
@@ -30,6 +30,7 @@ class StartWithCheckoutTest(unittest.TestCase):
         assert sourcetree.chapter == 21
 
 
+
 class ApplyFromGitRefTest(unittest.TestCase):
 
     def setUp(self):
@@ -37,9 +38,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
         ))
-        self.sourcetree.start_with_checkout(21)
-        self.sourcetree.run_command('git checkout repo/chapter_20^')
+        self.sourcetree.start_with_checkout(17)
+        self.sourcetree.run_command('git checkout test-start')
         self.sourcetree.run_command('git reset')
+
 
     def test_from_real_git_stuff(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
@@ -153,6 +155,33 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def test_happy_with_blank_lines(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            file 2 line 1 changed
+
+            another line changed
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l024'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_handles_indents(self):
+        listing = CodeListing(filename='pythonfile.py', contents=dedent(
+            """
+            def method1(self):
+                # amend method 1
+                return 2
+
+            [...]
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l026'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
 
 class RunCommand2Test(unittest.TestCase):
 
@@ -212,7 +241,7 @@ class RunCommand2Test(unittest.TestCase):
 
     def test_running_interactive_command(self):
         sourcetree = SourceTree()
-        sourcetree.run_command(Command('mkdir superlists'), cwd=sourcetree.tempdir)
+        sourcetree.run_command('mkdir superlists', cwd=sourcetree.tempdir)
 
         command = "python3 -c \"print('input please?'); a = input();print('OK' if a=='yes' else 'NO')\""
         output = sourcetree.run_command(command, user_input='no')
@@ -220,4 +249,21 @@ class RunCommand2Test(unittest.TestCase):
         output = sourcetree.run_command(command, user_input='yes')
         assert 'OK' in output
 
+
+    def test_special_cases_wget_bootstrap(self):
+        sourcetree = SourceTree()
+        sourcetree.run_command('mkdir superlists', cwd=sourcetree.tempdir)
+        with patch('sourcetree.subprocess') as mock_subprocess:
+            mock_subprocess.Popen.return_value.communicate.return_value = (
+                    'bla bla', None
+            )
+            sourcetree.run_command(
+                'wget -O bootstrap.zip https://codeload.github.com/twbs/bootstrap/zip/v2.3.2'
+            )
+            assert not mock_subprocess.Popen.called
+        assert os.path.exists(os.path.join(sourcetree.tempdir, 'superlists', 'bootstrap.zip'))
+        diff = sourcetree.run_command('diff %s bootstrap.zip' % (
+            os.path.join(os.path.dirname(__file__), '..', 'downloads', 'bootstrap-2-rezipped.zip'))
+        )
+        assert diff == ''
 

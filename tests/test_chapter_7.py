@@ -12,7 +12,7 @@ class Chapter7Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(type(self.listings[0]), CodeListing)
+        self.assertEqual(self.listings[0].type, 'code listing with git ref')
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
