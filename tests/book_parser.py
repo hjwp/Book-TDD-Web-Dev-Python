@@ -29,6 +29,8 @@ class CodeListing(object):
     def type(self):
         if any(l.count('@@') > 1 for l in self.contents.split('\n')):
             return 'diff'
+        elif self.commit_ref:
+            return 'code listing with git ref'
         else:
             return 'code listing'
 

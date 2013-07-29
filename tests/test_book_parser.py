@@ -53,6 +53,7 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(type(listing), CodeListing)
         self.assertEqual(listing.filename, 'functional_tests/tests.py')
         self.assertEqual(listing.commit_ref, 'ch07l001')
+        self.assertEqual(listing.type, 'code listing with git ref')
 
 
 
