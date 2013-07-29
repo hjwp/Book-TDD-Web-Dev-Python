@@ -24,7 +24,7 @@ class Chapter3Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Output)
         self.assertEqual(type(self.listings[2]), CodeListing)
 
-        self.start_with_checkout(3)
+        self.sourcetree.start_with_checkout(3)
 
         self.run_command(self.listings[0])
 

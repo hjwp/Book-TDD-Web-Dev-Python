@@ -23,7 +23,7 @@ class Chapter2Test(ChapterTest):
         self.assertEqual(type(listings[1]), Output)
         self.assertEqual(type(listings[2]), Command)
 
-        self.start_with_checkout(2)
+        self.sourcetree.start_with_checkout(2)
 
         self.write_to_file(listings[0])
 

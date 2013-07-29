@@ -16,6 +16,13 @@ from examples import (
 )
 
 
+class CodeListingTest(unittest.TestCase):
+
+    def test_stringify(self):
+        c = CodeListing(filename='a.py', contents='abc\ndef')
+        assert 'abc' in str(c)
+        assert 'a.py' in str(c)
+
 
 class ParseCodeListingTest(unittest.TestCase):
 

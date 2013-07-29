@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-#from mock import Mock
+from mock import Mock
 from textwrap import dedent
 import unittest
 
@@ -115,21 +115,18 @@ class WrapLongLineTest(unittest.TestCase):
 class RunCommandTest(ChapterTest):
 
     def test_calls_sourcetree_run_command_and_marks_as_run(self):
-        #self.sourcetree.run_command = Mock()
+        self.sourcetree.run_command = Mock()
         cmd = Command('foo')
-        def mock_run_command(actual_command, cwd):
-            assert actual_command == cmd
-            assert cwd == 'bar'
-            return 'output'
-        self.sourcetree.run_command = mock_run_command
-        output = self.run_command(cmd, cwd='bar')
-        assert output == 'output'
+        output = self.run_command(cmd, cwd='bar', user_input='thing')
+        assert output == self.sourcetree.run_command.return_value
+        self.sourcetree.run_command.assert_called_with('foo', cwd='bar', user_input='thing')
         assert cmd.was_run
 
 
     def test_raises_if_not_command(self):
         with self.assertRaises(AssertionError):
             self.run_command('foo')
+
 
 
 class AssertConsoleOutputCorrectTest(ChapterTest):

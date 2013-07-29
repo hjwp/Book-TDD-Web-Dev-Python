@@ -39,7 +39,6 @@ class CodeListing(object):
 
 
 
-
 class Command(str):
     def __init__(self, a_string):
         self.was_run = False

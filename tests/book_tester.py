@@ -93,24 +93,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def tearDown(self):
-        for process in self.processes:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except OSError:
-                pass
-        shutil.rmtree(self.tempdir)
-
-
-    def start_with_checkout(self, chapter):
-        local_repo_path = os.path.abspath(os.path.join(
-            os.path.dirname(__file__),
-            '../source/chapter_%d/superlists' % (chapter,)
-        ))
-        self.run_command(Command('mkdir superlists'), cwd=self.tempdir)
-        self.run_command(Command('git init .'))
-        self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
-        self.run_command(Command('git fetch repo'))
-        self.run_command(Command('git checkout chapter_%s' % (chapter - 1,)))
+        self.sourcetree.cleanup()
 
 
     def parse_listings(self):
@@ -163,7 +146,7 @@ class ChapterTest(unittest.TestCase):
             "passed a non-Command to run-command:\n%s" % (command,)
         )
         print('running command', command)
-        output = self.sourcetree.run_command(command, cwd)
+        output = self.sourcetree.run_command(command, cwd=cwd, user_input=user_input)
         command.was_run = True
         return output
 
@@ -264,8 +247,7 @@ class ChapterTest(unittest.TestCase):
 
     def check_test_code_cycle(self, pos, test_command_in_listings=True, ft=False):
         self.write_to_file(self.listings[pos])
-        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
-        self.run_command(Command("find . -name __pycache__ -exec rm -r {} \;"))
+        self._strip_out_any_pycs()
         if test_command_in_listings:
             pos += 1
             self.assertIn('test', self.listings[pos])
@@ -279,7 +261,10 @@ class ChapterTest(unittest.TestCase):
 
 
     def _strip_out_any_pycs(self):
-        self.run_command(Command("find . -name *.pyc -exec rm {} \;"))
+        self.sourcetree.run_command(
+            "find . -name __pycache__ -exec rm -r {} \;",
+            ignore_errors=True
+        )
 
 
     def run_test_and_check_result(self):
@@ -421,5 +406,5 @@ class ChapterTest(unittest.TestCase):
             self.pos += 1
 
         else:
-            self.fail('not implemented for ' + listing)
+            self.fail('not implemented for ' + str(listing))
 

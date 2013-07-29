@@ -16,7 +16,7 @@ class Chapter7Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
-        self.start_with_checkout(self.chapter_no)
+        self.sourcetree.start_with_checkout(self.chapter_no)
         #self.start_dev_server()
 
         # other prep

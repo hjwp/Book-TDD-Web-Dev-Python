@@ -20,7 +20,7 @@ class Chapter4Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Output)
         self.assertEqual(type(self.listings[2]), CodeListing)
 
-        self.start_with_checkout(4)
+        self.sourcetree.start_with_checkout(4)
         self.start_dev_server()
 
         while self.pos < 8:

@@ -20,7 +20,7 @@ class Chapter5Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
-        self.start_with_checkout(5)
+        self.sourcetree.start_with_checkout(5)
         self.start_dev_server()
 
         # skips

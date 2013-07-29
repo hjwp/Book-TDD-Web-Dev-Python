@@ -8,7 +8,27 @@ from book_parser import CodeListing, Command
 from sourcetree import SourceTree
 
 
-class ApplyGitRefTest(unittest.TestCase):
+class StartWithCheckoutTest(unittest.TestCase):
+
+    def test_get_local_repo_path(self):
+        sourcetree = SourceTree()
+        assert sourcetree.get_local_repo_path(12) == os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '../source/chapter_12/superlists'
+        ))
+
+
+    def test_checks_out_repo_current_chapter(self):
+        sourcetree = SourceTree()
+        sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
+            os.path.dirname(__file__), 'testrepo'
+        ))
+        sourcetree.start_with_checkout(21)
+        remotes = sourcetree.run_command('git remote').split()
+        assert remotes == ['repo']
+        branch = sourcetree.run_command('git branch').strip()
+        assert branch == '* chapter_20'
+
+
 
     def DONTtest_from_real_git_stuff(self):
         repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'testrepo'))
@@ -58,6 +78,13 @@ class RunCommand2Test(unittest.TestCase):
         sourcetree = SourceTree()
         output = sourcetree.run_command('echo hello', cwd=sourcetree.tempdir)
         assert output == 'hello\n'
+
+
+    def test_raises_on_errors(self):
+        sourcetree = SourceTree()
+        with self.assertRaises(Exception):
+            sourcetree.run_command('synt!tax error', cwd=sourcetree.tempdir)
+        sourcetree.run_command('synt!tax error', cwd=sourcetree.tempdir, ignore_errors=True)
 
 
     def test_cleanup_kills_backgrounded_processes_and_rmdirs(self):
