@@ -39,7 +39,7 @@ class ApplyGitRefTest(unittest.TestCase):
 
 
 
-class RunCommandTest(unittest.TestCase):
+class RunCommand2Test(unittest.TestCase):
 
     def test_running_simple_command(self):
         sourcetree = SourceTree()

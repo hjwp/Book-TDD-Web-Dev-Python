@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+#from mock import Mock
 from textwrap import dedent
 import unittest
 
@@ -15,6 +16,7 @@ from book_parser import (
 from test_write_to_file import *
 from test_book_parser import *
 from test_source_updater import *
+from test_sourcetree import *
 
 
 
@@ -112,17 +114,22 @@ class WrapLongLineTest(unittest.TestCase):
 
 class RunCommandTest(ChapterTest):
 
-    def test_running_interactive_command(self):
-        self.run_command(Command('mkdir superlists'), cwd=self.tempdir)
+    def test_calls_sourcetree_run_command_and_marks_as_run(self):
+        #self.sourcetree.run_command = Mock()
+        cmd = Command('foo')
+        def mock_run_command(actual_command, cwd):
+            assert actual_command == cmd
+            assert cwd == 'bar'
+            return 'output'
+        self.sourcetree.run_command = mock_run_command
+        output = self.run_command(cmd, cwd='bar')
+        assert output == 'output'
+        assert cmd.was_run
 
-        command = Command(
-            "python3 -c \"print('input please?'); a = input();print('OK' if a=='yes' else 'NO')\""
-        )
-        output = self.run_command(command, user_input='no')
-        self.assertIn('NO', output)
-        output = self.run_command(command, user_input='yes')
-        self.assertIn('OK', output)
 
+    def test_raises_if_not_command(self):
+        with self.assertRaises(AssertionError):
+            self.run_command('foo')
 
 
 class AssertConsoleOutputCorrectTest(ChapterTest):

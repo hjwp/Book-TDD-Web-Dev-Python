@@ -17,6 +17,7 @@ from book_parser import (
     parsed_html,
     parse_listing,
 )
+from sourcetree import SourceTree
 
 
 
@@ -84,7 +85,8 @@ class ChapterTest(unittest.TestCase):
     maxDiff = None
 
     def setUp(self):
-        self.tempdir = tempfile.mkdtemp()
+        self.sourcetree = SourceTree()
+        self.tempdir = self.sourcetree.tempdir
         self.processes = []
         self.pos = 0
         self.dev_server_running = False
@@ -160,30 +162,9 @@ class ChapterTest(unittest.TestCase):
         self.assertEqual(type(command), Command,
             "passed a non-Command to run-command:\n%s" % (command,)
         )
-        if cwd is None:
-            cwd = os.path.join(self.tempdir, 'superlists')
         print('running command', command)
-        process = subprocess.Popen(
-            command, shell=True, cwd=cwd, executable='/bin/bash',
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            stdin=subprocess.PIPE,
-            preexec_fn=os.setsid,
-            universal_newlines=True,
-        )
+        output = self.sourcetree.run_command(command, cwd)
         command.was_run = True
-        process._command = command
-        self.processes.append(process)
-        if 'runserver' in command:
-            return #test this another day
-        if user_input and not user_input.endswith('\n'):
-            user_input += '\n'
-        #import time
-        #time.sleep(1)
-        output, _ = process.communicate(user_input)
-        if process.returncode and 'test' not in command:
-            print('process %s return a non-zero code (%s)' % (command, process.returncode))
-            print('output:\n', output)
-            raise Exception('process %s return a non-zero code (%s)' % (command, process.returncode))
         return output
 
 
