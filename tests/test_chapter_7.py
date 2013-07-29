@@ -17,10 +17,8 @@ class Chapter7Test(ChapterTest):
         self.assertEqual(type(self.listings[2]), Output)
 
         self.sourcetree.start_with_checkout(self.chapter_no)
-        #self.start_dev_server()
-
         # other prep
-        self.run_command(Command('python3 manage.py syncdb --noinput'))
+        self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
         self.listings[18].skip = True

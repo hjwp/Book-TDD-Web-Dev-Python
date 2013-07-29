@@ -390,6 +390,11 @@ class ChapterTest(unittest.TestCase):
             self.write_to_file(listing)
             self.pos += 1
 
+        elif listing.type == 'code listing with git ref':
+            print("CODE FROM GIT REF")
+            self.sourcetree.apply_listing_from_commit(listing)
+            self.pos += 1
+
         elif listing.type == 'output':
             self._strip_out_any_pycs()
             test_run = self.run_command(Command("python3 manage.py test lists"))

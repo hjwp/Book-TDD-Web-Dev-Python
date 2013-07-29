@@ -5,7 +5,7 @@ from textwrap import dedent
 import os
 
 from book_parser import CodeListing, Command
-from sourcetree import SourceTree
+from sourcetree import ApplyCommitException, SourceTree
 
 
 class StartWithCheckoutTest(unittest.TestCase):
@@ -32,15 +32,102 @@ class StartWithCheckoutTest(unittest.TestCase):
 
 class ApplyFromGitRefTest(unittest.TestCase):
 
-    def test_from_real_git_stuff(self):
-        sourcetree = SourceTree()
-        sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
+    def setUp(self):
+        self.sourcetree = SourceTree()
+        self.sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
         ))
-        sourcetree.start_with_checkout(21)
-        sourcetree.run_command('git checkout repo/chapter_20^')
-        sourcetree.run_command('git reset')
+        self.sourcetree.start_with_checkout(21)
+        self.sourcetree.run_command('git checkout repo/chapter_20^')
+        self.sourcetree.run_command('git reset')
 
+    def test_from_real_git_stuff(self):
+        listing = CodeListing(filename='file1.txt', contents=dedent(
+            """
+            file 1 line 2 amended
+            file 1 line 3
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l021'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+        with open(self.sourcetree.tempdir + '/superlists/file1.txt') as f:
+            assert f.read() == dedent(
+                """
+                file 1 line 1
+                file 1 line 2 amended
+                file 1 line 3
+                """).lstrip()
+
+
+    def test_raises_if_wrong_file(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            file 1 line 1
+            file 1 line 2 amended
+            file 1 line 3
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l021'
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_raises_if_too_many_files_in_commit(self):
+        listing = CodeListing(filename='file1.txt', contents=dedent(
+            """
+            file 1 line 1
+            file 1 line 2
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l023'
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_raises_if_listing_doesnt_show_all_new_lines_in_diff(self):
+        listing = CodeListing(filename='file1.txt', contents=dedent(
+            """
+            file 1 line 3
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l021'
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_raises_if_listing_lines_in_wrong_order(self):
+        listing = CodeListing(filename='file1.txt', contents=dedent(
+            """
+            file 1 line 3
+            file 1 line 2 amended
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l021'
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_raises_if_any_other_listing_lines_not_in_before_version(self):
+        listing = CodeListing(filename='file1.txt', contents=dedent(
+            """
+            what is this?
+            file 1 line 2 amended
+            file 1 line 3
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l021'
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_happy_with_lines_from_just_before_diff(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """
             file 1 line 1
@@ -50,15 +137,20 @@ class ApplyFromGitRefTest(unittest.TestCase):
         )
         listing.commit_ref = 'ch17l021'
 
-        sourcetree.apply_listing_from_commit(listing)
+        self.sourcetree.apply_listing_from_commit(listing)
 
-        with open(sourcetree.tempdir + '/superlists/file1.txt') as f:
-            assert f.read() == dedent(
-                """
-                file 1 line 1
-                file 1 line 2 amended
-                file 1 line 3
-                """).lstrip()
+
+    def test_happy_with_elipsis(self):
+        listing = CodeListing(filename='file1.txt', contents=dedent(
+            """
+            [...]
+            file 1 line 2 amended
+            file 1 line 3
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l021'
+
+        self.sourcetree.apply_listing_from_commit(listing)
 
 
 

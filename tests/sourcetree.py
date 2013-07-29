@@ -4,6 +4,9 @@ import shutil
 import subprocess
 import tempfile
 
+class ApplyCommitException(Exception):
+    pass
+
 
 class SourceTree(object):
 
@@ -65,9 +68,53 @@ class SourceTree(object):
 
 
     def apply_listing_from_commit(self, listing):
+        commit_spec = 'repo/chapter_%s^{/--%s--}' % (
+                self.chapter -1, listing.commit_ref,
+        )
+
+        files = self.run_command(
+            'git diff-tree --no-commit-id --name-only -r %s' % (commit_spec,)
+        ).split()
+        if files != [listing.filename]:
+            raise ApplyCommitException('wrong files in commit: %s' % (files,))
+
+        commit_info = self.run_command(
+            'git show %s' % (commit_spec,)
+        )
+        new_lines = [
+            l[1:] for l in commit_info.split('\n')
+            if l.startswith('+')
+            and not l[1] == '+'
+            and l[1:].strip()
+        ]
+        for new_line in new_lines:
+            if new_line not in listing.contents.split('\n'):
+                raise ApplyCommitException(
+                    'could not find line %s in listing %s' % (new_line, listing.contents)
+                )
+        new_lines_in_listing_order = sorted(new_lines, key=listing.contents.index)
+        if new_lines_in_listing_order != new_lines:
+            print('listing:\n', listing.contents)
+            print('commit:\n', commit_info)
+            raise ApplyCommitException('listing lines in wrong order')
+
+        for line in listing.contents.split('\n'):
+            if line in new_lines:
+                continue
+            if not line:
+                continue
+            if line in commit_info:
+                continue
+            if line.strip().startswith('[...'):
+                continue
+
+            print('commit info')
+            print(commit_info)
+            raise ApplyCommitException('listing line not found:\n%s' % (line,))
+
+
         self.run_command(
-            'git checkout repo/chapter_%s^{/%s} -- %s' % (
-                self.chapter - 1, listing.commit_ref, listing.filename),
+            'git checkout %s -- %s' % (commit_spec, listing.filename),
 
         )
 
