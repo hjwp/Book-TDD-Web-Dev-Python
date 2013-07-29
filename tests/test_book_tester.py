@@ -116,7 +116,7 @@ class RunCommandTest(ChapterTest):
         self.run_command(Command('mkdir superlists'), cwd=self.tempdir)
 
         command = Command(
-            "python3 -c \"print 'input please?'; a = raw_input();print 'OK' if a=='yes' else 'NO'\""
+            "python3 -c \"print('input please?'); a = input();print('OK' if a=='yes' else 'NO')\""
         )
         output = self.run_command(command, user_input='no')
         self.assertIn('NO', output)
