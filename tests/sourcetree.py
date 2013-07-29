@@ -51,7 +51,11 @@ class SourceTree(object):
         #import time
         #time.sleep(1)
         output, _ = process.communicate(user_input)
-        if process.returncode and 'test' not in command and not ignore_errors:
+        if process.returncode and not ignore_errors:
+            if 'test' in command:
+                return output
+            if 'diff' in command:
+                return output
             print('process %s return a non-zero code (%s)' % (command, process.returncode))
             print('output:\n', output)
             raise Exception('process %s return a non-zero code (%s)' % (command, process.returncode))
@@ -126,6 +130,8 @@ class SourceTree(object):
             'git checkout %s -- %s' % (commit_spec, listing.filename),
 
         )
+        self.run_command('git reset')
+
         print('applied commit')
         print(commit_info)
 

@@ -63,6 +63,21 @@ class ApplyFromGitRefTest(unittest.TestCase):
                 """).lstrip()
 
 
+    def test_leaves_staging_empty(self):
+        listing = CodeListing(filename='file1.txt', contents=dedent(
+            """
+            file 1 line 2 amended
+            file 1 line 3
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l021'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+        staged = self.sourcetree.run_command('git diff --staged')
+        assert staged == ''
+
+
     def test_raises_if_wrong_file(self):
         listing = CodeListing(filename='file2.txt', contents=dedent(
             """
@@ -209,6 +224,12 @@ class RunCommand2Test(unittest.TestCase):
         with self.assertRaises(Exception):
             sourcetree.run_command('synt!tax error', cwd=sourcetree.tempdir)
         sourcetree.run_command('synt!tax error', cwd=sourcetree.tempdir, ignore_errors=True)
+
+
+    def test_doesnt_raise_for_some_things_where_a_return_code_is_ok(self):
+        sourcetree = SourceTree()
+        sourcetree.run_command('diff foo bar', cwd=sourcetree.tempdir)
+        sourcetree.run_command('python test.py', cwd=sourcetree.tempdir)
 
 
     def test_cleanup_kills_backgrounded_processes_and_rmdirs(self):
