@@ -4,8 +4,18 @@ import subprocess
 from textwrap import dedent
 import os
 
-from book_parser import CodeListing, Command
+from book_parser import CodeListing
 from sourcetree import ApplyCommitException, SourceTree
+
+
+class GetFileTest(unittest.TestCase):
+
+    def test_get_contents(self):
+        sourcetree = SourceTree()
+        os.makedirs(sourcetree.tempdir + '/superlists')
+        with open(sourcetree.tempdir + '/superlists/foo.txt', 'w') as f:
+            f.write('bla bla')
+        assert sourcetree.get_contents('foo.txt') == 'bla bla'
 
 
 class StartWithCheckoutTest(unittest.TestCase):
@@ -130,6 +140,21 @@ class ApplyFromGitRefTest(unittest.TestCase):
             self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def test_line_ordering_check_isnt_confused_by_dupe_lines(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            another line changed
+            some duplicate lines coming up...
+
+            hello
+            goodbye
+            hello
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l027'
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
     def test_raises_if_any_other_listing_lines_not_in_before_version(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """
@@ -198,7 +223,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
-class RunCommand2Test(unittest.TestCase):
+class SourceTreeRunCommandTest(unittest.TestCase):
 
     def test_running_simple_command(self):
         sourcetree = SourceTree()

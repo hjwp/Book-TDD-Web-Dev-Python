@@ -16,6 +16,11 @@ class SourceTree(object):
         self.dev_server_running = False
 
 
+    def get_contents(self, path):
+        with open(os.path.join(self.tempdir, 'superlists', path)) as f:
+            return f.read()
+
+
     def cleanup(self):
         for process in self.processes:
             try:
@@ -92,27 +97,30 @@ class SourceTree(object):
         commit_info = self.run_command(
             'git show %s' % (commit_spec,)
         )
-        new_lines = [
+        commit_lines = [
             l[1:] for l in commit_info.split('\n')
             if l.startswith('+')
             and l[1:].strip()
             and not l[1] == '+'
         ]
-        stripped_new_lines = [l.strip() for l in new_lines]
-        stripped_listing_lines = [l.strip() for l in listing.contents.split('\n')]
-        for new_line in new_lines:
+        listing_lines = listing.contents.split('\n')
+
+        stripped_listing_lines = [l.strip() for l in listing_lines]
+        for new_line in commit_lines:
             if new_line.strip() not in stripped_listing_lines:
                 raise ApplyCommitException(
                     'could not find line %s in listing %s' % (new_line, listing.contents)
                 )
-        new_lines_in_listing_order = sorted(stripped_new_lines, key=stripped_listing_lines.index)
-        if new_lines_in_listing_order != stripped_new_lines:
-            print('listing:\n', listing.contents)
-            print('commit:\n', commit_info)
-            raise ApplyCommitException('listing lines in wrong order')
 
-        for line in listing.contents.split('\n'):
-            if line in new_lines:
+        line_pos_in_commit = 0
+        for line in listing_lines:
+            if line in commit_lines:
+                try:
+                    line_pos_in_commit = commit_lines[line_pos_in_commit:].index(line)
+                except ValueError:
+                    print('listing:\n', listing.contents)
+                    print('commit:\n', commit_info)
+                    raise ApplyCommitException('listing lines in wrong order')
                 continue
             if not line:
                 continue
@@ -120,7 +128,6 @@ class SourceTree(object):
                 continue
             if line.strip().startswith('[...'):
                 continue
-
             print('commit info')
             print(commit_info)
             raise ApplyCommitException('listing line not found:\n%s' % (line,))

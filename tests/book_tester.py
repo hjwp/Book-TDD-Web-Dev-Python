@@ -288,7 +288,10 @@ class ChapterTest(unittest.TestCase):
 
 
     def check_diff_or_status(self, pos):
-        LIKELY_FILES = ['urls.py', 'tests.py', 'views.py', 'functional_tests.py']
+        LIKELY_FILES = [
+            'urls.py', 'tests.py', 'views.py', 'functional_tests.py',
+            'settings.py' 'home.html', 'list.html', 'base.html',
+        ]
         self.assertTrue(
             'diff' in self.listings[pos] or 'status' in self.listings[pos]
         )
@@ -372,7 +375,7 @@ class ChapterTest(unittest.TestCase):
             print("A COMMAND")
             output = self.run_command(listing)
             next_listing = self.listings[self.pos + 1]
-            if next_listing.type == 'output':
+            if next_listing.type == 'output' and not next_listing.skip:
                 self.assert_console_output_correct(output, next_listing)
                 next_listing.was_checked = True
                 listing.was_checked = True

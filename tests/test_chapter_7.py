@@ -22,7 +22,16 @@ class Chapter7Test(ChapterTest):
 
         # skips
         self.listings[14].skip = True
+        self.listings[26].skip = True # comment after git status
 
+
+        while self.pos < 31:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
+
+        settings = self.sourcetree.get_contents('superlists/settings.py')
+        assert self.listings[31].filename == 'superlists/settings.py'
+        assert all(l in settings for l in self.listings[31].contents)
 
         while self.pos < 200:
             print(self.pos)
