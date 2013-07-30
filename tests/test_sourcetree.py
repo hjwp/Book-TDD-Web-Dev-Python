@@ -72,6 +72,8 @@ class ApplyFromGitRefTest(unittest.TestCase):
                 file 1 line 3
                 """).lstrip()
 
+        assert listing.was_written
+
 
     def test_leaves_staging_empty(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(

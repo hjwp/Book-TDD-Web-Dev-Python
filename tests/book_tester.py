@@ -350,14 +350,17 @@ class ChapterTest(unittest.TestCase):
             print("COMMIT")
             self.check_commit(self.pos)
 
-        elif listing.type == 'interactive syncdb':
-            print("INTERACTIVE SYNCDB")
-            expected_output_start = self.listings[self.pos + 1]
+        elif listing.type == 'interactive manage.py':
+            print("INTERACTIVE MANAGE.PY")
             user_input = self.listings[self.pos + 2]
-            expected_output_end = self.listings[self.pos + 3]
-            expected_output = Output(expected_output_start + ' ' + expected_output_end)
+            assert isinstance(user_input, Command)
 
-            self.assertTrue(isinstance(user_input, Command))
+            expected_output_start = self.listings[self.pos + 1]
+            assert isinstance(expected_output_start, Output)
+            expected_output_end = self.listings[self.pos + 3]
+            assert isinstance(expected_output_end, Output)
+            expected_output = Output(wrap_long_lines(expected_output_start + ' ' + expected_output_end))
+
             output = self.run_command(listing, user_input=user_input)
             self.assert_console_output_correct(output, expected_output)
             listing.was_checked = True

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from book_parser import CodeListing, Command, Output
+from book_parser import Command, Output
 from book_tester import ChapterTest
 
 class Chapter7Test(ChapterTest):
@@ -33,13 +33,22 @@ class Chapter7Test(ChapterTest):
         assert self.listings[31].filename == 'superlists/settings.py'
         assert all(l in settings for l in self.listings[31].contents)
 
-        while self.pos < 200:
+        while self.pos < 51:
             print(self.pos)
             self.recognise_listing_and_process_it()
+
+        settings = self.sourcetree.get_contents('superlists/settings.py')
+        assert self.listings[51].filename == 'superlists/settings.py'
+        assert all(l in settings for l in self.listings[31].contents)
+
+        self.listings[52].skip = True # tree showing where static will go
 
         #import time
         #print(self.tempdir)
         #time.sleep(200)
+        while self.pos < 100:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
 
 
         self.assert_all_listings_checked(self.listings)

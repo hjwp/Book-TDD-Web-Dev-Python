@@ -53,7 +53,9 @@ class Command(str):
         if self.startswith('python') and 'test' in self:
             return 'test'
         if self == 'python3 manage.py syncdb':
-            return 'interactive syncdb'
+            return 'interactive manage.py'
+        if self == 'python3 manage.py collectstatic':
+            return 'interactive manage.py'
         else:
             return 'other command'
 

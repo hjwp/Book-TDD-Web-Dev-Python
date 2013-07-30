@@ -138,7 +138,7 @@ class SourceTree(object):
 
         )
         self.run_command('git reset')
-
+        listing.was_written = True
         print('applied commit')
         print(commit_info)
 
