@@ -31,7 +31,9 @@ class Chapter7Test(ChapterTest):
 
         settings = self.sourcetree.get_contents('superlists/settings.py')
         assert self.listings[31].filename == 'superlists/settings.py'
-        assert all(l in settings for l in self.listings[31].contents)
+        for line in self.listings[31].contents.split('\n'):
+            assert line in settings
+        self.listings[31].skip = True
 
         while self.pos < 51:
             print(self.pos)
@@ -39,14 +41,15 @@ class Chapter7Test(ChapterTest):
 
         settings = self.sourcetree.get_contents('superlists/settings.py')
         assert self.listings[51].filename == 'superlists/settings.py'
-        assert all(l in settings for l in self.listings[31].contents)
-
+        for line in self.listings[51].contents.split('\n'):
+            assert line in settings
+        self.listings[51].skip = True
         self.listings[52].skip = True # tree showing where static will go
 
         #import time
         #print(self.tempdir)
         #time.sleep(200)
-        while self.pos < 100:
+        while self.pos < 62:
             print(self.pos)
             self.recognise_listing_and_process_it()
 

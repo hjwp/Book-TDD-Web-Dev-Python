@@ -27,7 +27,7 @@ class SourceTree(object):
                 os.killpg(process.pid, signal.SIGTERM)
             except OSError:
                 pass
-        shutil.rmtree(self.tempdir)
+        #shutil.rmtree(self.tempdir)
 
 
     def run_command(self, command, cwd=None, user_input=None, ignore_errors=False):
