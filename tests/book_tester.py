@@ -122,6 +122,7 @@ class ChapterTest(unittest.TestCase):
     def apply_patch(self, codelisting):
         tf = tempfile.NamedTemporaryFile(delete=False)
         tf.write(codelisting.contents.encode('utf8'))
+        tf.write('\n'.encode('utf8'))
         tf.close()
         print('patch:\n', codelisting.contents)
         patch_output = self.run_command(
@@ -302,11 +303,11 @@ class ChapterTest(unittest.TestCase):
         )
         self.pos += 1
         comment = self.listings[pos + 1]
-        if comment.type != 'output':
-            return
-        if not any(f in comment for f in LIKELY_FILES):
-            print('WARNING -- git comment without files: %s' % (comment,))
+        if comment.skip:
+            comment.was_checked = True
             self.pos += 1
+            return
+        if comment.type != 'output':
             return
         for expected_file in LIKELY_FILES:
             if '/' + expected_file in git_output:

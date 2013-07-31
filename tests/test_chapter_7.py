@@ -22,8 +22,9 @@ class Chapter7Test(ChapterTest):
 
         # skips
         self.listings[14].skip = True
+        self.listings[23].skip = True # explanatory comment re git diff -b
         self.listings[26].skip = True # comment after git status
-
+        self.listings[49].skip = True # comment re git bootstrap additions
 
         while self.pos < 31:
             print(self.pos)
