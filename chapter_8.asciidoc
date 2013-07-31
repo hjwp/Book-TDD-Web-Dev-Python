@@ -49,8 +49,6 @@ ______________________________________________________________
 Is all fun and game until you are need of put it in production.
 ______________________________________________________________
 
-// staging vs production vs dev distinction. 
-
 
 But there are solutions to all of these.  In order:
 
@@ -61,13 +59,18 @@ But there are solutions to all of these.  In order:
   reassure us that we have the right code and packages on the server, and
   since we now have a "smoke test" for our site layout, we'll know that the CSS
   is loaded correctly.
-- 'Virtualenvs' are a useful tool for managing packages and dependencies on a
-  server that's not entirely under your own control
-// control doesnt matter?
+- 'Virtualenvs' are a useful tool for managing packages and dependencies
+  on a machine that might be running more than one Python application. 
 - And finally, 'automation, automation, automation'.  By using an automated
   script to deploy new versions, and by using the same script to deploy to
   staging and production, we can reassure ourselves that staging is as much
   like live as possible.
+
+Over the next few pages I'm going to go through 'a' deployment procedure.  It 
+isn't meant to be the 'perfect' deployment procedure, so please don't take
+it as being best practice, or a recommendation -- it's meant to be an
+illustration, to show the kinds of issues involved in deployment and where
+testing fits in.
 
 
 As always, start with a test
@@ -194,7 +197,7 @@ The FT seems to be testing the right things though, so let's commit.
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff* # should show to functional_tests.py
-$ *git commit -am"Hack FT runner to be able to test staging"*
+$ *git commit -am "Hack FT runner to be able to test staging"*
 ----
 
 NOTE: We're going to need a couple of domain names at this point in the book -
@@ -223,7 +226,7 @@ makes sense to separate the two tasks.  And, although we eventually want both
 to be completely automated, we can probably live with a manual provisioning
 system for now.
 
-// fowler's immutable servers?
+// TODO mention "immutable servers"?
 // should be automated needs emphasis
 
 As you go through this chapter, you should be aware that provisioning is
@@ -275,6 +278,12 @@ because it has Python 3.3, and it has some specific ways of configuring
 Nginx which I'm going to make use of below.  If you know what you're doing,
 you can probably get away with using something else.
 
+NOTE: What I'm calling a "staging" server, some people would call a
+"development" server, and some others would also like to distinguish
+"pre-production" servers.  Whatever we call it, the point is to have 
+somewhere we can try our code out in an environment that's as similar
+as possible to the real production server.
+
 
 Installing Nginx
 ^^^^^^^^^^^^^^^^
@@ -292,7 +301,7 @@ then see the default Nginx "Hello World" screen:
 .Nginx - It works!
 image::images/nginx_it_worked.png[The default "Welcome to nginx!" page]
 
-// remove port 6667 from screenshot
+// TODO: remove port 6667 from screenshot
 
 
 While we've got root access, let's make sure the server has the key
@@ -426,7 +435,7 @@ That seems to work.  Let's commit it.
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff* # should show changes in settings.py
-$ *git commit -am"move sqlite database outside of main source tree"*
+$ *git commit -am "move sqlite database outside of main source tree"*
 ----
 
 To get our code onto the server, we'll use git and go via one of the code
@@ -471,7 +480,7 @@ The solution is a "virtualenv" -- a neat way of having different versions of
 Python packages installed in different places, in their own "virtual
 environments".
 
-Let's try it out on own PC first:
+Let's try it out locally, on our own PC first:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -499,6 +508,9 @@ and packages:
 $ *source ../virtualenv/bin/activate*
 (virtualenv)$ *python3 manage.py test lists*
 ----
+
+NOTE: it's not required, but you might want to look into a tool called
+`virtualenvwrapper` for managing virtualenvs on your own PC.
 
 That will show an `ImportError: No module named django` because Django isn't
 installed inside the virtualenv.  So, we can install it, and see that it
@@ -603,7 +615,7 @@ any trouble with its config files.
 
 And now to test it:
 
-    (virtualenv)$ sudo service nginx reload
+    (virtualenv)$ sudo reload nginx
     (virtualenv)$ python3 manage.py runserver
 
 A quick visual inspection confirms -- the site is up!
@@ -715,8 +727,8 @@ serve static files magically for you, Gunicorn doesn't.  Now is the time to
 tell Nginx to do it instead.
 
 
-Getting Nginx to server static files
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Getting Nginx to serve static files
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 First we run `collectstatic` to copy all the static files to a folder where 
 Nginx can find them:
@@ -751,7 +763,7 @@ server {
 Reload nginx and restart gunicorn...
 
 ----
-$ sudo service nginx reload
+$ sudo reload nginx
 $ ../virtualenv/bin/gunicorn superlists.wsgi:application
 ----
 
@@ -789,7 +801,7 @@ sockets in '/tmp'.  Let's change the proxy settings in nginx:
 [...]
     location / {
         proxy_set_header Host $host;
-        proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
+        proxy_pass unix:/tmp/superlists-staging.ottg.eu.socket;
     }
 }
 ----
@@ -802,7 +814,7 @@ Now we restart Gunicorn, but this time telling it to listen on a socket instead
 of on the default port:
 
 ----
-$ sudo service nginx reload
+$ sudo reload nginx
 $ ../virtualenv/bin/gunicorn --bind unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application
 ----
 
@@ -876,6 +888,8 @@ exec ../virtualenv/bin/gunicorn \
     superlists.wsgi:application
 ----
 
+TODO: setuid to something.
+
 Upstart is joyously simple to configure (especially if you've ever had the
 pleasure of writing an `init.d` script), and is fairly self-explanatory.
 The `start on net-device-up` makes sure Gunicorn only runs once the server
@@ -887,7 +901,7 @@ I saved this file into '/etc/init' on the server, calling it
 
 Now we can start gunicorn with
 
-    sudo service gunicorn-superlists-staging.ottg.eu start
+    sudo start gunicorn-superlists-staging.ottg.eu
 
 And you can even test that the site comes back up if you reboot the server!
 
@@ -904,14 +918,12 @@ $ *source ../virtualenv/bin/activate*
 (virtualenv)$ pip install gunicorn
 (virtualenv)$ *pip freeze > requirements.txt*
 (virtualenv)$ deactivate
-$ *git commit -am"Add gunicorn to virtualenv requirements"*
+$ *git commit -am "Add gunicorn to virtualenv requirements"*
 $ *git push* 
 ----
 
 
-////
-TODO: log files
-////
+// TODO: log files
 
 
 Automating:
@@ -922,7 +934,7 @@ Let's re-cap on our provisioning and deployment procedures
 
 Provisioning:
 
-* assume we have a user account + home folder
+* assume we have a user account & home folder
 * apt-get nginx git python-pip
 * pip install virtualenv
 * add nginx config for virtual host
@@ -969,7 +981,7 @@ server {
 
     location / {
         proxy_set_header Host $host;
-        proxy_pass http://unix:/tmp/SITENAME.socket;
+        proxy_pass unix:/tmp/SITENAME.socket;
     }
 }
 ----
@@ -1078,7 +1090,7 @@ Automating deployment with fabric
 Fabric is a tool which lets you automate commands that you want to run on
 servers. You can install fabric system-wide -- it's not part of the core
 functionality of our site, so it doesn't need to go into our virtualenv and
-'requirements.txt'.
+'requirements.txt'. So, on your local PC:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -1097,11 +1109,12 @@ That will invoke the function called function_name, passing in a connection
 to the server at SERVER_ADDRESS.  There are many other options for specifying
 usernames and passwords, which you can find out about using `fab --help`
 
-The best way to see how it works is with an example.  Here's a fabfile I've
-built which automates all the steps we went through in the deploy earlier.  The
-main function is called `deploy`, that's the one we'll invoke from the
-command-line. It uses several helper functions.  `env.host` will contain the
-server address that we've passed in.
+The best way to see how it works is with an example.
+https://en.wikipedia.org/wiki/Blue_Peter#Content[Here's one I made earlier],
+automating all the deployment steps we've been going through.  The main
+function is called `deploy`, that's the one we'll invoke from the command-line.
+It uses several helper functions.  `env.host` will contain the server address
+that we've passed in.
 
 [role="sourcecode"]
 .deploy_tools/fabfile.py
@@ -1185,10 +1198,10 @@ been cloned in a particular folder
 <7> Many commands start with a `cd` in order to set the current working
 directory. Fabric doesn't have any state, so it doesn't remember what directory
 you're in from one `run` to the next.
-<8> We `reset --hard` to blow away any current changes on the server's tree,
-directory.  In both the `clone` and `git pull`, it's assumed that we want to
-deploy whatever the head of the 'master' branch is, so if you're using a 
-different branch this won't work.
+<8> We `reset --hard` to blow away any current changes on the server's code,
+directory (not that there should be any!).  In both the `clone` and `git pull`,
+it's assumed that we want to deploy whatever the head of the 'master' branch
+is, so if you're using a different branch you'll have to tweak this.
 <9> The fabric `sed` command does a string substitution in a file, here it's
 changing DEBUG from True to False.  
 <10> `append` just adds a line to the end of a file (it's clever enough not to
@@ -1359,8 +1372,8 @@ sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/gunicorn-upstart.template.con
 And now we start both services:
 
 ----
-sudo service nginx reload
-sudo service gunicorn-superlists.ottg.eu start
+sudo reload nginx
+sudo start gunicorn-superlists.ottg.eu
 ----
 
 And we take a look at our site.  It works, hooray! 
@@ -1439,8 +1452,5 @@ Possible changes:
 you wouldn't have to worry about this...  Also, if I go for domain sockets
 from the word go, then I can't start off using the dev server, so we also have
 to bite the virtualenv/gunicorn bullets at the same time.
-- am getting annoyed at using the full domain name in every single config file.
-Particularly for the upstart scripts, it sucks because they won't tab
-complete...
 
 
