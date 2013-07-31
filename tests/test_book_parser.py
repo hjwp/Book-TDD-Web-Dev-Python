@@ -12,7 +12,8 @@ from book_parser import (
 )
 from examples import (
     CODE_LISTING_WITH_CAPTION,
-    CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF
+    CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF,
+    COMMAND_LISTING_WITH_CAPTION,
 )
 
 
@@ -63,8 +64,16 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(listing.type, 'code listing with git ref')
 
 
+    def test_recognises_server_commands(self):
+        code_html = COMMAND_LISTING_WITH_CAPTION.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        print(listings)
+        self.assertEqual(len(listings), 4)
+        listing = listings[0]
+        self.assertEqual(listing.type, 'server command')
+        self.assertEqual(listing, 'sudo apt-get install git')
 
-class ParseListingTest(unittest.TestCase):
 
     def test_can_extract_one_command_and_its_output(self):
         listing = html.fromstring(

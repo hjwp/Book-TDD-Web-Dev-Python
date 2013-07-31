@@ -43,10 +43,13 @@ class Command(str):
     def __init__(self, a_string):
         self.was_run = False
         self.skip = False
+        self.server_command = False
         str.__init__(a_string)
 
     @property
     def type(self):
+        if self.server_command:
+            return 'server command'
         for git_cmd in ('git diff', 'git status', 'git commit'):
             if git_cmd in self:
                 return git_cmd
@@ -89,6 +92,11 @@ def parse_listing(listing):
 
     else:
         commands = get_commands(listing)
+        is_server_commands = False
+        caption = listing.cssselect('div.title')
+        if caption and caption[0].text_content().startswith('server command'):
+            is_server_commands = True
+            listing = listing.cssselect('div.content')[0]
         lines = listing.text_content().strip().replace('\r\n', '\n').split('\n')
         outputs = []
         output_after_command = ''
@@ -99,7 +107,9 @@ def parse_listing(listing):
                 if output_after_command:
                     outputs.append(Output(output_after_command.rstrip()))
                 output_after_command = (hash + line_comments).strip()
-                outputs.append(Command(commands_in_this_line[0]))
+                command = Command(commands_in_this_line[0])
+                command.server_command = is_server_commands
+                outputs.append(command)
             else:
                 output_after_command += line + '\n'
         if output_after_command:

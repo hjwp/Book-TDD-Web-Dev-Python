@@ -31,3 +31,13 @@ CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF = """<div class="listingblock sourc
             <span class="n">delta</span><span class="o">=</span><span class="mi">3</span>
         <span class="p">)</span>
 </pre></div></div></div>"""
+
+
+COMMAND_LISTING_WITH_CAPTION = """<div class="listingblock">
+<div class="title">server commands</div>
+<div class="content">
+<pre><code><strong>sudo apt-get install git</strong>
+<strong>sudo apt-get install python3</strong>
+<strong>sudo apt-get install python3-pip</strong>
+<strong>sudo pip-3.3 install virtualenv</strong></code></pre>
+</div></div>"""
