@@ -128,6 +128,61 @@ class RunCommandTest(ChapterTest):
             self.run_command('foo')
 
 
+class RunServerCommandTest(ChapterTest):
+
+    @patch('book_tester.subprocess')
+    def test_uses_python2_run_server_command(self, mock_subprocess):
+        mock_subprocess.check_output.return_value = b'some bytes'
+        result = self.run_server_command('foo bar')
+        assert result == 'some bytes'
+        target = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
+        )
+        mock_subprocess.check_output.assert_called_with(
+                ['python2.7', target, 'foo bar'],
+        )
+
+
+    @patch('book_tester.subprocess')
+    def test_hacks_in_dash_y_for_apt_gets(self, mock_subprocess):
+        mock_subprocess.check_output.return_value = b'some bytes'
+        result = self.run_server_command('sudo apt-get install something')
+        assert result == 'some bytes'
+        target = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
+        )
+        mock_subprocess.check_output.assert_called_with(
+                ['python2.7', target, 'sudo apt-get install -y something'],
+        )
+
+
+    @patch('book_tester.subprocess')
+    def test_hacks_in_SITENAME_if_needed(self, mock_subprocess):
+        mock_subprocess.check_output.return_value = b'some bytes'
+        result = self.run_server_command('mkdir /foo/$SITENAME')
+        assert result == 'some bytes'
+        target = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
+        )
+        mock_subprocess.check_output.assert_called_with(
+                ['python2.7', target, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
+        )
+        # but not for the export itself
+        self.run_server_command('export SITENAME=foo')
+        mock_subprocess.check_output.assert_called_with(
+                ['python2.7', target, 'export SITENAME=foo'],
+        )
+
+
+
+    def test_semifunctional_sanity_check(self):
+        tf = tempfile.NamedTemporaryFile()
+        self.run_server_command('touch /tmp/foo-on-server')
+        result = self.run_server_command('ls /tmp')
+        assert 'foo-on-server' in result
+        assert tf.name not in result
+
+
 
 class AssertConsoleOutputCorrectTest(ChapterTest):
 

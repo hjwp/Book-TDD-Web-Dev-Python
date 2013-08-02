@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import os
 import re
+import subprocess
 import tempfile
 from textwrap import wrap
 import unittest
@@ -146,6 +147,22 @@ class ChapterTest(unittest.TestCase):
         print('running command', command)
         output = self.sourcetree.run_command(command, cwd=cwd, user_input=user_input)
         command.was_run = True
+        return output
+
+
+    def run_server_command(self, command):
+        run_server_command = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
+        )
+        if command.startswith('sudo apt-get install '):
+            command = command.replace('install ', 'install -y ')
+        if '$SITENAME' in command:
+            command = 'SITENAME=superlists-staging.ottg.eu; ' + command
+        print('running command on server', command)
+        output = subprocess.check_output(
+                ['python2.7', run_server_command, command]
+        ).decode('utf8')
+        print(output)
         return output
 
 
@@ -374,6 +391,11 @@ class ChapterTest(unittest.TestCase):
             print("TREE")
             self.assert_directory_tree_correct(listing)
             self.pos += 1
+
+        elif listing.type == 'server command':
+            self.run_server_command(listing)
+            self.pos += 1
+            listing.was_run = True
 
         elif listing.type == 'other command':
             print("A COMMAND")
