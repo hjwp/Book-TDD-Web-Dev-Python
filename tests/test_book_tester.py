@@ -135,11 +135,8 @@ class RunServerCommandTest(ChapterTest):
         mock_subprocess.check_output.return_value = b'some bytes'
         result = self.run_server_command('foo bar')
         assert result == 'some bytes'
-        target = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
-        )
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', target, 'foo bar'],
+                ['python2.7', self.RUN_SERVER_PATH, 'foo bar'],
         )
 
 
@@ -148,11 +145,11 @@ class RunServerCommandTest(ChapterTest):
         mock_subprocess.check_output.return_value = b'some bytes'
         result = self.run_server_command('sudo apt-get install something')
         assert result == 'some bytes'
-        target = os.path.abspath(
+        self.RUN_SERVER_PATH = os.path.abspath(
             os.path.join(os.path.dirname(__file__), 'run_server_command.py')
         )
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', target, 'sudo apt-get install -y something'],
+                ['python2.7', self.RUN_SERVER_PATH, 'sudo apt-get install -y something'],
         )
 
 
@@ -161,18 +158,55 @@ class RunServerCommandTest(ChapterTest):
         mock_subprocess.check_output.return_value = b'some bytes'
         result = self.run_server_command('mkdir /foo/$SITENAME')
         assert result == 'some bytes'
-        target = os.path.abspath(
+        self.RUN_SERVER_PATH = os.path.abspath(
             os.path.join(os.path.dirname(__file__), 'run_server_command.py')
         )
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', target, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
+                ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
         )
         # but not for the export itself
         self.run_server_command('export SITENAME=foo')
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', target, 'export SITENAME=foo'],
+                ['python2.7', self.RUN_SERVER_PATH, 'export SITENAME=foo'],
         )
 
+
+    @patch('book_tester.subprocess')
+    def test_hacks_in_cd_if_one_set_by_last_command(self, mock_subprocess):
+        mock_subprocess.check_output.return_value = b'some bytes'
+        assert self.current_server_cd == None
+        self.run_server_command('cd /foo')
+        assert self.current_server_cd == '/foo'
+        self.run_server_command('do something')
+        mock_subprocess.check_output.assert_called_with(
+                ['python2.7', self.RUN_SERVER_PATH, 'cd /foo && do something'],
+        )
+
+
+    @patch('book_tester.subprocess')
+    def test_hacks_in_cd_correctly_when_theres_also_a_SITENAME(self, mock_subprocess):
+        mock_subprocess.check_output.return_value = b'some bytes'
+        assert self.current_server_cd == None
+        self.run_server_command('cd /foo/$SITENAME')
+        self.run_server_command('do something')
+        mock_subprocess.check_output.assert_called_with(
+                ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
+        )
+
+
+    @patch('book_tester.subprocess')
+    def test_hacks_in_dtach_for_runserver(self, mock_subprocess):
+        mock_subprocess.check_output.return_value = b'some bytes'
+        self.addCleanup = Mock()
+        self.run_server_command('cd /foo/$SITENAME')
+        self.run_server_command('source ../virtualenv/bin/activate && python3 manage.py runserver')
+        mock_subprocess.check_output.assert_called_with(
+            [
+                'python2.7', self.RUN_SERVER_PATH,
+                'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && source ../virtualenv/bin/activate && dtach -n /tmp/dtach.sock python3 manage.py runserver'
+            ],
+        )
+        assert self.addCleanup.called
 
 
     def test_semifunctional_sanity_check(self):

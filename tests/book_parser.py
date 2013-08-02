@@ -107,7 +107,10 @@ def parse_listing(listing):
                 if output_after_command:
                     outputs.append(Output(output_after_command.rstrip()))
                 output_after_command = (hash + line_comments).strip()
-                command = Command(commands_in_this_line[0])
+                command = commands_in_this_line[0]
+                if line_start.startswith('(virtualenv)'):
+                    command = 'source ../virtualenv/bin/activate && ' + command
+                command = Command(command)
                 command.server_command = is_server_commands
                 outputs.append(command)
             else:

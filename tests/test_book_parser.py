@@ -14,6 +14,7 @@ from examples import (
     CODE_LISTING_WITH_CAPTION,
     CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF,
     COMMAND_LISTING_WITH_CAPTION,
+    COMMANDS_WITH_VIRTUALENV,
 )
 
 
@@ -73,6 +74,16 @@ class ParseCodeListingTest(unittest.TestCase):
         listing = listings[0]
         self.assertEqual(listing.type, 'server command')
         self.assertEqual(listing, 'sudo apt-get install git')
+
+
+    def test_recognises_virtualenv_commands(self):
+        code_html = COMMANDS_WITH_VIRTUALENV.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        print(listings)
+        self.assertEqual(len(listings), 3)
+        virtualenv_command = listings[1]
+        self.assertEqual(virtualenv_command, 'source ../virtualenv/bin/activate && python3 manage.py test lists')
 
 
     def test_can_extract_one_command_and_its_output(self):

@@ -253,6 +253,12 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         sourcetree.run_command('synt!tax error', cwd=sourcetree.tempdir, ignore_errors=True)
 
 
+    def test_environment_variables(self):
+        sourcetree = SourceTree()
+        output = sourcetree.run_command('echo $PIP_DOWNLOAD_CACHE', cwd=sourcetree.tempdir)
+        assert output == '/home/harry/.pip-download-cache\n'
+
+
     def test_doesnt_raise_for_some_things_where_a_return_code_is_ok(self):
         sourcetree = SourceTree()
         sourcetree.run_command('diff foo bar', cwd=sourcetree.tempdir)

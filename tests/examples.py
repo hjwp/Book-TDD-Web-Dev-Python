@@ -36,8 +36,17 @@ CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF = """<div class="listingblock sourc
 COMMAND_LISTING_WITH_CAPTION = """<div class="listingblock">
 <div class="title">server commands</div>
 <div class="content">
-<pre><code><strong>sudo apt-get install git</strong>
-<strong>sudo apt-get install python3</strong>
-<strong>sudo apt-get install python3-pip</strong>
-<strong>sudo pip-3.3 install virtualenv</strong></code></pre>
+<pre><code>user@server:$ <strong>sudo apt-get install git</strong>
+user@server:$ <strong>sudo apt-get install python3</strong>
+user@server:$ <strong>sudo apt-get install python3-pip</strong>
+user@server:$ <strong>sudo pip-3.3 install virtualenv</strong></code></pre>
+</div></div>"""
+
+
+COMMANDS_WITH_VIRTUALENV = """<div class="listingblock">
+<div class="content">
+<pre><code>$ <strong>source ../virtualenv/bin/activate</strong>
+(virtualenv)$ <strong>python3 manage.py test lists</strong>
+[...]
+ImportError: No module named django</code></pre>
 </div></div>"""

@@ -88,6 +88,7 @@ class ChapterTest(unittest.TestCase):
         self.processes = []
         self.pos = 0
         self.dev_server_running = False
+        self.current_server_cd = None
 
 
     def tearDown(self):
@@ -150,17 +151,31 @@ class ChapterTest(unittest.TestCase):
         return output
 
 
+    RUN_SERVER_PATH = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), 'run_server_command.py')
+    )
     def run_server_command(self, command):
-        run_server_command = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
-        )
+        cd_finder = re.compile(r'cd (.+)$')
+        if cd_finder.match(command):
+            self.current_server_cd = cd_finder.match(command).group(1)
         if command.startswith('sudo apt-get install '):
             command = command.replace('install ', 'install -y ')
+        if self.current_server_cd:
+            command = 'cd %s && %s' % (self.current_server_cd, command)
         if '$SITENAME' in command:
             command = 'SITENAME=superlists-staging.ottg.eu; ' + command
+        if command.endswith('python3 manage.py runserver'):
+            command = command.replace(
+                'python3 manage.py runserver',
+                'dtach -n /tmp/dtach.sock python3 manage.py runserver'
+            )
+            def cleanup_runserver():
+                self.current_server_cd = None
+                self.run_server_command('pkill -f runserver')
+            self.addCleanup(cleanup_runserver)
         print('running command on server', command)
         output = subprocess.check_output(
-                ['python2.7', run_server_command, command]
+                ['python2.7', self.RUN_SERVER_PATH, command]
         ).decode('utf8')
         print(output)
         return output
@@ -301,7 +316,7 @@ class ChapterTest(unittest.TestCase):
             )
 
         commit = self.run_command(self.listings[pos])
-        self.assertIn('insertions', commit)
+        self.assertIn('insertion', commit)
         self.pos += 1
 
 
@@ -402,7 +417,8 @@ class ChapterTest(unittest.TestCase):
             output = self.run_command(listing)
             next_listing = self.listings[self.pos + 1]
             if next_listing.type == 'output' and not next_listing.skip:
-                self.assert_console_output_correct(output, next_listing)
+                ls = listing.startswith('ls')
+                self.assert_console_output_correct(output, next_listing, ls=ls)
                 next_listing.was_checked = True
                 listing.was_checked = True
                 self.pos += 2
