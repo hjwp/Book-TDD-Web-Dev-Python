@@ -24,7 +24,14 @@ class CodeListingTest(unittest.TestCase):
         c = CodeListing(filename='a.py', contents='abc\ndef')
         assert 'abc' in str(c)
         assert 'a.py' in str(c)
+        assert c.is_server_listing == False
 
+
+    def test_server_codelisting(self):
+        c = CodeListing(filename='server: a_filename.py', contents='foo')
+        assert c.contents == 'foo'
+        assert c.filename == 'a_filename.py'
+        assert c.is_server_listing == True
 
 class ParseCodeListingTest(unittest.TestCase):
 

@@ -621,7 +621,7 @@ staging site along to Django. A minimal config looks like this:
 
 
 [role="sourcecode"]
-.basic nginx config
+.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
 [source,nginx]
 ----
 server {
@@ -642,11 +642,12 @@ I saved this to a file called 'superlists-staging.ottg.eu'
 inside '/etc/nginx/sites-available' folder, and then added it to the enabled
 sites for the server by creating a symlink to it:
 
-.server commands
+.server command
 [subs="specialcharacters,quotes"]
 ----
 user@server:$ *sudo ln -s ../sites-available/$SITENAME /etc/nginx/sites-enabled/$SITENAME*
 ----
+
 
 That's the Debian/Ubuntu preferred way of saving nginx configurations -- 
 the real config file in 'sites-available', and a symlink in 'sites-enabled',
@@ -657,12 +658,26 @@ NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
 may not have this problem; Nginx will warn you when you do a `reload` if it has
 any trouble with its config files.
 
+We also may as well remove the default "Welcome to nginx" config, to avoid any
+confusion:
+
+.server command
+[subs="specialcharacters,quotes"]
+----
+user@server:$ *sudo rm /etc/nginx/sites-enabled/default*
+user@server:$ *sudo reboot*
+----
+
+(The reboot is there to avoid a strange issue I came across whereby nginx 
+would keep serving the default page on the first hit. There always seems
+to be some voodoo in server config!)
+
 And now to test it:
 
 .server commands
 [subs="specialcharacters,quotes"]
 ----
-user@server:$ *sudo service nginx restart*
+user@server:$ *sudo service nginx reload*
 user@server:$ *source ../virtualenv/bin/activate*
 (virtualenv)$ *python3 manage.py runserver*
 ----
@@ -678,12 +693,10 @@ Let's see what our functional tests say:
 ----
 $ pass:quotes[*python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
 [...]
-
-NoSuchElementException: Message: u'Unable to locate element:
-{"method":"id","selector":"id_list_table"}' ;[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"tag name","selector":"input"}' ; Stacktrace:
 [...]
-
-AssertionError: 0 != 470 within 3 delta
+AssertionError: 0.0 != 720.0 within 3 delta
 ----
 
 The tests are failing as soon as they try and submit a new item, because we
@@ -723,7 +736,7 @@ OK
 ----
 
 NOTE: if you see a "502 - Bad Gateway", it's probably because you forgot to
-restart the dev server with `manage.py runserver`
+restart the dev server with `manage.py runserver` after the `syncdb`
 
 Hooray!  Well, we're reassured that some of the piping works, but we really
 can't be using the Django dev. server in production.  We also can't be relying
@@ -739,7 +752,11 @@ the admin site -- that: "what else do you want, a pony?". Well, Gunicorn stands
 for "Green Unicorn", which I guess is what you'd want next if you already
 had a pony...
 
-    (virtualenv)$ pip install gunicorn
+.server command
+[subs="specialcharacters,quotes"]
+----
+(virtualenv)$ *pip install gunicorn*
+----
 
 Gunicorn will need to know a path to a WSGI server, which is usually
 a function called `application`.  Django provides one at 'superlists/wsgi.py'.
@@ -749,13 +766,17 @@ We can try that out, and check that all the virtualenv magic works too, by
 the `gunicorn` executable that pip just put in there for us:
 
 
-    (virtualenv)$ which gunicorn
-    /home/harry/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn
-    (virtualenv)$ deactivate
-    $ ../virtualenv/bin/gunicorn superlists.wsgi:application
-    2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.17.4
-    2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
-    [...]
+.server commands
+[subs="specialcharacters,quotes"]
+----
+(virtualenv)$ *which gunicorn*
+/home/harry/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn
+(virtualenv)$ deactivate
+$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
+2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.17.4
+2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
+[...]
+----
 
 Now if take a look at the site, you'll find the CSS is all broken:
 
@@ -785,17 +806,19 @@ Getting Nginx to serve static files
 First we run `collectstatic` to copy all the static files to a folder where 
 Nginx can find them:
 
+.server commands
+[subs="specialcharacters,quotes"]
 ----
-$ source ../virtualenv/bin/activate
-(virtualenv)$ python3 manage.py collectstatic --noinput
-(virtualenv)$ ls ../static/
+$ *source ../virtualenv/bin/activate*
+(virtualenv)$ *python3 manage.py collectstatic --noinput*
+(virtualenv)$ *ls ../static/*
 base.css  bootstrap
 ----
 
 And now we tell Nginx to start serving those files directly:
 
 [role="sourcecode"]
-./etc/nginx/sites-available/superlists-staging.ottg.eu
+.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
 [source,nginx]
 ----
 server {
@@ -814,9 +837,11 @@ server {
 
 Reload nginx and restart gunicorn...
 
+.server commands
+[subs="specialcharacters,quotes"]
 ----
-$ sudo reload nginx
-$ ../virtualenv/bin/gunicorn superlists.wsgi:application
+$ *sudo service nginx reload*
+$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
 ----
 
 Now if you have a look at the site, things are looking much healthier. We
@@ -847,7 +872,7 @@ but can be used by nginx and gunicorn to talk to each other.  We'll put our
 sockets in '/tmp'.  Let's change the proxy settings in nginx:
 
 [role="sourcecode"]
-./etc/nginx/sites-available/superlists-staging.ottg.eu
+.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
 [source,nginx]
 ----
 [...]
@@ -865,9 +890,11 @@ we're about to switch on.
 Now we restart Gunicorn, but this time telling it to listen on a socket instead
 of on the default port:
 
+.server commands
+[subs="specialcharacters,quotes"]
 ----
-$ sudo reload nginx
-$ ../virtualenv/bin/gunicorn --bind unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application
+$ *sudo service nginx reload*
+$ *../virtualenv/bin/gunicorn --bind unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
 ----
 
 
@@ -898,7 +925,7 @@ with a helpful comment in the default 'settings.py', but we can add one
 ourselves.  Do this on the server:
 
 [role="sourcecode"]
-.superlists/settings.py
+.server: superlists/settings.py
 [source,python]
 ----
 # Django settings for superlists project.
@@ -924,7 +951,7 @@ on boot, and reloads it automatically if it crashes.  On Ubuntu, the way to do
 this is using upstart.
 
 [role="sourcecode"]
-.Upstart script for Gunicorn
+.server: /etc/init/gunicorn-superlists-staging.ottg.eu
 [source,bash]
 ----
 description "Gunicorn server for superlists-staging.ottg.eu"
@@ -953,7 +980,11 @@ I saved this file into '/etc/init' on the server, calling it
 
 Now we can start gunicorn with
 
-    sudo start gunicorn-superlists-staging.ottg.eu
+.server commands
+[subs="specialcharacters,quotes"]
+----
+sudo start gunicorn-superlists-staging.ottg.eu
+----
 
 And you can even test that the site comes back up if you reboot the server!
 
@@ -1146,8 +1177,12 @@ functionality of our site, so it doesn't need to go into our virtualenv and
 
 [subs="specialcharacters,quotes"]
 ----
-$ *pip-3.3 install fabric*
+$ *pip-2.7 install fabric*
 ----
+
+WARNING: at the time of writing, Fabric had not been ported to Python 3, so
+we have to use the Python 2 version.  Thankfully, the fabric code is totally
+separate from the rest of our codebase, so it's not a problem.
 
 The usual setup is to have a file called 'fabfile.py', which will
 contain one or more functions that can later be invoked from a command-line

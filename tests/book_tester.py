@@ -151,10 +151,13 @@ class ChapterTest(unittest.TestCase):
         return output
 
 
+    def _cleanup_runserver(self):
+            self.run_server_command('pkill -f runserver', ignore_errors=True)
+
     RUN_SERVER_PATH = os.path.abspath(
         os.path.join(os.path.dirname(__file__), 'run_server_command.py')
     )
-    def run_server_command(self, command):
+    def run_server_command(self, command, ignore_errors=False):
         cd_finder = re.compile(r'cd (.+)$')
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
@@ -169,16 +172,26 @@ class ChapterTest(unittest.TestCase):
                 'python3 manage.py runserver',
                 'dtach -n /tmp/dtach.sock python3 manage.py runserver'
             )
-            def cleanup_runserver():
-                self.current_server_cd = None
-                self.run_server_command('pkill -f runserver')
-            self.addCleanup(cleanup_runserver)
+
         print('running command on server', command)
-        output = subprocess.check_output(
-                ['python2.7', self.RUN_SERVER_PATH, command]
-        ).decode('utf8')
+        commands = ['python2.7', self.RUN_SERVER_PATH]
+        if ignore_errors:
+            commands.append('--ignore-errors')
+        commands.append(command)
+        output = subprocess.check_output(commands).decode('utf8')
+
         print(output)
         return output
+
+
+    def write_file_on_server(self, target, contents):
+        with tempfile.NamedTemporaryFile() as tf:
+            tf.write(contents.encode('utf8'))
+            tf.flush()
+            output = subprocess.check_output(
+                ['python2.7', self.RUN_SERVER_PATH, tf.name, target]
+            ).decode('utf8')
+            print(output)
 
 
     def assertLineIn(self, line, lines):
@@ -443,6 +456,11 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'code listing with git ref':
             print("CODE FROM GIT REF")
             self.sourcetree.apply_listing_from_commit(listing)
+            self.pos += 1
+
+        elif listing.type == 'server code listing':
+            print("SERVER CODE")
+            self.write_file_on_server(listing.filename, listing.contents)
             self.pos += 1
 
         elif listing.type == 'output':

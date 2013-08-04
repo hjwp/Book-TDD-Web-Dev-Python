@@ -15,9 +15,14 @@ class CodeListing(object):
     COMMIT_REF_FINDER = r'^(.+) \((ch\d\dl\d\d\d\.?\d?)\)$'
 
     def __init__(self, filename, contents):
+        self.is_server_listing = False
         if re.match(CodeListing.COMMIT_REF_FINDER, filename):
             self.filename = re.match(CodeListing.COMMIT_REF_FINDER, filename).group(1)
             self.commit_ref = re.match(CodeListing.COMMIT_REF_FINDER, filename).group(2)
+        elif filename.startswith('server: '):
+            self.filename = filename.replace('server: ', '')
+            self.commit_ref = None
+            self.is_server_listing = True
         else:
             self.filename = filename
             self.commit_ref = None
@@ -29,6 +34,8 @@ class CodeListing(object):
     def type(self):
         if any(l.count('@@') > 1 for l in self.contents.split('\n')):
             return 'diff'
+        elif self.is_server_listing:
+            return 'server code listing'
         elif self.commit_ref:
             return 'code listing with git ref'
         else:

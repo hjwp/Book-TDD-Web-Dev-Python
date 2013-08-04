@@ -128,6 +128,7 @@ class RunCommandTest(ChapterTest):
             self.run_command('foo')
 
 
+
 class RunServerCommandTest(ChapterTest):
 
     @patch('book_tester.subprocess')
@@ -197,7 +198,6 @@ class RunServerCommandTest(ChapterTest):
     @patch('book_tester.subprocess')
     def test_hacks_in_dtach_for_runserver(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        self.addCleanup = Mock()
         self.run_server_command('cd /foo/$SITENAME')
         self.run_server_command('source ../virtualenv/bin/activate && python3 manage.py runserver')
         mock_subprocess.check_output.assert_called_with(
@@ -206,15 +206,6 @@ class RunServerCommandTest(ChapterTest):
                 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && source ../virtualenv/bin/activate && dtach -n /tmp/dtach.sock python3 manage.py runserver'
             ],
         )
-        assert self.addCleanup.called
-
-
-    def test_semifunctional_sanity_check(self):
-        tf = tempfile.NamedTemporaryFile()
-        self.run_server_command('touch /tmp/foo-on-server')
-        result = self.run_server_command('ls /tmp')
-        assert 'foo-on-server' in result
-        assert tf.name not in result
 
 
 
