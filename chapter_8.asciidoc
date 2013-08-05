@@ -1,12 +1,6 @@
 Testing deployment using a staging site
 ---------------------------------------
 
-WARNING: This chapter is still in draft format.  It may contain errors, and
-may yet change substantially. See the end for my list of todos, and do send in
-any suggestions.  If you've come to this without having read the rest of the 
-book, you can find the code at
-https://github.com/hjwp/book-example/tree/chapter_7 
-
 It's time to deploy the first version of our site and make it public.  They say
 that if you wait until you feel ready to ship, then you've waited too long.
 
@@ -249,7 +243,8 @@ There are loads of different solutions out there these days, but they broadly
 fall into two camps:
 
 - running your own (possibly virtual) server
-- using a Platform-As-A-Service (PaaS) offering like Heroku, DotCloud or PythonAnywhere
+- using a Platform-As-A-Service (PaaS) offering like Heroku, DotCloud or
+  PythonAnywhere
 
 Particularly for small sites, a PaaS offers a lot of advantages, and I would
 definitely recommend looking into them.  We're not going to use a PaaS in this
@@ -575,13 +570,11 @@ and add that to our repository:
 ----
 (virtualenv)$ *pip freeze > requirements.txt*
 (virtualenv)$ *deactivate*
+$ cat requirements.txt 
+Django==1.5.1
 $ *git add requirements.txt*
 $ *git commit -m"Add requirements.txt for virtualenv"*
 ----
-
-Have a look inside 'requirements.txt' if you're curious, it's just a list of
-the package names and versions.
-
 
 And now we do a `git push` to send our updates up to our code-sharing site
 
@@ -704,6 +697,11 @@ haven't set up the database. You'll probably have spotted the yellow Django
 debug telling us as much as the tests went through, or if you tried it
 manually.
 
+
+.But the database isn't
+image::images/staging_database_error.png[Django DEBUG page showing database error]
+
+
 Let's set up the database then.
 
 
@@ -717,6 +715,8 @@ you sure" prompts.  Press Ctrl+C to interrup the current `runserver`.
 [subs="specialcharacters,quotes"]
 ----
 (virtualenv)$ *python3 manage.py syncdb --noinput*
+Creating tables ...
+[...]
 (virtualenv)$ *ls ../database/*
 database.sqlite
 (virtualenv)$ *python3 manage.py runserver*
@@ -759,7 +759,7 @@ had a pony...
 ----
 
 Gunicorn will need to know a path to a WSGI server, which is usually
-a function called `application`.  Django provides one at 'superlists/wsgi.py'.
+a function called `application`.  Django provides one in 'superlists/wsgi.py'.
 
 We can try that out, and check that all the virtualenv magic works too, by
 'deactivating' the virtualenv and seeing if we can 'still' serve our app using
@@ -809,13 +809,15 @@ Nginx can find them:
 .server commands
 [subs="specialcharacters,quotes"]
 ----
-$ *source ../virtualenv/bin/activate*
-(virtualenv)$ *python3 manage.py collectstatic --noinput*
-(virtualenv)$ *ls ../static/*
+user@server:$ *../virtualenv/bin/python3 manage.py collectstatic --noinput*
+user@server:$ *ls ../static/*
 base.css  bootstrap
 ----
 
-And now we tell Nginx to start serving those files directly:
+Note that, again, instead of using the virtualenv `activate` command, we 
+can use the direct path to the virtualenv's copy of Python instead.
+
+Now we tell Nginx to start serving those static files for us:
 
 [role="sourcecode"]
 .server: /etc/nginx/sites-available/superlists-staging.ottg.eu
@@ -878,7 +880,7 @@ sockets in '/tmp'.  Let's change the proxy settings in nginx:
 [...]
     location / {
         proxy_set_header Host $host;
-        proxy_pass unix:/tmp/superlists-staging.ottg.eu.socket;
+        proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
     }
 }
 ----
@@ -894,7 +896,8 @@ of on the default port:
 [subs="specialcharacters,quotes"]
 ----
 $ *sudo service nginx reload*
-$ *../virtualenv/bin/gunicorn --bind unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
+$ *../virtualenv/bin/gunicorn --bind \
+    unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
 ----
 
 
@@ -951,7 +954,7 @@ on boot, and reloads it automatically if it crashes.  On Ubuntu, the way to do
 this is using upstart.
 
 [role="sourcecode"]
-.server: /etc/init/gunicorn-superlists-staging.ottg.eu
+.server: /etc/init/gunicorn-superlists-staging.ottg.eu.conf
 [source,bash]
 ----
 description "Gunicorn server for superlists-staging.ottg.eu"
@@ -967,7 +970,7 @@ exec ../virtualenv/bin/gunicorn \
     superlists.wsgi:application
 ----
 
-TODO: setuid to something.
+//TODO: setuid to something.
 
 Upstart is joyously simple to configure (especially if you've ever had the
 pleasure of writing an `init.d` script), and is fairly self-explanatory.
@@ -975,8 +978,7 @@ The `start on net-device-up` makes sure Gunicorn only runs once the server
 has connected up to the internet.  `respawn` will restart Gunicorn
 automatically if it crashes, and `chdir` sets the working directory
 
-I saved this file into '/etc/init' on the server, calling it
-'/etc/init/gunicorn-superlists-staging.ottg.eu'
+Upstart scripts live in '/etc/init', and their names must end in '.conf'. 
 
 Now we can start gunicorn with
 
@@ -986,7 +988,9 @@ Now we can start gunicorn with
 sudo start gunicorn-superlists-staging.ottg.eu
 ----
 
-And you can even test that the site comes back up if you reboot the server!
+
+And we can re-run the FTs to see that everything still works. You can even test
+that the site comes back up if you reboot the server!
 
 
 Saving our changes:  adding gunicorn to our requirements.txt
@@ -1064,7 +1068,7 @@ server {
 
     location / {
         proxy_set_header Host $host;
-        proxy_pass unix:/tmp/SITENAME.socket;
+        proxy_pass http://unix:/tmp/SITENAME.socket;
     }
 }
 ----
@@ -1111,7 +1115,7 @@ Provisioning a new site
 
 eg, on Ubuntu:
 
-    sudo apt-get install nginx git python-pip
+    sudo apt-get install nginx git python3 python3-pip
     sudo pip-3.3 install virtualenv
 
 ## Nginx Virtual Host config
@@ -1142,13 +1146,13 @@ We can do a commit for those:
 ----
 $ *git add deploy_tools*
 $ *git status* # see three new files
-$ *git commit -m"Notes and template config files for provisioning"*
+$ *git commit -m "Notes and template config files for provisioning"*
 ----
 
 Our source tree will now look something like this:
 
 ----
-$ tree -I \*.pyc
+$ tree -I __pycache__
 .
 ├── deploy_tools
 │   ├── gunicorn-upstart.template.conf
@@ -1159,7 +1163,13 @@ $ tree -I \*.pyc
 │   ├── [...]
 ├── lists
 │   ├── __init__.py
-│   ├── [...]
+│   ├── models.py
+│   ├── static
+│   │   ├── base.css
+│   │   ├── [...]
+│   ├── templates
+│   │   ├── base.html
+│   │   ├── [...]
 ├── manage.py
 ├── requirements.txt
 └── superlists
@@ -1207,7 +1217,7 @@ that we've passed in.
 .deploy_tools/fabfile.py
 [source,python]
 ----
-from fabric.contrib.files import exists
+from fabric.contrib.files import append, exists, sed
 from fabric.api import env, run
 from os import path
 
@@ -1299,14 +1309,15 @@ checking whether it already exists.
 'manage.py' command, to make sure we get the virtualenv version of django, not
 the system one.
 
-We can try this command out on our existing staging site -- the script should work
-for an existing site as well as for a new one.  If you like words with Latin roots, 
-you might describe it as idempotent, which means it does nothing if run twice...
+We can try this command out on our existing staging site -- the script should
+work for an existing site as well as for a new one.  If you like words with
+Latin roots, you might describe it as idempotent, which means it does nothing
+if run twice...
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*cd deploy_tools*]
-$ pass:quotes[*fab deploy:host=superlists-staging.ottg.eu*]
+$ pass:quotes[*fab deploy:host=harry@superlists-staging.ottg.eu*]
 [superlists-staging.ottg.eu] Executing task 'deploy'
 [superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu
 [superlists-staging.ottg.eu] Login password for 'harry': 
@@ -1374,7 +1385,7 @@ So, let's try using it for our live site!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*fab deploy:host=superlists.ottg.eu*]
+$ pass:quotes[*fab deploy:host=harry@superlists.ottg.eu*]
 [superlists.ottg.eu] Executing task 'deploy'
 [superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu
 [superlists.ottg.eu] Login password for 'harry':  <1>
@@ -1432,8 +1443,11 @@ our provisioning notes, which tell us to use the template files to create our
 nginx virtual host and the upstart script.  How about a little Unix
 command-line magic?
 
+.server command
+[subs="specialcharacters,quotes"]
 ----
-$ sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/nginx.template.conf | sudo tee /etc/nginx/sites-available/superlists.ottg.eu
+user@server:$ *sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/nginx.template.conf | \
+    sudo tee /etc/nginx/sites-available/superlists.ottg.eu*
 ----
 
 `sed` ("stream editor" takes a stream of text and performs edits on it. It's no
@@ -1446,24 +1460,41 @@ file.
 
 We can now activate that file:
 
+.server command
+[subs="specialcharacters,quotes"]
 ----
-$ sudo ln -s ../sites-available/superlists.ottg.eu /etc/nginx/sites-enabled/superlists.ottg.eu
+user@server:$ *sudo ln -s ../sites-available/superlists.ottg.eu \
+    /etc/nginx/sites-enabled/superlists.ottg.eu*
 ----
 
 Now we write the upstart script:
 
+.server command
+[subs="specialcharacters,quotes"]
 ----
-sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/gunicorn-upstart.template.conf | sudo tee /etc/init/gunicorn-superlists.ottg.eu.conf
+user@server: *sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/gunicorn-upstart.template.conf | \
+    sudo tee /etc/init/gunicorn-superlists.ottg.eu.conf
 ----
 
 And now we start both services:
 
+.server commands
+[subs="specialcharacters,quotes"]
 ----
-sudo reload nginx
-sudo start gunicorn-superlists.ottg.eu
+user@server:$ *sudo service nginx reload*
+user@server:$ *sudo start gunicorn-superlists.ottg.eu*
 ----
 
 And we take a look at our site.  It works, hooray! 
+
+Let's add the fabfile to our repo:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add deploy_tools/fabfile.py*
+$ *git commit -m "Add a fabfile for automated deploys"*
+----
+
 
 You now have a live website!  Tell all your friends!  Tell your mum, if no-one
 else is interested! And, in the next chapter, it's back to coding again...
@@ -1472,13 +1503,13 @@ Recap:
 ~~~~~
 
 Lots of this, particularly on the provisioning side, was very specific to the
-setup I happened to use.  When you deploy sites, you might use apache instead
-of nginx, uwsgi instead of gunicorn, supervisor instead of upstart, and so on.
+setup I happened to use.  When you deploy sites, you might use Apache instead
+of nginx, uWSGI instead of Gunicorn, Supervisor instead of Upstart, and so on.
 If you use a PaaS, some of these problems will be solved for you, others won't.
 But I really wanted to take you through a practical example, so we could see
 some of the concerns involved in deployment.
 
-There are some elements that will be common to all situations though:
+There are some elements that will be common to almost all situations though:
 
 * You need to choose a place for your static files
 * You'll need specific config for your database
@@ -1522,22 +1553,29 @@ inspiration:
 Todos
 ~~~~~~
 
-(If you're reading this it means you've got a hold of an early draft of the
-chapter.  Thanks for bearing with me, feedback and suggestions appreciated via
-obeythetestinggoat@gmail.com)
+There's no such thing as the One True Way in deployment, and as I say I'm no 
+expert.  I hope that this chapter will change and improve over the coming
+months, especially thanks to the feedback of beloved readers!
 
-Objectives:
+Here's a few things I'm thinking of changing or adding.  Let me know what you
+think, and what else should be on the list! obeythetestinggoat@gmail.com
 
-- as simple as possible
-- but no simpler
-- try and make it similar to the environment you'd get in a PaaS
+Chapter Objectives:
+
+- As simple as possible
+- But no simpler
+- Illustrate some (the main?) key challenges of deployment
+- Show where TDD fits in
+- Try and make it similar to the environment you'd get in a PaaS
 
 Possible changes:
 
-- talk about logging?
-- the switch to domain sockets makes things feel complicated?  But, on a PaaS
-you wouldn't have to worry about this...  Also, if I go for domain sockets
-from the word go, then I can't start off using the dev server, so we also have
-to bite the virtualenv/gunicorn bullets at the same time.
-
+- security: Django secret key should not be in repo.  Maybe use environment
+  variables... But how to generate, how to keep same on reboot, and on
+  new deploy?
+- setup logging... but how best?  and where to put log files?
+- setuid in upstart script
+- are domain sockets overcomplicated?
+- using /home/username to make it "like shared hosting" -- is that totally
+  outdated?  Should I just put everything in /var/www?
 
