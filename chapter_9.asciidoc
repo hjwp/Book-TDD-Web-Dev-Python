@@ -54,25 +54,19 @@ ticket, and its filename contained the ticket ID.
 We'll also have one base test class which they can all inherit from.  Here's 
 how to get there step-by-step:
 
-Start by switching from using a tests file to a tests folder:
+Start by switching from using a tests file to a tests folder. In order for the
+Django test runner to still work, we need to make sure the new tests module,
+which is now a folder instead of a file, still has all the same tests -- we do
+this by doing an import in the '__init__.py':
 
 [subs="specialcharacters,quotes"]
 ----
 $ *mkdir functional_tests/tests*
 $ *touch functional_tests/tests/__init__.py*
-$ *git mv functional_tests/tests.py functional_tests/tests/all_tests.py*
+$ *git mv functional_tests/tests.py functional_tests/tests/base.py*
+$ @echo "from .base import *" >> functional_tests/tests/__init__.py@
 ----
 
-In order for the Django test runner to still work, we need to make sure
-the new tests module, which is now a folder instead of a file, still has 
-all the same tests -- we do this by doing an import in the '__init__.py':
-
-[role="sourcecode"]
-.functional_tests/tests/__init__.py (ch09l002)
-[source,python]
-----
-from .all_tests import *
-----
 
 And now we check that we can still see all 3 tests being run if we run
 the FTs as before:
@@ -93,22 +87,170 @@ $ *git add functional_tests/tests*
 $ *git commit -m "Move FTs into a tests folder"*
 ----
 
+Now we prepare a base class for all the tests to inherit from, and have
+each test be in its own class:
 
-I'm going to do it by making 4 
+[role="sourcecode"]
+.functional_tests/tests/base.py (ch09l002)
+[source,python]
+----
+class FunctionalTest(LiveServerTestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        [...]
+    def tearDownClass(cls):
+        [...]
+    def setUp(self):
+        [...]
+    def tearDown(self):
+        [...]
+
+
+class NewVisitorTest(FunctionalTest):
+
+    def check_for_row_in_list_table(self, row_text):
+        [...]
+
+    def test_can_start_a_list_and_retrieve_it_later(self):
+        [...]
+
+
+
+class LayoutAndStylingTest(FunctionalTest):
+
+    def test_layout_and_styling(self):
+        [...]
+
+
+
+class ItemNotesTest(FunctionalTest):
+
+    def test_adding_notes(self):
+        [...]
+----
+
+Again, we can re-run the Fts and see they all still work.  I'm labouring this a
+little bit, we could probably get away doing this stuff in less steps, but, as
+I keep saying, practising the step-by-step method on the easy cases makes it
+that much easier when we have a complex case.
+
+Now we can split each class out into its own file.  It's easy to do this
+by making 3 new copies of 'base.py', deleting all the irrelevant bits from
+each and just keeping one import:
+
+[subs="specialcharacters,quotes"]
+----
+*cp functional_tests/tests/base.py functional_tests/tests/test_simple_list_creation.py*
+*cp functional_tests/tests/base.py functional_tests/tests/test_layout_and_styling.py*
+*cp functional_tests/tests/base.py functional_tests/tests/test_adding_notes.py*
+----
+
+'base.py' can be cut down to just the FunctionalTest class:
+
+[role="sourcecode"]
+.functional_tests/tests/base.py (ch09l003)
+[source,python]
+----
+from django.test import LiveServerTestCase
+from selenium import webdriver
+import sys
+
+class FunctionalTest(LiveServerTestCase):
+    [...]
+----
+
+Our first FT is now in its own file, with one class, one test method and
+one helper method:
+
+[role="sourcecode"]
+.functional_tests/tests/test_simple_list_creation.py (ch09l004)
+[source,python]
+----
+from .base import FunctionalTest
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+
+class NewVisitorTest(FunctionalTest):
+    def check_for_row_in_list_table(self, row_text):
+        [...]
+
+    def test_can_start_a_list_and_retrieve_it_later(self):
+        [...]
+----
+
+The layout and styling FT is now one file and one class:
+
+[role="sourcecode"]
+.functional_tests/tests/test_layout_and_styling.py (ch09l005)
+[source,python]
+----
+from .base import FunctionalTest
+
+class LayoutAndStylingTest(FunctionalTest):
+        [...]
+----
+
+And finally our new notes test is in a file of its own too:
+
+[role="sourcecode"]
+.functional_tests/tests/test_adding_notes.py (ch09l006)
+[source,python]
+----
+from .base import FunctionalTest
+
+class ItemNotesTest(FunctionalTest):
+        [...]
+----
+
+Finally we need to change the tests module's dunderinit to import our 3
+test classes:
+
+
+[role="sourcecode"]
+.functional_tests/tests/__init__.py (ch09l007)
+[source,python]
+----
+from .test_simple_list_creation import NewVisitorTest
+from .test_layout_and_styling import LayoutAndStylingTest
+from .test_adding_notes import ItemNotesTest
+----
+
+And we can test everything worked by re-running `manage.py test`. As
+a side-bonus, we're now able to run an individual test class, like this:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python3 manage.py test functional_tests.ItemNotesTest*
+[...]
+AssertionError: write me!
+----
+
+Brilliant, no need to sit around waiting for all the FTs when we're only
+interested in a single one. Although we need to remember to run all of them
+now and again, to check for regressions.  Later in the book we'll see how
+to give that task over to an automated Continuous Integration loop. For now
+let's commit!
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* 
+$ *git add functional_tests* 
+$ *git commit -m"Moved Fts into their own individual files"*
+----
 
 
 Now let's start implementing the test, or at least the beginning of it:
 
 
 [role="sourcecode"]
-.functional_tests/tests.py
+.functional_tests/tests/test_adding_notes.py (ch09l008)
 [source,python]
 ----
 def test_adding_notes(self):
     # Edith starts a new list
     self.browser.get(self.server_url)
     self.browser.find_element_by_id('id_new_item').send_keys("Buy milk\n")
-    self.check_for_row_in_list_table("Buy milk")
 
     # She notices a link next to her first new item that says "edit notes"
     # so she clicks it
@@ -125,33 +267,30 @@ def test_adding_notes(self):
         "You can find milk in a shop",
         self.browser.find_element_by_tag_name('body').text
     )
+
+    # She enters a second item, and edits it to add a second,
+    # longer note
     self.fail('finish me')
 ----
 
 And we're off!
 
 ----
-NoSuchElementException: Message: u'Unable to locate element: {"method":"link
-text","selector":"edit notes"}' ; Stacktrace: [...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"edit notes"}' ; Stacktrace: 
 ----
-
-////
-TODO: dontify?
-////
 
 
 The next thing to do is add a link to each list item that takes the user to
 a new page where they can add notes to the list item.  How about this:
 
-    /lists/<list-id>/item/<item-id>/edit_notes/
+    /lists/<list-id>/item/<item-id>/notes/edit/
 
 In fact, how about a to-do list:
 
-* The list view should have links to individual edit_notes URLs
-* The edit_notes view should render a form with an editable
+* The list view should have links to individual notes editing URLs
+* There should be an edit_notes view which renders a form with an editable
 text field and a submit button
-* The form should submit to another URL -- say
-`/lists/<list-id>/item/<item-id>/notes` -- to update the notes
 * Notes can be saved as a new attribute of the Item model (this decision
 would mean that we can only ever have one set of notes per list item, but we
 can always revisit it later)
@@ -175,12 +314,16 @@ class EditNotesViewTest(TestCase):
 
         client = Client()
         response = client.get(
-            '/lists/%d/item/%d/edit_notes/' % (list1.id, item2.id)
+            '/lists/{list_id}/item/{item_id}/edit_notes/'.format(
+                list_id=list1.id, item_id=item2.id
+            )
         )
 
         self.assertEqual(response.context['item'], item2)
         self.assertIn(
-            'action="/lists/%d/item/%d/notes"' % (list1.id, item2.id),
+            'action="/lists/{list_id}/item/{item_id}/edit_notes/'.format(
+                list_id=list1.id, item_id=item2.id
+            )
             response.content
         )
 ----
@@ -872,4 +1015,11 @@ And that gets us onto the next functional test failure:
 AssertionError: 'You can find milk in a shop' not found in u'Your To-Do list\n1: Buy milk\nedit notes'
 ----
 
+
+Objectives of this chapter:
+- use Django forms
+- ideally modelform
+- show error-handling
+- tidy up urls
+- switch to class-based view
 
