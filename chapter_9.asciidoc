@@ -1,17 +1,18 @@
-More complex forms
-------------------
+Forms and input validation
+--------------------------
 
-In this chapter we'll learn how to use Django forms to handle more complex
-user input.  We'll also take the opportunity to do a little tidying up.
+In this chapter we'll learn how to test and implement validation of user inputs
+using Django forms. We'll also take the opportunity to do a little tidying up.
 
 
-Adding notes to list items
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Validation: preventing blank and duplicate list items
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-So our beautiful lists site has been live for a few days, and our users are
-starting to come back to us with feedback.  "Hey, we'd really like to be 
-able to add some notes to our tasks", they say.
-
+As our first few users start using the site, we've noticed they sometimes make 
+mistakes which mess up their lists, like accidentally submitting blank list
+items, and accidentally inputting 2 identical items to a list.  Computers are
+meant to help stop us from making silly mistakes, so let's see if we can't get
+our site to help!
 
 Let's see how that might work as an FT:
 
@@ -20,36 +21,31 @@ Let's see how that might work as an FT:
 .functional_tests/tests.py (ch09l001)
 [source,python]
 ----
-def test_adding_notes(self):
-    # Edith starts a new list
+def test_cannot_add_empty_list_items(self):
+    # Edith goes to the home page and accidentally tries to submit
+    # an empty list item. She hits Enter on the empty input box
 
-    # She notices a link next to her first new item that says "edit notes"
-    # so she clicks it
+    # The home page refreshes, and there is an error message saying
+    # that list items cannot be blank
 
-    # She is presented with a form that allows her to write in some notes
+    # She tries again with some text for the item, which now works
 
-    # She cicks submit and the note now shows up in the list
+    # Perversely, she now decides to submit a second blank list item
 
-    # She enters a second item, and edits it to add a second,
-    # longer note
+    # She receives a similar warning on the list page
 
-    # Now when she clicks submit she sees that the text of
-    # her second note is abbreviated.
-
-    # She sees a "more" link, which she clicks, which takes
-    # her to a page with the full note content.
-
-    # She wonders whether there is a page for shorter notes
-    # too, and realises that list items are clickable. She
-    # can view her short item too.
+    # And she can correct it by filling some text in
     self.fail('write me!')
 ----
 
 That's all very well, but before we go any further -- our functional tests
 file is beginning to get a little crowded.  Let's split it out into several
-files, in which each has a single test method.  If you were using some sort
-of issue tracker, you might make it so that each file matched one issue or 
-ticket, and its filename contained the ticket ID.
+files, in which each has a single test method.  
+
+Remember that functional tests map to "user stories". If you were using some
+sort of project management tool like an issue tracker, you might make it so
+that each file matched one issue or ticket, and its filename contained the
+ticket ID.
 
 We'll also have one base test class which they can all inherit from.  Here's 
 how to get there step-by-step:
@@ -105,12 +101,11 @@ class FunctionalTest(LiveServerTestCase):
         [...]
     def tearDown(self):
         [...]
+    def check_for_row_in_list_table(self, row_text):
+        [...]
 
 
 class NewVisitorTest(FunctionalTest):
-
-    def check_for_row_in_list_table(self, row_text):
-        [...]
 
     def test_can_start_a_list_and_retrieve_it_later(self):
         [...]
@@ -124,9 +119,9 @@ class LayoutAndStylingTest(FunctionalTest):
 
 
 
-class ItemNotesTest(FunctionalTest):
+class ItemValidationTest(FunctionalTest):
 
-    def test_adding_notes(self):
+    def test_cannot_add_empty_list_items(self):
         [...]
 ----
 
@@ -143,10 +138,16 @@ each and just keeping one import:
 ----
 *cp functional_tests/tests/base.py functional_tests/tests/test_simple_list_creation.py*
 *cp functional_tests/tests/base.py functional_tests/tests/test_layout_and_styling.py*
-*cp functional_tests/tests/base.py functional_tests/tests/test_adding_notes.py*
+*cp functional_tests/tests/base.py functional_tests/tests/test_list_item_validation.py*
 ----
 
-'base.py' can be cut down to just the FunctionalTest class:
+'base.py' can be cut down to just the FunctionalTest class.  We leave the
+helper method on the base class, because we suspect we're about to re-use
+it in our new FT.
+
+NOTE: Keeping helper methods in a base FunctionalTest class is a useful way 
+of preventing duplication in FTs.  Later in the book we'll use the Page
+pattern, which is related.
 
 [role="sourcecode"]
 .functional_tests/tests/base.py (ch09l003)
@@ -157,11 +158,13 @@ from selenium import webdriver
 import sys
 
 class FunctionalTest(LiveServerTestCase):
-    [...]
+
+    def check_for_row_in_list_table(self, row_text):
+        [...]
+
 ----
 
-Our first FT is now in its own file, with one class, one test method and
-one helper method:
+Our first FT is now in its own file, with one class and one test method:
 
 [role="sourcecode"]
 .functional_tests/tests/test_simple_list_creation.py (ch09l004)
@@ -172,9 +175,6 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 
 class NewVisitorTest(FunctionalTest):
-    def check_for_row_in_list_table(self, row_text):
-        [...]
-
     def test_can_start_a_list_and_retrieve_it_later(self):
         [...]
 ----
@@ -191,15 +191,15 @@ class LayoutAndStylingTest(FunctionalTest):
         [...]
 ----
 
-And finally our new notes test is in a file of its own too:
+And finally our new validation test is in a file of its own too:
 
 [role="sourcecode"]
-.functional_tests/tests/test_adding_notes.py (ch09l006)
+.functional_tests/tests/test_list_item_validation.py (ch09l006)
 [source,python]
 ----
 from .base import FunctionalTest
 
-class ItemNotesTest(FunctionalTest):
+class ItemValidationTest(FunctionalTest):
         [...]
 ----
 
@@ -213,15 +213,22 @@ test classes:
 ----
 from .test_simple_list_creation import NewVisitorTest
 from .test_layout_and_styling import LayoutAndStylingTest
-from .test_adding_notes import ItemNotesTest
+from .test_list_item_validation import ItemValidationTest
 ----
 
-And we can test everything worked by re-running `manage.py test`. As
-a side-bonus, we're now able to run an individual test class, like this:
+And we can test everything worked by re-running `manage.py test`, and checking
+once again that all 3 tests are run.
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python3 manage.py test functional_tests.ItemNotesTest*
+AssertionError: write me!
+----
+
+As a side-bonus, we're now able to run an individual test class, like this:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python3 manage.py test functional_tests.ItemValidationTest*
 [...]
 AssertionError: write me!
 ----
@@ -247,37 +254,56 @@ Now let's start implementing the test, or at least the beginning of it:
 .functional_tests/tests/test_adding_notes.py (ch09l008)
 [source,python]
 ----
-def test_adding_notes(self):
-    # Edith starts a new list
+def test_cannot_add_empty_list_items(self):
+    # Edith goes to the home page and accidentally tries to submit
+    # an empty list item. She hits Enter on the empty input box
     self.browser.get(self.server_url)
-    self.browser.find_element_by_id('id_new_item').send_keys("Buy milk\n")
+    self.browser.find_element_by_id('id_new_item').send_keys('\n')
 
-    # She notices a link next to her first new item that says "edit notes"
-    # so she clicks it
-    self.browser.find_element_by_link_text("edit notes").click()
+    # The home page refreshes, and there is an error message saying
+    # that list items cannot be blank
+    error = self.browser.find_element_by_css_selector('.error') #<1>
+    self.assertEqual(error.text, "You can't have an empty list item")
 
-    # She is presented with a form that allows her to write in some notes
-    self.browser.find_element_by_name('notes').send_keys(
-        "You can find milk in a shop"
-    )
+    # She tries again with some text for the item, which now works
+    self.browser.find_element_by_id('id_new_item').send_keys('Buy milk\n')
+    self.check_for_row_in_list_table('Buy milk') #<2>
 
-    # She cicks submit and the note now shows up in the list
-    self.browser.find_element_by_css_selector('input[type=submit]').click()
-    self.assertIn(
-        "You can find milk in a shop",
-        self.browser.find_element_by_tag_name('body').text
-    )
+    # Perversely, she now decides to submit a second blank list item
+    self.browser.find_element_by_id('id_new_item').send_keys('\n')
 
-    # She enters a second item, and edits it to add a second,
-    # longer note
-    self.fail('finish me')
+    # She receives a similar warning on the list page
+    self.check_for_row_in_list_table('Buy milk')
+    error = self.browser.find_element_by_css_selector('.error')
+    self.assertEqual(error.text, "You can't have an empty list item")
+
+    # And she can correct it by filling some text in
+    self.browser.find_element_by_id('id_new_item').send_keys('Make tea\n')
+    self.check_for_row_in_list_table('Buy milk')
+    self.check_for_row_in_list_table('Make tea')
+
+    self.fail("Don't forget to also test duplicate items!")
+
 ----
+
+A couple of things to note about this test:
+
+<1> We specify we're going to use a CSS class called `.error` to mark our
+error text.  We'll see that Bootstrap has some useful styling for those
+<2> As predicted, we are re-using the `check_for_row_in_list_table` helper
+function when we want to confirm that list item submission *does* work.
+
+The technique of keeping helper methods in a parent class is absolutely
+vital to preventing duplication across your functional test code.  The day
+we decide to change the implementation of how our list table works, we want
+to make sure we only have to change our FT code in one place, not in dozens
+of places across loads of FTs...
 
 And we're off!
 
 ----
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
-element: {"method":"link text","selector":"edit notes"}' ; Stacktrace: 
+element: {"method":"css selector","selector":".error"}' ; Stacktrace: 
 ----
 
 
@@ -1022,7 +1048,22 @@ Objectives of this chapter:
 - show error-handling
 - tidy up urls
 - switch to class-based view
+- prep s'thing for later chapters (notes field)
 
+
+Outline:
+- want to prevent dupes & blanks
+- new FT method
+- switch out to 2/3 fts
+- show db integrity in models.py, unit test
+- show how to catch errors in view
+- refactor to have home page and list view render errors
+- switch to using forms when more than 1 error message
+- then: use form for editing existing items (new FT)
+- then: add notes (?)
+  - another new ft
+  - formatting bits
+  - adapt form...
 
 - prevent empty items, duplicate items
 - home page would need to handle post submits
