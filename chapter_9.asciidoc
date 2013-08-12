@@ -1264,6 +1264,294 @@ def view_list(request, list_id):
 ----
 
 
+Moving validation logic into a form
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+That would work, but we're really doing too much work in our view. Django
+encourages us to use Form classes to do the work of validating user input, and
+choosing what error messages to display.
+
+NOTE: in Django, a complex view is a code smell.  Could some of that logic
+be pushed out to a form?  Or to some custom methods on the model class? Or
+to a non-Django module that represents your business logic?
+
+Let's do a little experimenting with forms by using a unit test.  My plan
+is to iterate towards the ideal form, and hopefully introduce forms gradually
+enough that they'll make sense if you've never seen them before!
+
+First we add a new file to hold our forms tests in:
+
+[source,python]
+.lists/tests/__init__.py 
+----
+from .test_forms import *
+from .test_models import *
+from .test_views import *
+----
+
+Then we'll add a forms unit test that just looks at the form HTML:
+
+[source,python]
+.lists/tests/test_forms.py 
+----
+from django.test import TestCase
+
+from lists.forms import ItemForm
+
+
+class ItemFormTest(TestCase):
+
+    def test_form_renders_item_text_input(self):
+        form = ItemForm()
+        self.fail(form.as_p())
+----
+
+`form.as_p()` renders the form as HTML.  This unit test is using a self.fail
+for some explanatory coding.  You could just as easily use a `manage.py shell`
+session, although you'd need to keep reloading your code for each change.
+
+For now it will just fail with an import error.
+
+Let's make a minimal form.  It inherits from the base Form class, and has 
+a single field called `item_text`:
+
+[source,python]
+.lists/forms.py 
+----
+from django import forms
+
+class ItemForm(forms.Form):
+    item_text = forms.CharField()
+----
+
+We now see a failure message which tells us what the auto-generated form 
+HTML will look like.
+
+----
+    self.fail(form.as_p())
+AssertionError: <p><label for="id_item_text">Item text:</label> <input
+id="id_item_text" name="item_text" type="text" /></p>
+----
+
+It's already pretty close to what we have in 'home.html' and 'list.html'.  One
+thing we're missing is the placeholder attribute.  Let's make a unit test
+for that:
+
+[source,python]
+.lists/tests/test_forms.py 
+----
+    self.assertIn('placeholder="Enter a to-do item"', form.as_p())
+----
+
+That gives us a fail.  How can we customise the input for a form field?  Using 
+a "widget":
+
+
+[source,python]
+.lists/forms.py 
+----
+class ItemForm(forms.Form):
+    item_text = forms.CharField(
+        widget=forms.fields.TextInput(attrs={'placeholder': 'Enter a to-do item'})
+    )
+----
+
+What's next?  We want our form to re-use the validation code that we've already
+defined on our model.  Django provides a special class which can auto-generate
+a form for a model, called ModelForm.  Let's try that:
+
+[source,python]
+.lists/forms.py 
+----
+from lists.models import Item
+from django import forms
+
+class ItemForm(forms.models.ModelForm):
+
+    class Meta:
+        model = Item
+        fields = ('text',)
+----
+
+As you can see, `ModelForm` also uses the `class Meta` attribute for
+configuration.  Here we specify which model the form is for, and 
+which fields we want it to use.
+
+That gives us some different-looking form HTML:
+
+----
+AssertionError: 'placeholder="Enter a to-do item"' not found in '<p><label
+for="id_text">Text:</label> <textarea cols="40" id="id_text" name="text"
+rows="10">\r\n</textarea></p>'
+----
+
+You can see that it's using `name="text"` instead of `name="item_text"`. We
+can probably live with that. But it's using a `textarea` instead of a normal
+input, and that won't work for our app. Thankfully, you can override widgets
+for ModelForm fields, similarly to the way we did it with the normal form:
+
+
+[source,python]
+.lists/forms.py 
+----
+class ItemForm(forms.models.ModelForm):
+
+    class Meta:
+        model = Item
+        widgets = {
+            'text': forms.fields.TextInput(
+                attrs={'placeholder': 'Enter a to-do item'}
+            ),
+        }
+----
+
+Now let's see if the ModelForm has picked up the same validation rules
+which we defined on the model.  We'll also learn how to pass data into
+the form, as if it came from the user:
+
+
+[source,python]
+.lists/tests/test_forms.py 
+----
+    def test_form_validation_for_blank_items(self):
+        form = ItemForm(data={'text': ''})
+        form.save()
+----
+
+Great, that gives us:
+
+----
+ValueError: The Item could not be created because the data didn't validate.
+----
+
+Good, the form won't allow you to save if you give it an empty item text.
+
+Now let's see if we can get it to use the specific error message that we 
+want:
+
+[source,python]
+.lists/tests/test_forms.py 
+----
+def test_form_validation_for_blank_items(self):
+    form = ItemForm(data={'text': ''})
+    self.assertFalse(form.is_valid())
+    self.assertEqual(
+        form.errors['text'],
+        ["You can't have an empty list item"]
+    )
+----
+
+Calling `form.is_valid()` returns True or False, but it also has the
+side-effect of validating the input data, and populating the errors
+attribute.  It's a dictionary mapping the names of fields to lists of
+errors for those fields (it's possible for a field to have more than 
+one error)
+
+That gives us:
+
+----
+AssertionError: ['This field is required.'] != ["You can't have an empty list item"]
+----
+
+Django already has a default error message which we could present to the
+user -- you might use it if you were in a hurry to build your web app,
+but we care enough to make our message special.  Customising it does
+involve hacking the form's init though:
+
+
+[source,python]
+.lists/forms.py 
+----
+from lists.models import Item
+from django import forms
+
+class ItemForm(forms.models.ModelForm):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        empty_error = "You can't have an empty list item"
+        self.fields['text'].error_messages['required'] = empty_error
+
+    class Meta:
+        [...]
+----
+
+Binding the form to a list
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The next error we want to catch is duplicate items, but in order to do that,
+the form needs to know which list it pertains to.  Let's add 'list' as a
+field on the form, but make it a hidden one, so the user can't see it.
+
+The simplest way to do this is to reintroduce our little self.fail from 
+earlier:
+
+
+    def test_form_renders_list_as_hidden_input(self):
+        form = ItemForm()
+        self.fail(form.as_p())
+
+
+Then we add `'list'` to the fields on the form:
+
+    class Meta:
+        model = Item
+        fields = ('text', 'list')
+
+Running the tests will show us that it's using a `select` as the 
+list field.  
+
+----
+AssertionError: <p><label for="id_text">Text:</label> <input id="id_text" name="text" placeholder="Enter a to-do item" type="text" /></p>
+<p><label for="id_list">List:</label> <select id="id_list" name="list">
+<option value="" selected="selected">---------</option>
+</select></p>
+----
+
+Let's use a hidden widget instead:
+
+    class Meta:
+        model = Item
+        fields = ('text', 'list')
+        widgets = {
+            'text': forms.fields.TextInput(
+                attrs={'placeholder': 'Enter a to-do item'}
+            ),
+            'list': forms.fields.HiddenInput(),
+        }
+
+That gives us:
+
+----
+AssertionError: <p><label for="id_text">Text:</label> <input id="id_text"
+name="text" placeholder="Enter a to-do item" type="text" /><input id="id_list"
+name="list" type="hidden" /></p>
+----
+
+And then we can pull that out into the unit test:
+
+    def test_form_renders_list_as_hidden_input(self):
+        form = ItemForm()
+        self.assertIn('name="list" type="hidden"', form.as_p())
+
+Does this feel a bit like development-driven-tests?  That's OK, now 
+and again.  When you're exploring a new API, you're absolutely allowed
+to mess about with it for a while before you get back to rigorous TDD.  We're
+using the unit test framework as a way of experimenting, but you could just
+as well use an interactive console, or print statements, or whatever you
+prefer.
+
+NOTE: TDD isn't for absolutely everything.  When you're learning a new API,
+or just exploring possible solutions, you don't have to start with tests.
+
+Next we want to make sure that the list field is pre-populated with the 
+particular list for 
+
+Next we want to be able to 
+The next stage is to b
+
+
+
 TODO: use Django ModelForm
 TODO: tidy up URLs
 TODO: switch to class-based views
