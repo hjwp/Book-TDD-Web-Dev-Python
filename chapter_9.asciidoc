@@ -1356,6 +1356,9 @@ class ItemForm(forms.Form):
     )
 ----
 
+Switching to a Django ModelForm
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 What's next?  We want our form to re-use the validation code that we've already
 defined on our model.  Django provides a special class which can auto-generate
 a form for a model, called ModelForm.  Let's try that:
@@ -1476,76 +1479,539 @@ class ItemForm(forms.models.ModelForm):
         [...]
 ----
 
-Binding the form to a list
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+You know what we be even better than messing about with all these
+error strings?  Having a constant:  
 
-The next error we want to catch is duplicate items, but in order to do that,
-the form needs to know which list it pertains to.  Let's add 'list' as a
-field on the form, but make it a hidden one, so the user can't see it.
-
-The simplest way to do this is to reintroduce our little self.fail from 
-earlier:
-
-
-    def test_form_renders_list_as_hidden_input(self):
-        form = ItemForm()
-        self.fail(form.as_p())
-
-
-Then we add `'list'` to the fields on the form:
-
-    class Meta:
-        model = Item
-        fields = ('text', 'list')
-
-Running the tests will show us that it's using a `select` as the 
-list field.  
-
+[source,python]
+.lists/forms.py 
 ----
-AssertionError: <p><label for="id_text">Text:</label> <input id="id_text" name="text" placeholder="Enter a to-do item" type="text" /></p>
-<p><label for="id_list">List:</label> <select id="id_list" name="list">
-<option value="" selected="selected">---------</option>
-</select></p>
+EMPTY_LIST_ERROR = "You can't have an empty list item"
+
+class ItemForm(forms.models.ModelForm):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['text'].error_messages['required'] = EMPTY_LIST_ERROR
 ----
 
-Let's use a hidden widget instead:
+Re-run the tests to see they pass.... OK.  Now we change the test:
 
-    class Meta:
-        model = Item
-        fields = ('text', 'list')
-        widgets = {
-            'text': forms.fields.TextInput(
-                attrs={'placeholder': 'Enter a to-do item'}
-            ),
-            'list': forms.fields.HiddenInput(),
-        }
+[source,python]
+.lists/forms.py 
+----
+from lists.forms import EMPTY_LIST_ERROR, ItemForm
+[...]
+
+    def test_form_validation_for_blank_items(self):
+        form = ItemForm(data={'text': ''})
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['text'], [EMPTY_LIST_ERROR])
+----
+
+And the tests still pass. great
+
+TODO: commit
+
+
+Using the form in our home page
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+There's a sort of consort to the "deploy as early as possible" lean methodoloy,
+which is "merge as early as possible".  What I mean by that is that, in building
+this bit of forms code, it would be easy to go on for ages, adding more and
+more functionality to the form -- I should know, because that's exactly what I
+did during the drafting of this chapter, and I ended up doing all sorts of work
+making an all-singing, all-dancing form class before I realised it wouldn't really
+work for our most basic use case.
+
+So, instead, try and use your new bit of code as soon as possible.  This makes
+sure you never have unused bits of code lying around, and that you start
+checking your code against "the real world" as soon as possible.
+
+We have a form class which can render some HTML and do validation of at
+least one kind of error -- let's start using it!  We should be able to use
+it in our 'home.html' template, and in our new list view.  
+
+Let's start in our unit tests for the home view. Let's replace the old-stype
+`test_home_page_returns_correct_html` with a set of tests that use the Django Test
+Client.  We leave the old test in at first, to check that our new test is equivalent:
+
+----
+from lists.forms import ItemForm
+
+
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()
+        [...]
+
+    def test_home_page_renders_home_template_with_form(self):
+        response = Client().get('/')
+        self.assertTemplateUsed(response, 'home.html')
+        self.assertIsInstance(response.context['form'], ItemForm)
+----
 
 That gives us:
 
+KeyError: 'form'
+
+
 ----
-AssertionError: <p><label for="id_text">Text:</label> <input id="id_text"
-name="text" placeholder="Enter a to-do item" type="text" /><input id="id_list"
-name="list" type="hidden" /></p>
+def home_page(request):
+    return render(request, 'home.html', {'form': ItemForm()})
 ----
 
-And then we can pull that out into the unit test:
+OK, now let's try using it in the template:
 
-    def test_form_renders_list_as_hidden_input(self):
-        form = ItemForm()
-        self.assertIn('name="list" type="hidden"', form.as_p())
 
+    <form method="POST" action="/lists/new" >
+        {{ form.text }}
+        {% csrf_token %}
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+    </form>
+
+`{{form.text}}` renders just the `text` field of the form.
+
+
+Now our old test fails is out of date:
+
+----
+    self.assertEqual(response.content.decode(), expected_html)
+AssertionError: '<!DOCTYPE html>\n<html>\n    <head>\n        <meta
+[...]
+----
+
+Let's just clarify that error message a little:
+
+[source,python]
+.lists/tests/test_views.py
+----
+class HomePageTest(TestCase):
+    maxDiff = None
+    [...]
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()
+        response = home_page(request)
+        expected_html = render_to_string('home.html')
+        self.assertMultiLineEqual(response.content.decode(), expected_html)
+----
+
+Sure enough, it's because our `render_to_string` call doesn't know about the
+form :
+
+----
+      <form method="POST" action="/lists/new" >
+-         <input id="id_text" name="text" placeholder="Enter a to-do item" type="text" />
++         
+----
+
+But we can fix that:
+
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()
+        response = home_page(request)
+        expected_html = render_to_string('home.html', {'form': ItemForm()})
+        self.assertMultiLineEqual(response.content.decode(), expected_html)
+
+
+And that gets us back to passing.
+
+One thing we have done, though, is changed our form -- it no longer uses
+the same `id` and `name` attributes.  You'll see if we run our functional
+tests that they fail the first time they try and find the input box.
+
+
+----
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate element: {"method":"id","selector":"id_new_item"}' ; Stacktrace: 
+----
+
+Let's fix the functional tests.  A quick grep shows us there are several
+places where we're using `id_new_item`
+
+$ grep id_new_item functional_tests/tests/test*
+
+That's a good call for a refactor.  Let's make a new helper method
+in 'base.py':
+
+[source,python]
+.lists/tests.py
+
+----
+class FunctionalTest(LiveServerTestCase):
+    [...]
+    def get_item_input_box(self):
+        return self.browser.find_element_by_id('id_text')
+----
+
+And then we use it throughout - I had to make 3 changes in 
+'test_simple_list_creation.py', 1 in 'test_layout_and_styling.py' and 6
+in 'test_list_item_validation.py`:
+
+
+        # She is invited to enter a to-do item straight away
+        inputbox = self.get_item_input_box()
+
+        [...]
+
+        # There is still a text box inviting her to add another item. She
+        # enters "Use peacock feathers to make a fly" (Edith is very
+        # methodical)
+        inputbox = self.browser.find_element_by_id('id_new_item')
+
+        [...etc]
+
+That gets us past the first step, but now we have to bring the rest
+of the code in line with the change.  We need to find any occurrences
+of the old id (`id_new_item`) and name (`item_text`) and replace them too
+
+----
+$ grep -r id_new_item lists/
+
+lists/static/base.css:#id_new_item {
+lists/templates/list.html:        <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+----
+
+And similarly for the name:
+
+----
+$ grep -r item_text lists
+lists/views.py:            Item.objects.create(text=request.POST['item_text'], list=list)
+lists/views.py:        Item.objects.create(text=request.POST['item_text'], list=list)
+lists/tests/test_forms.py:    def test_form_renders_item_text_input(self):
+lists/tests/test_views.py:            data={'item_text': 'A new list item'}
+lists/tests/test_views.py:            data={'item_text': ''}
+lists/tests/test_views.py:            data={'item_text': 'A new item for an existing list'}
+lists/tests/test_views.py:            data={'item_text': ''}
+lists/tests/test_views.py:            data={'item_text': 'textey'}
+----
+
+We re-run the unit tests to check everything works
+
+----
+$ python3 manage.py test lists
+Creating test database for alias 'default'...
+.................
+ ---------------------------------------------------------------------
+Ran 17 tests in 0.126s
+
+OK
+----
+
+And the functional tests too:
+
+----
+$ python3 manage.py test functional_tests
+Creating test database for alias 'default'...
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 12.603s
+
+OK
+----
+
+Woohoo!  Can you feel that feeling of relief wash over you?  We've just made
+a fairly major change to our small app -- that input field, its name and ID,
+is absolutely critical to our app.  We've touched 7 or 8 different files, 
+doing a refactor that's quite involved... This is the kind of thing that,
+without tests, would seriously worry me.  In fact, I might well have decided
+that it wasn't worth messing with code that works...  But, because we have
+a full tests suite, we can delve around in it, tidying things up, safe in the
+knowledge that the tests are there to spot any mistakes we make.  It just
+makes it that much likelier that you're going to keep refactoring, keep
+tidying up, keep gardening, keep everything neat and tidy and clean and smooth
+and concise and functional.
+
+Definitely time for a commit.
+
+----
+$ git diff
+$ git commit -am"implement form in home page, refactor item_text and id_new_item attrs"
+----
+
+
+Now to use the rest of the features of our form:  the validation logic.  This
+means using the form in the `new_list` view. Let's implement it straight away,
+and see if the unit tests like it:
+
+
+----
+def new_list(request):
+    form = ItemForm(request.POST)
+    if form.is_valid():
+        list = List.objects.create()
+        Item.objects.create(text=form.cleaned_data['text'], list=list)
+        return redirect('/lists/%d/' % (list.id,))
+    return render(request, 'home.html', {'form': form})
+----
+
+Did you notice that we've also fixed a small bug?  In the previous code, we
+were saving a superfluous List object, even for invalid inputs.  They would
+have been left lying around our database.  We should add an extra assert in 
+our unit tests once this refactor is done.
+
+----
+AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
+list item' in response
+----
+
+Ah, we haven't yet put the error in our template.  Let's do that:
+
+[source,html]
+.lists/templates/home.html
+----
+    <form method="POST" action="/lists/new" >
+        {% csrf_token %}
+        {{ form.text }}
+        {% if form.errors %}
+            <p class="error">{{ form.text.error }}</p>
+        {% endif %}
+    </form>
+----
+
+Neat!  And it gets our unit tests back to passing... And the functional tests
+too! 
+
+TODO: use errors string constants
+
+Before we forget, let's add our check that invalid new list forms don't create
+a pointless list object:
+
+----
+    def test_validation_errors_sent_back_to_home_page_template(self):
+        client = Client()
+        response = client.post(
+            '/lists/new',
+            data={'text': ''}
+        )
+
+        self.assertEqual(List.objects.all().count(), 0)
+        self.assertEqual(Item.objects.all().count(), 0)
+        self.assertTemplateUsed(response, 'home.html')
+        expected_error =  escape("You can't have an empty list item")
+        self.assertContains(response, expected_error)
+----
+
+Time for another commit
+
+----
+$ git commit -am"implement form and errors for home page and new lists"
+----
+
+
+A more complex form to handle uniqueness validation
+---------------------------------------------------
+
+The form to create a new list only needs to know one thing, the new item text.
+A form which validates that list items are unique needs to know both.  Let's
+see if we can use a subclass: 
+
+
+[source,python]
+.lists/tests/test_forms.py
+----
+class ExistingListItemFormTest(TestCase):
+
+    def test_form_renders_item_text_input(self):
+        form = ExistingListItemForm()
+        self.assertIn('placeholder="Enter a to-do item"', form.as_p())
+
+
+    def test_form_validation_for_blank_items(self):
+        listey = List.objects.create()
+        form = ExistingListItemForm(data={'list': listey.id, 'text': ''})
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['text'], [EMPTY_LIST_ERROR])
+
+
+    def test_form_validation_for_duplicate_items(self):
+        listey = List.objects.create()
+        Item.objects.create(list=listey, text='no twins!')
+        form = ExistingListItemForm(data={'list': listey.id, 'text': 'no twins!'})
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
+----
+
+Let's start with a minimal class:
+
+[source,python]
+.lists/forms.py
+----
+DUPLICATE_ITEM_ERROR = "You've already got this in your list"
+[...]
+class ExistingListItemForm(forms.Form):
+    pass
+----
+
+Gives
+
+----
+AssertionError: 'placeholder="Enter a to-do item"' not found in ''
+AssertionError: True is not false
+AssertionError: True is not false
+----
+
+
+Now let's see if making it inherit from our existing form helps:
+
+[source,python]
+.lists/forms.py
+----
+class ExistingListItemForm(ItemForm):
+    pass
+----
+
+That takes us down to just one failure:
+
+----
+FAIL: test_form_validation_for_duplicate_items (lists.tests.test_forms.ExistingListItemFormTest)
+AssertionError: True is not false
+----
+
+Now we need to override the fields list from our parent form class.  We 
+can do this by inheriting the class `Meta` (you know, I didn't know this
+would work before I set off writing this chapter.  It's pretty cool):
+
+----
+class ExistingListItemForm(ItemForm):
+    class Meta(ItemForm.Meta):
+        fields = ('list', 'text')
+----
+
+We now get a little further:
+
+----
+KeyError: 'text'
+----
+
+Hm, a little debugging required.  Let's try this in our test:
+
+----
+        self.assertFalse(form.is_valid())
+        self.fail(dict(form.errors))
+        self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
+----
+
+----
+AssertionError: {'__all__': ['Item with this List and Text already exists.']}
+----
+
+Right,  Django puts uniqueness validation errors into a special `__all__` key,
+because it's not clear which field it should apply to -- list or item.  We
+want it to be in the `text` field though.
+
+
+*******************************************************************************
 Does this feel a bit like development-driven-tests?  That's OK, now 
 and again.  When you're exploring a new API, you're absolutely allowed
 to mess about with it for a while before you get back to rigorous TDD.  We're
 using the unit test framework as a way of experimenting, but you could just
 as well use an interactive console, or print statements, or whatever you
 prefer.
+*******************************************************************************
 
-NOTE: TDD isn't for absolutely everything.  When you're learning a new API,
-or just exploring possible solutions, you don't have to start with tests.
+
+One more little customisation should do it:  Django uses a method called
+`validate_unique` for this check, which we can customise:
+
+[source,python]
+.lists/forms.py
+----
+    def validate_unique(self):
+        super().validate_unique()
+        if self.non_field_errors():
+            self._update_errors({'text': [DUPLICATE_ITEM_ERROR]})
+----
+
+We use a couple of special Django methods here, `self.non_field_errors()`, which
+is just the same as +self.errors['__all__']+, but more readable, and 
+`self._update_errors`, a Django helper method which takes care of the fact that
+dictionary keys may not exist, and fields may already have errors in their list 
+which we want to append to (see the Django source if you're curious).
+
+Our little debug `self.fail` tells us things are working:
+
+----
+AssertionError: {'__all__': ['Item with this List and Text already exists.'],
+'text': ["You've already got this in your list"]}
+----
+
+Just to stay neat and tidy, let's say we want to remove that `__all__` non-field
+error.  Adjust the unit test:
+
+----
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
+        self.assertFalse(form.non_field_errors())
+----
+
+Almost there:
+
+----
+AssertionError: ['Item with this List and Text already exists.'] is not false
+----
+
+Final step:
+
+[source,python]
+.lists/tests.py
+----
+    def validate_unique(self):
+        super().validate_unique()
+        if self.non_field_errors():
+            self._update_errors({'text': [DUPLICATE_ITEM_ERROR]})
+            del self.errors['__all__']
+----
+
+And we're there!  A quick commit
+
+----
+git diff
+git commit -a
+----
+
+Now let's see if we can put this form to work in our view:
+
+[source,python]
+.lists/tests.py
+----
+def view_list(request, list_id):
+    list = List.objects.get(id=list_id)
+
+    if request.method == 'POST':
+        form = ExistingListItemForm(data={
+            'text': request.POST['text'],
+            'list': list.id
+        })
+        if form.is_valid():
+            form.save()
+            return redirect('/lists/%d/' % (list.id,))
+    else:
+        form = ExistingListItemForm()
+
+    return render(request, 'list.html', {'list': list, "form": form})
+----
+
+That gives us failures for the two validation tests.  We adjust the template:
+
+
+[source,html]
+.lists/templates/list.html
+----
+<form method="POST" action="/lists/{{ list.id }}/" >
+    {% csrf_token %}
+    {{ form.text }}
+    {% if form.errors %}
+        <p class="error">{{ form.text.errors }}</p>
+    {% endif %}
+</form>
+----
+
+
+from lists.forms import ExistingListItemForm, ItemForm
 
 Next we want to make sure that the list field is pre-populated with the 
-particular list for 
+particular list we're working on
 
 Next we want to be able to 
 The next stage is to b
