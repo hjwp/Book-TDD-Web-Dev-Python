@@ -113,6 +113,11 @@ class SourceTree(object):
                 raise ApplyCommitException(
                     'could not find line %s in listing %s' % (new_line, listing.contents)
                 )
+        self.run_command(
+            'git checkout %s -- %s' % (commit_spec, listing.filename),
+        )
+        new_contents = self.get_contents(listing.filename)
+        stripped_new_contents = [l.strip() for l in new_contents.split('\n')]
 
         line_pos_in_commit = 0
         for line in listing_lines:
@@ -123,25 +128,23 @@ class SourceTree(object):
                     print('listing:\n', listing.contents)
                     print('commit:\n', commit_info)
                     raise ApplyCommitException('listing lines in wrong order')
+                print('line {0} found in commit lines'.format(line))
                 continue
             if not line:
                 continue
             if line in commit_info:
-                continue
+                print('line {0} found in commit info'.format(line))
+                #continue
             if line.strip().startswith('[...'):
+                continue
+            if line.strip() in stripped_new_contents:
                 continue
             print('commit info')
             print(commit_info)
             raise ApplyCommitException('listing line not found:\n%s' % (line,))
 
-
-        self.run_command(
-            'git checkout %s -- %s' % (commit_spec, listing.filename),
-
-        )
         self.run_command('git reset')
         listing.was_written = True
         print('applied commit')
         print(commit_info)
-
 

@@ -171,6 +171,39 @@ class ApplyFromGitRefTest(unittest.TestCase):
             self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def test_happy_with_lines_in_before_and_after_version(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            file 2 line 1 changed
+            [...]
+
+            hello
+            hello
+
+            one more line at end
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l028'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_raises_if_listing_line_not_in_after_version(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            hello
+            goodbye
+            hello
+
+            one more line at end
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l028'
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
     def test_happy_with_lines_from_just_before_diff(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """
@@ -211,6 +244,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
 
 
     def test_handles_indents(self):
+        self.sourcetree.run_command('git checkout f70efb1')
         listing = CodeListing(filename='pythonfile.py', contents=dedent(
             """
             def method1(self):

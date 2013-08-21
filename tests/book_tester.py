@@ -337,6 +337,7 @@ class ChapterTest(unittest.TestCase):
         LIKELY_FILES = [
             'urls.py', 'tests.py', 'views.py', 'functional_tests.py',
             'settings.py', 'home.html', 'list.html', 'base.html',
+            'tests/test_',
         ]
         self.assertTrue(
             'diff' in self.listings[pos] or 'status' in self.listings[pos]
