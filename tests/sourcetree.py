@@ -97,6 +97,8 @@ class SourceTree(object):
         commit_info = self.run_command(
             'git show %s' % (commit_spec,)
         )
+        print('commit info:')
+        print(commit_info)
         commit_lines = [
             l[1:] for l in commit_info.split('\n')
             if l.startswith('+')
