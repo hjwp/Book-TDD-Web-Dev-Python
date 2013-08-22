@@ -82,11 +82,11 @@ class SourceTree(object):
         self.run_command('git checkout chapter_%s' % (chapter - 1,))
         self.chapter = chapter
 
+    def get_commit_spec(self, commit_ref):
+        return 'repo/chapter_%s^{/--%s--}' % (self.chapter, commit_ref)
 
     def apply_listing_from_commit(self, listing):
-        commit_spec = 'repo/chapter_%s^{/--%s--}' % (
-                self.chapter, listing.commit_ref,
-        )
+        commit_spec = self.get_commit_spec(listing.commit_ref)
         commit_info = self.run_command('git show %s' % (commit_spec,))
         print('commit info:')
         print(commit_info)
@@ -118,9 +118,10 @@ class SourceTree(object):
         stripped_listing_lines = [l.strip() for l in listing_lines]
         for new_line in commit_new_lines:
             if new_line.strip() not in stripped_listing_lines:
-                raise ApplyCommitException(
-                    'could not find line %s in listing %s' % (new_line, listing.contents)
-                )
+                if new_line not in commit_lines_to_remove:
+                    raise ApplyCommitException(
+                        'could not find line %s in listing %s' % (new_line, listing.contents)
+                    )
         self.run_command(
             'git checkout %s -- %s' % (commit_spec, listing.filename),
         )
@@ -143,7 +144,7 @@ class SourceTree(object):
             if line in commit_info:
                 print('line {0} found in commit info'.format(line))
                 if line in commit_lines_to_remove:
-                    raise ApplyCommitException('listing line was to  be deleted')
+                    raise ApplyCommitException('listing line was to be deleted')
                 continue
             if line.strip().startswith('[...'):
                 continue

@@ -217,6 +217,23 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def test_listings_showing_a_move_mean_can_ignore_commit_lines_added_and_removed(self):
+        listing = CodeListing(filename='pythonfile.py', contents=dedent(
+            """
+            class NuKlass(object):
+
+                def method1(self):
+                    [...]
+                    a = a + 3
+                    [...]
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l029'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
+
     def test_happy_with_elipsis(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """
