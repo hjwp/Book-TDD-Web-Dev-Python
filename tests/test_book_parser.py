@@ -13,6 +13,7 @@ from book_parser import (
 from examples import (
     CODE_LISTING_WITH_CAPTION,
     CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF,
+    CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF,
     COMMAND_LISTING_WITH_CAPTION,
     COMMANDS_WITH_VIRTUALENV,
 )
@@ -70,6 +71,19 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(listing.filename, 'functional_tests/tests.py')
         self.assertEqual(listing.commit_ref, 'ch07l001')
         self.assertEqual(listing.type, 'code listing with git ref')
+
+
+    def test_recognises_git_commit_refs_even_if_formatted_as_diffs(self):
+        code_html = CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        self.assertEqual(len(listings), 1)
+        listing = listings[0]
+        self.assertEqual(type(listing), CodeListing)
+        self.assertEqual(listing.filename, 'lists/tests/test_models.py')
+        self.assertEqual(listing.commit_ref, 'ch09l010')
+        self.assertEqual(listing.type, 'code listing with git ref')
+
 
 
     def test_recognises_server_commands(self):

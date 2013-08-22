@@ -50,3 +50,22 @@ COMMANDS_WITH_VIRTUALENV = """<div class="listingblock">
 [...]
 ImportError: No module named django</code></pre>
 </div></div>"""
+
+
+CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF = """<div class="listingblock sourcecode">
+<div class="title">lists/tests/test_models.py (ch09l010)</div>
+<div class="content"><div class="highlight"><pre><span class="gh">diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py</span>
+<span class="gh">index fc1eb64..9305bf8 100644</span>
+<span class="gd">--- a/lists/tests/test_views.py</span>
+<span class="gi">+++ b/lists/tests/test_views.py</span>
+<span class="gu">@@ -81,33 +81,3 @@ class ListViewTest(TestCase):</span>
+         self.assertTemplateUsed(response, 'list.html')
+         self.assertEqual(response.context['list'], list)
+
+<span class="gd">-</span>
+<span class="gd">-</span>
+<span class="gd">-class ListAndItemModelsTest(TestCase):</span>
+<span class="gd">-</span>
+<span class="gd">-    def test_saving_and_retrieving_items(self):</span>
+[...]
+</pre></div></div></div>"""

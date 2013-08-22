@@ -32,12 +32,12 @@ class CodeListing(object):
 
     @property
     def type(self):
-        if any(l.count('@@') > 1 for l in self.contents.split('\n')):
-            return 'diff'
-        elif self.is_server_listing:
+        if self.is_server_listing:
             return 'server code listing'
         elif self.commit_ref:
             return 'code listing with git ref'
+        elif any(l.count('@@') > 1 for l in self.contents.split('\n')):
+            return 'diff'
         else:
             return 'code listing'
 

@@ -87,28 +87,36 @@ class SourceTree(object):
         commit_spec = 'repo/chapter_%s^{/--%s--}' % (
                 self.chapter, listing.commit_ref,
         )
+        commit_info = self.run_command('git show %s' % (commit_spec,))
+        print('commit info:')
+        print(commit_info)
 
         files = self.run_command(
             'git diff-tree --no-commit-id --name-only -r %s' % (commit_spec,)
         ).split()
         if files != [listing.filename]:
-            raise ApplyCommitException('wrong files in commit: %s' % (files,))
+            raise ApplyCommitException(
+                'wrong files in commit: {0} should have been {1}'.format(
+                    files, listing.filename
+            ))
 
-        commit_info = self.run_command(
-            'git show %s' % (commit_spec,)
-        )
-        print('commit info:')
-        print(commit_info)
-        commit_lines = [
+        commit_new_lines = [
             l[1:] for l in commit_info.split('\n')
             if l.startswith('+')
             and l[1:].strip()
             and not l[1] == '+'
         ]
+        commit_lines_to_remove = [
+            l[1:] for l in commit_info.split('\n')
+            if l.startswith('-')
+            and l[1:].strip()
+            and not l[1] == '-'
+        ]
         listing_lines = listing.contents.split('\n')
+        listing_lines = [l.rstrip(' #') for l in listing_lines]
 
         stripped_listing_lines = [l.strip() for l in listing_lines]
-        for new_line in commit_lines:
+        for new_line in commit_new_lines:
             if new_line.strip() not in stripped_listing_lines:
                 raise ApplyCommitException(
                     'could not find line %s in listing %s' % (new_line, listing.contents)
@@ -121,9 +129,9 @@ class SourceTree(object):
 
         line_pos_in_commit = 0
         for line in listing_lines:
-            if line in commit_lines:
+            if line in commit_new_lines:
                 try:
-                    line_pos_in_commit = commit_lines[line_pos_in_commit:].index(line)
+                    line_pos_in_commit = commit_new_lines[line_pos_in_commit:].index(line)
                 except ValueError:
                     print('listing:\n', listing.contents)
                     print('commit:\n', commit_info)
@@ -134,7 +142,9 @@ class SourceTree(object):
                 continue
             if line in commit_info:
                 print('line {0} found in commit info'.format(line))
-                #continue
+                if line in commit_lines_to_remove:
+                    raise ApplyCommitException('listing line was to  be deleted')
+                continue
             if line.strip().startswith('[...'):
                 continue
             if line.strip() in stripped_new_contents:

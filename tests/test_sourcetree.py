@@ -230,6 +230,20 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def test_happy_with_callouts(self):
+        listing = CodeListing(filename='file1.txt', contents=dedent(
+            """
+            [...]
+            file 1 line 2 amended #
+            file 1 line 3 #
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l021'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
+
     def test_happy_with_blank_lines(self):
         listing = CodeListing(filename='file2.txt', contents=dedent(
             """

@@ -388,7 +388,7 @@ class ChapterTest(unittest.TestCase):
             print("TEST RUN")
             self.run_test_and_check_result()
         elif listing.type == 'git diff':
-            print("DIFF")
+            print("GIT DIFF")
             self.check_diff_or_status(self.pos)
         elif listing.type == 'git status':
             print("STATUS")

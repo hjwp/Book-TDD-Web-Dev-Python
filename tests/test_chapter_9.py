@@ -22,7 +22,7 @@ class Chapter9Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        #self.listings[4].skip = True # whatever
+        self.listings[47].skip = True # example code we won't use
 
         while self.pos < 200:
             print(self.pos)
