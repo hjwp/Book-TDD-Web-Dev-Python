@@ -233,6 +233,19 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def test_listings_showing_a_move_mean_can_ignore_commit_lines_added_and_removed_2(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            hello
+
+            one more line at end
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l030'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
 
     def test_happy_with_elipsis(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(

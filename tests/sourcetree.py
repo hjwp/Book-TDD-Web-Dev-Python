@@ -143,8 +143,10 @@ class SourceTree(object):
                 continue
             if line in commit_info:
                 print('line {0} found in commit info'.format(line))
-                if line in commit_lines_to_remove:
-                    raise ApplyCommitException('listing line was to be deleted')
+                if line in commit_lines_to_remove and not line.strip() in stripped_new_contents:
+                    raise ApplyCommitException(
+                        'listing line {0} was to be deleted'.format(line)
+                    )
                 continue
             if line.strip().startswith('[...'):
                 continue
