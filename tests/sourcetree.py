@@ -70,7 +70,7 @@ class SourceTree(object):
     def get_local_repo_path(self, chapter_no):
         return os.path.abspath(os.path.join(
             os.path.dirname(__file__),
-            '../source/chapter_%d/superlists' % (chapter_no,)
+            '../source/chapter_{0:02d}/superlists'.format(chapter_no)
         ))
 
 
@@ -79,11 +79,11 @@ class SourceTree(object):
         self.run_command('git init .')
         self.run_command('git remote add repo %s' % (self.get_local_repo_path(chapter),))
         self.run_command('git fetch repo')
-        self.run_command('git checkout chapter_%s' % (chapter - 1,))
+        self.run_command('git checkout chapter_{0:02d}'.format(chapter - 1))
         self.chapter = chapter
 
     def get_commit_spec(self, commit_ref):
-        return 'repo/chapter_%s^{/--%s--}' % (self.chapter, commit_ref)
+        return 'repo/chapter_{0:02d}^{{/--{1}--}}'.format(self.chapter, commit_ref)
 
     def apply_listing_from_commit(self, listing):
         commit_spec = self.get_commit_spec(listing.commit_ref)

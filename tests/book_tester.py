@@ -102,7 +102,9 @@ class ChapterTest(unittest.TestCase):
 
 
     def check_final_diff(self, chapter):
-        diff = self.run_command(Command('git diff -b repo/chapter_%d' % (chapter,)))
+        diff = self.run_command(Command(
+            'git diff -b repo/chapter_{0:02d}'.format(chapter)
+        ))
         if diff != '':
             raise AssertionError('Final diff was not empty, was:\n%s' % (diff,))
 
