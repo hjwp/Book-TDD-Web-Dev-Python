@@ -50,55 +50,204 @@ party auth system you want to integrate:
 down
 
 
-Could just use:
+Exploratory coding, aka "spiking"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-https://github.com/mozilla/django-browserid
+Before I wrote this chapter all I'd seen of Persona was a talk at PyCon by Dan
+Callahan, in which he promised it could be implemented in 30 lines of code, and
+magic'd his way through a demo -- in other words, I knew it not at all.
 
-Except it's not python3 compatible.
+In the last chapter we saw that you can sometimes use a unit test as a way of
+exploring a new API, but sometimes you just want to hack something together to
+see if it works, and that's absolutely fine.  When learning a new tool or
+exploring a new possible solution, it's often appropriate to leave the rigorous
+TDD process to one side, and build a little prototype without tests, or perhaps
+with very few tests.
 
-[source,javascript]
-.Mozilla Personal sample client-side code
+This kind of prototyping activity is often called a "spike", for 
+http://stackoverflow.com/questions/249969/why-are-tdd-spikes-called-spikes[reasons
+best known]
+
+The first thing I did was take a look at an existing  django-persona integration
+called https://github.com/mozilla/django-browserid[Django-BrowserID], but
+unfortunately it didn't really support Python 3.  I'm sure it will by the time
+you read this, but I was quietly relieved since I was quietly looking forward
+to hacking together my own implementation.
+
+It took me about 3 hours of hacking about, using a combination of code stolen
+from Dan's talk and the example code on the
+https://developer.mozilla.org/en-US/docs/Mozilla/Persona[Persona site], but by
+the end I had something which just about work, all inside a new app I called
+'accounts', starting with a custom user model:
+
+[source,python]
+.accounts/models.py
 ----
-var currentUser = 'bob@example.com';
+class ListUser(AbstractBaseUser, PermissionsMixin):
+    email = models.EmailField(primary_key=True)
+    USERNAME_FIELD = 'email'
+    #REQUIRED_FIELDS = ['email', 'height']
+
+    objects = ListUserManager()
+
+    @property
+    def is_staff(self):
+        return self.email == 'harry.percival@gmail.com'
+
+    @property
+    def is_active(self):
+        return True
+----
+
+That's what I call a user model!  One field, none of this
+firstname/lastname/username nonsense, and, pointedly, no password! 
+Somebody else's problem!   But you can see that this code isn't ready
+for production, from the commented-out lines to the hard-coded harry
+email address.
+
+I've also got a shiny custom Django authentication backend:
+
+[source,python]
+.accounts/authentication.py
+----
+from accounts.models import ListUser
+
+class PersonaAuthenticationBackend(object):
+
+    def authenticate(self, assertion):
+        # Send the assertion to Mozilla's verifier service.
+        data = {'assertion': assertion, 'audience': 'localhost'}
+        print('sending to mozilla', data, file=sys.stderr)
+        resp = requests.post('https://verifier.login.persona.org/verify', data=data)
+        print('got', resp, file=sys.stderr)
+
+        # Did the verifier respond?
+        if resp.ok:
+            # Parse the response
+            verification_data = resp.json()
+
+            # Check if the assertion was valid
+            if verification_data['status'] == 'okay':
+                email = verification_data['email']
+                try:
+                    return self.get_user(email)
+                except ListUser.DoesNotExist:
+                    return ListUser.objects.create(email=email)
+
+
+    def get_user(self, email):
+        return ListUser.objects.get(email=email)
+----
+
+That's copied pretty much directly from the Mozilla site, as you can see
+from the friendly comments. You can also see the traces of some hacky 
+debugging by the print functions.
+
+There's a couple of login and logout view functions:
+
+[source,python]
+.accounts/views.py
+----
+def login(request):
+    print('login view', file=sys.stderr)
+    #user = PersonaAuthenticationBackend().authenticate(request.POST['assertion'])
+    user = authenticate(assertion=request.POST['assertion'])
+    if user is not None:
+        auth_login(request, user)
+    return redirect('/')
+
+
+def logout(request):
+    auth_logout(request)
+    return redirect('/')
+----
+
+And some hacks in the base html template:
+
+[source,html]
+.lists/templates/home.html
+----
+    <div id="auth">
+        {% if user.email %}
+            <p>Logged in as {{ user.email}}</p>
+            <p><a id="logout" href="{% url 'logout' %}">Log out</a></p>
+        {% else %}
+            <a href="#" id="login">Sign in</a>
+        {% endif %}
+        <p>User: {{user}}</p>
+    </div>
+----
+
+The most interesting of which is the client-side JavaScript code:
+
+[source,html]
+.lists/templates/base.html
+----
+        <script src="https://login.persona.org/include.js"></script>
+        <script>
+            $(document).ready(function() {
+
+var signinLink = document.getElementById('login');
+if (signinLink) {
+  signinLink.onclick = function() { navigator.id.request(); };
+}
+
+var signoutLink = document.getElementById('logout');
+if (signoutLink) {
+  signoutLink.onclick = function() { navigator.id.logout(); };
+}
+
+var currentUser = '{{ user.email }}' || null;
+var csrf_token = '{{ csrf_token }}';
+console.log(currentUser);
 
 navigator.id.watch({
   loggedInUser: currentUser,
   onlogin: function(assertion) {
-    $.post('/login', {assertion: assertion})
+    $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token})
     .done(function() { window.location.reload(); })
     .fail(function() { navigator.id.logout();});
   },
   onlogout: function() {
-    $.post('/logout')
+    $.post('/accounts/logout')
     .always(function() { window.location.reload(); });
   }
 });
+
+            });
+        </script>
 ----
 
-(from dan's slides)
+Along the way, I had to fight pretty hard, including debugging ajax requests
+by hand in the Firefox console, catching infinite page-refresh loops, stumbling
+over several missing attributes on my custom user model (because I didn't read
+the docs properly), and finally discovering that we have to upgrade to the dev
+version of Django to actually get it to work in the admin site.  But we now
+have a working solution!  Time to de-spike
 
-[source,python]
-.lists/tests.py
-----
-def login(request):
-    if 'assertion' not in request.form:
-        abort(400)
 
-    # Send the assertion to Mozilla's verifier service.
-    data = {'assertion': request.form['assertion'], 'audience': 'https://example.com:443'}
-    resp = requests.post('https://verifier.login.persona.org/verify', data=data, verify=True)
+//TODO screenshot ajax debug
 
-    # Did the verifier respond?
-    if resp.ok:
-        # Parse the response
-        verification_data = json.loads(resp.content)
+BUG - if want to use admin site, will need to upgrade to 1.6 beta!
 
-        # Check if the assertion was valid
-        if verification_data['status'] == 'okay':
-            # Log the user in by setting a secure session cookie
-            session.update({'email': verification_data['email']})
-            return 'You are logged in'
+http://stackoverflow.com/questions/16983547/django-problems-with-id-in-custom-usermodel/18458659#18458659
 
-    # Oops, something failed. Abort.
-    abort(500)
-----
+
+
+De-Spiking
+~~~~~~~~~~
+
+bla
+
+
+Javascript tests
+~~~~~~~~~~~~~~~~
+
+topic for next chapter!
+
+
+Deploy
+~~~~~~
+
+south etc
+
