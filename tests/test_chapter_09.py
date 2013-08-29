@@ -29,18 +29,28 @@ class Chapter9Test(ChapterTest):
         self.listings[95].skip = True # example code
         self.listings[98].skip = True # print debugging
         self.listings[99].skip = True # print debugging
+        self.listings[120].skip = True # git comment
+        self.listings[138].skip = True # git comment
 
         # hack fast-forward
         skip = True
         if skip:
-            self.pos = 112
+            self.pos = 147
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch09l036')
+                self.sourcetree.get_commit_spec('ch09l054')
             ))
+
+        while self.pos < 114:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
+
+        # revert a little hacky test thing
+        self.sourcetree.run_command('git checkout -- lists/models.py')
 
         while self.pos < 200:
             print(self.pos)
             self.recognise_listing_and_process_it()
+
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(self.chapter_no)

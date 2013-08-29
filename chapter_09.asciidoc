@@ -1340,10 +1340,11 @@ another
 Returning different error messages for different validation errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Time for a new unit test for our view:
+Time for a new unit test for our view.  We rename the old one too, 
+to clarify who's doing what:
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch09l037)
 [source,python]
 ----
     def test_empty_item_validation_errors_end_up_on_lists_page(self):
@@ -1375,7 +1376,7 @@ in your list' in response
 Here's one possible solution:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch09l038)
 [source,python]
 ----
 def view_list(request, list_id):
@@ -1388,19 +1389,19 @@ def view_list(request, list_id):
             error = "You've already got this in your list"
 ----
 
-That works.  Time for a commit
+We can try the FT and... that works!  Time for a commit.
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff*
-$ *git commit*  # eg "validation implemented at views level"
+$ *git commit*  # eg "duplicate item validation implemented at views level"
 ----
 
 
 Moving validation logic into a form
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-That would work, but we're really doing too much work in our view. Django
+That 'does' work, but we're really doing too much work in our view. Django
 encourages us to use Form classes to do the work of validating user input, and
 choosing what error messages to display.
 
@@ -1484,11 +1485,13 @@ for that:
 .lists/tests/test_forms.py 
 [source,python]
 ----
+def test_form_renders_item_text_input(self):
+    form = ItemForm()
     self.assertIn('placeholder="Enter a to-do item"', form.as_p())
 ----
 
-That gives us a fail.  How can we customise the input for a form field?  Using 
-a "widget":
+That gives us a fail which justifies some real coding.  How can we customise
+the input for a form field?  Using a "widget":
 
 
 [role="sourcecode"]
@@ -1512,8 +1515,9 @@ a form for a model, called ModelForm.  Let's try that:
 .lists/forms.py 
 [source,python]
 ----
-from lists.models import Item
 from django import forms
+
+from lists.models import Item
 
 class ItemForm(forms.models.ModelForm):
 
@@ -1568,7 +1572,7 @@ pass data into the form, as if it came from the user:
 
 
 [role="sourcecode"]
-.lists/tests/test_forms.py 
+.lists/tests/test_forms.py (ch09l046)
 [source,python]
 ----
     def test_form_validation_for_blank_items(self):
@@ -1588,7 +1592,7 @@ Now let's see if we can get it to use the specific error message that we
 want:
 
 [role="sourcecode"]
-.lists/tests/test_forms.py 
+.lists/tests/test_forms.py (ch09l047)
 [source,python]
 ----
 def test_form_validation_for_blank_items(self):
@@ -1609,7 +1613,8 @@ one error)
 That gives us:
 
 ----
-AssertionError: ['This field is required.'] != ["You can't have an empty list item"]
+AssertionError: ['This field is required.'] != ["You can't have an empty list
+item"]
 ----
 
 Django already has a default error message which we could present to the
@@ -1619,11 +1624,12 @@ involve hacking the form's init though:
 
 
 [role="sourcecode"]
-.lists/forms.py 
+.lists/forms.py (ch09l048)
 [source,python]
 ----
-from lists.models import Item
 from django import forms
+
+from lists.models import Item
 
 class ItemForm(forms.models.ModelForm):
 
@@ -1631,6 +1637,7 @@ class ItemForm(forms.models.ModelForm):
         super().__init__(*args, **kwargs)
         empty_error = "You can't have an empty list item"
         self.fields['text'].error_messages['required'] = empty_error
+
 
     class Meta:
         [...]
@@ -1640,7 +1647,7 @@ You know what we be even better than messing about with all these
 error strings?  Having a constant:  
 
 [role="sourcecode"]
-.lists/forms.py 
+.lists/forms.py (ch09l049)
 [source,python]
 ----
 EMPTY_LIST_ERROR = "You can't have an empty list item"
@@ -1650,12 +1657,14 @@ class ItemForm(forms.models.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['text'].error_messages['required'] = EMPTY_LIST_ERROR
+
+    [...]
 ----
 
 Re-run the tests to see they pass.... OK.  Now we change the test:
 
 [role="sourcecode"]
-.lists/tests/test_forms.py 
+.lists/tests/test_forms.py (ch09l050) 
 [source,python]
 ----
 from lists.forms import EMPTY_LIST_ERROR, ItemForm
@@ -1667,10 +1676,14 @@ from lists.forms import EMPTY_LIST_ERROR, ItemForm
         self.assertEqual(form.errors['text'], [EMPTY_LIST_ERROR])
 ----
 
-And the tests still pass. great
+And the tests still pass. Great.  We are totes commitballs.
 
-TODO: commit
-
+[subs="specialcharacters,quotes"]
+----
+$ *git status* # should show new file at lists/forms.py and its test_forms.py
+$ *git add lists*
+$ *git commit -m "new form for list items"*
+----
 
 Using the form in our home page
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1691,20 +1704,22 @@ We have a form class which can render some HTML and do validation of at
 least one kind of error -- let's start using it!  We should be able to use
 it in our 'home.html' template, and in our new list view.  
 
-Let's start in our unit tests for the home view. Let's replace the old-stype
+Let's start in our unit tests for the home view. Let's replace the old-style
 `test_home_page_returns_correct_html` with a set of tests that use the Django Test
 Client.  We leave the old test in at first, to check that our new test is equivalent:
 
 [role="sourcecode"]
-.lists/tests/test_views.py 
+.lists/tests/test_views.py (ch09l051)
 [source,python]
 ----
 from lists.forms import ItemForm
+[...]
 
 
     def test_home_page_returns_correct_html(self):
         request = HttpRequest()
         [...]
+
 
     def test_home_page_renders_home_template_with_form(self):
         response = Client().get('/')
@@ -1714,12 +1729,20 @@ from lists.forms import ItemForm
 
 That gives us:
 
+----
 KeyError: 'form'
+----
+
+So we use the form in our home page view:
 
 [role="sourcecode"]
-.lists/tests/views.py 
+.lists/views.py (ch09l052)
 [source,python]
 ----
+[...]
+from lists.forms import ItemForm
+from lists.models import Item, List
+
 def home_page(request):
     return render(request, 'home.html', {'form': ItemForm()})
 ----
@@ -1728,7 +1751,7 @@ OK, now let's try using it in the template:
 
 
 [role="sourcecode"]
-.lists/templates/home.html
+.lists/templates/home.html (ch09l053)
 [source,html]
 ----
     <form method="POST" action="/lists/new" >
@@ -1738,10 +1761,9 @@ OK, now let's try using it in the template:
             <p class="error">{{ error }}</p>
         {% endif %}
     </form>
-
-`{{form.text}}` renders just the `text` field of the form.
 ----
 
+`{{form.text}}` renders just the HTML input for `text` field of the form.
 
 Now our old test is out of date:
 
@@ -1755,30 +1777,34 @@ AssertionError: '<!DOCTYPE html>\n<html>\n    <head>\n        <meta
 Let's just clarify that error message a little:
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch09l054)
 [source,python]
 ----
 class HomePageTest(TestCase):
-    maxDiff = None
+    maxDiff = None #<2>
     [...]
     def test_home_page_returns_correct_html(self):
         request = HttpRequest()
         response = home_page(request)
         expected_html = render_to_string('home.html')
-        self.assertMultiLineEqual(response.content.decode(), expected_html)
+        self.assertMultiLineEqual(response.content.decode(), expected_html) #<1>
 ----
 
-`assertMultiLineEqual` is useful for comparing long strings, it gives you a
-diff-style output, but it truncates long diffs by default; that's why we also
-need to set `maxDiff = None` 
+<1> `assertMultiLineEqual` is useful for comparing long strings, it gives you a
+diff-style output, but it truncates long diffs by default...
+
+<2> so that's why we also need to set `maxDiff = None` on the test class.
 
 Sure enough, it's because our `render_to_string` call doesn't know about the
 form :
 
 ----
+[...]
       <form method="POST" action="/lists/new" >
--         <input id="id_text" name="text" placeholder="Enter a to-do item" type="text" />
+-         <input id="id_text" name="text" placeholder="Enter a to-do item"
+type="text" />
 +         
+[...]
 ----
 
 But we can fix that:
@@ -1795,10 +1821,10 @@ def test_home_page_returns_correct_html(self):
 ----
 
 
-And that gets us back to passing.  At this point it's OK to delete
-the old test, because it really does just duplicate the new one.  The
-`assertTemplateUsed` and `response.context` checks are sufficent for
-testing a basic view with a GET request.
+And that gets us back to passing.  We've now reassured ourselves enough
+that the behaviour has stayed the same, so it's now OK to delete
+the old test. The `assertTemplateUsed` and `response.context` checks from
+the new test are sufficient for testing a basic view with a GET request.
 
 
 One thing we have done, though, is changed our form -- it no longer uses
@@ -1810,6 +1836,8 @@ tests that they fail the first time they try and find the input box.
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
 element: {"method":"id","selector":"id_new_item"}' ; Stacktrace: 
 ----
+
+TODO: commit first
 
 Let's fix the functional tests.  A quick grep shows us there are several
 places where we're using `id_new_item`
