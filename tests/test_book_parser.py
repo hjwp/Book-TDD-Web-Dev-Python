@@ -11,9 +11,11 @@ from book_parser import (
     parse_listing,
 )
 from examples import (
+
     CODE_LISTING_WITH_CAPTION,
     CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF,
     CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF,
+    COMMAND_MADE_WITH_ATS,
     COMMAND_LISTING_WITH_CAPTION,
     COMMANDS_WITH_VIRTUALENV,
 )
@@ -105,6 +107,17 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(len(listings), 3)
         virtualenv_command = listings[1]
         self.assertEqual(virtualenv_command, 'source ../virtualenv/bin/activate && python3 manage.py test lists')
+
+
+    def test_recognises_command_with_ats(self):
+        code_html = COMMAND_MADE_WITH_ATS.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        print(listings)
+        self.assertEqual(len(listings), 1)
+        command = listings[0]
+        self.assertEqual(command, 'grep id_new_item functional_tests/tests/test*')
+        self.assertEqual(command.type, 'other command')
 
 
     def test_can_extract_one_command_and_its_output(self):

@@ -69,3 +69,11 @@ CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF = """<div class="listingblock so
 <span class="gd">-    def test_saving_and_retrieving_items(self):</span>
 [...]
 </pre></div></div></div>"""
+
+
+COMMAND_MADE_WITH_ATS="""
+<div class="listingblock">
+<div class="content">
+<pre><code>$ <strong>grep id_new_item functional_tests/tests/test*</strong></code></pre>
+</div></div>
+"""
