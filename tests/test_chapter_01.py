@@ -8,12 +8,11 @@ from book_tester import (
     CodeListing,
     Command,
     Output,
-    parsed_html,
-    parse_listing,
     write_to_file
 )
 
 class Chapter1Test(ChapterTest):
+    chapter_no = 1
 
     def write_to_file(self, codelisting):
         # override write to file, in this chapter cwd is root tempdir
@@ -23,68 +22,65 @@ class Chapter1Test(ChapterTest):
 
 
     def test_listings_and_commands_and_output(self):
-        chapter_1 = parsed_html.cssselect('div.sect1')[1]
-        listings_nodes = chapter_1.cssselect('div.listingblock')
-        listings = [p for n in listings_nodes for p in parse_listing(n)]
+        self.parse_listings()
 
         # sanity checks
-        self.assertEqual(type(listings[0]), CodeListing)
-        self.assertEqual(type(listings[1]), Command)
-        self.assertEqual(type(listings[2]), Output)
+        self.assertEqual(type(self.listings[0]), CodeListing)
+        self.assertEqual(type(self.listings[1]), Command)
+        self.assertEqual(type(self.listings[2]), Output)
 
-        self.write_to_file(listings[0])
-        first_output = self.run_command(listings[1], cwd=self.tempdir)
-        self.assert_console_output_correct(first_output, listings[2])
+        self.write_to_file(self.listings[0])
+        first_output = self.run_command(self.listings[1], cwd=self.tempdir)
+        self.assert_console_output_correct(first_output, self.listings[2])
 
-        self.run_command(listings[3], cwd=self.tempdir) # startproject
+        self.run_command(self.listings[3], cwd=self.tempdir) # startproject
 
-        self.assert_directory_tree_correct(listings[4])
+        self.assert_directory_tree_correct(self.listings[4])
 
-        runserver_output = self.run_command(listings[5])
-        #self.assert_console_output_correct(runserver_output, listings[6])
-        listings[6].was_checked = True #TODO - fix
+        runserver_output = self.run_command(self.listings[5])
+        #self.assert_console_output_correct(runserver_output, self.listings[6])
+        self.listings[6].was_checked = True #TODO - fix
 
-        second_ft_run_output = self.run_command(listings[7], cwd=self.tempdir)
+        second_ft_run_output = self.run_command(self.listings[7], cwd=self.tempdir)
         self.assertFalse(second_ft_run_output)
-        self.assertEqual(listings[8].strip(), '$')
-        listings[8].was_checked = True
+        self.assertEqual(self.listings[8].strip(), '$')
+        self.listings[8].was_checked = True
 
-        ls_output = self.run_command(listings[9], cwd=self.tempdir)
+        ls_output = self.run_command(self.listings[9], cwd=self.tempdir)
         self.assert_console_output_correct(
-            ls_output, listings[10], ls=True
+            ls_output, self.listings[10], ls=True
         )
-        self.run_command(listings[11], cwd=self.tempdir) # mv
-        self.run_command(listings[12], cwd=self.tempdir) # cd
-        git_init_output = self.run_command(listings[13])
-        self.assert_console_output_correct(git_init_output, listings[14])
+        self.run_command(self.listings[11], cwd=self.tempdir) # mv
+        self.run_command(self.listings[12], cwd=self.tempdir) # cd
+        git_init_output = self.run_command(self.listings[13])
+        self.assert_console_output_correct(git_init_output, self.listings[14])
 
-        ls_output = self.run_command(listings[15])
+        ls_output = self.run_command(self.listings[15])
         self.assert_console_output_correct(
-            ls_output, listings[16], ls=True
+            ls_output, self.listings[16], ls=True
         )
-        self.run_command(listings[17]) # git add
-        git_status_output = self.run_command(listings[18])
-        self.assert_console_output_correct(git_status_output, listings[19])
+        self.run_command(self.listings[17]) # git add
+        git_status_output = self.run_command(self.listings[18])
+        self.assert_console_output_correct(git_status_output, self.listings[19])
 
-        rm_cached_output = self.run_command(listings[20])
-        self.assert_console_output_correct(rm_cached_output, listings[21])
-        self.run_command(listings[22]) # ignore __pycache__
-        self.run_command(listings[23]) # ignore pycs
+        rm_cached_output = self.run_command(self.listings[20])
+        self.assert_console_output_correct(rm_cached_output, self.listings[21])
+        self.run_command(self.listings[22]) # ignore __pycache__
+        self.run_command(self.listings[23]) # ignore pycs
 
-        git_status_output = self.run_command(listings[24])
-        self.assert_console_output_correct(git_status_output, listings[25])
+        git_status_output = self.run_command(self.listings[24])
+        self.assert_console_output_correct(git_status_output, self.listings[25])
 
-        self.run_command(listings[26])
-        #self.run_command(listings[26]) #git commit, no am
-        commit = Command(listings[27] + ' -am"first commit"')
+        self.run_command(self.listings[26])
+        #self.run_command(self.listings[26]) #git commit, no am
+        commit = Command(self.listings[27] + ' -am"first commit"')
         self.run_command(commit)
-        listings[27].was_run = True # TODO
+        self.listings[27].was_run = True # TODO
         local_repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../source/chapter_01/superlists'))
         self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
         self.run_command(Command('git fetch repo'))
         diff = self.run_command(Command('git diff -b repo/chapter_01'))
         actual_diff_lines = diff.strip().split('\n')
-
 
         expected_diff_lines = [
            u"diff --git a/superlists/settings.py b/superlists/settings.py",
@@ -107,7 +103,7 @@ class Chapter1Test(ChapterTest):
         self.assertEqual(actual_diff_lines[10:], expected_diff_lines[10:])
         self.assertTrue(actual_diff_lines[8].startswith("-SECRET_KEY"))
 
-        self.assert_all_listings_checked(listings)
+        self.assert_all_listings_checked(self.listings)
 
 
 if __name__ == '__main__':
