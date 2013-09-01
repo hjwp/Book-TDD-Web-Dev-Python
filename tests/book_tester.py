@@ -272,6 +272,8 @@ class ChapterTest(unittest.TestCase):
         for i, listing in enumerate(listings):
             if i in exceptions:
                 continue
+            if listing.skip:
+                continue
 
             if type(listing) == CodeListing:
                 self.assertTrue(
