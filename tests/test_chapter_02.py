@@ -12,46 +12,24 @@ from book_tester import (
 )
 
 class Chapter2Test(ChapterTest):
+    chapter_no = 2
 
     def test_listings_and_commands_and_output(self):
-        chapter_2 = parsed_html.cssselect('div.sect1')[2]
-        listings_nodes = chapter_2.cssselect('div.listingblock')
-        listings = [p for n in listings_nodes for p in parse_listing(n)]
+        self.parse_listings()
 
         # sanity checks
-        self.assertEqual(type(listings[0]), CodeListing)
-        self.assertEqual(type(listings[1]), Output)
-        self.assertEqual(type(listings[2]), Command)
+        self.assertEqual(type(self.listings[0]), CodeListing)
+        self.assertEqual(type(self.listings[2]), Command)
 
-        self.sourcetree.start_with_checkout(2)
+        self.sourcetree.start_with_checkout(self.chapter_no)
 
-        self.write_to_file(listings[0])
-
-        # listings 1 is an aside
-        runserver_output = self.run_command(listings[2])
-        first_output = self.run_command(listings[3])
-        self.assert_console_output_correct(first_output, listings[4])
-
-        # listings 5 is an aside
-
-        self.write_to_file(listings[6])
-
-        second_ft_run = self.run_command(listings[7])
-        self.assert_console_output_correct(second_ft_run, listings[8])
-
-        self.write_to_file(listings[9])
-
-        diff = self.run_command(listings[10])
-        self.assert_console_output_correct(diff, listings[11])
-
-        commit = Command(listings[12] + 'm"first ft specced out in comments and now uses unittest"')
-        self.run_command(commit)
-        listings[12].was_run = True # TODO
-
-        self.assert_all_listings_checked(listings, [1,5])
-        self.check_final_diff(2)
-
-
+        self.listings[1].skip = True # aside
+        self.listings[5].skip = True # aside
+        while self.pos < 13:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
+        self.assert_all_listings_checked(self.listings)
+        self.check_final_diff(self.chapter_no)
 
 
 if __name__ == '__main__':
