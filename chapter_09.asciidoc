@@ -2001,7 +2001,70 @@ Sure enough, the form isn't being passed to the template:
 KeyError: 'form'
 ----
 
-TODO.. stuff here
+And here's how we use the form in the view:  
+
+
+[source,python]
+.lists/tests.py
+----
+def new_list(request):
+    form = ItemForm(data=request.POST) #<1>
+    if form.is_valid(): #<2>
+        list = List.objects.create()
+        Item.objects.create(text=request.POST['text'], list=list)
+        return redirect('/lists/%d/' % (list.id,))
+    else:
+        return render(request, 'home.html', {"form": form}) #<3>
+----
+
+<1> We pass the `request.POST` data into the form's constructor, 
+<2> We use `form.is_valid()` to determine whether this is a good or a
+bad submission
+<3> In the bad case, we pass the form down to the template, instead of
+our hard-coded error string.
+
+Incidentally, did you notice that we've also fixed a small bug?  In the
+previous code, we were saving a superfluous List object, even for invalid
+inputs.  They would have been left lying around our database.  We should add an
+extra assert in our unit tests once this refactor is done.
+
+//TODO: scratchpad
+
+At this point the tests will fail, because we're not yet using the form
+to display errors in the template:
+
+[role="sourcecode"]
+.lists/templates/home.html
+[source,html]
+----
+    <form method="POST" action="/lists/new" >
+        {{ form.text }}
+        {% csrf_token %}
+        {% if form.errors %} #<1>
+            <div class="error">{{ form.text.errors }}</div> #<2><3>
+        {% endif %}
+    </form>
+----
+
+<1> `form.errors` contains a list of all the errors for the form
+<2> `form.text.errors` is a list of just the errors for the `text` field.
+
+//TODO div vs p, either mention it or change the earlier one.
+
+That gets the unit tests passing.  How about the FTs?
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests*]
+Creating test database for alias 'default'...
+....
+ ---------------------------------------------------------------------
+Ran 4 tests in 16.154s
+
+OK
+Destroying test database for alias 'default'...
+----
 
 Woohoo!  Can you feel that feeling of relief wash over you?  We've just made
 a fairly major change to our small app -- that input field, its name and ID,
@@ -2022,56 +2085,6 @@ $ git diff
 $ git commit -am"implement form in home page, refactor item_text and id_new_item attrs"
 ----
 
-
-Now to use the rest of the features of our form:  the validation logic.  This
-means using the form in the `new_list` view. Let's implement it straight away,
-and see if the unit tests like it:
-
-
-[role="sourcecode"]
-.lists/views.py
-[source,python]
-----
-def new_list(request):
-    form = ItemForm(request.POST)
-    if form.is_valid():
-        list = List.objects.create()
-        Item.objects.create(text=form.cleaned_data['text'], list=list)
-        return redirect('/lists/%d/' % (list.id,))
-    return render(request, 'home.html', {'form': form})
-----
-
-Did you notice that we've also fixed a small bug?  In the previous code, we
-were saving a superfluous List object, even for invalid inputs.  They would
-have been left lying around our database.  We should add an extra assert in 
-our unit tests once this refactor is done.
-
-//TODO: scratchpad
-
-----
-AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
-list item' in response
-----
-
-Ah, we haven't yet put the error in our template.  Let's do that:
-
-[role="sourcecode"]
-.lists/templates/home.html
-[source,html]
-----
-    <form method="POST" action="/lists/new" >
-        {% csrf_token %}
-        {{ form.text }}
-        {% if form.errors %}
-            <p class="error">{{ form.text.errors }}</p>
-        {% endif %}
-    </form>
-----
-
-Neat!  And it gets our unit tests back to passing... And the functional tests
-too! 
-
-TODO: use errors string constants
 
 Before we forget, let's add our check that invalid new list forms don't create
 a pointless list object:
@@ -2341,6 +2354,7 @@ TODO: tidy up URLs
 TODO: appendix in which we switch to class-based views
 TODO: add notes field (?)
 TODO: prettier bootstrap formatting
+TODO: deploy!  use south..
 TODO: a general philosophical discussion on design in TDD, "don't forget the
 refactor step"
 
