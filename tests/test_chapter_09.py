@@ -35,9 +35,9 @@ class Chapter9Test(ChapterTest):
         # hack fast-forward
         skip = True
         if skip:
-            self.pos = 166
+            self.pos = 173
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch09l066')
+                self.sourcetree.get_commit_spec('ch09l068')
             ))
 
         while self.pos < 114:
@@ -75,6 +75,8 @@ class Chapter9Test(ChapterTest):
             self.pos = 159
 
         self.listings[162].skip = True # illustrative listing
+        print('listing 173', self.listings[173])
+        #self.assertEqual(self.listings[173].type, 'other command')
         while self.pos < 200:
             print(self.pos)
             self.recognise_listing_and_process_it()
