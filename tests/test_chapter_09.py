@@ -35,22 +35,49 @@ class Chapter9Test(ChapterTest):
         # hack fast-forward
         skip = True
         if skip:
-            self.pos = 147
+            self.pos = 166
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch09l054')
+                self.sourcetree.get_commit_spec('ch09l066')
             ))
 
         while self.pos < 114:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
-        # revert a little hacky test thing
-        self.sourcetree.run_command('git checkout -- lists/models.py')
+        if not self.pos > 114:
+            # revert a little hacky test thing
+            self.sourcetree.run_command('git checkout -- lists/models.py')
 
-        while self.pos < 200:
+        while self.pos < 152:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
+        self.listings[152].skip = True # illustration of bigger change
+        self.listings[153].skip = True # illustration of bigger change
+
+        if not self.pos > 154:
+            # manually apply ch09l058, which touches 3 files
+            self.sourcetree.run_command(
+                'git checkout {0} -- .'.format(self.sourcetree.get_commit_spec('ch09l058'))
+            )
+
+        while self.pos < 156:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
+        self.listings[156].skip = True # TODO split l059 into two listings
+        self.listings[157].skip = True # TODO or this grep won't match
+
+        # manually apply ch09l059, which touches several files
+        if not self.pos > 158:
+            self.sourcetree.run_command(
+                'git checkout {0} -- .'.format(self.sourcetree.get_commit_spec('ch09l059'))
+            )
+            self.pos = 159
+
+        self.listings[162].skip = True # illustrative listing
+        while self.pos < 200:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(self.chapter_no)
