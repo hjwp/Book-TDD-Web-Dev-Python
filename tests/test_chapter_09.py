@@ -77,7 +77,7 @@ class Chapter9Test(ChapterTest):
         self.listings[162].skip = True # illustrative listing
         print('listing 173', self.listings[173])
         #self.assertEqual(self.listings[173].type, 'other command')
-        while self.pos < 200:
+        while self.pos < 193:
             print(self.pos)
             self.recognise_listing_and_process_it()
 

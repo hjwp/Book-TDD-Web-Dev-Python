@@ -2102,12 +2102,7 @@ a pointless list object:
 [source,python]
 ----
     def test_validation_errors_sent_back_to_home_page_template(self):
-        client = Client()
-        response = client.post(
-            '/lists/new',
-            data={'text': ''}
-        )
-
+        response = Client().post('/lists/new', data={'text': ''})
         self.assertEqual(List.objects.all().count(), 0)
         self.assertEqual(Item.objects.all().count(), 0)
         self.assertTemplateUsed(response, 'home.html')
@@ -2134,8 +2129,15 @@ see if we can use a subclass:
 
 [role="sourcecode"]
 [source,python]
-.lists/tests/test_forms.py
+.lists/tests/test_forms.py (ch09l070)
 ----
+from lists.forms import (
+    DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
+    ExistingListItemForm, ItemForm
+)
+from lists.models import Item, List
+[...]
+
 class ExistingListItemFormTest(TestCase):
 
     def test_form_renders_item_text_input(self):
@@ -2161,7 +2163,7 @@ class ExistingListItemFormTest(TestCase):
 Let's start with a minimal class:
 
 [role="sourcecode"]
-.lists/forms.py
+.lists/forms.py (ch09l071)
 [source,python]
 ----
 DUPLICATE_ITEM_ERROR = "You've already got this in your list"
@@ -2182,7 +2184,7 @@ AssertionError: True is not false
 Now let's see if making it inherit from our existing form helps:
 
 [role="sourcecode"]
-.lists/forms.py
+.lists/forms.py (ch09l072)
 [source,python]
 ----
 class ExistingListItemForm(ItemForm):
@@ -2192,7 +2194,9 @@ class ExistingListItemForm(ItemForm):
 That takes us down to just one failure:
 
 ----
-FAIL: test_form_validation_for_duplicate_items (lists.tests.test_forms.ExistingListItemFormTest)
+FAIL: test_form_validation_for_duplicate_items
+(lists.tests.test_forms.ExistingListItemFormTest)
+    self.assertFalse(form.is_valid())
 AssertionError: True is not false
 ----
 
@@ -2200,8 +2204,12 @@ Now we need to override the fields list from our parent form class.  We
 can do this by inheriting the class `Meta` (you know, I didn't know this
 would work before I set off writing this chapter.  It's pretty cool):
 
+[role="sourcecode"]
+.lists/forms.py
+[source,python]
 ----
 class ExistingListItemForm(ItemForm):
+
     class Meta(ItemForm.Meta):
         fields = ('list', 'text')
 ----
@@ -2214,10 +2222,13 @@ KeyError: 'text'
 
 Hm, a little debugging required.  Let's try this in our test:
 
+[role="sourcecode"]
+.lists/tests/test_forms.py (ch09l074)
+[source,python]
 ----
-        self.assertFalse(form.is_valid())
-        self.fail(dict(form.errors))
-        self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
+    self.assertFalse(form.is_valid())
+    self.fail(dict(form.errors))
+    self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
 ----
 
 ----
@@ -2246,32 +2257,41 @@ One more little customisation should do it:  Django uses a method called
 .lists/forms.py
 [source,python]
 ----
+class ExistingListItemForm(ItemForm):
+    [...]
+
     def validate_unique(self):
         super().validate_unique()
-        if self.non_field_errors():
-            self._update_errors({'text': [DUPLICATE_ITEM_ERROR]})
+        if self.non_field_errors(): #<1>
+            self._update_errors({'text': [DUPLICATE_ITEM_ERROR]}) #<2>
 ----
 
-We use a couple of special Django methods here, `self.non_field_errors()`,
-which is just the same as +self.errors['__all__']+, but more readable, and
-`self._update_errors`, a Django helper method which takes care of the fact that
-dictionary keys may not exist, and fields may already have errors in their list
-which we want to append to (see the Django source if you're curious).
+We use a couple of special Django methods here:
+<1> `self.non_field_errors()`, which is just the same as
++self.errors['__all__']+, but more readable, and
+
+<2> `self._update_errors`, a Django helper method which takes care of the fact
+that dictionary keys may not exist, and fields may already have errors in their
+list which we want to append to (see the Django source if you're curious).
 
 Our little debug `self.fail` tells us things are working:
 
 ----
-AssertionError: {'__all__': ['Item with this List and Text already exists.'],
-'text': ["You've already got this in your list"]}
+AssertionError: {'text': ["You've already got this in your list"], '__all__':
+['Item with this List and Text already exists.']}
 ----
 
 Just to stay neat and tidy, let's say we want to remove that `__all__`
-non-field error.  Adjust the unit test:
+non-field error.  Adjust the unit test, removing the `self.fail` while we're at
+it:
 
+[role="sourcecode"]
+.lists/tests/test_forms.py (ch09l076)
+[source,python]
 ----
-        self.assertFalse(form.is_valid())
-        self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
-        self.assertFalse(form.non_field_errors())
+    self.assertFalse(form.is_valid())
+    self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
+    self.assertFalse(form.non_field_errors())
 ----
 
 Almost there:
@@ -2295,10 +2315,12 @@ Final step:
 
 And we're there!  A quick commit
 
+[subs="specialcharacters,quotes"]
 ----
-git diff
-git commit -a
+$ *git diff*
+$ *git commit -a*
 ----
+
 
 Now let's see if we can put this form to work in our view:
 
@@ -2306,6 +2328,9 @@ Now let's see if we can put this form to work in our view:
 .lists/views.py
 [source,python]
 ----
+from lists.forms import ExistingListItemForm, ItemForm
+[...]
+
 def view_list(request, list_id):
     list = List.objects.get(id=list_id)
 
@@ -2326,8 +2351,21 @@ def view_list(request, list_id):
 How about that form.save() eh?  If you'd never met Django modelForms, 
 there's some of the real power of a modelform right there!
 
-We still have failures for the two validation tests.  We adjust the template:
+We still have failures for the two validation tests:  
 
+----
+FAIL: test_duplicate_item_validation_errors_end_up_on_lists_page
+(lists.tests.test_views.ListViewTest)
+AssertionError: False is not true : Couldn't find 'You&#39;ve already got this
+in your list' in response
+[...]
+FAIL: test_empty_item_validation_errors_end_up_on_lists_page
+(lists.tests.test_views.ListViewTest)
+AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
+list item' in response
+----
+
+We adjust the template:
 
 [role="sourcecode"]
 .lists/templates/list.html
@@ -2337,18 +2375,58 @@ We still have failures for the two validation tests.  We adjust the template:
     {% csrf_token %}
     {{ form.text }}
     {% if form.errors %}
-        <p class="error">{{ form.text.errors }}</p>
+        <div class="error">{{ form.text.errors }}</div>
     {% endif %}
 </form>
 ----
 
 
-And we're there! Time for a final commit, and a wrap-up.
+And we're there!  Unit tests pass!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 19 tests in 0.082s
+
+OK
+----
+
+And so does our FT for validation:
+
+[subs="specialcharacters,macros"]
+----
+$ python3 manage.py test functional_tests.ItemValidationTest
+Creating test database for alias 'default'...
+..
+ ---------------------------------------------------------------------
+Ran 2 tests in 12.048s
+
+OK
+----
+
+As a final check, we re-run 'all' the FTs:
+
+[subs="specialcharacters,macros"]
+----
+$ python3 manage.py test functional_tests
+Creating test database for alias 'default'...
+....
+ ---------------------------------------------------------------------
+Ran 4 tests in 19.048s
+
+OK
+----
+
+Hooray! Time for a final commit, and a wrap-up.
 
 
-Unit testing Django wrap-up:
-
-* Split up into at least 3 files, test_models.py, test_views.py, test_forms.py
+.Tips for testing views and forms
+*******************************************************************************
+* Split tests out into their own folder called 'tests', adding a '__init__.py'
+which imports all test classes
+* Split unit tests up into at least 3 files, 'test_models.py', 'test_views.py',
+'test_forms.py'
 * Have at least a placeholder test for each model class and each form class
 * When testing views, I would recommend:
     * Using the Django Test Client
@@ -2356,8 +2434,7 @@ Unit testing Django wrap-up:
     * Check each item in the template context
     * Test any template logic:  any for or if should get a minimal test
     * Sanity-check that your form is rendered, and its errors are displayed
-
-Why these items?  
+*******************************************************************************
 
 
 
