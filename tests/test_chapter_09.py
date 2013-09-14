@@ -33,7 +33,7 @@ class Chapter9Test(ChapterTest):
         self.listings[138].skip = True # git comment
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 173
             self.sourcetree.run_command('git checkout {0}'.format(
