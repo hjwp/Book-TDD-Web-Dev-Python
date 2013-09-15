@@ -88,8 +88,8 @@ class Chapter6Test(ChapterTest):
         self.listings[82].skip = True
         self.listings[83].skip = True
 
-        self.listings[75].was_checked = True  # brief git comment
-        self.listings[77].was_checked = True  # brief git comment
+        self.listings[75].skip = True  # brief git comment
+        self.listings[77].skip = True  # brief git comment
         self.listings[88].skip = True # "decoding its traceback"
         self.listings[91].was_checked = True  # brief git comment
 

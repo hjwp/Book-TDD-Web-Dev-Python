@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
-import time
 
 from book_tester import ChapterTest
 
@@ -68,6 +67,7 @@ class Chapter9Test(ChapterTest):
         self.listings[157].skip = True # TODO or this grep won't match
 
         # manually apply ch09l059, which touches several files
+        self.listings[158].skip = True # TODO or this grep won't match
         if not self.pos > 158:
             self.sourcetree.run_command(
                 'git checkout {0} -- .'.format(self.sourcetree.get_commit_spec('ch09l059'))
