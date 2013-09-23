@@ -22,13 +22,13 @@ class Chapter6Test(ChapterTest):
         self.assertEqual(type(self.listings[2]), Command)
 
         self.sourcetree.start_with_checkout(self.chapter_no)
-        #self.start_dev_server()
 
         # other prep
         self.run_command(Command('python3 manage.py syncdb --noinput'))
 
         # skips
         self.listings[18].skip = True
+        self.assertIn('# msg eg', self.listings[18])
 
 
         while self.pos < 37:
@@ -113,7 +113,7 @@ class Chapter6Test(ChapterTest):
         listing.was_written = True
         self.pos += 1
 
-        while self.pos < 131:
+        while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 

@@ -28,7 +28,7 @@ class Chapter5Test(ChapterTest):
         self.assertIn('fill out the database NAME', self.listings[59])
         self.listings[68].skip = True
         self.assertIn("3: Buy peacock feathers", self.listings[68])
-        while self.pos < 77:
+        while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 

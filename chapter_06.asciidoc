@@ -502,15 +502,15 @@ identifier -- is the one we should work on next. Let's have a go at fixing
 that, and only that. 
 
 The URL comes from the redirect after POST.  In 'lists/tests.py', find
-`test_home_page_can_save_a_POST_request`, and change the expected redirect
+`test_home_page_redirects_after_POST`, and change the expected redirect
 location:
 
 [role="sourcecode"]
 .lists/tests.py
 [source,python]
 ----
-    self.assertEqual(response.status_code, 302)
-    self.assertEqual(response['location'], '/lists/the-only-list-in-the-world/')
+self.assertEqual(response.status_code, 302)
+self.assertEqual(response['location'], '/lists/the-only-list-in-the-world/')
 ----
 
 Does that seem slightly strange?  Clearly, '/lists/the-only-list-in-the-world'
@@ -705,6 +705,7 @@ class HomePageTest(TestCase):
     def test_home_page_returns_correct_html(self):
     def test_home_page_displays_all_list_items(self):
     def test_home_page_can_save_a_POST_request(self):
+    def test_home_page_redirects_after_POST(self):
     def test_home_page_only_saves_items_when_necessary(self):
 class ListViewTest(TestCase):
     def test_list_view_displays_all_items(self):
@@ -739,9 +740,9 @@ class ListViewTest(TestCase):
         client = Client()
         response = client.get('/lists/the-only-list-in-the-world/')
 
+        self.assertTemplateUsed(response, 'list.html')
         self.assertContains(response, 'itemey 1')
         self.assertContains(response, 'itemey 2')
-        self.assertTemplateUsed(response, 'list.html')
 ----
 
 `assertTemplateUsed` is one of the more useful functions that the Django test
@@ -810,7 +811,7 @@ new To-Do list":
     <body>
         <h1>Start a new To-Do list</h1>
         <form method="POST" >
-            <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+            <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
             {% csrf_token %}
         </form>
     </body>
@@ -916,8 +917,9 @@ nothing else, it'll simplify the home page view.
 //TODO: get rid of hm well
 
 Open up 'lists/tests.py', and 'move' the
-`test_home_page_can_save_a_POST_request` method into a new class, then change
-its name:
+`test_home_page_can_save_a_POST_request` and
+`test_home_page_redirects_after_POST` methods into a new class, then change
+their names:
 
 
 [role="sourcecode"]
@@ -930,9 +932,15 @@ class NewListTest(TestCase):
         request = HttpRequest()
         request.method = 'POST'
         [...]
+
+    def test_redirects_after_POST(self):
+        request = HttpRequest()
+        [...]
 ----
 
-Now let's use the Django test client:
+Now let's use the Django test client.  It's an attribute of the Django `TestCase`:
+
+TODO: include note that use of Django test client is considered controversial.
 
 [role="sourcecode"]
 .lists/tests.py
@@ -941,61 +949,45 @@ Now let's use the Django test client:
 class NewListTest(TestCase):
 
     def test_saving_a_POST_request(self):
-        client = Client()
-        response = client.post(
+        self.client.post(
             '/lists/new',
             data={'item_text': 'A new list item'}
         )
-
         self.assertEqual(Item.objects.all().count(), 1)
         new_item = Item.objects.all()[0]
         self.assertEqual(new_item.text, 'A new list item')
 
+
+    def test_redirects_after_POST(self):
+        response = self.client.post(
+            '/lists/new',
+            data={'item_text': 'A new list item'}
+        )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response['location'], '/lists/the-only-list-in-the-world/')
 ----
 
 Let's try running that:
 
-//TODO: this will be different if I change to two tests in 5.
-
 ----
     self.assertEqual(Item.objects.all().count(), 1)
 AssertionError: 0 != 1
-----
-
-
-A little baffling...  I think I know why: if I move the
-`response.status_code` check a little higher up:
-
-[role="sourcecode"]
-.lists/tests.py
-[source,python]
-----
-    def test_saving_a_POST_request(self):
-        client = Client()
-        response = client.post(
-            '/lists/new',
-            data={'item_text': 'A new list item'}
-        )
-        self.assertEqual(response.status_code, 302)
-
-        self.assertEqual(Item.objects.all().count(), 1)
-        new_item = Item.objects.all()[0]
-        self.assertEqual(new_item.text, 'A new list item')
-
-        self.assertEqual(response['location'], '/lists/the-only-list-in-the-world/')
-----
-
-Aha! Sure enough:
-
-----
+[...]
     self.assertEqual(response.status_code, 302)
 AssertionError: 404 != 302
 ----
 
-We haven't built a URL for '/lists/new', so the `client.post` is just getting
-a 404 response. Let's build it now.
+The first failure is a little baffling perhaps, but the second failure is
+clear:  instead of returning a 302 redirect, our view is returning a 404. 
+That's because we haven't built a URL for '/lists/new', so the `client.post` is
+just getting a 404 response. 
+
+NOTE: Do you remember how we split this out into two tests in the last chapter?
+If we only had one test that checked both the saving and the redirect, it would
+have failed on the `0 != 1` failure, which would have been much harder to 
+debug.
+
+Let's build our new URL now.
 
 
 [role="sourcecode"]
@@ -1066,17 +1058,11 @@ functions, instead of our two-step check for the redirect:
 .lists/tests.py
 [source,python]
 ----
-    def test_saving_a_POST_request(self):
-        client = Client()
-        response = client.post(
+    def test_redirects_after_POST(self):
+        response = self.client.post(
             '/lists/new',
             data={'item_text': 'A new list item'}
         )
-
-        self.assertEqual(Item.objects.all().count(), 1)
-        new_item = Item.objects.all()[0]
-        self.assertEqual(new_item.text, 'A new list item')
-
         self.assertRedirects(response, '/lists/the-only-list-in-the-world/')
 ----
 
@@ -1348,8 +1334,10 @@ The final stage:  each list should have its own URL
 
 What shall we use as the unique identifier for our lists?  Probably the
 simplest thing, for now, is just to use the auto-generated `id` field
-from the database. Let's change `ListViewTest`, make it use the
-URL for a particular list, and check that no other list items appear:
+from the database. Let's change `ListViewTest`, and have one test that
+checks that we use the correct template, and pass it the correct List 
+object, and then another test that does a sense-check that the right 
+things actually appear as rendered by the template:
 
 [role="sourcecode"]
 .lists/tests.py
@@ -1357,24 +1345,32 @@ URL for a particular list, and check that no other list items appear:
 ----
 class ListViewTest(TestCase):
 
-    def test_list_view_displays_items_for_that_list(self):
-        list = List.objects.create()
-        Item.objects.create(text='itemey 1', list=list)
-        Item.objects.create(text='itemey 2', list=list)
+    def test_list_view_passes_correct_list_to_list_template(self):
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
 
+        response = self.client.get('/lists/%d/' % (correct_list.id,))
+
+        self.assertTemplateUsed(response, 'list.html')
+        self.assertEqual(response.context['list'], correct_list)
+
+`
+    def test_list_view_displays_items_for_that_list(self):
+        correct_list = List.objects.create()
+        Item.objects.create(text='itemey 1', list=correct_list)
+        Item.objects.create(text='itemey 2', list=correct_list)
         other_list = List.objects.create()
         Item.objects.create(text='other list item 1', list=other_list)
         Item.objects.create(text='other list item 2', list=other_list)
 
-        client = Client()
-        response = client.get('/lists/%d/' % (list.id,))
+        response = self.client.get('/lists/%d/' % (correct_list.id,))
 
         self.assertContains(response, 'itemey 1')
         self.assertContains(response, 'itemey 2')
         self.assertNotContains(response, 'other list item 1')
         self.assertNotContains(response, 'other list item 2')
-        self.assertTemplateUsed(response, 'list.html')
 ----
+
 
 NOTE: if you're not familiar with Python string substitutions, that `%d` may
 be a little confusing?  <<dip,Dive into Python>> has a 
@@ -1385,6 +1381,9 @@ overview], if you want to go look them up quickly...
 Running the unit tests gives an expected 404:
 
 ----
+AssertionError: 404 != 200 : Couldn't retrieve content: Response code was 404
+(expected 200)
+[...]
 AssertionError: 404 != 200 : Couldn't retrieve content: Response code was 404
 (expected 200)
 ----
@@ -1522,33 +1521,78 @@ getting pretty good at these now, so let's knock one together quickly:
 ----
 class NewItemTest(TestCase):
 
-    def test_saving_a_POST_request_to_an_existing_list(self):
-        list = List.objects.create()
+    def test_can_save_a_POST_request_to_an_existing_list(self):
         other_list = List.objects.create()
-        client = Client()
-        response = client.post(
-            '/lists/%d/new_item' % (list.id,),
+        correct_list = List.objects.create()
+
+        self.client.post(
+            '/lists/%d/new_item' % (correct_list.id,),
             data={'item_text': 'A new item for an existing list'}
         )
 
         self.assertEqual(Item.objects.all().count(), 1)
         new_item = Item.objects.all()[0]
         self.assertEqual(new_item.text, 'A new item for an existing list')
-        self.assertEqual(new_item.list, list)
+        self.assertEqual(new_item.list, correct_list)
 
-        self.assertRedirects(response, '/lists/%d/' % (list.id,))
+
+    def test_redirecst_to_list_view(self):
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        response = self.client.post(
+            '/lists/%d/new_item' % (correct_list.id,),
+            data={'item_text': 'A new item for an existing list'}
+        )
+
+        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))
 ----
 
 We get 
 
 ----
 AssertionError: 0 != 1
+[...]
+AssertionError: 301 != 302 : Response didn't redirect as expected: Response
+code was 301 (expected 302)
 ----
 
-This is because the view is actually giving a 404 (again, you can check
-by moving the `assertRedirects` higher in the test if you like)
+That's a little strange. We haven't actually specified a URL for
+'/lists/1/new_item' yet, so our expected failure is `404 != 302`.  Why are we
+getting a 301?  It's because we've used a very greedy regular expression:
 
-Add a new URL in 'urls.py':
+[source,python]
+----
+    url(r'^lists/(.+)/$', 'lists.views.view_list', name='view_list'),
+----
+
+Django has some built-in code to issue a permanent redirect (301) whenever
+someone asks for a URL which is 'almost' right, except for a missing URL.
+In this case, '/lists/1/new_item/' would be a match for `lists/(.+)/`, with
+the `(.+)` capturing `1/new_item`.  So Django "helpfully" guesses that we
+actually wanted the URL with a trailing slash.
+
+We can fix that by making our URL pattern explicitly capture only numerical
+digits, by using the regular expression `\d`:
+
+[role="sourcecode"]
+.superlists/urls.py
+[source,python]
+----
+    url(r'^lists/(\d+)/$', 'lists.views.view_list', name='view_list'),
+----
+
+Now we get:
+
+----
+AssertionError: 0 != 1
+[...]
+AssertionError: 404 != 302 : Response didn't redirect as expected: Response
+code was 404 (expected 302)
+----
+
+Now we've got our expected 404, let's add a new URL for adding new items to
+existing lists:
 
 [role="sourcecode"]
 .superlists/urls.py
@@ -1556,8 +1600,8 @@ Add a new URL in 'urls.py':
 ----
 urlpatterns = patterns('',
     url(r'^$', 'lists.views.home_page', name='home'),
-    url(r'^lists/(.+)/$', 'lists.views.view_list', name='view_list'),
-    url(r'^lists/(.+)/new_item$', 'lists.views.add_item', name='add_item'),
+    url(r'^lists/(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^lists/(\d+)/new_item$', 'lists.views.add_item', name='add_item'),
     url(r'^lists/new$', 'lists.views.new_list', name='new_list'),
 ----
 
