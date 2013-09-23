@@ -246,7 +246,7 @@ def _write_to_file(path, new_contents):
                         lines_after
                     )
 
-            elif new_contents.startswith("[...]") and new_contents.endswith("[...]"):
+            elif new_contents.strip().startswith("[...]") and new_contents.endswith("[...]"):
                 new_contents = _replace_lines_in(old_lines, new_lines[1:-1])
             else:
                 raise Exception("I don't know how to deal with this")
