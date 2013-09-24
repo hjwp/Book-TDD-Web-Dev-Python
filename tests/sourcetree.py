@@ -111,8 +111,16 @@ class SourceTree(object):
         self.run_command('git checkout chapter_{0:02d}'.format(chapter - 1))
         self.chapter = chapter
 
+
     def get_commit_spec(self, commit_ref):
         return 'repo/chapter_{0:02d}^{{/--{1}--}}'.format(self.chapter, commit_ref)
+
+
+    def show_future_version(self, commit_spec, path):
+        return self.run_command(
+            'git show %s:%s' % (commit_spec, path),
+        )
+
 
     def apply_listing_from_commit(self, listing):
         commit_spec = self.get_commit_spec(listing.commit_ref)
@@ -139,14 +147,13 @@ class SourceTree(object):
                 raise ApplyCommitException(
                     'could not find line %s in listing %s' % (new_line, listing.contents)
                 )
-        self.run_command(
-            'git checkout %s -- %s' % (commit_spec, listing.filename),
-        )
-        new_contents = self.get_contents(listing.filename)
-        stripped_new_contents = [l.strip() for l in new_contents.split('\n')]
+        future_contents = self.show_future_version(commit_spec, listing.filename)
+        stripped_future_contents = [l.strip() for l in future_contents.split('\n')]
 
         line_pos_in_commit = 0
         for line in listing_lines:
+            if not line or line.strip().startswith('[...'):
+                continue
             if line in commit.lines_to_add:
                 try:
                     line_pos_in_commit = commit.lines_to_add[line_pos_in_commit:].index(line)
@@ -156,25 +163,20 @@ class SourceTree(object):
                     raise ApplyCommitException('listing lines in wrong order')
                 print('line {0} found in commit lines'.format(line))
                 continue
-            if not line:
+            if line.strip() in stripped_future_contents:
                 continue
-            if line in commit_info:
-                print('line {0} found in commit info'.format(line))
-                if line in commit.deleted_lines and not line.strip() in stripped_new_contents:
-                    raise ApplyCommitException(
-                        'listing line {0} was to be deleted'.format(line)
-                    )
-                continue
-            if line.strip().startswith('[...'):
-                continue
-            if line.strip() in stripped_new_contents:
-                continue
+            if line.strip() in [l.strip() for l in commit.deleted_lines]:
+                raise ApplyCommitException(
+                    'listing line {0} was to be deleted'.format(line)
+                )
             print('commit info')
             print(commit_info)
             raise ApplyCommitException('listing line not found:\n%s' % (line,))
 
+        self.run_command(
+            'git checkout %s -- %s' % (commit_spec, listing.filename),
+        )
         self.run_command('git reset')
         listing.was_written = True
         print('applied commit')
-        print(commit_info)
 
