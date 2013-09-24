@@ -303,6 +303,30 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def test_with_diff_listing(self):
+        self.sourcetree.run_command('git checkout ddae23f')
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            diff --git a/file2.txt b/file2.txt
+            index 93f054e..519d518 100644
+            --- a/file2.txt
+            +++ b/file2.txt
+            @@ -4,6 +4,5 @@ another line changed
+             some duplicate lines coming up...
+
+             hello
+            -hello
+
+             one more line at end
+             """).lstrip()
+        )
+        listing.commit_ref = 'ch17l030'
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
+
+
 class SourceTreeRunCommandTest(unittest.TestCase):
 
     def test_running_simple_command(self):
@@ -504,7 +528,23 @@ class CommitTest(unittest.TestCase):
         assert commit.new_lines == [
             "    def test_POST_redirects_to_list_view(self):",
         ]
-        #assert commit.context_lines == [
+
+        assert commit.first_non_metadata_line_pos == commit.all_lines.index(
+            "diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py"
+        )
+        assert commit.other_lines == [
+            "diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py",
+            "index 8e18d77..03fc675 100644",
+            "--- a/lists/tests/test_views.py",
+            "+++ b/lists/tests/test_views.py",
+            "@@ -55,36 +55,6 @@ class NewListTest(TestCase):",
+            " class ListViewTest(TestCase):",
+            "     def test_list_view_passes_list_to_list_template(self):",
+            "@@ -112,3 +82,29 @@ class ListViewTest(TestCase):",
+            "         self.assertNotContains(response, 'other list item 1')",
+            "         self.assertNotContains(response, 'other list item 2')",
+        ]
+
         #     "class ListViewTest(TestCase):",
         #     "    def test_list_view_passes_list_to_list_template(self):",
         #]

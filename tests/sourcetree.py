@@ -31,6 +31,18 @@ class Commit(object):
         self.new_lines = [
             l for l in self.lines_to_add if l not in self.lines_to_remove
         ]
+        for pos, l in enumerate(self.all_lines):
+            if l.strip().startswith('diff --git a/'):
+                self.first_non_metadata_line_pos = pos
+        self.other_lines = [
+            l for l in self.all_lines[self.first_non_metadata_line_pos:]
+            if l.strip()
+            and l[1:].strip()
+            and not l[1:] in self.lines_to_remove
+            and not l[1:] in self.lines_to_add
+            #todo missing +++ lines
+        ]
+
 
 
 class ApplyCommitException(Exception):
@@ -125,8 +137,10 @@ class SourceTree(object):
     def apply_listing_from_commit(self, listing):
         commit_spec = self.get_commit_spec(listing.commit_ref)
         commit_info = self.run_command('git show %s' % (commit_spec,))
-        print('commit info:')
-        print(commit_info)
+        print('Applying listing from commit.\nListing:\n{0}\nCommit:\n:{1}'.format(
+            listing.contents, commit_info
+        ))
+
         commit = Commit(commit_info)
 
         files = self.run_command(
@@ -145,7 +159,9 @@ class SourceTree(object):
         for new_line in commit.new_lines:
             if new_line.strip() not in stripped_listing_lines:
                 raise ApplyCommitException(
-                    'could not find line %s in listing %s' % (new_line, listing.contents)
+                    'could not find commit new line {0} in listing:\n{1}'.format(
+                        new_line, listing.contents
+                    )
                 )
         future_contents = self.show_future_version(commit_spec, listing.filename)
         stripped_future_contents = [l.strip() for l in future_contents.split('\n')]
@@ -158,19 +174,18 @@ class SourceTree(object):
                 try:
                     line_pos_in_commit = commit.lines_to_add[line_pos_in_commit:].index(line)
                 except ValueError:
-                    print('listing:\n', listing.contents)
-                    print('commit:\n', commit_info)
-                    raise ApplyCommitException('listing lines in wrong order')
-                print('line {0} found in commit lines'.format(line))
+                    raise ApplyCommitException(
+                        'listing line {0} was in wrong order'.format(line)
+                    )
                 continue
             if line.strip() in stripped_future_contents:
+                continue
+            if line in commit.all_lines: # probably a diff listing
                 continue
             if line.strip() in [l.strip() for l in commit.deleted_lines]:
                 raise ApplyCommitException(
                     'listing line {0} was to be deleted'.format(line)
                 )
-            print('commit info')
-            print(commit_info)
             raise ApplyCommitException('listing line not found:\n%s' % (line,))
 
         self.run_command(

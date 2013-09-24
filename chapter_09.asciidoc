@@ -350,7 +350,7 @@ $ @git st@
 $ @git add lists/tests@
 $ @python3 manage.py test lists@
 [...]
-Ran 6 tests in 0.034s
+Ran 9 tests in 0.034s
 
 OK
 $ @git commit -m"Move unit tests into a folder with single file"@
@@ -390,13 +390,11 @@ Whereas 'test_views.py'  just loses one class:
 .lists/tests/test_views.py (ch09l010)
 [source,diff]
 ----
-diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py
-index fc1eb64..9305bf8 100644
 --- a/lists/tests/test_views.py
 +++ b/lists/tests/test_views.py
-@@ -81,33 +81,3 @@ class ListViewTest(TestCase):
-         self.assertTemplateUsed(response, 'list.html')
-         self.assertEqual(response.context['list'], list)
+@@ -103,34 +103,3 @@ class ListViewTest(TestCase):
+         self.assertNotContains(response, 'other list item 1')
+         self.assertNotContains(response, 'other list item 2')
  
 -
 -
@@ -429,7 +427,7 @@ from .test_views import *
 ----
 $ *python3 manage.py test lists*
 [...]
-Ran 6 tests in 0.040s
+Ran 9 tests in 0.040s
 
 OK
 ----
@@ -552,9 +550,9 @@ That works:
 ----
 $ pass:quotes[*python3 manage.py test lists*] 
 Creating test database for alias 'default'...
-.......
+..........
  ---------------------------------------------------------------------
-Ran 7 tests in 0.037s
+Ran 10 tests in 0.037s
 
 OK
 Destroying test database for alias 'default'...
@@ -581,7 +579,7 @@ class NewListTest(TestCase):
     [...]
 
     def test_validation_errors_sent_back_to_home_page_template(self):
-        response = Client().post('/lists/new', data={'item_text': ''})
+        response = self.client.post('/lists/new', data={'item_text': ''})
         self.assertEqual(Item.objects.all().count(), 0)
         self.assertTemplateUsed(response, 'home.html')
         expected_error =  "You can't have an empty list item"
@@ -657,7 +655,7 @@ And adjusting the template:
 [source,html]
 ----
     <form method="POST" action="/lists/new" >
-        <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
         {% csrf_token %}
         {% if error %}
             <p class="error">{{ error }}</p>
@@ -770,8 +768,8 @@ peacock feathers']
 ----
 
 
-Now let's change the test for saving POST requests to existing lists, to
-make it point at the base list URL, and also move it into `ListViewTest`:
+Now let's change the tests for saving POST requests to existing lists. We
+move them both into `ListViewTest`, and make them point at the base list URL:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch09l021)
@@ -779,18 +777,28 @@ make it point at the base list URL, and also move it into `ListViewTest`:
 ----
 class ListViewTest(TestCase):
 
-    def test_list_view_displays_all_items(self):
+    def test_list_view_passes_list_to_list_template(self):
         [...]
 
-    def test_saving_a_POST_request_to_an_existing_list(self):
+    def test_list_view_displays_items_for_that_list(self):
         [...]
-        response = client.post(
-            '/lists/%d/' % (list.id,),
+
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        [...]
+        self.client.post(
+            '/lists/%d/' % (correct_list.id,),
             data={'item_text': 'A new item for an existing list'}
         )
+
+    def test_POST_redirects_to_list_view(self):
+        [...]
+        response = self.client.post(
+            '/lists/%d/' % (correct_list.id,),
 ----
 
-(The `NewItemTest` class disappears). That gives
+Note that the `NewItemTest` class disappears.  I've also changed the name
+of the redirect test to make it explicit that it only applies to POST 
+requests. That gives
 
 ----
 AssertionError: 0 != 1
@@ -831,7 +839,7 @@ It's because we've deleted the view, but it's still being referred to in
 [source,python]
 ----
 urlpatterns = patterns('',
-    url(r'^(.+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
     url(r'^new$', 'lists.views.new_list', name='new_list'),
 )
 ----
@@ -870,10 +878,10 @@ class ListViewTest(TestCase):
     [...]
 
     def test_validation_errors_end_up_on_lists_page(self):
-        list = List.objects.create()
+        listey = List.objects.create()
         
-        response = Client().post(
-            '/lists/%d/' % (list.id,),
+        response = self.client.post(
+            '/lists/%d/' % (listey.id,),
             data={'item_text': ''}
         ) 
         self.assertEqual(Item.objects.all().count(), 0)
@@ -931,7 +939,7 @@ Meantime we need to add the error to the list template.
 [source,html]
 ----
     <form method="POST" action="/lists/{{ list.id }}/" >
-        <input id="id_new_item" name="item_text" placeholder="Enter a to-do item" />
+        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
         {% csrf_token %}
         {% if error %}
             <p class="error">{{ error }}</p>
@@ -1362,8 +1370,7 @@ to clarify who's doing what:
     def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
         list1 = List.objects.create()
         item1 = Item.objects.create(list=list1, text='textey')
-        client = Client()
-        response = client.post(
+        response = self.client.post(
             '/lists/%d/' % (list1.id,),
             data={'item_text': 'textey'}
         )
@@ -1732,7 +1739,7 @@ from lists.forms import ItemForm
 
 
     def test_home_page_renders_home_template_with_form(self):
-        response = Client().get('/')
+        response = self.client.get('/')
         self.assertTemplateUsed(response, 'home.html')
         self.assertIsInstance(response.context['form'], ItemForm)
 ----
@@ -1903,7 +1910,7 @@ of the old id (`id_new_item`) and name (`item_text`) and replace them too, with
 $ *grep -r id_new_item lists/*
 
 lists/static/base.css:#id_new_item {
-lists/templates/list.html:        <input id="id_new_item" name="item_text"
+lists/templates/list.html:        <input name="item_text" id="id_new_item"
 placeholder="Enter a to-do item" />
 ----
 
@@ -1933,9 +1940,9 @@ Once we're done, we re-run the unit tests to check everything still works:
 ----
 $ pass:quotes[*python3 manage.py test lists*] 
 Creating test database for alias 'default'...
-................
+..................
  ---------------------------------------------------------------------
-Ran 16 tests in 0.126s
+Ran 18 tests in 0.126s
 
 OK
 Destroying test database for alias 'default'...
@@ -2002,7 +2009,7 @@ class NewListTest(TestCase):
 [...]
 
     def test_validation_errors_sent_back_to_home_page_template(self):
-        response = Client().post('/lists/new', data={'text': ''})
+        response = self.client.post('/lists/new', data={'text': ''})
         self.assertEqual(Item.objects.all().count(), 0)
         self.assertTemplateUsed(response, 'home.html')
         self.assertContains(response, escape(EMPTY_LIST_ERROR))
@@ -2111,7 +2118,7 @@ a pointless list object:
 [source,python]
 ----
     def test_validation_errors_sent_back_to_home_page_template(self):
-        response = Client().post('/lists/new', data={'text': ''})
+        response = self.client.post('/lists/new', data={'text': ''})
         self.assertEqual(List.objects.all().count(), 0)
         self.assertEqual(Item.objects.all().count(), 0)
         self.assertTemplateUsed(response, 'home.html')
