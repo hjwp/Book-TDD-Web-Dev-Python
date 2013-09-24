@@ -5,7 +5,7 @@ from textwrap import dedent
 import os
 
 from book_parser import CodeListing
-from sourcetree import ApplyCommitException, SourceTree
+from sourcetree import ApplyCommitException, Commit, SourceTree
 
 
 class GetFileTest(unittest.TestCase):
@@ -398,4 +398,117 @@ class SourceTreeRunCommandTest(unittest.TestCase):
             os.path.join(os.path.dirname(__file__), '..', 'downloads', 'bootstrap-2-rezipped.zip'))
         )
         assert diff == ''
+
+
+class CommitTest(unittest.TestCase):
+
+    def test_init_from_example(self):
+        example = dedent(
+            """
+            commit 9ecbb2c2222b9b31ab21e51e42ed8179ec79b273
+            Author: Harry <hjwp2@cantab.net>
+            Date:   Thu Aug 22 20:26:09 2013 +0100
+
+                Some comment text. --ch09l021--
+
+                Conflicts:
+                    lists/tests/test_views.py
+
+            diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py
+            index 8e18d77..03fc675 100644
+            --- a/lists/tests/test_views.py
+            +++ b/lists/tests/test_views.py
+            @@ -55,36 +55,6 @@ class NewListTest(TestCase):
+
+
+
+            -class NewItemTest(TestCase):
+            -
+            -    def test_can_save_a_POST_request_to_an_existing_list(self):
+            -        other_list = List.objects.create()
+            -        correct_list = List.objects.create()
+            -        self.assertEqual(new_item.list, correct_list)
+            -
+            -
+            -    def test_redirects_to_list_view(self):
+            -        other_list = List.objects.create()
+            -        correct_list = List.objects.create()
+            -        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))
+            -
+            -
+            -
+             class ListViewTest(TestCase):
+
+                 def test_list_view_passes_list_to_list_template(self):
+            @@ -112,3 +82,29 @@ class ListViewTest(TestCase):
+                     self.assertNotContains(response, 'other list item 1')
+                     self.assertNotContains(response, 'other list item 2')
+
+            +
+            +    def test_can_save_a_POST_request_to_an_existing_list(self):
+            +        other_list = List.objects.create()
+            +        correct_list = List.objects.create()
+            +        self.assertEqual(new_item.list, correct_list)
+            +
+            +
+            +    def test_POST_redirects_to_list_view(self):
+            +        other_list = List.objects.create()
+            +        correct_list = List.objects.create()
+            +        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))
+            + """
+        )
+
+        commit = Commit(example)
+
+        assert commit.info == example
+
+        assert commit.lines_to_add == [
+            "    def test_can_save_a_POST_request_to_an_existing_list(self):",
+            "        other_list = List.objects.create()",
+            "        correct_list = List.objects.create()",
+            "        self.assertEqual(new_item.list, correct_list)",
+            "    def test_POST_redirects_to_list_view(self):",
+            "        other_list = List.objects.create()",
+            "        correct_list = List.objects.create()",
+            "        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))",
+        ]
+
+        assert commit.lines_to_remove == [
+            "class NewItemTest(TestCase):",
+            "    def test_can_save_a_POST_request_to_an_existing_list(self):",
+            "        other_list = List.objects.create()",
+            "        correct_list = List.objects.create()",
+            "        self.assertEqual(new_item.list, correct_list)",
+            "    def test_redirects_to_list_view(self):",
+            "        other_list = List.objects.create()",
+            "        correct_list = List.objects.create()",
+            "        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))",
+        ]
+
+        assert commit.moved_lines == [
+            "    def test_can_save_a_POST_request_to_an_existing_list(self):",
+            "        other_list = List.objects.create()",
+            "        correct_list = List.objects.create()",
+            "        self.assertEqual(new_item.list, correct_list)",
+
+            "        other_list = List.objects.create()",
+            "        correct_list = List.objects.create()",
+            "        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))",
+        ]
+
+        assert commit.deleted_lines == [
+            "class NewItemTest(TestCase):",
+            "    def test_redirects_to_list_view(self):",
+        ]
+
+        assert commit.new_lines == [
+            "    def test_POST_redirects_to_list_view(self):",
+        ]
+        #assert commit.context_lines == [
+        #     "class ListViewTest(TestCase):",
+        #     "    def test_list_view_passes_list_to_list_template(self):",
+        #]
+
+
+
 

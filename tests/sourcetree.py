@@ -4,6 +4,35 @@ import shutil
 import subprocess
 import tempfile
 
+
+class Commit(object):
+    def __init__(self, commit_info):
+        self.info = commit_info
+        self.all_lines = self.info.split('\n')
+
+        self.lines_to_add = [
+            l[1:] for l in self.all_lines
+            if l.startswith('+')
+            and l[1:].strip()
+            and not l[1] == '+'
+        ]
+        self.lines_to_remove = [
+            l[1:] for l in self.all_lines
+            if l.startswith('-')
+            and l[1:].strip()
+            and not l[1] == '-'
+        ]
+        self.moved_lines = [
+            l for l in self.lines_to_add if l in self.lines_to_remove
+        ]
+        self.deleted_lines = [
+            l for l in self.lines_to_remove if l not in self.lines_to_add
+        ]
+        self.new_lines = [
+            l for l in self.lines_to_add if l not in self.lines_to_remove
+        ]
+
+
 class ApplyCommitException(Exception):
     pass
 
@@ -90,6 +119,7 @@ class SourceTree(object):
         commit_info = self.run_command('git show %s' % (commit_spec,))
         print('commit info:')
         print(commit_info)
+        commit = Commit(commit_info)
 
         files = self.run_command(
             'git diff-tree --no-commit-id --name-only -r %s' % (commit_spec,)
@@ -100,28 +130,15 @@ class SourceTree(object):
                     files, listing.filename
             ))
 
-        commit_new_lines = [
-            l[1:] for l in commit_info.split('\n')
-            if l.startswith('+')
-            and l[1:].strip()
-            and not l[1] == '+'
-        ]
-        commit_lines_to_remove = [
-            l[1:] for l in commit_info.split('\n')
-            if l.startswith('-')
-            and l[1:].strip()
-            and not l[1] == '-'
-        ]
         listing_lines = listing.contents.split('\n')
         listing_lines = [l.rstrip(' #') for l in listing_lines]
 
         stripped_listing_lines = [l.strip() for l in listing_lines]
-        for new_line in commit_new_lines:
+        for new_line in commit.new_lines:
             if new_line.strip() not in stripped_listing_lines:
-                if new_line not in commit_lines_to_remove:
-                    raise ApplyCommitException(
-                        'could not find line %s in listing %s' % (new_line, listing.contents)
-                    )
+                raise ApplyCommitException(
+                    'could not find line %s in listing %s' % (new_line, listing.contents)
+                )
         self.run_command(
             'git checkout %s -- %s' % (commit_spec, listing.filename),
         )
@@ -130,9 +147,9 @@ class SourceTree(object):
 
         line_pos_in_commit = 0
         for line in listing_lines:
-            if line in commit_new_lines:
+            if line in commit.lines_to_add:
                 try:
-                    line_pos_in_commit = commit_new_lines[line_pos_in_commit:].index(line)
+                    line_pos_in_commit = commit.lines_to_add[line_pos_in_commit:].index(line)
                 except ValueError:
                     print('listing:\n', listing.contents)
                     print('commit:\n', commit_info)
@@ -143,7 +160,7 @@ class SourceTree(object):
                 continue
             if line in commit_info:
                 print('line {0} found in commit info'.format(line))
-                if line in commit_lines_to_remove and not line.strip() in stripped_new_contents:
+                if line in commit.deleted_lines and not line.strip() in stripped_new_contents:
                     raise ApplyCommitException(
                         'listing line {0} was to be deleted'.format(line)
                     )
