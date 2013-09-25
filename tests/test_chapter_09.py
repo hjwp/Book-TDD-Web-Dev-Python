@@ -7,6 +7,12 @@ from book_tester import ChapterTest
 class Chapter9Test(ChapterTest):
     chapter_no = 9
 
+    def skip_with_check(self, pos, expected_content):
+        listing = self.listings[pos]
+        assert expected_content in listing
+        listing.skip = True
+
+
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
 
@@ -21,62 +27,46 @@ class Chapter9Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        self.listings[47].skip = True # example code we won't use
-        self.listings[64].skip = True # example code we won't use
-        self.listings[88].skip = True # DONTify
-        self.listings[94].skip = True # example code
-        self.listings[95].skip = True # example code
-        self.listings[98].skip = True # print debugging
-        self.listings[99].skip = True # print debugging
-        self.listings[120].skip = True # git comment
-        self.listings[138].skip = True # git comment
+        self.skip_with_check(159, '# should show new file') # example code
+
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
-            self.pos = 183
+            self.pos = 187
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch09l074')
+                self.sourcetree.get_commit_spec('ch09l066')
             ))
 
-        while self.pos < 114:
+        while self.pos < 136:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
-        if not self.pos > 114:
+        if not self.pos > 136:
             # revert a little hacky test thing
             self.sourcetree.run_command('git checkout -- lists/models.py')
 
-        while self.pos < 152:
+        while self.pos < 174:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
-        self.listings[152].skip = True # illustration of bigger change
-        self.listings[153].skip = True # illustration of bigger change
-
-        if not self.pos > 154:
+        if not self.pos > 176:
             # manually apply ch09l058, which touches 3 files
             self.sourcetree.run_command(
                 'git checkout {0} -- .'.format(self.sourcetree.get_commit_spec('ch09l058'))
             )
 
-        while self.pos < 156:
+        while self.pos < 178:
             print(self.pos)
             self.recognise_listing_and_process_it()
-        self.listings[156].skip = True # TODO split l059 into two listings
-        self.listings[157].skip = True # TODO or this grep won't match
 
         # manually apply ch09l059, which touches several files
-        self.listings[158].skip = True # TODO or this grep won't match
         if not self.pos > 158:
             self.sourcetree.run_command(
                 'git checkout {0} -- .'.format(self.sourcetree.get_commit_spec('ch09l059'))
             )
             self.pos = 159
 
-        self.listings[162].skip = True # illustrative listing
-        print('listing 173', self.listings[173])
-        #self.assertEqual(self.listings[173].type, 'other command')
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()

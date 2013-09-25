@@ -447,8 +447,6 @@ became necessary, to avoid doing too much housekeeping all in the first
 chapter!
 
 
-TODO: refactor two URLs to use {% url %} at this point
-TODO: refactor uses of URLs in views too.
 
 Unit testing model validation and the self.assertRaises context manager
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -475,6 +473,7 @@ This is a new unit testing technique: when we want to check that doing
 something will raise an error, we can use the `self.assertRaises` context
 manager.  We could have used something like this instead:
 
+[role="skipme"]
 [source,python]
 ----
 try:
@@ -496,11 +495,11 @@ AssertionError: ValidationError not raised
 Overriding the save method on a model to ensure validation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-And now we discover one of Django's dirty little secrets. *This test should
-already pass*.  If you take a look at the
+And now we discover one of Django's dirty little secrets. 'This test should
+already pass'.  If you take a look at the
 https://docs.djangoproject.com/en/1.5/ref/models/fields/#blank[docs for the
 Django model fields], you'll see that `TextField` actually defaults to
-`blank=False`, which means that it should disallow empty values.
+`blank=False`, which means that it 'should' disallow empty values.
 
 So why is the test not failing?  Well, for 
 https://groups.google.com/forum/#!topic/django-developers/uIhzSwWHj4c[slightly
@@ -524,7 +523,7 @@ Django does have a method to manually run full validation however, called
 ----
 
 Which would get the tests to pass.  Let's revert it an make a real
-implementation by overriding the model's save method:
+implementation by overriding the model's `save` method:
 
 [role="sourcecode"]
 .lists/models.py (ch09l013)
@@ -586,8 +585,17 @@ class NewListTest(TestCase):
         self.assertContains(response, expected_error)
 ----
 
-The test fails out with an error -- our view tries to save an item with blank
-text, but the model validation raises an exception:
+As we're writing this test, we might get slightly offended by the '/lists/new'
+URL, which we're manually entering as a string. We've got a lot of URLs
+hard-coded in our tests, in our views, and in our templates, which violates the
+DRY principle.  I don't mind a bit of duplication in tests, but we should
+definitely be on the lookout for hard-coded URLs in our views and templates,
+and make a note to refactor them out.  But we won't do them straight away,
+because right now our application is in a broken state. We want to get back
+to a working state first.  
+
+As it is, the test fails out with an error -- our view tries to save an item
+with blank text, but the model validation raises an exception:
 
 ----
 django.core.exceptions.ValidationError: {'text': ['This field cannot be
@@ -614,7 +622,12 @@ def new_list(request):
     return redirect('/lists/%d/' % (list.id,))
 ----
 
-Sure enough, the test now wants us to use a template:
+As we're looking at the view code, we make a note that there's a hard-coded
+URL in there.  Let's add that to our scratchpad:
+
+* remove hard-coded URLs from 'views.py'
+
+Back to the test, which wants us to use a template:
 
 ----
 AssertionError: No templates used to render the response
@@ -648,7 +661,7 @@ We do that by passing a new template variable in:
         return render(request, 'home.html', {"error": error_text})
 ----
 
-And adjusting the template:
+And adjusting the template itself:
 
 [role="sourcecode"]
 .lists/templates/home.html (ch09l018)
@@ -663,14 +676,19 @@ And adjusting the template:
     </form>
 ----
 
-Hmm, that doesn't work:
+Making a note of another hard-coded URL in the form:
+
+* remove hard-coded URLs from 'views.py'
+* remove hard-coded URLs from form in 'home.html'
+
+Hmm, it looks like this code doesn't quite work:
 
 ----
 AssertionError: False is not true : Couldn't find 'You can't have an empty list
 item' in response
 ----
 
-A little print-based debug:
+A little print-based debug...
 
 [role="sourcecode"]
 .lists/tests/test_views.py
@@ -681,7 +699,7 @@ print(response.content.decode())
 self.assertContains(response, expected_error)
 ----
 
-Will show us the cause: Django has HTML-escaped the apostrophe:
+...will show us the cause: Django has HTML-escaped the apostrophe:
 
 ----
 <p class="error">You can&#39;t have an empty list item</p>
@@ -689,6 +707,7 @@ Will show us the cause: Django has HTML-escaped the apostrophe:
 
 We could hack something like this in to our test:
 
+[role="skipme"]
 [source,python]
 ----
     expected_error =  "You can&#39;t have an empty list item"
@@ -758,6 +777,12 @@ So, in 'list.html', our form will have a different target:
     <form method="POST" action="/lists/{{ list.id }}/" >
 ----
 
+Incidentally, that's another item in our to-do list:
+
+* remove hard-coded URLs from 'views.py'
+* remove hard-coded URLs from form in 'home.html'
+* remove hard-coded URLs from form in 'list.html'
+
 This will immediately break our original functional test:
 
 [subs="specialcharacters,macros"]
@@ -766,7 +791,6 @@ $ pass:quotes[*python3 manage.py test functional_tests.NewVisitorTest*]
 AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
 peacock feathers']
 ----
-
 
 Now let's change the tests for saving POST requests to existing lists. We
 move them both into `ListViewTest`, and make them point at the base list URL:
@@ -801,10 +825,16 @@ of the redirect test to make it explicit that it only applies to POST
 requests. That gives
 
 ----
+FAIL: test_POST_redirects_to_list_view (lists.tests.test_views.ListViewTest)
+AssertionError: 200 != 302 : Response didn't redirect as expected: Response
+code was 200 (expected 302)
+[...]
+FAIL: test_can_save_a_POST_request_to_an_existing_list
+(lists.tests.test_views.ListViewTest)
 AssertionError: 0 != 1
 ----
 
-Now we can change the `view_list` function to handle two types of request,
+We change the `view_list` function to handle two types of request,
 and delete the `add_item` view:
 
 
@@ -924,7 +954,14 @@ here, that try/except occurs twice in 'views.py', and in general things are
 feeling clunky.
 
 Let's wait a bit before we do a refactor though, because we know we're about to
-do some slightly different validation coding for duplicate items.
+do some slightly different validation coding for duplicate items. We'll just
+add it to our scratchpad for now:
+
+* remove hard-coded URLs from 'views.py'
+* remove hard-coded URLs from form in 'home.html'
+* remove hard-coded URLs from form in 'list.html'
+* remove duplication of validation logic in views.
+
 
 NOTE: One of the reasons that the "three strikes and refactor" rule exists is
 that, if you wait until you have 3 use cases, each might be slightly different,
@@ -938,13 +975,13 @@ Meantime we need to add the error to the list template.
 .lists/templates/list.html (ch09l026)
 [source,html]
 ----
-    <form method="POST" action="/lists/{{ list.id }}/" >
-        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
-        {% csrf_token %}
-        {% if error %}
-            <p class="error">{{ error }}</p>
-        {% endif %}
-    </form>
+<form method="POST" action="/lists/{{ list.id }}/" >
+    <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
+    {% csrf_token %}
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+</form>
 ----
 
 
@@ -953,6 +990,198 @@ And that gets us to the end of the test!
 ----
 AssertionError: Don't forget to also test duplicate items!
 ----
+
+Fantastic!  We're back to a working state, so we can take a look at some
+of the items on our scratchpad.  But I'd say it's a good time for a tea
+break first...
+
+
+Refactor: Removing hard-coded URLs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Do you remember those `name=` parameters in 'urls.py'? We just copied
+them across from the default example Django gave us, and I've been giving
+them some reasonably descriptive names. Now we find out what they're for!
+
+[role="skipme"]
+[source,python]
+----
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+----
+
+The {% url %} template tag
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We can replace the hard-coded URL in 'home.html' with a Django template tag
+which refers to the URL's "name":
+
+[role="sourcecode"]
+.lists/templates/home.html (ch09l0261)
+[source,html]
+----
+    <form method="POST" action="{% url 'new_list' %}" >
+----
+
+We check that doesn't break the unit tests:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+OK
+----
+
+And we check the functional tests too:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests*]
+AssertionError: Don't forget to also test duplicate items!
+
+Ran 3 tests in 12.932s
+----
+
+That's OK, it's the `self.fail` at the end of the test. We're happy the 
+application still works just as well.
+
+* remove hard-coded URLs from 'views.py'
+* [strikethrough line-through]#remove hard-coded URLs from form in 'home.html'#
+* remove hard-coded URLs from form in 'list.html'
+* remove duplication of validation logic in views.
+
+Let's do the other template while we're at it.  This one is more interesting,
+because we pass it a parameter:
+
+
+[role="sourcecode"]
+.lists/templates/list.html (ch09l0262)
+[source,html]
+----
+    <form method="POST" action="{% url 'view_list' list.id %}" >
+----
+
+TODO: add links to Django docs on URL template tag
+
+We run the tests again, and check they all pass (or get to the expected
+self.fail):
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+OK
+$ pass:quotes[*python3 manage.py test functional_tests*]
+FAILED (failures=1)
+----
+
+That's worthy of a commit:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am"Refactor hard-coded URLs out of templates"*
+----
+
+Now let's tackle 'views.py. One way of doing it is just like in the
+template, passing in the name of the URL and a positional argument:
+
+[role="sourcecode"]
+.lists/views.py (ch09l0263)
+[source,python]
+----
+def new_list(request):
+    [...]
+    return redirect('view_list', list.id)
+----
+
+That would get the unit and functional tests passing, but the `redirect`
+function can do even better magic than that!  In Django, because Model objects
+are often associated with a particular URL, you can define a special function
+called `get_absolute_url` which says what page diplays the item.  It's useful
+in this case, but it's also useful in the Django admin view (which we'll see
+later in the book): it will let you jump from looking at an object in the admin
+view to looking at the object on the live site. I'd always recommend defining
+a `get_absolute_url` for a model whenever there is one that makes sense, it
+takes no time at all.
+
+All it takes is a super-simple unit test in 'test_models.py':
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch09l0264)
+[source,python]
+----
+    def test_get_absolute_url(self):
+        list1 = List.objects.create()
+        self.assertEqual(list1.get_absolute_url(), '/lists/%d/' % (list1.id,))
+----
+
+//TODO: simplify first model test at this point??
+
+Which gives
+
+
+----
+AttributeError: 'List' object has no attribute 'get_absolute_url'
+----
+
+And the implementation use one of Django's shortcut functions, so again we
+obey DRY and avoid using a hard-coded string:
+
+[role="sourcecode"]
+.lists/models.py (ch09l0265)
+[source,python]
+----
+from django.shortcuts import resolve_url
+
+
+class List(models.Model):
+
+    def get_absolute_url(self):
+        return resolve_url('view_list', self.id)
+----
+
+And now we can use it in the view -- the `redirect` function just takes the
+object we want to redirect to, and it uses `get_absolute_url` under the
+hood automagically!
+
+
+[role="sourcecode"]
+.lists/views.py (ch09l0266)
+[source,python]
+----
+def new_list(request):
+    [...]
+    return redirect(list)
+----
+
+TODO: add links to Django docs on reverse
+
+Grand.  A full unit test and functional test run to assure ourselves that
+everything still works:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+OK
+$ pass:quotes[*python3 manage.py test functional_tests*]
+FAILED (failures=1)
+----
+
+Cross off our todos:
+
+* [strikethrough line-through]#remove hard-coded URLs from 'views.py'#
+* [strikethrough line-through]#remove hard-coded URLs from form in 'home.html'#
+* [strikethrough line-through]#remove hard-coded URLs from form in 'list.html'#
+* remove duplication of validation logic in views.
+
+And a commit:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am"Use get_absolute_url on List model to DRY urls in views"*
+----
+
+And back to our onions...
+
+
 
 
 Another FT for duplicate items
@@ -1002,6 +1231,7 @@ as 'Dontification'.
 Dontification
 ^^^^^^^^^^^^^
 
+[role="skipme"]
 [role="sourcecode"]
 .lists/functional_tests/test_list_item_validation.py
 [source,python]
@@ -1074,7 +1304,7 @@ problem:
 
 ----
 Traceback (most recent call last):
-  File "/workspace/superlists/lists/tests/test_models.py", line 55, in
+  File "/workspace/superlists/lists/tests/test_models.py", line 60, in
 test_CAN_save_same_item_to_different_lists
     Item.objects.create(list=list2, text='bla') # should not raise
     [...]
@@ -1098,6 +1328,7 @@ But you can't be writing tests for every possible way we could have coded
 something wrong.  If you have a function that adds two numbers, you can write
 a couple of tests:
 
+[role="skipme"]
 [source,python]
 ----
 assert adder(1, 1) == 2
@@ -1107,6 +1338,7 @@ assert adder(2, 1) == 3
 But you have the right to assume that the implementation isn't deliberately
 screwey or perverse:
 
+[role="skipme"]
 [source,python]
 ----
 def adder(a, b):
@@ -1167,6 +1399,7 @@ AssertionError: 'Item the second' != 'The first (ever) list item'
 
 That's a bit of a puzzler. A bit of print-based debugging:
 
+[role="skipme"]
 [role="sourcecode"]
 .lists/tests/test_models.py
 [source,python]
@@ -1179,6 +1412,7 @@ That's a bit of a puzzler. A bit of print-based debugging:
 ----
 
 
+[role="skipme"]
 ----
 .....Item the second
 The first (ever) list item
@@ -1410,7 +1644,7 @@ We can try the FT and... that works!  Time for a commit.
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff*
-$ *git commit*  # eg "duplicate item validation implemented at views level"
+$ *git commit -am"duplicate item validation implemented at views level"*
 ----
 
 
@@ -1771,7 +2005,7 @@ OK, now let's try using it in the template:
 .lists/templates/home.html (ch09l053)
 [source,html]
 ----
-    <form method="POST" action="/lists/new" >
+    <form method="POST" action="{% url 'new_list' %}" >
         {{ form.text }}
         {% csrf_token %}
         {% if error %}
@@ -1882,6 +2116,7 @@ And then we use it throughout - I had to make 3 changes in
 in 'test_list_item_validation.py', eg:
 
 
+[role="skipme"]
 [source,python]
 ----
     # She is invited to enter a to-do item straight away
@@ -1890,6 +2125,7 @@ in 'test_list_item_validation.py', eg:
 
 Or
 
+[role="skipme"]
 [source,python]
 ----
     # an empty list item. She hits Enter on the empty input box
@@ -1916,6 +2152,8 @@ placeholder="Enter a to-do item" />
 
 That's two changes, and similarly for the `name`:
 
+//TODO - split out 059 into two commits so this works
+[role="skipme"] 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*grep -r item_text lists*]
@@ -1923,15 +2161,15 @@ lists/views.py:            Item.objects.create(text=request.POST['item_text'],
 list=list)
 lists/views.py:        Item.objects.create(text=request.POST['item_text'],
 list=list)
-lists/tests/test_forms.py:    def test_form_renders_item_text_input(self):
+lists/templates/list.html:        <input name="item_text" id="id_text"
+placeholder="Enter a to-do item" />
 lists/tests/test_views.py:            data={'item_text': 'A new list item'}
 lists/tests/test_views.py:            data={'item_text': ''}
 lists/tests/test_views.py:            data={'item_text': 'A new item for an
 existing list'}
 lists/tests/test_views.py:            data={'item_text': ''}
 lists/tests/test_views.py:            data={'item_text': 'textey'}
-lists/templates/list.html:        <input id="id_text" name="item_text"
-placeholder="Enter a to-do item" />
+lists/tests/test_forms.py:    def test_form_renders_item_text_input(self):
 ----
 
 Once we're done, we re-run the unit tests to check everything still works:
@@ -1940,9 +2178,9 @@ Once we're done, we re-run the unit tests to check everything still works:
 ----
 $ pass:quotes[*python3 manage.py test lists*] 
 Creating test database for alias 'default'...
-..................
+...................
  ---------------------------------------------------------------------
-Ran 18 tests in 0.126s
+Ran 19 tests in 0.126s
 
 OK
 Destroying test database for alias 'default'...
@@ -1976,6 +2214,7 @@ Now, looking in 'views.py', we see that we're not passing the form to the
 'home.html' template inside the `new_list` view:
 
 
+[role="skipme"]
 [source,python]
 ----
 except ValidationError:
@@ -2035,7 +2274,7 @@ def new_list(request):
     if form.is_valid(): #<2>
         list = List.objects.create()
         Item.objects.create(text=request.POST['text'], list=list)
-        return redirect('/lists/%d/' % (list.id,))
+        return redirect(list)
     else:
         return render(request, 'home.html', {"form": form}) #<3>
 ----
@@ -2060,7 +2299,7 @@ to display errors in the template:
 .lists/templates/home.html (ch09l068)
 [source,html]
 ----
-    <form method="POST" action="/lists/new" >
+    <form method="POST" action="{% url 'new_list' %}" >
         {{ form.text }}
         {% csrf_token %}
         {% if form.errors %} #<1>
@@ -2276,6 +2515,7 @@ One more little customisation should do it:  Django uses a method called
 class ExistingListItemForm(ItemForm):
     [...]
 
+
     def validate_unique(self):
         super().validate_unique()
         if self.non_field_errors(): #<1>
@@ -2373,7 +2613,7 @@ def view_list(request, list_id):
         })
         if form.is_valid():
             form.save()
-            return redirect('/lists/%d/' % (list.id,))
+            return redirect(list)
     else:
         form = ExistingListItemForm()
 
@@ -2403,9 +2643,9 @@ We adjust the template:
 .lists/templates/list.html
 [source,html]
 ----
-<form method="POST" action="/lists/{{ list.id }}/" >
-    {% csrf_token %}
+<form method="POST" action="{% url 'view_list' list.id %}" >
     {{ form.text }}
+    {% csrf_token %}
     {% if form.errors %}
         <div class="error">{{ form.text.errors }}</div>
     {% endif %}
@@ -2419,7 +2659,7 @@ And we're there!  Unit tests pass!
 ----
 $ pass:quotes[*python3 manage.py test lists*]
 [...]
-Ran 21 tests in 0.082s
+Ran 22 tests in 0.082s
 
 OK
 ----

@@ -92,10 +92,14 @@ class Output(str):
 
 
 def parse_listing(listing):
-    if  'sourcecode' in listing.get('class').split():
+    classes = listing.get('class').split()
+    skip = 'skipme' in classes
+    if 'sourcecode' in classes:
         filename = listing.cssselect('.title')[0].text_content().strip()
         contents = listing.cssselect('.content')[0].text_content().replace('\r\n', '\n').strip('\n')
-        return [CodeListing(filename, contents)]
+        listing = CodeListing(filename, contents)
+        listing.skip = skip
+        return [listing]
 
     else:
         commands = get_commands(listing)
@@ -105,6 +109,7 @@ def parse_listing(listing):
             is_server_commands = True
             listing = listing.cssselect('div.content')[0]
         lines = listing.text_content().strip().replace('\r\n', '\n').split('\n')
+
         outputs = []
         output_after_command = ''
         for line in lines:
@@ -124,6 +129,10 @@ def parse_listing(listing):
                 output_after_command += line + '\n'
         if output_after_command:
             outputs.append(Output(output_after_command.rstrip()))
+
+        if skip:
+            for listing in outputs:
+                listing.skip = True
         return outputs
 
 

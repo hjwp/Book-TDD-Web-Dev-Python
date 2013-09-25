@@ -77,3 +77,12 @@ COMMAND_MADE_WITH_ATS="""
 <pre><code>$ <strong>grep id_new_item functional_tests/tests/test*</strong></code></pre>
 </div></div>
 """
+
+CODE_LISTING_WITH_SKIPME="""
+<div class="listingblock skipme">
+<div class="content"><div class="highlight"><pre><span class="k">try</span><span class="p">:</span>
+    <span class="n">item</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="s">'The full_clean should have raised an exception'</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span><span class="p">:</span>
+    <span class="k">pass</span>
+</pre></div></div></div>"""
