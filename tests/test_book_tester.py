@@ -639,6 +639,13 @@ class FixDictReprOrderingTest(unittest.TestCase):
     )
 
 
+class DictOrderingTest(ChapterTest):
+
+    def test_dict_ordering_is_stable(self):
+        assert list({'a':'b', 'c':'d'}.keys()) == ['a', 'c']
+        self.assertEqual(os.environ['PYTHONHASHSEED'], "0")
+
+
 
 if __name__ == '__main__':
     unittest.main()
