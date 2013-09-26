@@ -383,6 +383,11 @@ class ChapterTest(unittest.TestCase):
 
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
+        if listing.dofirst:
+            print("DOFIRST", listing.dofirst)
+            self.sourcetree.checkout_file_from_commit_ref(
+                listing.dofirst,
+            )
         if listing.skip:
             print("SKIP")
             listing.was_checked = True

@@ -128,10 +128,25 @@ class SourceTree(object):
         return 'repo/chapter_{0:02d}^{{/--{1}--}}'.format(self.chapter, commit_ref)
 
 
-    def show_future_version(self, commit_spec, path):
+    def get_files_from_commit_spec(self, commit_spec):
         return self.run_command(
-            'git show %s:%s' % (commit_spec, path),
-        )
+            'git diff-tree --no-commit-id --name-only -r %s' % (commit_spec,)
+        ).split()
+
+
+    def show_future_version(self, commit_spec, path):
+        return self.run_command('git show %s:%s' % (commit_spec, path),)
+
+
+    def checkout_file_from_commit_ref(self, commit_ref, path=None):
+        commit_spec = self.get_commit_spec(commit_ref)
+        if path == None:
+            paths = self.get_files_from_commit_spec(commit_spec)
+        else:
+            paths = [path]
+        for path in paths:
+            self.run_command('git checkout %s -- %s' % (commit_spec, path))
+        self.run_command('git reset')
 
 
     def apply_listing_from_commit(self, listing):
@@ -143,9 +158,7 @@ class SourceTree(object):
 
         commit = Commit(commit_info)
 
-        files = self.run_command(
-            'git diff-tree --no-commit-id --name-only -r %s' % (commit_spec,)
-        ).split()
+        files = self.get_files_from_commit_spec(commit_spec)
         if files != [listing.filename]:
             raise ApplyCommitException(
                 'wrong files in commit: {0} should have been {1}'.format(
@@ -188,10 +201,7 @@ class SourceTree(object):
                 )
             raise ApplyCommitException('listing line not found:\n%s' % (line,))
 
-        self.run_command(
-            'git checkout %s -- %s' % (commit_spec, listing.filename),
-        )
-        self.run_command('git reset')
+        self.checkout_file_from_commit_ref(listing.commit_ref, listing.filename)
         listing.was_written = True
         print('applied commit')
 
