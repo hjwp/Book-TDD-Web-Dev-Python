@@ -78,7 +78,7 @@ COMMAND_MADE_WITH_ATS="""
 </div></div>
 """
 
-CODE_LISTING_WITH_SKIPME="""
+OUTPUT_WITH_SKIPME="""
 <div class="listingblock skipme">
 <div class="content"><div class="highlight"><pre><span class="k">try</span><span class="p">:</span>
     <span class="n">item</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
@@ -86,3 +86,21 @@ CODE_LISTING_WITH_SKIPME="""
 <span class="k">except</span> <span class="n">ValidationError</span><span class="p">:</span>
     <span class="k">pass</span>
 </pre></div></div></div>"""
+
+
+CODE_LISTING_WITH_SKIPME = """
+<div class="listingblock sourcecode skipme">
+<div class="title">lists/functional_tests/test_list_item_validation.py</div>
+<div class="content"><div class="highlight"><pre>    <span class="k">def</span> <span class="nf">DONTtest_cannot_add_empty_list_items</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</pre></div></div></div>"""
+
+OUTPUTS_WITH_DOFIRST = """
+<div class="listingblock dofirst-ch09l058">
+<div class="content">
+<pre><code>$ <strong>grep -r id_new_item lists/</strong>
+
+lists/static/base.css:#id_new_item {
+lists/templates/list.html:        &lt;input name="item_text" id="id_new_item"
+placeholder="Enter a to-do item" /&gt;</code></pre>
+</div></div>"""
+

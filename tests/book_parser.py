@@ -11,8 +11,10 @@ with open(os.path.join(base_dir, 'book.html')) as f:
 parsed_html = html.fromstring(raw_html)
 
 
+COMMIT_REF_FINDER = r'ch\d\dl\d\d\d-?\d?'
+
 class CodeListing(object):
-    COMMIT_REF_FINDER = r'^(.+) \((ch\d\dl\d\d\d\.?\d?)\)$'
+    COMMIT_REF_FINDER = r'^(.+) \((' + COMMIT_REF_FINDER + ')\)$'
 
     def __init__(self, filename, contents):
         self.is_server_listing = False
@@ -51,6 +53,7 @@ class Command(str):
         self.was_run = False
         self.skip = False
         self.server_command = False
+        self.dofirst = None
         str.__init__(a_string)
 
     @property
@@ -80,6 +83,7 @@ class Output(str):
     def __init__(self, a_string):
         self.was_checked = False
         self.skip = False
+        self.dofirst = None
         str.__init__(a_string)
 
     @property
@@ -94,11 +98,18 @@ class Output(str):
 def parse_listing(listing):
     classes = listing.get('class').split()
     skip = 'skipme' in classes
+    dofirst_classes = [c for c in classes if c.startswith('dofirst')]
+    if dofirst_classes:
+        dofirst = re.findall(COMMIT_REF_FINDER, dofirst_classes[0])[0]
+    else:
+        dofirst = None
+
     if 'sourcecode' in classes:
         filename = listing.cssselect('.title')[0].text_content().strip()
         contents = listing.cssselect('.content')[0].text_content().replace('\r\n', '\n').strip('\n')
         listing = CodeListing(filename, contents)
         listing.skip = skip
+        listing.dofirst = dofirst
         return [listing]
 
     else:
@@ -133,6 +144,9 @@ def parse_listing(listing):
         if skip:
             for listing in outputs:
                 listing.skip = True
+        if dofirst:
+            outputs[0].dofirst = dofirst
+
         return outputs
 
 

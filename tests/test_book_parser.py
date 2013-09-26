@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 from lxml import html
+import re
 from textwrap import dedent
 import unittest
 
 from book_parser import (
+    COMMIT_REF_FINDER,
     CodeListing,
     Command,
     Output,
@@ -11,11 +13,12 @@ from book_parser import (
     parse_listing,
 )
 from examples import (
-
     CODE_LISTING_WITH_CAPTION,
     CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF,
     CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF,
     CODE_LISTING_WITH_SKIPME,
+    OUTPUT_WITH_SKIPME,
+    OUTPUTS_WITH_DOFIRST,
     COMMAND_MADE_WITH_ATS,
     COMMAND_LISTING_WITH_CAPTION,
     COMMANDS_WITH_VIRTUALENV,
@@ -37,6 +40,21 @@ class CodeListingTest(unittest.TestCase):
         assert c.filename == 'a_filename.py'
         assert c.is_server_listing == True
 
+
+class CommitRefFinderTest(unittest.TestCase):
+
+    def test_base_finder(self):
+        assert re.search(COMMIT_REF_FINDER, 'bla bla ch09l027-2')
+        assert re.findall(COMMIT_REF_FINDER, 'bla bla ch09l027-2') == ['ch09l027-2']
+        assert not re.search(COMMIT_REF_FINDER, 'bla bla 09l6666')
+
+    def test_finder_on_codelisting(self):
+        matches =  re.match(
+            CodeListing.COMMIT_REF_FINDER,
+            'some_filename.txt (ch09l027-2)'
+        )
+        assert matches.group(1) == 'some_filename.txt'
+        assert matches.group(2) == 'ch09l027-2'
 
 
 class ParseCodeListingTest(unittest.TestCase):
@@ -90,6 +108,15 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(listing.type, 'code listing with git ref')
 
 
+    def test_recognises_skipme_tag_on_unmarked_code_listing(self):
+        code_html = OUTPUT_WITH_SKIPME.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        self.assertEqual(len(listings), 1)
+        listing = listings[0]
+        self.assertEqual(listing.skip, True)
+
+
     def test_recognises_skipme_tag_on_code_listing(self):
         code_html = CODE_LISTING_WITH_SKIPME.replace('\n', '\r\n')
         node = html.fromstring(code_html)
@@ -97,6 +124,15 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(len(listings), 1)
         listing = listings[0]
         self.assertEqual(listing.skip, True)
+
+
+    def test_recognises_dofirst_tag(self):
+        code_html = OUTPUTS_WITH_DOFIRST.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        self.assertEqual(len(listings), 2)
+        listing = listings[0]
+        assert listing.dofirst == 'ch09l058'
 
 
     def test_recognises_server_commands(self):
