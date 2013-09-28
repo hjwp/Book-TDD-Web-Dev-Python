@@ -46,20 +46,152 @@ how they work, and how we can unit tests them.
 My hope is that the same unit tests we use for function-based views should
 work just as well for class-based views.  Let's see how we get on.
 
-* needed to remove an extra test.
+
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch21l001)
 [source,python]
 ----
 from django.views.generic import FormView
+[...]
 
 class HomePageView(FormView):
     template_name = 'home.html'
     form_class = ItemForm
 ----
 
-first cut of newlistview: not bad!
+And update urls.py, replacing the line that used to say `lists.views.home_page`:
+
+[role="sourcecode"]
+.lists/urls.py (ch21l002)
+[source,python]
+----
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^$', HomePageView.as_view(), name='home'),
+----
+
+And the tests all check out! that was easy..
+
+----
+$ python3 manage.py test lists
+Creating test database for alias 'default'...
+......................
+ ---------------------------------------------------------------------
+Ran 22 tests in 0.134s
+
+OK
+Destroying test database for alias 'default'...
+
+$ python3 manage.py test functional_tests
+Creating test database for alias 'default'...
+....
+ ---------------------------------------------------------------------
+Ran 4 tests in 15.160s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+Next we have a crack at new_list.  Looking thru the possible CBGVs, we 
+probably want a `CreateView`, and we know we're using the `ItemForm` class,
+so let's see how we get on with them, and whether the tests will help us:
+
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+class NewListView(CreateView):
+    form_class = ItemForm
+----
+
+----
+$ python3 manage.py test lists
+Creating test database for alias 'default'...
+...................EEE
+======================================================================
+ERROR: test_redirects_after_POST (lists.tests.test_views.NewListTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/appendix_II/superlists/lists/tests/test_views.py", line 33, in test_redirects_after_POST
+    data={'text': 'A new list item'}
+    [...]
+  File "/usr/local/lib/python3.3/dist-packages/django/forms/models.py", line 370, in save
+    fail_message, commit, construct=False)
+  File "/usr/local/lib/python3.3/dist-packages/django/forms/models.py", line 87, in save_instance
+    instance.save()
+  File "/home/harry/Dropbox/book/source/appendix_II/superlists/lists/models.py", line 26, in save
+    self.full_clean()
+  File "/usr/local/lib/python3.3/dist-packages/django/db/models/base.py", line 926, in full_clean
+    raise ValidationError(errors)
+django.core.exceptions.ValidationError: {'list': ['This field cannot be null.']}
+
+======================================================================
+ERROR: test_saving_a_POST_request (lists.tests.test_views.NewListTest)
+ ---------------------------------------------------------------------
+[...]
+django.core.exceptions.ValidationError: {'list': ['This field cannot be null.']}
+
+======================================================================
+ERROR: test_validation_errors_sent_back_to_home_page_template (lists.tests.test_views.NewListTest)
+ ---------------------------------------------------------------------
+[...]
+django.template.base.TemplateDoesNotExist: No template names provided
+
+ ---------------------------------------------------------------------
+Ran 22 tests in 0.114s
+
+FAILED (errors=3)
+Destroying test database for alias 'default'...
+----
+
+
+<decode tracebacks>
+
+Let's start with the third -- maybe we can just add the template?
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+class NewListView(CreateView):
+    form_class = ItemForm
+    template_name = 'home.html'
+----
+
+That gets us down to just two failures.
+
+We retrieve some of our old code and put it into a special method called form_valid:
+
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+class NewListView(CreateView):
+    template_name = 'home.html'
+    form_class = ItemForm
+
+    def form_valid(self, form):
+        list = List.objects.create()
+        Item.objects.create(text=form.cleaned_data['text'], list=list)
+        return redirect(list)
+----
+
+That gets us a pass!
+
+----
+$ python3 manage.py test lists
+Ran 22 tests in 0.117s
+OK
+$ python3 manage.py test functional_tests
+Ran 4 tests in 15.157s
+OK
+----
+
+
+And we can even save two lines and use DRY, and the real point of CBVs:
+inheritance!
 
 [role="sourcecode"]
 .lists/views.py
@@ -72,6 +204,8 @@ class NewListView(CreateView, HomePageView):
         Item.objects.create(text=form.cleaned_data['text'], list=list)
         return redirect('/lists/%d/' % (list.id,))
 ----
+
+Still passes!
 
 views - with dunderinit version of form
 
