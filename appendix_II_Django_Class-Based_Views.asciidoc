@@ -10,22 +10,25 @@ The new shiny in the Django world, however, is class-based views. In this
 chapter, we'll refactor our application to use them instead of view functions.
 More specifically, we'll have a go at using class-based 'generic' views.
 
+WARNING: this appendix is currently more of a blog post / request for comments
+than a final appendix.  Use at your own peril.
+
 Class-based generic views
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-It's worth making a distinction at this point, between class-based views
-and class-based 'generic' views.  Class-based views are just another way 
-of defining view functions.  They make few assumptions about what your
-views will do, and they offer one major benefit over view functions, which
-is that they can be subclassed.  This comes, arguably, at the expense of
-being less readable than traditional function-based views.  The main use
-case for 'plain' class-based views is when you have several views that
-re-use the same logic.  We want to obey the DRY principle. With function-based
-views, you would use helper functions or decorators.  The theory is that using
-a class structure may give you a more elegant solution.
+It's worth making a distinction at this point, between class-based views and
+class-based 'generic' views.  Class-based views are just another way of
+defining view functions.  They make few assumptions about what your views will
+do, and they offer one major benefit over view functions, which is that they
+can be subclassed.  This comes, arguably, at the expense of being less readable
+than traditional function-based views.  The main use case for 'plain'
+class-based views is when you have several views that re-use the same logic.
+We want to obey the DRY principle. With function-based views, you would use
+helper functions or decorators.  The theory is that using a class structure may
+give you a more elegant solution.
 
 Class-based 'generic' views are class-based views that attempt to provide
-ready-made solutions to common use cases:  fetching an object from the 
+ready-made solutions to common use cases:  fetching an object from the
 database and passing it to a template, fetching a list of objects, saving
 user input from a POST request using a ModelForm, and so on.  These sound very
 much like our use cases, but as we'll soon see, the devil is in the detail.
@@ -47,6 +50,20 @@ My hope is that the same unit tests we use for function-based views should
 work just as well for class-based views.  Let's see how we get on.
 
 
+The home page as a FormView
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Our home page just displays a form on a template:
+
+[source,python]
+----
+def home_page(request):
+    return render(request, 'home.html', {'form': ItemForm()})
+----
+
+https://docs.djangoproject.com/en/1.5/ref/class-based-views/[Looking through
+the options], Django has a generic view called `FormView` -- let's see how that
+goes:
 
 [role="sourcecode"]
 .lists/views.py (ch21l001)
@@ -60,17 +77,18 @@ class HomePageView(FormView):
     form_class = ItemForm
 ----
 
-And update urls.py, replacing the line that used to say `lists.views.home_page`:
+We tell it what template we want to use, and which form. Then, we
+just need to update 'urls.py', replacing the line that used to say
+`lists.views.home_page`:
 
 [role="sourcecode"]
-.lists/urls.py (ch21l002)
+.superlists/urls.py (ch21l002)
 [source,python]
 ----
-    url(r'^$', 'lists.views.home_page', name='home'),
     url(r'^$', HomePageView.as_view(), name='home'),
 ----
 
-And the tests all check out! that was easy..
+And the tests all check out! That was easy..
 
 ----
 $ python3 manage.py test lists
@@ -92,7 +110,14 @@ OK
 Destroying test database for alias 'default'...
 ----
 
-Next we have a crack at new_list.  Looking thru the possible CBGVs, we 
+So far so good. We've replaced a 1-line view function with a 2-line class,
+but it's still very readable. This would be a good time for a commit...
+
+Using form_valid to customise a CreateView
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next we have a crack at the view we use to create a brand new list, currently
+the `new_list` function.  Looking through the possible CBGVs, we
 probably want a `CreateView`, and we know we're using the `ItemForm` class,
 so let's see how we get on with them, and whether the tests will help us:
 
@@ -103,7 +128,29 @@ so let's see how we get on with them, and whether the tests will help us:
 ----
 class NewListView(CreateView):
     form_class = ItemForm
+
+def new_list(request):
+    form = ItemForm(data=request.POST)
+    if form.is_valid():
+        list = List.objects.create()
+        Item.objects.create(text=request.POST['text'], list=list)
+        return redirect(list)
+    else:
+        return render(request, 'home.html', {"form": form})
 ----
+
+I'm going to leave the old view function in 'views.py', so that we can copy
+code across from it.  We can delete it once everything is working.  It's
+harmless as soon as we switch over the URL mappings, this time in:
+
+[role="sourcecode"]
+.lists/urls.py
+[source,python]
+----
+    url(r'^new$', NewListView.as_view(), name='new_list'),
+----
+
+Now running the tests gives 3 errors:
 
 ----
 $ python3 manage.py test lists
@@ -145,8 +192,7 @@ FAILED (errors=3)
 Destroying test database for alias 'default'...
 ----
 
-
-<decode tracebacks>
+TODO: talk through decoding traceback.
 
 Let's start with the third -- maybe we can just add the template?
 
@@ -159,9 +205,10 @@ class NewListView(CreateView):
     template_name = 'home.html'
 ----
 
-That gets us down to just two failures.
-
-We retrieve some of our old code and put it into a special method called form_valid:
+That gets us down to just two failures.  They're both to do with dealing
+with 'valid' POST requests.  CBGVs that deal with forms want you to put
+any custom code for valid forms in a method called `form_valid`.  We can 
+just copy across some of the code from the old view function:
 
 
 [role="sourcecode"]
@@ -189,9 +236,8 @@ Ran 4 tests in 15.157s
 OK
 ----
 
-
-And we can even save two lines and use DRY, and the real point of CBVs:
-inheritance!
+And we can even save two lines (DRY) by taking advantage of the real point of
+CBVs: inheritance!
 
 [role="sourcecode"]
 .lists/views.py
@@ -205,53 +251,140 @@ class NewListView(CreateView, HomePageView):
         return redirect('/lists/%d/' % (list.id,))
 ----
 
-Still passes!
 
-views - with dunderinit version of form
+And all the tests still pass.
+
+How does it compare to the old version? I'd say that's not bad.   We save some
+boilerplate code, and the view is still fairly legible.  So far, I'd say we've
+got one point for CBGVs, and one draw.
+
+
+A more complex view to handle both viewing and adding to a list
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This took me 'several' attempts.  And I have to say that, although the tests
+told me when I got it right, they didn't really help me to figure out the
+steps to get there...  Mostly it was just trial and error, hacking about
+in functions like `get_context_data`, `get_form_kwargs` and so on.
+
+One thing I did do which improved my codebase was to add a new unit test:
 
 [source,python]
+.lists/tests/test_views.py
+----
+class ListViewTest(TestCase):
+    [...]
+
+    def test_list_view_displays_form_for_existing_lists(self):
+        correct_list = List.objects.create()
+        response = self.client.get('/lists/%d/' % (correct_list.id,))
+        self.assertIsInstance(response.context['form'], ExistingListItemForm)
+----
+
+It's another good example of the "each test should test one thing" heuristic:
+that check on the form class could very easily have been tacked onto the end
+of a different test, but having it separate means I'm immediately told exactly
+what's wrong, rather than potentially having the error masked by an earlier 
+failure.
+
+TODO: consider moving this test into ch. 9?
+
+
+Anyway, after much hacking and swearing, this is the solution I eventually got
+to work:
+
+
+[role="sourcecode"]
 .lists/views.py
-----
-from django.views.generic.edit import CreateView
-from django.views.generic.detail import DetailView
-
-class ListViewAndAddItemView(DetailView, CreateView):
-    model = List
-    context_object_name = 'list'
-    template_name = 'list.html'
-    form_class = ItemForm
-
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs.update({'parent_list': self.get_object()})
-        return kwargs
-
-
-def new_list(request):
-    list = List.objects.create()
-    try:
-        Item.objects.create(text=request.POST['item_text'], list=list)
-    except ValidationError:
-        error_text = "You can't have an empty list item"
-        return render(request, 'home.html', {"error": error_text})
-
-    return redirect('/lists/%d/' % (list.id,))
-----
-
-
-Stuff
-~~~~~
-
-get absolute url in model:
-
 [source,python]
-.lists/models.py
+----
+class ViewAndAddToList(CreateView, SingleObjectMixin):
+    template_name = 'list.html'
+    model = List
+    form_class = ExistingListItemForm
+
+    def get_form(self, form_class):
+        self.object = self.get_object()
+        if self.request.method == 'POST':
+            data={
+                'text': self.request.POST['text'],
+                'list': self.object.id
+            }
+        else:
+            data = None
+        return form_class(data=data)
 ----
 
+I also had to add a `get_absolute_url` on the `Item` class:
+
+(I did try to use `get_form_kwargs` instead of `get_form`, but it didn't want
+to work for me.  Perhaps some CBGV expert out there has a neater solution??)
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
 class Item(models.Model):
     [...]
 
     def get_absolute_url(self):
-        return reverse('view_list', args=(self.id,))
+        return self.list.get_absolute_url()
 ----
+
+
+Compare old and new
++++++++++++++++++++
+
+Let's see the old version for comparison?
+
+[source,python]
+----
+def view_list(request, list_id):
+    list = List.objects.get(id=list_id)
+
+    if request.method == 'POST':
+        form = ExistingListItemForm(data={
+            'text': request.POST['text'],
+            'list': list.id
+        })
+        if form.is_valid():
+            form.save()
+            return redirect(list)
+    else:
+        form = ExistingListItemForm()
+
+    return render(request, 'list.html', {'list': list, "form": form})
+----
+
+Not a great improvement.  Same number of lines of code, 15.  If anything, the
+function version is better because it has one more line of whitespace. And it's
+definitely more readable.
+
+
+
+Best practices for unit testing CBGVs?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+As I was working through this, I felt like my "unit" tests were sometimes a 
+little too high-level.  They told me whether I was getting things right or
+wrong, but they didn't offer many clues on exactly how to fix things.
+
+I occasionally wondered whether there might be some mileage in a test that
+was closer to the implementation -- something like this:
+
+[source,python]
+----
+def test_as_cbv(self):
+    our_list = List.objects.create()
+    view = ViewAndAddToList()
+    view.kwargs = dict(pk=our_list.id)
+    self.assertEqual(view.get_object(), our_list)
+----
+
+But the problem is that it requires a lot of knowledge of the internals of
+Django CBVs to be able to do the right test setup for these kinds of tests.
+And you still end up getting very confused by the complex inheritance 
+hierarchy.
+
+I'd be interested to hear how other people out there are testing their CBVs?
 
