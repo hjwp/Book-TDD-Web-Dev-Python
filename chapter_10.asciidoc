@@ -10,15 +10,215 @@ Our new validation logic is good, but wouldn't it be nice if the error messages
 disappeared once the user started fixing the problem? For that we'd need a
 teeny-tiny bit of JavaScript.
 
-stuff
-~~~~~
-
 Python spoils us, really, by being such a delightful programming language to 
 work with.  Sometimes I think JavaScript is our punishment.  So let's dip our
 toes in, very gingerly.
 
 TIP: If you haven't read "JavaScript: The Good Parts", do so now.
 
-TDD in JavaScript
+Starting with an FT
+~~~~~~~~~~~~~~~~~~~
+
+to be written!
+
+
+Setting up a basic JavaScript test runner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+<Millions of runners story!>
+
+We'll use http://qunitjs.com/[qunit] because it's simple,
+and it works well with jQuery.  
+
+NOTE: I was dead keen to use mocha, because of the Nyan cat test runner.  If
+someone can show me a simple mocha setup that lets the user test, in the
+browser and from the command-line as well, using the "tdd" ui and the "assert"
+assertion library... Well, I'll be eternally grateful.
+
+
+
+Make a directory called 'tests' inside
+'lists/static', and download the qunit javascript and css files into it,
+stripping out version numbers if necessary (I got version 1.12).  We'll also
+put a file called 'tests.html' in there:
+
+----
+$ tree lists/static/tests/
+lists/static/tests/
+├── qunit.css
+├── qunit.js
+└── tests.html
+----
+
+The boilerplate for a qunit html file looks like this, including a smoke test:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Javascript tests</title>
+    <link rel="stylesheet" href="qunit.css">
+</head>
+
+<body>
+    <div id="qunit"></div>
+    <div id="qunit-fixture"></div>
+    <script src="qunit.js"></script>
+    <script>
+test("smoke test", function() {
+    equal(1, 1, "Maths doesn't work!" );
+});
+    </script>
+
+</body>
+</html>
+----
+
+Now if you open up the file using your web browser (no need to run the dev
+server, just find the file on disk) you should see something like this:
+
+.Basic Qunit screen
+image::images/qunit_smoke_test.png["Qunit screen showing 1 passing test"]
+
+Disecting that, the important things to pick up are the fact that we pull
+in 'qunit.js` using the first `<script>` tag, and then use the second one
+to write the main body of tests.
+
+Looking at the test itself, we'll find many similarities with the Python
+tests we've been writing so far:
+
+[source,javascript]
+----
+test("smoke test", function () { // <1>
+    equal(1, 1, "Maths doesn't work!"); // <2>
+});
+----
+
+<1> the `test` function defines a test case a bit like `def test_something(self)`
+did in Python. Its first argument is a name for the test, and the second is a
+function closure for the body of the test.
+<2> the `equal` function is an assertion; very much like `assertEqual`, it
+compares two arguments and takes an optional message to display on failure.
+
+Why not try changing those arguments to see a deliberate failure?
+
+Using jquery and the fixtures div
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's get a bit more comfortable with what our testing framework can do,
+and start using a bit of jQuery
+
+NOTE: If you've never seen jQuery before, I'm going to try and explain it as we
+go, just enough so that you won't be totally lost, but this isn't a jQuery
+tutorial.  You may find it helpful to spend an hour or two investigating jQuery
+at some point during this chapter.
+
+Let's add jquery to our scripts, and a few elements to use in our tests:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+    <div id="qunit-fixture"></div>
+
+    <form>  <!--<1>-->
+        <input name="text" />
+        <div class="error">Error text</div>
+    </form>
+
+    <script src="http://code.jquery.com/jquery.min.js"></script>
+    <script src="qunit.js"></script>
+    <script>
+test("smoke test", function () {
+    equal($('.error').is(':visible'), true); //<2>
+    $('.error').hide(); //<3>
+    equal($('.error').is(':visible'), false); //<4>
+});
+    </script>
+----
+
+<1> The `<form>` and its contents are there to represent what will be
+on the real list page.
+<2> jQuery magic starts here!  `$` is the jQuery swiss army knife. It's
+used to find bits of the DOM.  Its first argument is a CSS selector; here,
+we're telling it to find all elements that have the class "error".  It returns
+an object with various useful methods, including `.is`, which we're using to
+check whether the element is visible
+<3> we then use jQuery's `.hide` method to hide the div.  Behind the scenes, it
+dynamically sets a `style="display: none"` on the element.
+<4> And we check it's worked with a second `equal` assertion.
+
+If you refresh the browser, you should see that all works:
+
+----
+Tests completed in 27 milliseconds.
+2 assertions of 2 passed, 0 failed.
+smoke test (0, 2, 2)Rerun
+----
+
+(I'm displaying the expected text as console output to save on screenshots)
+
+Now let's see how fixtures work.  Let's just dupe up this test:
+
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+    <script>
+test("smoke test", function () {
+    equal($('.error').is(':visible'), true);
+    $('.error').hide();
+    equal($('.error').is(':visible'), false);
+});
+test("smoke test 2", function () {
+    equal($('.error').is(':visible'), true);
+    $('.error').hide();
+    equal($('.error').is(':visible'), false);
+});
+    </script>
+----
+
+That should give us something like this:
+
+.Basic Qunit screen
+image::images/qunit_smoke_test.png["Qunit screen showing 1 passing test"]
+
+What's happening here is that the first test hides the error div, so when 
+the second test runs, it starts out invisible. 
+footnote:[Be warned: tests get run in a predictable order, so you can't rely
+on one test running neatly after the other]
+We need some way of tidying up between tests, a bit like `setUp` and
+`teardDown`, or like the Django test runner would reset the database between
+each test.  Thankfully, and you can probably see this coming, but
+`qunit-fixture` div is exactly what we're looking for.  Move the form in there:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+    <div id="qunit"></div>
+    <div id="qunit-fixture">
+        <form>
+            <input name="text" />
+            <div class="error">Error text</div>
+        </form>
+    </div>
+
+    <script src="http://code.jquery.com/jquery.min.js"></script>
+----
+
+And that gets us back to 2 neatly passing tests.
+
+----
+Tests completed in 21 milliseconds.
+4 assertions of 4 passed, 0 failed.
+smoke test (0, 2, 2)
+smoke test 2 (0, 2, 2)
+----
 
 
