@@ -33,7 +33,8 @@ def get_wordcounts():
             contents = f.read()
         lines = len(contents.split('\n'))
         words = len(contents.split())
-        filename = re.sub(r'_(\d)\.asciidoc', r'_0\1.asiidoc', filename)
+        filename = re.sub(r'_(\d)\.asciidoc', r'_0\1.asciidoc', filename)
+        filename = re.sub(r'chapter(\d\d)\.asciidoc', r'chapter_\1.asciidoc', filename)
         wordcounts.append(WordCount(filename, lines=lines, words=words))
     return wordcounts
 
