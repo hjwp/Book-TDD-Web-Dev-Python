@@ -1,7 +1,9 @@
+#!/usr/bin/env python3
 from collections import namedtuple
 import csv
 from datetime import datetime
 import os
+import re
 import subprocess
 
 Commit = namedtuple('Commit', ['hash', 'subject', 'date'])
@@ -10,7 +12,8 @@ FileWordCount = namedtuple('FileWordCount', ['date', 'subject', 'hash', 'lines',
 
 def get_log():
     commits = []
-    for line in subprocess.check_output(['git', 'log', '--format=%h|%s|%ai']).split('\n'):
+    log = subprocess.check_output(['git', 'log', '--format=%h|%s|%ai']).decode()
+    for line in log.split('\n'):
         if line:
             hash, subject, datestring = line.split('|')
             date = datetime.strptime(datestring[:16], '%Y-%m-%d %H:%M')
@@ -30,6 +33,7 @@ def get_wordcounts():
             contents = f.read()
         lines = len(contents.split('\n'))
         words = len(contents.split())
+        filename = re.sub(r'_(\d)\.asciidoc', r'_0\1.asiidoc', filename)
         wordcounts.append(WordCount(filename, lines=lines, words=words))
     return wordcounts
 
