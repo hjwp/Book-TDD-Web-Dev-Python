@@ -1,46 +1,125 @@
-The dreaded JavaScript
-----------------------
+Dipping our toes, very tentatively, into JavaScript
+---------------------------------------------------
 
-"If God had meant us to enjoy ourselves, he wouldn't have given us his gift of
-relentless misery" - Calvin, as portrayed in "Calvin and the Chipmunks"
-
-//TODO: add link?
+[quote, 'John Calvin (as portrayed in http://onemillionpoints.blogspot.co.uk/2008/08/calvin-and-chipmunks.html[Calvin and the Chipmunks])']
+______________________________________________________________
+If the Good Lord had wanted us to enjoy ourselves, he wouldn't have granted us
+his precious gift of relentless misery.
+______________________________________________________________
 
 Our new validation logic is good, but wouldn't it be nice if the error messages
 disappeared once the user started fixing the problem? For that we'd need a
 teeny-tiny bit of JavaScript.
 
-Python spoils us, really, by being such a delightful programming language to 
-work with.  Sometimes I think JavaScript is our punishment.  So let's dip our
-toes in, very gingerly.
+We are utterly spoiled by programming every day in such a joyful language as
+Python.  JavaScript is our punishment. So let's dip our toes in, very gingerly.
 
-TIP: If you haven't read "JavaScript: The Good Parts", do so now.
+WARNING: I'm going to assume you know the basics of JavaScript syntax. If you
+haven't read <<jsgoodparts,JavaScript: The Good Parts>>, go and get yourself
+a copy right away!  It's not a very long book.
+
 
 Starting with an FT
 ~~~~~~~~~~~~~~~~~~~
 
-to be written!
+Let's add a new functional test to the `ItemValidationTest` class:
+
+[role="sourcecode"]
+.lists/functional_tests/test_list_item_validation.py
+[source,python]
+----
+def test_error_messages_are_cleared_on_input(self):
+    # Edith starts a new list in a way that causes a validation error:
+    self.browser.get(self.server_url)
+    self.get_item_input_box().send_keys('\n')
+    error = self.browser.find_element_by_css_selector('.error')
+    self.assertTrue(error.is_displayed()) #<1>
+
+    # She starts typing in the input box to clear the error
+    self.get_item_input_box().send_keys('a')
+
+    # She is pleased to see that the error message disappears
+    error = self.browser.find_element_by_css_selector('.error')
+    self.assertFalse(error.is_displayed()) #<1>
+----
+
+<1> `is_displayed()` tells you whether an element is visible or not. We
+can't just rely on checking whether the element is present in the DOM,
+because now we're starting to hide elements.
+
+That fails appropriately, but before we move on:  three strikes and refactor! 
+We've got several places where we find the error element using CSS. Let's 
+move it to a helper function:
+
+[role="sourcecode"]
+.lists/functional_tests/test_list_item_validation.py
+[source,python]
+----
+    def get_error_element(self):
+        return self.browser.find_element_by_css_selector('.error')
+----
+
+And we then make 5 replacements in 'test_list_item_validation', including
+these:
+
+[role="sourcecode"]
+.lists/functional_tests/test_list_item_validation.py
+[source,python]
+----
+    error = self.get_error_elements()[0]
+
+    # She starts typing in the input box to clear the error
+    self.get_item_input_box().send_keys('a')
+
+    # She is pleased to see that the error message disappears
+    self.assertEqual(self.get_error_elements(), [])
+----
+
+We have an expected failure:
+
+----
+    self.assertFalse(error.is_displayed())
+AssertionError: True is not false
+----
+
+And we can commit this as the first cut of our FT. (I trust you to do this
+without needing me to show you how any more!)
 
 
 Setting up a basic JavaScript test runner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-<Millions of runners story!>
+Choosing your testing tools in the Python and Django world is fairly
+straightforward.  The standard library `unittest` module is perfectly
+adequate, and the Django test runner also makes a good default choice. 
+There are some alternatives out there --
+http://nose.readthedocs.org/en/latest/[nose] is popular, and I've personally
+found http://pytest.org/[py.test] to be very impressive.  But there is
+a clear default option, and it's just fine.
+footnote:[Admittedly once you start looking for Python BDD tools, things are a
+little more confusing.]
 
-We'll use http://qunitjs.com/[qunit] because it's simple,
-and it works well with jQuery.  
+Not so in the JavaScript world!  We use YUI at work, but I thought I'd go out
+and see whether there were any new tools out there.  I was overwhelmed with
+options -- jsUnit, Qunit, Mocha, Chutzpah, Karma, Testacular, Jasmine, and many
+more.  And it doesn't end there either: as I had settled on one of them Mocha
+footnote:[purely because it features the
+http://visionmedia.github.io/mocha/#nyan-reporter[NyanCat]]
+you find out that you now need to choose an 'assertion framework' and a
+'reporter', and maybe a 'mocking library', and it never ends!
 
-NOTE: I was dead keen to use mocha, because of the Nyan cat test runner.  If
+In the end I decided we should use http://qunitjs.com/[qunit] because it's
+simple, and it works well with jQuery.  
+
+NOTE: I was dead keen to use Mocha, because of the Nyan cat test runner.  If
 someone can show me a simple mocha setup that lets the user test, in the
 browser and from the command-line as well, using the "tdd" ui and the "assert"
 assertion library... Well, I'll be eternally grateful.
 
 
-
-Make a directory called 'tests' inside
-'lists/static', and download the qunit javascript and css files into it,
-stripping out version numbers if necessary (I got version 1.12).  We'll also
-put a file called 'tests.html' in there:
+Make a directory called 'tests' inside 'lists/static', and download the qunit
+javascript and css files into it, stripping out version numbers if necessary (I
+got version 1.12).  We'll also put a file called 'tests.html' in there:
 
 ----
 $ tree lists/static/tests/
@@ -67,8 +146,8 @@ The boilerplate for a qunit html file looks like this, including a smoke test:
 <body>
     <div id="qunit"></div>
     <div id="qunit-fixture"></div>
-    <script src="qunit.js"></script>
-    <script>
+    <script src="qunit.js"></script> <!--<1>-->
+    <script> <!--<2>-->
 test("smoke test", function() {
     equal(1, 1, "Maths doesn't work!" );
 });
@@ -78,15 +157,15 @@ test("smoke test", function() {
 </html>
 ----
 
-Now if you open up the file using your web browser (no need to run the dev
+Disecting that, the important things to pick up are the fact that we pull
+in 'qunit.js' using the first `<script>` tag (%1%), and then use the second one
+to write the main body of tests.
+
+If you open up the file using your web browser (no need to run the dev
 server, just find the file on disk) you should see something like this:
 
 .Basic Qunit screen
 image::images/qunit_smoke_test.png["Qunit screen showing 1 passing test"]
-
-Disecting that, the important things to pick up are the fact that we pull
-in 'qunit.js` using the first `<script>` tag, and then use the second one
-to write the main body of tests.
 
 Looking at the test itself, we'll find many similarities with the Python
 tests we've been writing so far:
@@ -98,10 +177,10 @@ test("smoke test", function () { // <1>
 });
 ----
 
-<1> the `test` function defines a test case a bit like `def test_something(self)`
-did in Python. Its first argument is a name for the test, and the second is a
-function closure for the body of the test.
-<2> the `equal` function is an assertion; very much like `assertEqual`, it
+<1> The `test` function defines a test case, a bit like 
+`def test_something(self)` did in Python. Its first argument is a name for the
+test, and the second is a function closure for the body of the test.
+<2> The `equal` function is an assertion; very much like `assertEqual`, it
 compares two arguments and takes an optional message to display on failure.
 
 Why not try changing those arguments to see a deliberate failure?
@@ -149,24 +228,24 @@ on the real list page.
 used to find bits of the DOM.  Its first argument is a CSS selector; here,
 we're telling it to find all elements that have the class "error".  It returns
 an object that represents one or more DOM elements.  It has various useful
-methods that allow us to manipulate or find out about those DOM elements. 
-<3> Here we use `.is`, which can evaluate against CSS properties, to check
-whether the element is visible 
-<4> We then use jQuery's `.hide` method to hide the div.  Behind the
+methods that allow us to manipulate or find out about those elements. 
+<3> Here we use `.is`, which can tell us whether an element matches a
+particular CSS property. Here we use `:visible` to check whether the element
+is displayed or hidden.
+<4> We then use jQuery's `.hide()` method to hide the div.  Behind the
 scenes, it dynamically sets a `style="display: none"` on the element. 
-<5> And finally we check it's worked with a second `equal` assertion.
+<5> And finally we check that it's worked, with a second `equal` assertion.
 
-If you refresh the browser, you should see that all works:
+If you refresh the browser, you should see that all passes:
 
+.Expected results from Qunit in browser
 ----
 Tests completed in 27 milliseconds.
 2 assertions of 2 passed, 0 failed.
 1. smoke test (0, 2, 2)Rerun
 ----
 
-(I'm displaying the expected text as console output to save on screenshots)
-
-Now let's see how fixtures work.  Let's just dupe up this test:
+Time to see how fixtures work.  If we just dupe up this test:
 
 
 [role="sourcecode"]
@@ -189,18 +268,20 @@ test("smoke test 2", function () {
     </script>
 ----
 
-That should give us something like this:
+Slightly unexpectedly, we find one of them fails:
 
 .Basic Qunit screen
-image::images/qunit_smoke_test.png["Qunit screen showing 1 passing test"]
+image::images/qunit_smoke_test.png["Qunit screen showing only 1 passing test"]
 
 What's happening here is that the first test hides the error div, so when 
 the second test runs, it starts out invisible. 
-footnote:[Be warned: tests get run in a predictable order, so you can't rely
-on one test running neatly after the other]
+
+NOTE: Qunit test do not run in a predictable order, so you can't rely on the
+first test running before the second one.
+
 We need some way of tidying up between tests, a bit like `setUp` and
 `teardDown`, or like the Django test runner would reset the database between
-each test.  Thankfully, and you can probably see this coming, but
+each test.  Thankfully, and you can probably see this coming, but the
 `qunit-fixture` div is exactly what we're looking for.  Move the form in there:
 
 [role="sourcecode"]
@@ -238,8 +319,8 @@ Switch back to just one test:
 ----
     <script>
 
-test("errors should be hidden on input change", function () {
-    $('input').trigger('change'); // <1>
+test("errors should be hidden on keypress", function () {
+    $('input').trigger('keypress'); // <1>
     equal($('.error').is(':visible'), false); 
 });
 
@@ -247,22 +328,29 @@ test("errors should be hidden on input change", function () {
 ----
 
 <1> The jQuery `.trigger` method is mainly used for testing.  It says "fire off
-a JavScrip DOM event on the element(s)".  Here we use the 'change' event, which
-is normally fired off by the browser behind the scenes whenever a user causes
-an input element's value to change, be it by typing into it or clicking on it.
-footnote:[jQuery is hiding a lot of complexity behind the scenes for us here]
+a JavScrip DOM event on the element(s)".  Here we use the 'keypress' event,
+which is fired off by the browser behind the scenes whenever a user types
+something into a particular input element. 
+
+NOTE: jQuery is hiding a lot of complexity behind the scenes here.  Just check
+out http://www.quirksmode.org/dom/events/index.html[Quirksmode.org] for a view
+on the hideous nest of differences between the different browsers'
+interpretation of events.  The reason that jQuery is so popular is that it just
+makes all this stuff go away.
+
+//TODO: also do onclick, to handle paste. show how to FT this too
 
 And that gives us:
 
 ----
 0 assertions of 1 passed, 1 failed.
-1. errors should be hidden on input change (1, 0, 1)
+1. errors should be hidden on keypress (1, 0, 1)
     1. failed
         Expected: 	false
         Result: 	true
 ----
 
-Let's say we want to keep our code in a standalone javascript file called
+Let's say we want to keep our code in a standalone JavaScript file called
 'list.js'
 
 
@@ -284,14 +372,13 @@ Here's the minimal code to get that test to pass:
 $('.error').hide();
 ----
 
-
-We'd better add another test:
+It has an obvious problem. We'd better add another test:
 
 [role="sourcecode"]
 .lists/static/tests/tests.html
 [source,html]
 ----
-test("errors not hidden unless input changes", function () {
+test("errors not hidden unless there is a keypress", function () {
     equal($('.error').is(':visible'), true);
 });
 ----
@@ -300,28 +387,28 @@ Now we get an expected failure:
 
 ----
 1 assertions of 2 passed, 1 failed.
-1. errors should be hidden on input change (0, 1, 1)
-2. errors not hidden unless input changes (1, 0, 1)
+1. errors should be hidden on keypress (0, 1, 1)
+2. errors not hidden unless there is a keypress (1, 0, 1)
     1. failed
         Expected: 	true
         Result: 	false
         Diff: 	true false 
 ----
 
-And now we make a more realistic implementation:
+And we can make a more realistic implementation:
 
 [role="sourcecode"]
 .lists/static/list.js
 [source,html]
 ----
-$('input').on('change', function () {
+$('input').on('keypress', function () {
     $('.error').hide();
 });
 ----
 
-Tests pass!
+That gets our unit tests to pass! 
 
-Impletment
+Grand, so let's pull in our script on all our pages:
 
 [role="sourcecode"]
 .lists/templates/base.html
@@ -333,4 +420,36 @@ Impletment
     </body>
 ----
 
-doesnt work. change isnt the rigth event. oh well.
+//TODO: note re: judgement call.  may need to test js works on all pages.
+
+Aaaand we run our FT:
+
+----
+$ python3 manage.py test \
+functional_tests.ItemValidationTest.test_error_messages_are_cleared_on_input
+
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 3.023s
+
+OK
+----
+
+Hooray!  That's a commit!
+
+TODO: change list.js to use some kind of "onload" boilerplate?
+
+
+.JavaScript testing notes
+*******************************************************************************
+* One of the great advantages of Selenium is that it allows you to test that
+your JavaScript really works, just as it tests your Python code
+* There are many JavaScript test running libraries out there.  Qunit is closely
+tied to jQuery, which is the main reason I chose it.  
+* Qunit mainly expects you to "run" your tests using an actual web browser.
+This has the advantage that it's easy to create some HTML fixtures that 
+match the kind of HTML your site actually contains, for tests to run against
+* I'll say it again: make sure you've read <<jsgoodparts,JavaScript: The Good
+* Parts>>.
+*******************************************************************************
+
