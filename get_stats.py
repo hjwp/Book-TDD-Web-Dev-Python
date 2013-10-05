@@ -12,7 +12,7 @@ FileWordCount = namedtuple('FileWordCount', ['date', 'subject', 'hash', 'lines',
 
 def get_log():
     commits = []
-    log = subprocess.check_output(['git', 'log', '--format=%h|%s|%ai']).decode()
+    log = subprocess.check_output(['git', 'log', '--format=%h|%s|%ai']).decode('utf8')
     for line in log.split('\n'):
         if line:
             hash, subject, datestring = line.split('|')
