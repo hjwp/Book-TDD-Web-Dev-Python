@@ -1213,8 +1213,10 @@ def test_cannot_add_dulicate_items(self):
 ----
 
 Why have two test methods rather than extending one, or having a new file
-and class?  It just feels like these two tests belong together, but are
-separate enough to merit being their own class...
+and class?  It's a judgement call.  These two feel closely related, they're
+both about input validation on the same input field, so it feels right to
+keep them in the same file.  On the other hand, they're logically separate
+enough that it's practical to keep them in different methods.
 
 
 [subs="specialcharacters,macros"]
@@ -1230,6 +1232,7 @@ Ran 2 tests in 9.613s
 OK, so we know the first of the two tests passes now, is there a way to run
 just the failing one, I hear you ask!  Why yes indeed -- the technique known
 as 'Dontification'.
+
 
 Dontification
 ^^^^^^^^^^^^^
@@ -1382,6 +1385,8 @@ meta attributes] at this point.
 
 A little digression on Queryset ordering and string representations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+TODO: investigate new Django test helper, "assertQuerySetEqual"?
 
 When we run the tests they reveal an unexpected failure:
 
@@ -2729,8 +2734,9 @@ which imports all test classes
     * Check the template used
     * Check each item in the template context
         * eg check any forms are of the correct class
-        * and check any objets or querystes have the correct items.
-    * Test any template logic:  any for or if should get a smoke test
+        * and check any objects are the right ones, or Querysets have the
+        correct items.
+    * Test any template logic:  any `for` or `if` should get a minimal test
     * Sanity-check that your form is rendered, and its errors are displayed
 
 Why these points?  Skip ahead to Appendix II (under construction), and I'll 
@@ -2751,8 +2757,246 @@ your core business logic.
 
 TODO: prettier bootstrap formatting
 
-TODO: deploy!  use south..
-
 TODO: a general philosophical discussion on design in TDD, "don't forget the
 refactor step"
+
+
+Epilogue: Deployment and database migrations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+WARNING: this section requires an upgrade to  the development branch of Django.
+
+We've made a change to our database -- we've added some constraints to some
+of the columns in the list table.  In order to apply these to our live site,
+we'll need to alter the tables in the existing database. This is a
+'database migration'.
+
+The current established tool for database migrations with Django is called 
+http://south.readthedocs.org/en/latest/index.html[South].  At the time of
+writing however, Andrew Godwin, South's talented creator, had just finished a 
+http://www.kickstarter.com/projects/andrewgodwin/schema-migrations-for-django[project]
+to integrate South into the Django core, in the shape of a new feature called
+https://docs.djangoproject.com/en/dev/topics/migrations/[Migrations]
+
+Accordingly, in an attempt to make this book future-proof, I'm now going to
+upgrade to the development version of Django.  My expectation is that by the
+time you read this, it will simply be part of the current production release
+of Django.
+//TODO: check this
+
+Here's how I did it -- be warned that it takes a few minutes to pull Django
+down:
+
+[subs="specialcharacters,quotes"]
+----
+$ *../virtualenv/bin/pip install --upgrade https://github.com/django/django/archive/master.zip*
+[...]
+Successfully installed Django
+Cleaning up...
+$ *../virtualenv/bin/django-admin.py --version*
+1.7.dev20131006142710
+----
+
+We can add it to 'requirements.txt' like this, replacing the line that used to
+say `Django==1.5.1`:
+
+[role="sourcecode"]
+.requirements.txt
+[source,text]
+----
+https://github.com/django/django/archive/master.zip
+gunicorn==17.5
+----
+
+We can commit that to version control:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am "Add Django dev version to requirements.txt"*
+----
+
+Creating an initial migration to match the current live state
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For migrations to work, they need to know what we're migrating from and to.
+The place this really matters is on the live server, so we want to be able
+to migrate from the database state as it currently is on live, to the state
+that's in the latest version of the code.
+
+Here's where version control comes in useful. We can use `git log` to look back
+for a commit that we made during chapter 8, or maybe right at the beginning of
+chapter 9.
+
+----
+$ *git log --oneline*
+18480bd Create base FT class and a class for each test. --ch09l002--
+87e99b5 Move functional tests into a folder
+7fa00f1 New ft for item validaiton. --ch09l001--
+8ca488b Add a fabfile for automated deploys    # <---  this looks like it!
+d28e6ea Notes and template config files for provisioning
+6b0d814 Add gunicorn to virtualenv requirements
+6a6c91e Add requirements.txt for virtualenv
+$ *git checkout 8ca488b*
+----
+
+TODO: use a git tag to mark the last deployed version back in chapter 8
+
+Once our source tree is back to a state that matches live, we create
+our initial migration:
+
+[subs="specialcharacters,quotes"]
+----
+$ ../virtualenv/bin/python3 manage.py makemigrations
+Do you want to enable migrations for app 'lists'? [y/N] y
+Migrations for 'lists':
+  0001_initial.py:
+    - Create model List
+    - Create model Item
+----
+
+The migration is stored in a directory called 'migrations' inside the
+lists app:
+
+[subs="specialcharacters,quotes"]
+----
+$ *tree lists/migrations/*
+lists/migrations/
+├── 0001_initial.py
+├── __init__.py
+└── __pycache__
+----
+
+We go back to the latest code version:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git checkout master*
+----
+
+And we add the migration to version control:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add lists/migrations/*
+$ *git status*  # should show 2 new files
+$ *git commit -m"initial migration to match live"*
+----
+
+Next we create the "real" migration that we want to apply:
+
+[subs="specialcharacters,quotes"]
+----
+$ *../virtualenv/bin/python manage.py makemigrations lists*
+Migrations for 'lists':
+  0002_auto.py:
+    - Alter unique_together for item (2 constraints)
+----
+
+Sure enough, it spots the new constraint.  Let's add that 
+to VCS too:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add lists/migrations/0002_auto.py*
+$ *git commit -m"Add new migration for list item uniqueness constraint"*
+----
+
+Migrations: like a VCS for your database
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The way migrations work is that they store a series of pictures of what your
+database looks like as your code evolves.  In order to apply a migration, the
+migrations tool also needs to have a view of what the database 'currently'
+looks like.  
+
+But, because we only started using migrations half-way through our development
+(and this is quite a common occurrence), the migrations tool doesn't know
+where it currently is.  In order to tell it, we do what's called a "fake" 
+migration, to tell it that the current database state is at the 0001 migration
+that we stored earlier, and that the one we want to go to is 0002.
+
+Let's test this out locally.  First, we go and make a database that has the old
+state:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git checkout 8ca488b*
+$ *rm ../database/database.sqlite*
+$ *python3 manage.py syncdb --noinput*
+$ *git checkout master*
+----
+
+TODO: check out apparent bug that occurs if you use django 1.7 to do this
+migration.
+
+
+Now, if you try doing a migration or a syncdb, you'll see that Django is
+confused:
+
+[subs="specialcharacters,quotes"]
+----
+$ ../virtualenv/bin/python3 manage.py syncdb
+Operations to perform:
+  Synchronize unmigrated apps: messages, auth, sessions, staticfiles, functional_tests, sites, contenttypes
+  Apply all migrations: lists
+Synchronizing apps without migrations:
+  Creating tables...
+  Installing custom SQL...
+  Installing indexes...
+Installed 0 object(s) from 0 fixture(s)
+Running migrations:
+  Applying lists.0001_initial...Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_09/virtualenv/lib/python3.3/site-packages/django/db/backends/utils.py", line 61, in execute
+    return self.cursor.execute(sql, params)
+  File "/home/harry/Dropbox/book/source/chapter_09/virtualenv/lib/python3.3/site-packages/django/db/backends/sqlite3/base.py", line 477, in execute
+    return Database.Cursor.execute(self, query, params)
+sqlite3.OperationalError: table lists_list already exists
+----
+
+It's because Django is confused about the current state of the database. It 
+thinks it needs to create this lists table, but it's already there. Here's how
+we tell it that the database currently reflects the place where we are at
+migration 0001, ie the place where live is:
+
+----
+$ ../virtualenv/bin/python3 manage.py migrate lists --fake 0001
+Operations to perform:
+  Target specific migration: 0001_initial, from lists
+Running migrations:
+  Applying lists.0001_initial... OK
+----
+
+And now we can test applying the real migration we want to do to
+live:
+
+----
+$ ../virtualenv/bin/python3 manage.py migrate lists
+----
+
+Eh? this is bugging out with a:
+
+----
+  File "/home/harry/Dropbox/book/source/chapter_09/virtualenv/lib/python3.3/site-packages/django/db/models/options.py", line 381, in get_field_by_name
+    return self._name_map[name]
+AttributeError: 'Options' object has no attribute '_name_map'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_09/virtualenv/lib/python3.3/site-packages/django/db/models/options.py", line 384, in get_field_by_name
+    return cache[name]
+KeyError: 'l'
+
+[...]
+
+    columns = [model._meta.get_field_by_name(field)[0].column for field in fields]
+  File "/home/harry/Dropbox/book/source/chapter_09/virtualenv/lib/python3.3/site-packages/django/db/models/options.py", line 387, in get_field_by_name
+    % (self.object_name, name))
+django.db.models.fields.FieldDoesNotExist: Item has no field named 'l'
+----
+
+That's a bug as far as I can tell!
+
+https://code.djangoproject.com/ticket/21236
+
 
