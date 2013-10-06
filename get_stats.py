@@ -49,7 +49,7 @@ def main():
             all_wordcounts[commit] = get_wordcounts()
             filenames.update(set(wc.filename for wc in all_wordcounts[commit]))
 
-        with open('worcounts.csv', 'w') as csvfile:
+        with open('worcounts.tsv', 'w') as csvfile:
             fieldnames = ['date', 'subject', 'hash']
             fieldnames.extend(sorted(filename + " (words)" for filename in filenames))
             fieldnames.extend(sorted(filename + " (lines)" for filename in filenames))
