@@ -1,329 +1,457 @@
-User authentication, the admin site and integrating 3rd party plugins
----------------------------------------------------------------------
+Dipping our toes, very tentatively, into JavaScript
+---------------------------------------------------
 
-So our beautiful lists site has been live for a few days, and our users are
-starting to come back to us with feedback.  "We love the site", they say, "but
-we keep losing our lists.  Manually remembering URLs is hard. It'd be great if
-it could remember what lists we'd started"
+[quote, 'John Calvin (as portrayed in http://onemillionpoints.blogspot.co.uk/2008/08/calvin-and-chipmunks.html[Calvin and the Chipmunks])']
+______________________________________________________________
+If the Good Lord had wanted us to enjoy ourselves, he wouldn't have granted us
+his precious gift of relentless misery.
+______________________________________________________________
 
-Remember Henry Ford and faster horses. Whenever you hear a user requirement,
-it's important to dig a little deeper and think -- what is the real requirement
-here?  And how can I make it involve a cool new technology I've been wanting
-to try out?
+Our new validation logic is good, but wouldn't it be nice if the error messages
+disappeared once the user started fixing the problem? For that we'd need a
+teeny-tiny bit of JavaScript.
 
-Clearly the requirement here is that people want to have some kind of user
-account on the site.  So, without further ado, let's dive into authentication.
+We are utterly spoiled by programming every day in such a joyful language as
+Python.  JavaScript is our punishment. So let's dip our toes in, very gingerly.
 
-Naturally we're not going to mess about with remembering passwords ourselves
--- besides being 'so' 90s, secure storage of user passwords is a security
-nightmare we'd rather leave to someone else.  We'll use federated
-authentication system instead.
-
-NOTE: If you 'insist' on storing your own passwords, Django's default auth module
-ready and waiting for you. It's nice and straightforward, and I'll leave it to
-you to discover on your own.
+WARNING: I'm going to assume you know the basics of JavaScript syntax. If you
+haven't read <<jsgoodparts,JavaScript: The Good Parts>>, go and get yourself
+a copy right away!  It's not a very long book.
 
 
-Mozilla Persona (Browser-ID)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Starting with an FT
+~~~~~~~~~~~~~~~~~~~
 
-But which federated authentication system?  Oauth?  Openid?  "Login with
-Facebook"?   Ugh.  In my book those all have unacceptable creepy overtones,
-why should Google or Facebook know what sites you're logging into and when?
-Thankfully there are still some techno-hippy-idealists out there, and the
-lovely people at Mozilla have cooked up a privacy-friendly auth mechanism
-they call "Persona", or sometimes "browser-id".  
+Let's add a new functional test to the `ItemValidationTest` class:
 
-The theory goes that your web browser acts as a third party between the
-website that wants to check your ID, and the website that you will use
-as a guarantor of your ID.  This latter may be Google or Facebook or whomever,
-but a clever protocol means that they never need know which website you were
-logging into or when.
+[role="sourcecode"]
+.lists/functional_tests/test_list_item_validation.py
+[source,python]
+----
+def test_error_messages_are_cleared_on_input(self):
+    # Edith starts a new list in a way that causes a validation error:
+    self.browser.get(self.server_url)
+    self.get_item_input_box().send_keys('\n')
+    error = self.browser.find_element_by_css_selector('.error')
+    self.assertTrue(error.is_displayed()) #<1>
 
-Ultimately, Persona may never take off as an authentication platform, but
-the main lessons from this chapter should be relevant no matter what 3rd
-party auth system you want to integrate:
+    # She starts typing in the input box to clear the error
+    self.get_item_input_box().send_keys('a')
 
-* Don't test other people's code or APIs
-* But, test that you've integrated them correctly into your own code
-* Check everything works from the point of view of the user
-* Test that your system degrades gracefully if the third party is 
-down
+    # She is pleased to see that the error message disappears
+    error = self.browser.find_element_by_css_selector('.error')
+    self.assertFalse(error.is_displayed()) #<1>
+----
+
+<1> `is_displayed()` tells you whether an element is visible or not. We
+can't just rely on checking whether the element is present in the DOM,
+because now we're starting to hide elements.
+
+That fails appropriately, but before we move on:  three strikes and refactor! 
+We've got several places where we find the error element using CSS. Let's 
+move it to a helper function:
+
+[role="sourcecode"]
+.lists/functional_tests/test_list_item_validation.py
+[source,python]
+----
+    def get_error_element(self):
+        return self.browser.find_element_by_css_selector('.error')
+----
+
+//TODO: why is the helper function in here not in base? Explain
+
+And we then make 5 replacements in 'test_list_item_validation', including
+these:
+
+[role="sourcecode"]
+.lists/functional_tests/test_list_item_validation.py
+[source,python]
+----
+    error = self.get_error_elements()[0]
+
+    # She starts typing in the input box to clear the error
+    self.get_item_input_box().send_keys('a')
+
+    # She is pleased to see that the error message disappears
+    self.assertEqual(self.get_error_elements(), [])
+----
+
+We have an expected failure:
+
+----
+    self.assertFalse(error.is_displayed())
+AssertionError: True is not false
+----
+
+And we can commit this as the first cut of our FT. (I trust you to do this
+without needing me to show you how any more!)
 
 
-Exploratory coding, aka "spiking"
+Setting up a basic JavaScript test runner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Choosing your testing tools in the Python and Django world is fairly
+straightforward.  The standard library `unittest` module is perfectly
+adequate, and the Django test runner also makes a good default choice. 
+There are some alternatives out there --
+http://nose.readthedocs.org/en/latest/[nose] is popular, and I've personally
+found http://pytest.org/[py.test] to be very impressive.  But there is
+a clear default option, and it's just fine.
+footnote:[Admittedly once you start looking for Python BDD tools, things are a
+little more confusing.]
+
+Not so in the JavaScript world!  We use YUI at work, but I thought I'd go out
+and see whether there were any new tools out there.  I was overwhelmed with
+options -- jsUnit, Qunit, Mocha, Chutzpah, Karma, Testacular, Jasmine, and many
+more.  And it doesn't end there either: as I had settled on one of them Mocha
+footnote:[purely because it features the
+http://visionmedia.github.io/mocha/#nyan-reporter[NyanCat]]
+you find out that you now need to choose an 'assertion framework' and a
+'reporter', and maybe a 'mocking library', and it never ends!
+
+In the end I decided we should use http://qunitjs.com/[qunit] because it's
+simple, and it works well with jQuery.  
+
+NOTE: I was dead keen to use Mocha, because of the Nyan cat test runner.  If
+someone can show me a simple mocha setup that lets the user test, in the
+browser and from the command-line as well, using the "tdd" ui and the "assert"
+assertion library... Well, I'll be eternally grateful.
+
+
+Make a directory called 'tests' inside 'lists/static', and download the qunit
+javascript and css files into it, stripping out version numbers if necessary (I
+got version 1.12).  We'll also put a file called 'tests.html' in there:
+
+----
+$ tree lists/static/tests/
+lists/static/tests/
+├── qunit.css
+├── qunit.js
+└── tests.html
+----
+
+The boilerplate for a qunit html file looks like this, including a smoke test:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Javascript tests</title>
+    <link rel="stylesheet" href="qunit.css">
+</head>
+
+<body>
+    <div id="qunit"></div>
+    <div id="qunit-fixture"></div>
+    <script src="qunit.js"></script>
+    <script>
+test("smoke test", function() {
+    equal(1, 1, "Maths doesn't work!" );
+});
+    </script>
+
+</body>
+</html>
+----
+
+Disecting that, the important things to pick up are the fact that we pull
+in 'qunit.js' using the first `<script>` tag, and then use the second one
+to write the main body of tests.
+
+If you open up the file using your web browser (no need to run the dev
+server, just find the file on disk) you should see something like this:
+
+.Basic Qunit screen
+image::images/qunit_smoke_test.png["Qunit screen showing 1 passing test"]
+
+Looking at the test itself, we'll find many similarities with the Python
+tests we've been writing so far:
+
+[source,javascript]
+----
+test("smoke test", function () { // <1>
+    equal(1, 1, "Maths doesn't work!"); // <2>
+});
+----
+
+<1> The `test` function defines a test case, a bit like 
+`def test_something(self)` did in Python. Its first argument is a name for the
+test, and the second is a function closure for the body of the test.
+<2> The `equal` function is an assertion; very much like `assertEqual`, it
+compares two arguments and takes an optional message to display on failure.
+
+Why not try changing those arguments to see a deliberate failure?
+
+Using jquery and the fixtures div
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Before I wrote this chapter all I'd seen of Persona was a talk at PyCon by Dan
-Callahan, in which he promised it could be implemented in 30 lines of code, and
-magic'd his way through a demo -- in other words, I knew it not at all.
+Let's get a bit more comfortable with what our testing framework can do,
+and start using a bit of jQuery
 
-In the last chapter we saw that you can use a unit test as a way of
-exploring a new API, but sometimes you just want to hack something together
-without any tests at all, just to see if it works, to learn it or get a feel for
-it.  That's absolutely fine.  When learning a new tool or exploring a new
-possible solution, it's often appropriate to leave the rigorous TDD process to
-one side, and build a little prototype without tests, or perhaps with very few
-tests.  The goat doesn't mind looking the other way for a bit.
+NOTE: If you've never seen jQuery before, I'm going to try and explain it as we
+go, just enough so that you won't be totally lost, but this isn't a jQuery
+tutorial.  You may find it helpful to spend an hour or two investigating jQuery
+at some point during this chapter.
 
-This kind of prototyping activity is often called a "spike", for 
-http://stackoverflow.com/questions/249969/why-are-tdd-spikes-called-spikes[reasons
-best known]
+Let's add jquery to our scripts, and a few elements to use in our tests:
 
-The first thing I did was take a look at an existing  django-persona integration
-called https://github.com/mozilla/django-browserid[Django-BrowserID], but
-unfortunately it didn't really support Python 3.  I'm sure it will by the time
-you read this, but I was quietly relieved since I was rather looking forward
-to writing my own code for this! 
-
-It took me about 3 hours of hacking about, using a combination of code stolen
-from Dan's talk and the example code on the
-https://developer.mozilla.org/en-US/docs/Mozilla/Persona[Persona site], but by
-the end I had something which just about works.  I'll take you on a tour,
-and then we'll go through and "de-spike" the implementation.  Don't worry
-about adding any of this code to your own source tree yet.
-
-Let's start with the front-end -- oh noes, JavaScript!  Thankfully I was able
-to cut & paste code from the Persona site and Dan's slides with essentially
-no modification:
-
-NOTE: 
-
-
+[role="sourcecode"]
+.lists/static/tests/tests.html
 [source,html]
-.lists/templates/base.html
 ----
-        <script src="/static/bootstrap/js/bootstrap.min.js"></script>
-        <script src="https://login.persona.org/include.js"></script>
-        <script>
-            $(document).ready(function() {
+    <div id="qunit-fixture"></div>
 
-var loginLink = document.getElementById('login');
-if (loginLink) {
-  loginLink.onclick = function() { navigator.id.request(); };
-}
+    <form>  <!--<1>-->
+        <input name="text" />
+        <div class="error">Error text</div>
+    </form>
 
-var logoutLink = document.getElementById('logout');
-if (logoutLink) {
-  logoutLink.onclick = function() { navigator.id.logout(); };
-}
+    <script src="http://code.jquery.com/jquery.min.js"></script>
+    <script src="qunit.js"></script>
+    <script>
 
-var currentUser = '{{ user.email }}' || null;
-var csrf_token = '{{ csrf_token }}';
-console.log(currentUser);
-
-navigator.id.watch({
-  loggedInUser: currentUser,
-  onlogin: function(assertion) {
-    $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token})
-    .done(function() { window.location.reload(); })
-    .fail(function() { navigator.id.logout();});
-  },
-  onlogout: function() {
-    $.post('/accounts/logout')
-    .always(function() { window.location.reload(); });
-  }
+test("smoke test", function () {
+    equal($('.error').is(':visible'), true); //<2><3>
+    $('.error').hide(); //<4>
+    equal($('.error').is(':visible'), false); //<5>
 });
 
-            });
-        </script>
+    </script>
 ----
 
-The Persona JavaScript library gives us a special `navigator.id` object.
-We bind its `request` method to our a link called "login" (which I've put
-in any old where at the top of the page), and similarly a "logout" link 
-gets bound to a `logout` function.
+<1> The `<form>` and its contents are there to represent what will be
+on the real list page.
+<2> jQuery magic starts here!  `$` is the jQuery swiss army knife. It's
+used to find bits of the DOM.  Its first argument is a CSS selector; here,
+we're telling it to find all elements that have the class "error".  It returns
+an object that represents one or more DOM elements.  It has various useful
+methods that allow us to manipulate or find out about those elements. 
+<3> Here we use `.is`, which can tell us whether an element matches a
+particular CSS property. Here we use `:visible` to check whether the element
+is displayed or hidden.
+<4> We then use jQuery's `.hide()` method to hide the div.  Behind the
+scenes, it dynamically sets a `style="display: none"` on the element. 
+<5> And finally we check that it's worked, with a second `equal` assertion.
 
-Persona will now pop up its authentication dialog box if users
-click the log in link. What happens next is the clever part of the Persona
-protocol:  the user enters an email address, and the browser takes care
-of validating that email address, by taking the user to the email provider
-(Google, Yahoo or whoever), and validating it with them. 
+If you refresh the browser, you should see that all passes:
 
-Let's say it's Google: Google asks the user to confirm their username and
-password, and maybe even does some two-factor auth wizardry, and is then
-prepared to confirm to your browser that you are who you say you are.  Google
-then passes a certificate back to the browser, which is cryptographically
-signed to prove it's from Google, and which contains the user's email address.
-
-At this point the browser can trust that you do own that email address, and
-it can incidentally re-use that certificate for any other websites that use
-Persona.
-
-For now, it combines the certificate with the domain name of the website
-you want to log into into a blob called an "assertion", and sends them on
-to our site for validation.
-
-This is the point between the `navigator.id.request` and the
-`navigator.id.watch` callback for `onlogin` - we send the assertion via
-POST to the login URL on our site, which I've put at 'accounts/login'.
-
-On the server, we now have the job of verifying the assertion: is it really
-proof that the user owns that email address?  Our server can check, because
-Google has signed part of the assertion with its public key.  We can either
-write code to do the crypto for this step ourselves, or we can use a public
-service from Mozilla to do it for us?
-
-NOTE: yes, letting Mozilla do it for us totally defeats the whole privacy
-point, but it's the 'principle'. We could do it ourselves if we wanted to.
-It's left as an exercise for the reader!  There's more details on the 
-https://developer.mozilla.org/en-US/docs/Mozilla/Persona/Protocol_Overview[Mozilla
-site], including all the clever public key crypto that keeps Google from 
-knowing what site you want to log into, but also stops replay attacks and
-so on. Smart.
-
-
-Here's the view that handles the POST to 'accounts/login':
-
-[source,python]
-.accounts/views.py
+.Expected results from Qunit in browser
 ----
-from django.contrib.auth import authenticate
-from django.contrib.auth import login as auth_login
-from django.shortcuts import redirect
-
-def login(request):
-    print('login view', file=sys.stderr)
-    #user = PersonaAuthenticationBackend().authenticate(request.POST['assertion'])
-    user = authenticate(assertion=request.POST['assertion'])
-    if user is not None:
-        auth_login(request, user)
-    return redirect('/')
+Tests completed in 27 milliseconds.
+2 assertions of 2 passed, 0 failed.
+1. smoke test (0, 2, 2)Rerun
 ----
 
-And here's the `authenticate` function, which is implemented as a custom
-Django authentication backend (we could have done it inline in the view,
-but using an authentication backend will let us re-use the authentication
-system in the admin site, for example.
-
-//TODO: check, is this actually true?
-
-[source,python]
-.accounts/authentication.py
-----
-from accounts.models import ListUser
-
-class PersonaAuthenticationBackend(object):
-
-    def authenticate(self, assertion):
-        # Send the assertion to Mozilla's verifier service.
-        data = {'assertion': assertion, 'audience': 'localhost'}
-        print('sending to mozilla', data, file=sys.stderr)
-        resp = requests.post('https://verifier.login.persona.org/verify', data=data)
-        print('got', resp, file=sys.stderr)
-
-        # Did the verifier respond?
-        if resp.ok:
-            # Parse the response
-            verification_data = resp.json()
-
-            # Check if the assertion was valid
-            if verification_data['status'] == 'okay':
-                email = verification_data['email']
-                try:
-                    return self.get_user(email)
-                except ListUser.DoesNotExist:
-                    return ListUser.objects.create(email=email)
-
-
-    def get_user(self, email):
-        return ListUser.objects.get(email=email)
-----
-
-This code is copy-pasted directly from the Mozilla site, as you can see from 
-the explanatory comments.  To finish off the job of customising authentication
-in Django, we just need a custom user model:
-
-[source,python]
-.accounts/models.py
-----
-class ListUser(AbstractBaseUser, PermissionsMixin):
-    email = models.EmailField(primary_key=True)
-    USERNAME_FIELD = 'email'
-    #REQUIRED_FIELDS = ['email', 'height']
-
-    objects = ListUserManager()
-
-    @property
-    def is_staff(self):
-        return self.email == 'harry.percival@gmail.com'
-
-    @property
-    def is_active(self):
-        return True
-----
-
-That's what I call a minimal user model!  One field, none of this
-firstname/lastname/username nonsense, and, pointedly, no password! 
-Somebody else's problem!   But you can see that this code isn't ready
-for production, from the commented-out lines to the hard-coded harry
-email address.
-
-NOTE: At this point I'd recommend a little browse through the 
-https://docs.djangoproject.com/en/1.5/topics/auth/customizing/[Django 
-auth documentation]
-
-Aside from that, all you need is a model manager for the user:
-
-[source,python]
-.accounts/models.py
-----
-class ListUserManager(BaseUserManager):
-
-    def create_user(self, email):
-        ListUser.objects.create(email=email)
-
-    def create_superuser(self, email, password):
-        self.create_user(email)
-----
-
-And a logout view:
+Time to see how fixtures work.  If we just dupe up this test:
 
 
 [role="sourcecode"]
-.lists/tests.py
-[source,python]
+.lists/static/tests/tests.html
+[source,html]
 ----
-def logout(request):
-    auth_logout(request)
-    return redirect('/')
+    <script>
+
+test("smoke test", function () {
+    equal($('.error').is(':visible'), true);
+    $('.error').hide();
+    equal($('.error').is(':visible'), false);
+});
+test("smoke test 2", function () {
+    equal($('.error').is(':visible'), true);
+    $('.error').hide();
+    equal($('.error').is(':visible'), false);
+});
+
+    </script>
 ----
 
-Why not spin up a dev server with `runserver` and see how it all looks?
+Slightly unexpectedly, we find one of them fails:
 
-TODO: screenshot
+.Basic Qunit screen
+image::images/qunit_first_test_failure.png["Qunit screen showing only 1 passing test"]
 
-That's pretty much it! Along the way, I had to fight pretty hard, including
-debugging ajax requests by hand in the Firefox console, catching infinite
-page-refresh loops, stumbling over several missing attributes on my custom user
-model (because I didn't read the docs properly), and finally discovering that
-we have to upgrade to the dev version of Django to actually get it to work in
-the admin site.  But we now have a working solution!  Time to de-spike
+What's happening here is that the first test hides the error div, so when 
+the second test runs, it starts out invisible. 
 
-//TODO screenshot ajax debug
+NOTE: Qunit test do not run in a predictable order, so you can't rely on the
+first test running before the second one.
+
+We need some way of tidying up between tests, a bit like `setUp` and
+`teardDown`, or like the Django test runner would reset the database between
+each test.  Thankfully, and you can probably see this coming, but the
+`qunit-fixture` div is exactly what we're looking for.  Move the form in there:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+    <div id="qunit"></div>
+    <div id="qunit-fixture">
+        <form>
+            <input name="text" />
+            <div class="error">Error text</div>
+        </form>
+    </div>
+
+    <script src="http://code.jquery.com/jquery.min.js"></script>
+----
+
+And that gets us back to 2 neatly passing tests.
+
+----
+Tests completed in 21 milliseconds.
+4 assertions of 4 passed, 0 failed.
+1. smoke test (0, 2, 2)
+2. smoke test 2 (0, 2, 2)
+----
+
+Building a JavaScript unit test for our desired functionality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Switch back to just one test:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+    <script>
+
+test("errors should be hidden on keypress", function () {
+    $('input').trigger('keypress'); // <1>
+    equal($('.error').is(':visible'), false); 
+});
+
+    </script>
+----
+
+<1> The jQuery `.trigger` method is mainly used for testing.  It says "fire off
+a JavScrip DOM event on the element(s)".  Here we use the 'keypress' event,
+which is fired off by the browser behind the scenes whenever a user types
+something into a particular input element. 
+
+NOTE: jQuery is hiding a lot of complexity behind the scenes here.  Just check
+out http://www.quirksmode.org/dom/events/index.html[Quirksmode.org] for a view
+on the hideous nest of differences between the different browsers'
+interpretation of events.  The reason that jQuery is so popular is that it just
+makes all this stuff go away.
+
+//TODO: also do onclick, to handle paste. show how to FT this too
+
+And that gives us:
+
+----
+0 assertions of 1 passed, 1 failed.
+1. errors should be hidden on keypress (1, 0, 1)
+    1. failed
+        Expected: 	false
+        Result: 	true
+----
+
+Let's say we want to keep our code in a standalone JavaScript file called
+'list.js'
 
 
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+    <script src="qunit.js"></script>
+    <script src="../list.js"></script>
+    <script>
+----
 
-BUG - if want to use admin site, will need to upgrade to 1.6 beta!
+Here's the minimal code to get that test to pass:
 
-http://stackoverflow.com/questions/16983547/django-problems-with-id-in-custom-usermodel/18458659#18458659
+[role="sourcecode"]
+.lists/static/list.js
+[source,html]
+----
+$('.error').hide();
+----
+
+It has an obvious problem. We'd better add another test:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+test("errors not hidden unless there is a keypress", function () {
+    equal($('.error').is(':visible'), true);
+});
+----
+
+Now we get an expected failure:
+
+----
+1 assertions of 2 passed, 1 failed.
+1. errors should be hidden on keypress (0, 1, 1)
+2. errors not hidden unless there is a keypress (1, 0, 1)
+    1. failed
+        Expected: 	true
+        Result: 	false
+        Diff: 	true false 
+----
+
+And we can make a more realistic implementation:
+
+[role="sourcecode"]
+.lists/static/list.js
+[source,html]
+----
+$('input').on('keypress', function () {
+    $('.error').hide();
+});
+----
+
+That gets our unit tests to pass! 
+
+Grand, so let's pull in our script on all our pages:
+
+[role="sourcecode"]
+.lists/templates/base.html
+[source,html]
+----
+        <script src="/static/bootstrap/js/bootstrap.min.js"></script>
+        <script src="/static/list.js"></script>
+
+    </body>
+----
+
+//TODO: note re: judgement call.  may need to test js works on all pages.
+
+Aaaand we run our FT:
+
+----
+$ python3 manage.py test \
+functional_tests.ItemValidationTest.test_error_messages_are_cleared_on_input
+
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 3.023s
+
+OK
+----
+
+Hooray!  That's a commit!
+
+TODO: change list.js to use some kind of "onload" boilerplate?
 
 
-
-De-Spiking
-~~~~~~~~~~
-
-bla
-
-
-Javascript tests
-~~~~~~~~~~~~~~~~
-
-topic for next chapter!
-
-
-Deploy
-~~~~~~
-
-south etc
+.JavaScript testing notes
+*******************************************************************************
+* One of the great advantages of Selenium is that it allows you to test that
+your JavaScript really works, just as it tests your Python code
+* There are many JavaScript test running libraries out there.  Qunit is closely
+tied to jQuery, which is the main reason I chose it.  
+* Qunit mainly expects you to "run" your tests using an actual web browser.
+This has the advantage that it's easy to create some HTML fixtures that 
+match the kind of HTML your site actually contains, for tests to run against
+* I'll say it again: make sure you've read <<jsgoodparts,JavaScript: The Good
+Parts>>.
+*******************************************************************************
 
