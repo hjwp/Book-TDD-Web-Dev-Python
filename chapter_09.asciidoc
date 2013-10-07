@@ -2931,7 +2931,7 @@ migration, to tell it that the current database state is at the 0001 migration
 that we stored earlier, and that the one we want to go to is 0002.
 
 Let's test this out locally.  First, we go and make a database that has the old
-state:
+state, ie one that looks like live:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -2980,6 +2980,85 @@ Running migrations for lists:
  > lists:0002_auto__add_unique_item_list_text
  - Loading initial data for lists.
 Installed 0 object(s) from 0 fixture(s)
+----
+
+Brilliant! Are you confused?  I am, slightly, and I'm the one writing this.
+Here's a recap:
+
+* we need to apply a database migration to the live database when we deploy, 
+to add the uniqueness constraint
+* we're going to use South migrations for this.  We've created two migrations,
+one (0001) which takes us from nothing to the old state, and one which takes
+us from there to the state we want (0002)
+* to test this, we've created a database in the same state as live by
+checking out our old codebase and doing a syncdb
+* in order to apply a migration, South needs to know what the current state
+of the database is
+* we tell it by applying a "fake" version of migration 0001
+* then we're in a position to apply the real migration, 0002
+
+So how are we actually going to do this on our live servers?  By replicating
+those last two steps.  We're using a fabfile for our deployments, so let's 
+adjust it now:
+
+TODO: fix bug in fabfile checkout code (correct use of git reset)
+
+[role="sourcecode"]
+.dploy_tools/fabfile.py
+[source,python]
+----
+def _update_database(source_folder):
+    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb' % (source_folder,))
+    # one-off fake database migration. remove me before next deploy
+    run('cd %s && ../virtualenv/bin/python3 manage.py migrate lists --fake 0001' % (
+        source_folder,
+    ))
+    run('cd %s && ../virtualenv/bin/python3 manage.py migrate' % (source_folder,))
+----
+
+Still nervous?  Me too, but that's why we have a staging environment. Here 
+goes nothing!
 
 ----
+$ cd deploy_tools
+$ fab deploy --host=superlists.ottg.eu
+[superlists.ottg.eu] Executing task 'deploy'
+[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu
+
+[...]
+
+[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && ../virtualenv/bin/python3 manage.py syncdb
+[superlists.ottg.eu] out: Syncing...
+[superlists.ottg.eu] out: Creating tables ...
+[superlists.ottg.eu] out: Creating table south_migrationhistory
+[superlists.ottg.eu] out: Installing custom SQL ...
+[superlists.ottg.eu] out: Installing indexes ...
+[superlists.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] out: Synced:
+[superlists.ottg.eu] out:  > django.contrib.auth
+[superlists.ottg.eu] out:  > django.contrib.contenttypes
+[superlists.ottg.eu] out:  > django.contrib.sessions
+[superlists.ottg.eu] out:  > django.contrib.sites
+[superlists.ottg.eu] out:  > django.contrib.messages
+[superlists.ottg.eu] out:  > django.contrib.staticfiles
+[superlists.ottg.eu] out:  > functional_tests
+[superlists.ottg.eu] out:  > south
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] out: Not synced (use migrations):
+[superlists.ottg.eu] out:  - lists
+[superlists.ottg.eu] out: (use ./manage.py migrate to migrate these)
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && ../virtualenv/bin/python3 manage.py migrate lists --fake 0001
+[superlists.ottg.eu] out:  - Soft matched migration 0001 to 0001_initial.
+[superlists.ottg.eu] out: Running migrations for lists:
+[superlists.ottg.eu] out:  - Migrating forwards to 0001_initial.
+[superlists.ottg.eu] out:  > lists:0001_initial
+[superlists.ottg.eu] out:    (faked)
+[superlists.ottg.eu] out: 
+----
+
+Hooray!
+
 
