@@ -1,20 +1,19 @@
 More advanced Forms 
 -------------------
 
-Now let's look at some slightly more advanced validation:
-
+Now let's look at some more advanced forms usage.  We've helped our users
+to avoid blank list items, let's help them avoid duplicate items.
 
 Another FT for duplicate items
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-We can delete the `self.fail` from the previous test and add a second
-test method to `ItemValidationTest`:
+We add a second test method to `ItemValidationTest`:
 
 [role="sourcecode"]
 .functional_tests/tests/test_list_item_validation.py (ch09l027)
 [source,python]
 ----
-def test_cannot_add_dulicate_items(self):
+def test_cannot_add_duplicate_items(self):
     # Edith goes to the home page and starts a new list
     self.browser.get(self.server_url)
     self.browser.find_element_by_id('id_new_item').send_keys('Buy wellies\n')
@@ -31,7 +30,7 @@ def test_cannot_add_dulicate_items(self):
 
 Why have two test methods rather than extending one, or having a new file
 and class?  It's a judgement call.  These two feel closely related, they're
-both about input validation on the same input field, so it feels right to
+both about validation on the same input field, so it feels right to
 keep them in the same file.  On the other hand, they're logically separate
 enough that it's practical to keep them in different methods.
 
@@ -47,9 +46,16 @@ Ran 2 tests in 9.613s
 ----
 
 OK, so we know the first of the two tests passes now, is there a way to run
-just the failing one, I hear you ask!  Why yes indeed 
+just the failing one, I hear you ask!  Why yes indeed:
 
-TODO: use dot notation on test runner
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test \
+functional_tests.ItemValidationTest.test_cannot_add_duplicate_items*] 
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":".error"}' ; Stacktrace: 
+----
 
 
 Preventing duplicates at the model layer
@@ -186,7 +192,6 @@ meta attributes] at this point.
 A little digression on Queryset ordering and string representations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-TODO: investigate new Django test helper, "assertQuerySetEqual"?
 
 When we run the tests they reveal an unexpected failure:
 
@@ -218,6 +223,7 @@ That's a bit of a puzzler. A bit of print-based debugging:
     self.assertEqual(first_saved_item.text, 'The first (ever) list item')
 ----
 
+Will show us...
 
 [role="skipme"]
 ----
@@ -246,6 +252,7 @@ it's best to add a new test that explicitly tests for ordering:
         )
 ----
 
+
 That gives us a new failure, but it's not a very readable one:
 
 ----
@@ -255,6 +262,7 @@ AssertionError: [<Item: Item object>, <Item: Item object>, <Item: Item object>]
 
 We need a better string representation for our objects.  Let's add another
 unit tests:
+
 
 NOTE: Ordinarily you would be wary of adding more failing tests when you
 already have some -- it makes reading test output that much more complicated,
@@ -328,6 +336,7 @@ tests are confused.  I keep running into this problem actually -- Django
 querysets don't compare well with lists.  We can fix it by converting the
 queryset to a list in our test:
 
+TODO: investigate new Django test helper, "assertQuerySetEqual"?
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch09l036)
@@ -339,17 +348,19 @@ queryset to a list in our test:
     )
 ----
 
+That works, we get a fully passing test suite:
+
 ----
 OK
 ----
 
-That gets us to a fully passing test suite.  Time for a commit:
+Time for a commit!
 
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff*
-$ *git commit -am "Implement data validation at model layer"*
+$ *git commit -am "Implement duplicate item validation at model layer"*
 ----
 
 The next task is to handle the validation error in the view. Before we do that,
@@ -448,7 +459,17 @@ def view_list(request, list_id):
             error = "You've already got this in your list"
 ----
 
-We can try the FT and... that works!  Time for a commit.
+OK, we know that's an ugly hack, we need to use a form, just like
+we did for new lists, but -- it works.  We've got to 'Green', and we're
+definitely going to do the 'Refactor' part, very soon.
+
+----
+Ran 4 tests in 19.048s
+
+OK
+----
+
+First, a commit.
 
 [subs="specialcharacters,quotes"]
 ----
@@ -461,9 +482,9 @@ A more complex form to handle uniqueness validation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The form to create a new list only needs to know one thing, the new item text.
-A form which validates that list items are unique needs to know both.  Let's
-see if we can use a subclass: 
+A form which validates that list items are unique needs to know both.  
 
+We duplicate up our tests for the previous form, tweaking them slightly:
 
 [role="sourcecode"]
 [source,python]
@@ -538,7 +559,7 @@ FAIL: test_form_validation_for_duplicate_items
 AssertionError: True is not false
 ----
 
-Now we need to override the fields list from our parent form class.  We 
+We'll need to override the fields list from our parent form class.  We 
 can do this by inheriting the class `Meta` (you know, I didn't know this
 would work before I set off writing this chapter.  It's pretty cool):
 
@@ -569,6 +590,8 @@ Hm, a little debugging required.  Let's try this in our test:
     self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
 ----
 
+Gives us:
+
 ----
 AssertionError: {'__all__': ['Item with this List and Text already exists.']}
 ----
@@ -578,13 +601,18 @@ because it's not clear which field it should apply to -- list or item.  We
 want it to be in the `text` field though.
 
 
+.Development-driven tests: using unit tests for exploratory coding.
 *******************************************************************************
 Does this feel a bit like development-driven-tests?  That's OK, now 
-and again.  When you're exploring a new API, you're absolutely allowed
-to mess about with it for a while before you get back to rigorous TDD.  We're
-using the unit test framework as a way of experimenting, but you could just
-as well use an interactive console, or print statements, or whatever you
-prefer.
+and again.  
+
+When you're exploring a new API, you're absolutely allowed to mess about with
+it for a while before you get back to rigorous TDD.  You might use the 
+interactive console, or write some exploratory code (but you have to promise
+the testing goat that you'll throw it away and re-write it properly later)
+
+Here we're actually using a unit test as a way of experimenting with the
+forms API. It's actually a pretty good way of learning how it works!
 *******************************************************************************
 
 
@@ -714,6 +742,7 @@ def view_list(request, list_id):
 
 How about that `form.save()` eh?  If you'd never met Django ModelForms, 
 there's some of the real power of a ModelForm right there!
+
 //TODO use form.save in earlier case.  maybe add to scratchpad?
 
 We still have failures for the two validation tests:  
@@ -799,10 +828,12 @@ Hooray! Time for a final commit, and a wrap-up.
         * and check any objects are the right ones, or Querysets have the
         correct items.
     * Test any template logic:  any `for` or `if` should get a minimal test
+    * For views that handle POST requests, make sure you test both the valid
+    case and the invalid case.
     * Sanity-check that your form is rendered, and its errors are displayed
 
-Why these points?  Skip ahead to Appendix II (under construction), and I'll 
-show how they are sufficient to ensure that our views are still correct if
-we refactor them to start using Class-Based Views.
+Why these points?  Skip ahead to Appendix II, and I'll show how they are
+sufficient to ensure that our views are still correct if we refactor them to
+start using Class-Based Views.
 *******************************************************************************
 
