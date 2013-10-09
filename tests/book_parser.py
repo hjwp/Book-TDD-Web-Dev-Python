@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os
 import re
-from lxml import html
-
-
-base_dir = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
-with open(os.path.join(base_dir, 'book.html')) as f:
-    raw_html = f.read()
-parsed_html = html.fromstring(raw_html)
 
 
 COMMIT_REF_FINDER = r'ch\d\dl\d\d\d-?\d?'
