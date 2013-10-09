@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from lxml import html
 import os
 import re
 import subprocess
@@ -12,7 +13,6 @@ from book_parser import (
     CodeListing,
     Command,
     Output,
-    parsed_html,
     parse_listing,
 )
 from sourcetree import SourceTree
@@ -96,8 +96,13 @@ class ChapterTest(unittest.TestCase):
 
 
     def parse_listings(self):
-        chapter = parsed_html.cssselect('div.sect1')[self.chapter_no]
-        listings_nodes = chapter.cssselect('div.listingblock')
+        base_dir = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
+        filename = 'chapter_{0:02d}.html'.format(self.chapter_no)
+        with open(os.path.join(base_dir, filename)) as f:
+            raw_html = f.read()
+        parsed_html = html.fromstring(raw_html)
+        #chapter = parsed_html.cssselect('div.sect1')[self.chapter_no]
+        listings_nodes = parsed_html.cssselect('div.listingblock')
         self.listings = [p for n in listings_nodes for p in parse_listing(n)]
 
 
@@ -381,6 +386,12 @@ class ChapterTest(unittest.TestCase):
         self.dev_server_running = True
 
 
+    def run_fts(self):
+        if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
+            return self.run_command(Command("python3 manage.py test functional_tests"))
+        else:
+            return self.run_command(Command("python3 functional_tests.py"))
+
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
         if listing.dofirst:
@@ -478,11 +489,17 @@ class ChapterTest(unittest.TestCase):
             test_run = self.run_command(Command("python3 manage.py test lists"))
             if 'OK' in  test_run and not 'OK' in listing:
                 print('unit tests pass, must be an FT:\n', test_run)
-                if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
-                    test_run = self.run_command(Command("python3 manage.py test functional_tests"))
+                test_run = self.run_fts()
+            try:
+                self.assert_console_output_correct(test_run, listing)
+            except AssertionError:
+                if 'OK' in test_run and 'OK' in listing:
+                    print('checking FT run')
+                    test_run = self.run_fts()
+                    self.assert_console_output_correct(test_run, listing)
                 else:
-                    test_run = self.run_command(Command("python3 functional_tests.py"))
-            self.assert_console_output_correct(test_run, listing)
+                    raise
+
             self.pos += 1
 
         else:

@@ -1,11 +1,12 @@
 Input validation and test organisation
 --------------------------------------
 
-In this chapter we'll learn how to test and implement validation of user inputs
-using Django forms. We'll also take the opportunity to do a little tidying up.
+Over the next few chapters we'll talk about testing and implementing validation
+of user inputs. We'll also take the opportunity to do a little tidying up.
 
-NOTE: this chapter is still in draft form, you may see a few TODOs.  Your
-feedback is, as ever, earnestly solicited.
+NOTE: I had originally intended to spend just one chapter talking about 
+forms and validation.  It's ended up being three.  I'd really like your
+feedback -- is it too much?  What, if anything, would you drop?
 
 
 Validation: preventing blank and duplicate list items
@@ -53,12 +54,83 @@ ticket ID.
 We'll also have one base test class which they can all inherit from.  Here's 
 how to get there step-by-step:
 
-//TODO: move dontification bit into here, as a way of having all passing tests
+Skipping a test
+^^^^^^^^^^^^^^^
 
-Start by switching from using a tests file to a tests folder. In order for the
-Django test runner to still work, we need to make sure the new tests module,
-which is now a folder instead of a file, still has all the same tests -- we do
-this by doing an import in the '__init__.py':
+First off, it's always nice, when doing refactoring, to have a fully passing test
+suite.  We've just written a test with a deliberate failure. Let's
+temporarily switch it off, using a decorator called "skip" from unittest:
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch09l001-1)
+[source,python]
+----
+from unittest import skip
+[...]
+
+    @skip
+    def test_cannot_add_empty_list_items(self):
+----
+
+This tells the test runner to ignore this test.  You can see it works --
+if we re-run the tests, it'll say it passes:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python3 manage.py test functional_tests*
+[...]
+Ran 3 tests in 11.577s
+OK
+----
+
+WARNING: Skips are dangerous -- you need to remember to remove them 
+before you commit your changes back to the repo.  This is why line-by-line 
+reviews of each of your diffs are a good idea!
+
+.Choosing when to refactor
+**********************************************************************
+A criticism that's sometimes levelled at TDD is that it leads to badly
+architected code, as the developer just focuses on getting tests to pass
+rather than stopping to think about how the whole system should be designed.
+I think it's slightly unfair.
+
+TIP: Don't forget the "Refactor" in "Red, Green, Refactor"
+
+It's definitely true that TDD is no silver bullet; you still have to spend
+time thinking about good design.  But what often happens is that people
+forget the "Refactor" in "Red, Green, Refactor". The methodology allows
+you to throw together any old code to get your tests to pass, but it 'also'
+asks you to then spend some time refactoring it to improve its design.
+
+Often, however, ideas for how to refactor code will occur to you a few days
+after you've written a piece of code -- perhaps weeks or months later, 
+as you're writing some new functionality.  But if you're half-way through
+something else, should you stop to refactor some old code?
+
+The answer is: it depends.  In the case at the beginning of the chapter,
+we haven't even started writing our new code, we know we are in a working
+state, so we can justify put a skip our new FT and do a bit of refactoring
+straight away.
+
+Later in the chapter we'll spot other bits of code we want to refactor.
+In those cases, rather than taking the risk of refactoring an application
+that's not in a working state, we'll make a note of the thing we want to
+change, and wait until we're back to a fully passing test suite before 
+refactoring.
+**********************************************************************
+
+
+Putting functional tests into a tests folder
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+//TODO: this will no longer be necessary in Django 1.7. leave files in base
+//folder?
+
+We start by switching from a single tests file to a tests folder, which will
+have many files in it. As of Django 1.5 (and this is set to change), in order
+for the test runner to still be able to find our tests, they still all need to
+be "in" a module called tests. We do this by importing them in the new folder's
+'__init__.py':
 
 [subs="specialcharacters,quotes"]
 ----
@@ -68,9 +140,9 @@ $ *git mv functional_tests/tests.py functional_tests/tests/base.py*
 $ @echo "from .base import *" >> functional_tests/tests/__init__.py@
 ----
 
-NOTE: Two things re: `from .base import *`. Firstly, these universal 
+Two things re: `from .base import *`. Firstly, these universal 
 test-imports are one of the only places in which it's a good idea to use
-`import *`.  Secondly, I used a relative import (`from .base`). Some people
+`import *`.   Secondly, I used a relative import (`from .base`). Some people
 like to use those a lot more often in Django code (eg, your views might import
 models using `from .models import List`, instead of `from list.models`.
 Ultimately this is a matter of personal preference.  I prefer to use relative 
@@ -85,17 +157,9 @@ the FTs as before:
 [subs="specialcharacters,quotes"]
 ----
 $ *python3 manage.py test functional_tests*
-[...]
-AssertionError: write me!
+
+OK
 Ran 3 tests in 11.290s
-----
-
-That works, we can do a first commit
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add functional_tests/tests*
-$ *git commit -m "Move FTs into a tests folder"*
 ----
 
 Now we prepare a base class for all the tests to inherit from, and have
@@ -136,6 +200,7 @@ class LayoutAndStylingTest(FunctionalTest):
 
 class ItemValidationTest(FunctionalTest):
 
+    @skip
     def test_cannot_add_empty_list_items(self):
         [...]
 ----
@@ -145,9 +210,9 @@ little bit, we could probably get away doing this stuff in less steps, but, as
 I keep saying, practising the step-by-step method on the easy cases makes it
 that much easier when we have a complex case.
 
-Now we can split each class out into its own file.  It's easy to do this
-by making 3 new copies of 'base.py', deleting all the irrelevant bits from
-each and just keeping one import:
+Next we split each class out into its own file.  It's easy to do this by making
+3 new copies of 'base.py', deleting all the irrelevant bits from each and just
+keeping one import:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -174,9 +239,17 @@ import sys
 
 class FunctionalTest(LiveServerTestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        [...]
+    def tearDownClass(cls):
+        [...]
+    def setUp(self):
+        [...]
+    def tearDown(self):
+        [...]
     def check_for_row_in_list_table(self, row_text):
         [...]
-
 ----
 
 Our first FT is now in its own file, with one class and one test method:
@@ -235,7 +308,21 @@ And we can test everything worked by re-running `manage.py test`, and checking
 once again that all 3 tests are run.
 
 ----
-AssertionError: write me!
+Ran 3 tests in 11.577s
+
+OK
+----
+
+Now we can remove our skip:
+
+[role="sourcecode"]
+.functional_tests/tests/test_list_item_validation.py (ch09l007-1)
+[source,python]
+----
+class ItemValidationTest(FunctionalTest):
+
+    def test_cannot_add_empty_list_items(self):
+        [...]
 ----
 
 As a side-bonus, we're now able to run an individual test class, like this:
@@ -261,7 +348,7 @@ $ *git commit -m"Moved Fts into their own individual files"*
 ----
 
 
-Now let's start implementing the test, or at least the beginning of it:
+Now let's start implementing the test, or at least the beginning of it.
 
 
 [role="sourcecode"]
@@ -295,9 +382,6 @@ def test_cannot_add_empty_list_items(self):
     self.browser.find_element_by_id('id_new_item').send_keys('Make tea\n')
     self.check_for_row_in_list_table('1: Buy milk')
     self.check_for_row_in_list_table('2: Make tea')
-
-    self.fail("Don't forget to also test duplicate items!")
-
 ----
 
 A couple of things to note about this test:
@@ -366,7 +450,7 @@ $ *git mv lists/tests/test_all.py lists/tests/test_views.py*
 $ *cp lists/tests/test_views.py lists/tests/test_models.py*
 ----
 
-We then strip 'test_models.py' down to being just the one test -- it means
+We strip 'test_models.py' down to being just the one test -- it means
 it needs far fewer imports:
 
 [role="sourcecode"]
@@ -470,6 +554,13 @@ class ListAndItemModelsTest(TestCase):
             item.save()
 ----
 
+TIP: if you're new to Python, you may never have seen the `with` statement.
+It's used with what are called "context managers", which wrap a block of code,
+usually with some kind of set-up, clean-up, or error-handling code.  There's a
+good write-up in the 
+http://docs.python.org/release/2.5/whatsnew/pep-343.html[Python 2.5 release
+notes]
+
 This is a new unit testing technique: when we want to check that doing
 something will raise an error, we can use the `self.assertRaises` context
 manager.  We could have used something like this instead:
@@ -523,7 +614,7 @@ Django does have a method to manually run full validation however, called
         item.full_clean()
 ----
 
-Which would get the tests to pass.  Let's revert it an make a real
+Which would get the tests to pass.  Let's revert it and make a real
 implementation by overriding the model's `save` method:
 
 [role="sourcecode"]
@@ -539,10 +630,11 @@ class Item(models.Model):
         super().save(*args, **kwargs)
 ----
 
-NOTE: It's good practice to use `*args, **kwargs` when overriding Django
+TIP: It's good practice to use `*args, **kwargs` when overriding Django
 model methods like `save`, because they're called from all sorts of strange
 places, and you want to make sure those arguments get passed to the superclass
 save, so that all the Django magic still works.
+//TODO: but I'm not testing that, am I?
 
 That works:
 
@@ -593,7 +685,8 @@ DRY principle.  I don't mind a bit of duplication in tests, but we should
 definitely be on the lookout for hard-coded URLs in our views and templates,
 and make a note to refactor them out.  But we won't do them straight away,
 because right now our application is in a broken state. We want to get back
-to a working state first.  
+to a working state first.   We'll make some notes of specific things we want 
+to change as we go.
 
 As it is, the test fails out with an error -- our view tries to save an item
 with blank text, but the model validation raises an exception:
@@ -677,7 +770,7 @@ And adjusting the template itself:
     </form>
 ----
 
-Making a note of another hard-coded URL in the form:
+(Making a note of another hard-coded URL in the form):
 
 * remove hard-coded URLs from 'views.py'
 * remove hard-coded URLs from form in 'home.html'
@@ -896,8 +989,13 @@ We're back to the 1 failure in our new functional test. We should commit there.
 $ *git commit -am"Refactor list view to handle new item POSTs"*
 ----
 
+NOTE: Am I breaking the rule about never refactoring against failing tests?  In
+this case, it's allowed, because the refactor is required to get our new
+functionality to work.  You should definitely never refactor against failing
+'unit' tests.  But it's OK for the FT for the current story you're working to
+be failing.
 
-Now we can write a new unit test for the validation of items posted 
+Next we write a new unit test for the validation of items posted 
 to the 'existing' lists view.  It's very similar to the one for the 
 home page, just a couple of tweaks:
 
@@ -966,7 +1064,7 @@ add it to our scratchpad for now:
 
 NOTE: One of the reasons that the "three strikes and refactor" rule exists is
 that, if you wait until you have 3 use cases, each might be slightly different,
-and it gives you a better view for what the commmon functionality is.  If you
+and it gives you a better view for what the common functionality is.  If you
 refactor too early, you may find that the 3rd use case doesn't quite fit with
 your refactored code...
 
@@ -989,12 +1087,12 @@ Meantime we need to add the error to the list template.
 And that gets us to the end of the test!
 
 ----
-AssertionError: Don't forget to also test duplicate items!
+OK
 ----
 
 Fantastic!  We're back to a working state, so we can take a look at some
-of the items on our scratchpad.  But I'd say it's a good time for a tea
-break first...
+of the items on our scratchpad.  But I'd say you can allow yourself a tea
+break at this point if you want one ;-)
 
 
 Refactor: Removing hard-coded URLs
@@ -1037,9 +1135,7 @@ And we check the functional tests too:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test functional_tests*]
-AssertionError: Don't forget to also test duplicate items!
-
-Ran 3 tests in 12.932s
+OK
 ----
 
 That's OK, it's the `self.fail` at the end of the test. We're happy the 
@@ -1061,9 +1157,9 @@ because we pass it a parameter:
     <form method="POST" action="{% url 'view_list' list.id %}" >
 ----
 
-More info in the 
+Check out the 
 https://docs.djangoproject.com/en/1.5/ref/templates/builtins/#url[Django docs
-on template tags].
+on template tags] for more info.
 
 We run the tests again, and check they all pass (or get to the expected
 self.fail):
@@ -1073,7 +1169,7 @@ self.fail):
 $ pass:quotes[*python3 manage.py test lists*]
 OK
 $ pass:quotes[*python3 manage.py test functional_tests*]
-FAILED (failures=1)
+OK
 ----
 
 That's worthy of a commit:
@@ -1119,7 +1215,6 @@ All it takes is a super-simple unit test in 'test_models.py':
 //TODO: simplify first model test at this point??
 
 Which gives
-
 
 ----
 AttributeError: 'List' object has no attribute 'get_absolute_url'
@@ -1167,7 +1262,7 @@ everything still works:
 $ pass:quotes[*python3 manage.py test lists*]
 OK
 $ pass:quotes[*python3 manage.py test functional_tests*]
-FAILED (failures=1)
+OK
 ----
 
 Cross off our todos:
@@ -1184,22 +1279,26 @@ And a commit:
 $ *git commit -am"Use get_absolute_url on List model to DRY urls in views"*
 ----
 
-And back to our onions...
+That final to-do item will be the subject of the next chapter...
 
 
-.Tips for test organisation 
+.Tips on organising tests and refactoring
 *******************************************************************************
-
 * Split tests out into their own folder called 'tests', adding a '__init__.py'
 which imports all test classes
 * Split unit tests up into at least 3 files, 'test_models.py', 'test_views.py',
 'test_forms.py'
-
+* Don't forget the "Refactor" in "Red, Green, Refactor".  
+* In general, never refactor against failing tests.  
+    * The FT you're currently working on doesn't count.
+    * You can occasionally put a skip on a test which is testing something you
+    haven't written yet.  
+    * More commonly, make a note of the refactor you want to do, finish what
+    you're working on, and do the refactor a little later, when you're back to
+    a working state
+    * Don't forget to remove any skips before you commit your code! You should
+    always review your diffs line by line to catch things like this.
 *******************************************************************************
 
-
 TODO: prettier bootstrap formatting
-
-TODO: a general philosophical discussion on design in TDD, "don't forget the
-refactor step"
 
