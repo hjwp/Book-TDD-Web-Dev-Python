@@ -17,10 +17,9 @@ class Chapter10Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        print(self.listings[0])
-        self.assertEqual(self.listings[0].type, 'code listing with git ref')
-        self.assertEqual(self.listings[1].type, 'code listing with git ref')
-        self.assertEqual(self.listings[2].type, 'other command')
+        self.assertEqual(self.listings[0].type, 'code listing')
+        self.assertEqual(self.listings[1].type, 'code listing')
+        self.assertEqual(self.listings[2].type, 'code listing')
 
         self.sourcetree.start_with_checkout(self.chapter_no)
         # other prep
@@ -28,7 +27,7 @@ class Chapter10Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        self.skip_with_check(159, '# should show new file') # example code
+        self.skip_with_check(30, '# review changes') # diff
 
         # hack fast-forward
         skip = False
