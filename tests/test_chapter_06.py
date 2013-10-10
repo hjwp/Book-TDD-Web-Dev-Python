@@ -27,91 +27,35 @@ class Chapter6Test(ChapterTest):
         self.run_command(Command('python3 manage.py syncdb --noinput'))
 
         # skips
-        self.listings[18].skip = True
-        self.assertIn('# msg eg', self.listings[18])
+        self.skip_with_check(18, 'msg eg') # git
+        self.skip_with_check(53, 'should show 4 changed files') # git
+        self.skip_with_check(58, 'add a message summarising') # git
+        self.skip_with_check(73, '5 changed files') # git
+        self.skip_with_check(75, 'forms x2') # git
+        self.skip_with_check(90, '3 changed files') # git
 
+        # hack fast-forward
+        skip = False
+        if skip:
+            self.pos = 60
+            self.sourcetree.run_command('git checkout {0}'.format(
+                self.sourcetree.get_commit_spec('ch06l021-1')
+            ))
 
-        while self.pos < 37:
+        while self.pos < 44:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
-        assert 'egrep' in self.listings[37]
-        egrep = self.run_command(self.listings[37])
-        self.assertCountEqual(egrep.strip().split('\n'), self.listings[38].split('\n'))
-        self.listings[37].was_checked = True
-        self.listings[38].was_checked = True
-        self.pos = 39
 
-        def remove_function_from(function_name, filename):
-            source = Source.from_path(os.path.join(self.tempdir, filename))
-            source.remove_function(function_name)
-            source.write()
-
-        remove_function_from(
-            'test_home_page_displays_all_list_items',
-            'superlists/lists/tests.py'
-        )
-
-        while self.pos < 43:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
-
-        # command followed by unrelated output
-        self.run_command(self.listings[43])
-        self.listings[43].was_checked = True
-        self.pos = 44
-
-        while self.pos < 52:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
-
-        assert 'git status' in self.listings[52]
-        status = self.run_command(self.listings[52])
-        self.assertIn('list.html', self.listings[53])
-        self.assertIn('list.html', status)
-        self.listings[52].was_checked = True
-        self.listings[53].was_checked = True
-        self.pos = 54
-
-        self.listings[58].skip = True # irrelevant comment
-        self.listings[59].skip = True # move function
-        remove_function_from(
-            'test_home_page_can_save_a_POST_request',
-            'superlists/lists/tests.py'
-        )
-
-        self.listings[81].skip = True
-        # at this point I ask the user to guess what she should
-        # code, based only on outputs.
-        # TODO: create code listings.
-        # for now, just cheat and skip ahead.
-        self.listings[82].skip = True
-        self.listings[83].skip = True
-
-        self.listings[75].skip = True  # brief git comment
-        self.listings[77].skip = True  # brief git comment
-        self.listings[88].skip = True # "decoding its traceback"
-        self.listings[91].was_checked = True  # brief git comment
-
-        while self.pos < 118:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
-
-        listing = self.listings[118]
-        new_form = '<form method="POST" action="/lists/{{ list.id }}/new_item" >'
-        self.assertIn(new_form, listing.contents)
-        self.write_to_file(CodeListing(
-            filename=listing.filename,
-            contents=new_form
-        ))
-        new_iter = '{% for item in list.item_set.all %}'
-        self.assertIn(new_iter, listing.contents)
-        self.write_to_file(CodeListing(
-            filename=listing.filename,
-            contents=new_iter
-        ))
-        listing.was_written = True
-        self.pos += 1
+        # special-case: we have a touch followed by some output.
+        # just do this one manually
+        if self.pos < 45:
+            touch = self.listings[44]
+            assert 'touch' in touch
+            output = self.run_command(touch)
+            self.assertFalse(output)
+            touch.was_checked = True
+            self.pos = 45
 
         while self.pos < len(self.listings):
             print(self.pos)

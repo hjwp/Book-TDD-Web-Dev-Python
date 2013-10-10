@@ -7,12 +7,6 @@ from book_tester import ChapterTest
 class Chapter10Test(ChapterTest):
     chapter_no = 10
 
-    def skip_with_check(self, pos, expected_content):
-        listing = self.listings[pos]
-        assert expected_content in listing
-        listing.skip = True
-
-
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
 
