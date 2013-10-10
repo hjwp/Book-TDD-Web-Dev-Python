@@ -21,10 +21,9 @@ class Chapter7Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        self.listings[14].skip = True
-        self.listings[23].skip = True # explanatory comment re git diff -b
-        self.listings[26].skip = True # comment after git status
-        self.listings[49].skip = True # comment re git bootstrap additions
+        self.skip_with_check(23, 'the -b means ignore whitespace')
+        self.skip_with_check(26, 'leave static, for now')
+        self.skip_with_check(49, 'will now show all the bootstrap')
 
         while self.pos < 31:
             print(self.pos)
