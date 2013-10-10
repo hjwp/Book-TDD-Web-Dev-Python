@@ -416,7 +416,7 @@ form :
 [...]
       <form method="POST" action="/lists/new">
 -         <input id="id_text" name="text" placeholder="Enter a to-do item"
-type="text"/>
+type="text" />
 +         
 [...]
 ----
@@ -539,9 +539,9 @@ That's two changes, and similarly for the `name`:
 ----
 $ pass:quotes[*grep -Ir item_text lists*]
 lists/views.py:        Item.objects.create(text=request.POST['item_text'],
-list=list)
+list=list_)
 lists/views.py:            Item.objects.create(text=request.POST['item_text'],
-list=list)
+list=list_)
 lists/tests/test_forms.py:    def test_form_renders_item_text_input(self):
 lists/tests/test_views.py:            data={'item_text': 'A new list item'}
 lists/tests/test_views.py:            data={'item_text': 'A new list item'}
@@ -557,9 +557,9 @@ Once we're done, we re-run the unit tests to check everything still works:
 ----
 $ pass:quotes[*python3 manage.py test lists*] 
 Creating test database for alias 'default'...
-..............
+...............
  ---------------------------------------------------------------------
-Ran 14 tests in 0.126s
+Ran 15 tests in 0.126s
 
 OK
 Destroying test database for alias 'default'...
@@ -636,7 +636,7 @@ class NewListTest(TestCase):
         self.assertIsInstance(response.context['form'], ItemForm)
 ----
 
-//TODO: split out into two tests
+//TODO: split out into two tests?
 
 
 Sure enough, the form isn't being passed to the template:
@@ -655,9 +655,9 @@ And here's how we use the form in the view:
 def new_list(request):
     form = ItemForm(data=request.POST) #<1>
     if form.is_valid(): #<2>
-        list = List.objects.create()
-        Item.objects.create(text=request.POST['text'], list=list)
-        return redirect(list)
+        list_ = List.objects.create()
+        Item.objects.create(text=request.POST['text'], list=list_)
+        return redirect(list_)
     else:
         return render(request, 'home.html', {"form": form}) #<3>
 ----
@@ -759,23 +759,194 @@ $ *git commit -am"extra test for not saving List on invalid input"*
 * remove duplication of validation logic in views.
 * [strikethrough line-through]#add test that we don't save superfluous lists#
 
+
 Using the form in the final view
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This view handles both GET and POST requests.  Let's start with checking 
-the form is used in GET requests.  Now, we could just tack the test onto
-the end of our current test called test_list_view_passes_list_to_list_template
-
-TODO: finish this section!
+the form is used in GET requests.  Let's add a new test for that:
 
 
-Forms are really important in Django.  Let's make a slightly more complex one
-in the next chapter...
+//ch10l022
+[role="sourcecode"]
+.lists/tests/test_views.py
+[source,python]
+----
+class ListViewTest(TestCase):
+    [...]
+
+    def test_displays_item_form(self):
+        list_ = List.objects.create()
+        response = self.client.get('/lists/%d/' % (list_.id,))
+        self.assertIsInstance(response.context['form'], ItemForm)
+        self.assertContains(response, 'name="text"')
+----
+
+That gives:
+
+----
+KeyError: 'form'
+----
+
+Here's a minimal implementation:
+
+[role="sourcecode"]
+.lists/views.py (ch10l023)
+[source,python]
+----
+def view_list(request, list_id):
+    [...]
+    form = ItemForm()
+    return render(request, 'list.html', {'list': list_, "form": form, "error": error})
+----
+
+A helper method for several short tests
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+OK, now let's have the cases for invalid forms.  We'll split our current
+single test for the invalid case into several separate ones:
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch10l024)
+[source,python]
+----
+    def post_invalid_input(self):
+        list_ = List.objects.create()
+        return self.client.post(
+            '/lists/%d/' % (list_.id,),
+            data={'text': ''}
+        )
+
+    def test_invalid_input_means_nothing_saved_to_db(self):
+        self.post_invalid_input()
+        self.assertEqual(Item.objects.all().count(), 0)
+
+    def test_invalid_input_renders_list_template(self):
+        response = self.post_invalid_input()
+        self.assertTemplateUsed(response, 'list.html')
+
+    def test_invalid_input_renders_form_with_errors(self):
+        response = self.post_invalid_input()
+        self.assertIsInstance(response.context['form'], ItemForm)
+        self.assertContains(response, escape(EMPTY_LIST_ERROR))
+----
+
+Look at that -- by making a little helper function, `post_invalid_input`,
+we can make 3 separate tests without duplicating lots of lines of code. 
+
+It often feels more natural to write view tests as a single, monolithic
+block of assertions -- the view should do this and this and this then 
+return that with this.  But breaking things out into multiple tests is
+definitely worthwhile.  Helper methods are one of the tools that lower
+the psychological barrier.
+
+----
+Ran 18 tests in 0.086s
+
+OK
+----
+
+All of those tests still pass. Now let's see if we can refactor the code to
+use our form.  Here's a first cut:
 
 
-.Move logic out of your views as soon as you can
+//ch10l023
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    form = ItemForm()
+    if request.method == 'POST':
+        form = ItemForm(data=request.POST)
+        if form.is_valid():
+            Item.objects.create(text=request.POST['text'], list=list_)
+            return redirect(list_)
+    return render(request, 'list.html', {'list': list_, "form": form})
+----
+
+That gets us a fail in our sanity check -- errors aren't appearing in 
+the template:
+
+----
+FAIL: test_invalid_input_renders_form_with_errors
+(lists.tests.test_views.ListViewTest)
+AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
+list item' in response
+----
+
+We've removed our hand-rolled error. Getting it back involves a tweak to the
+template:
+
+[role="sourcecode"]
+.lists/templates/list.html (ch10l026-1)
+[source,html]
+----
+    {% if form.errors %}
+        <div class="error">{{ form.text.errors }}</div>
+    {% endif %}
+----
+
+That gets the tests passing, and while we're at it we can use the form to
+render the input too:
+
+[role="sourcecode"]
+.lists/templates/list.html (ch10l026-2)
+[source,html]
+----
+    <form method="POST" action="{% url 'view_list' list.id %}">
+        {{ form.text }}
+        {% csrf_token %}
+----
+
+The request.POST or None trick
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+There's one final, optional refactor I want to show you, which I got from
+my colleague Hansel Dunlop (and who in turn got it from Danny Greenfield, I
+believe):
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    form = ItemForm(data=request.POST or None)
+    if form.is_valid():
+        Item.objects.create(text=request.POST['text'], list=list_)
+        return redirect(list_)
+    return render(request, 'list.html', {'list': list_, "form": form})
+----
+
+It relies on the fact that the `or` operator, in Python, evaluates to the
+second argument if the first is falsy.  Constructing a form with data=None
+is equivalent to creating an "unbound" form, for which `is_valid()` will
+always be False.  On the other hand, if there is something in the POST dict,
+then we 'will' pass it to the form, and `is_valid()` will do its normal 
+validation work.
+
+A quick peek at the 
+https://docs.djangoproject.com/en/1.5/ref/forms/api/#bound-and-unbound-forms[Django
+docs on bound and unbound forms] may be worth it at this point.
+
+
+So that trick saves us at least two lines of code and one level of indentation,
+and in my opinion we don't really lose in readability.   It's up to you whether
+you adopt it though!
+
+
+TODO: form.save()?
+
+
+Forms and validation are really important in Django, and in web programming in
+general, so let's see if we can't make a slightly more complicated one in the
+next chapter.
+
+.Thin views and single assertions per test
 *******************************************************************************
-A generally accepted best practice in Django is to have "thin" views.  
+* A generally accepted best practice in Django is to have "thin" views.  
 
 If you find yourself looking at complex views, and having to write a lot of
 tests for them, it's time to start thinking about whether that logic could be
@@ -784,6 +955,10 @@ moved elsewhere: possibly to a form, like we've done here.
 Another possible place would be a custom method on the model class.  And --
 once the complexity of the app demands it -- out of Django-specific files and
 into your own classes and functions, that capture your core business logic.
+
+* Strive to avoid having multiple assertions in your unit tests.  One assertion
+per test is the ultimate goal, but it's OK if you don't start out that way.
+Helper functions can keep them from getting too bloated.
 *******************************************************************************
 
 
