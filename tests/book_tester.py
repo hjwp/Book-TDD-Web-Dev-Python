@@ -502,7 +502,6 @@ class ChapterTest(unittest.TestCase):
             except AssertionError as e:
                 if 'OK' in test_run and 'OK' in listing:
                     print('got error when checking unit tests', e)
-                    print('checking FT run')
                     test_run = self.run_fts()
                     self.assert_console_output_correct(test_run, listing)
                 else:
