@@ -262,7 +262,10 @@ class ChapterTest(unittest.TestCase):
 
     def skip_with_check(self, pos, expected_content):
         listing = self.listings[pos]
-        assert expected_content in listing
+        if hasattr(listing, 'contents'):
+            assert expected_content in listing.contents
+        else:
+            assert expected_content in listing
         listing.skip = True
 
 

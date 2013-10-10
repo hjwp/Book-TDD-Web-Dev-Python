@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os
 import unittest
 
-from source_updater import Source
-from book_parser import CodeListing
 from book_tester import (
     ChapterTest,
     Command,
@@ -30,9 +27,9 @@ class Chapter6Test(ChapterTest):
         self.skip_with_check(18, 'msg eg') # git
         self.skip_with_check(53, 'should show 4 changed files') # git
         self.skip_with_check(58, 'add a message summarising') # git
-        self.skip_with_check(73, '5 changed files') # git
-        self.skip_with_check(75, 'forms x2') # git
-        self.skip_with_check(90, '3 changed files') # git
+        self.skip_with_check(76, '5 changed files') # git
+        self.skip_with_check(78, 'forms x2') # git
+        self.skip_with_check(93, '3 changed files') # git
 
         # hack fast-forward
         skip = False
