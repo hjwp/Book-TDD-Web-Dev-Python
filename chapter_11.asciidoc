@@ -16,11 +16,11 @@ We add a second test method to `ItemValidationTest`:
 def test_cannot_add_duplicate_items(self):
     # Edith goes to the home page and starts a new list
     self.browser.get(self.server_url)
-    self.browser.find_element_by_id('id_new_item').send_keys('Buy wellies\n')
+    self.get_item_input_box().send_keys('Buy wellies\n')
     self.check_for_row_in_list_table('1: Buy wellies')
 
     # She accidentally tries to enter a duplicate item
-    self.browser.find_element_by_id('id_new_item').send_keys('Buy wellies\n')
+    self.get_item_input_box().send_keys('Buy wellies\n')
 
     # She sees a helpful error message
     self.check_for_row_in_list_table('1: Buy wellies')
@@ -48,6 +48,8 @@ Ran 2 tests in 9.613s
 OK, so we know the first of the two tests passes now, is there a way to run
 just the failing one, I hear you ask!  Why yes indeed:
 
+//TODO: unskip
+[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test \
@@ -395,73 +397,75 @@ instead of a `ValidationError`.
 Handling validation at the views layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+
 Let's put our `full_clean` back, and try running our FT, just to see where we
 are:
 
 [role="dofirst-ch09l035"] 
 ----
-AssertionError: "You can't have an empty list item" != "You've already got this
-in your list"
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"id","selector":"id_list_table"}' ; Stacktrace: 
 ----
 
-Right.  Our site is currently mistaking one sort of validation error for 
-another
+In case you didn't see it as it flew past, the site is 500ing.  A
+quick unit test at the view level ought to clear this up:
 
 
 Returning different error messages for different validation errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Time for a new unit test for our view.  We rename the old one too, 
-to clarify who's doing what:
-
 [role="sourcecode"]
-.lists/tests/test_views.py (ch09l037)
+.lists/tests/test_views.py (ch11l014)
 [source,python]
 ----
-    def test_empty_item_validation_errors_end_up_on_lists_page(self):
+    def test_invalid_input_renders_form_with_errors(self):
         [...]
+
 
     def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
         list1 = List.objects.create()
         item1 = Item.objects.create(list=list1, text='textey')
         response = self.client.post(
             '/lists/%d/' % (list1.id,),
-            data={'item_text': 'textey'}
+            data={'text': 'textey'}
         )
 
-        self.assertEqual(Item.objects.all().count(), 1)
-        self.assertTemplateUsed(response, 'list.html')
         expected_error =  escape("You've already got this in your list")
         self.assertContains(response, expected_error)
+        self.assertTemplateUsed(response, 'list.html')
+        self.assertEqual(Item.objects.all().count(), 1)
 ----
 
 Gives
 
 ----
-AssertionError: False is not true : Couldn't find 'You&#39;ve already got this
-in your list' in response
+django.core.exceptions.ValidationError: {'__all__': ['Item with this List and
+Text already exists.']}
 ----
-
 
 Here's one possible solution:
 
 [role="sourcecode"]
-.lists/views.py (ch09l038)
+.lists/views.py (ch11l015)
 [source,python]
 ----
-def view_list(request, list_id):
-    [...]
-
-    except ValidationError as e:
-        if 'blank' in str(e):
-            error = "You can't have an empty list item"
-        elif 'already exists' in str(e):
-            error = "You've already got this in your list"
+if form.is_valid():
+    try:
+        Item.objects.create(text=request.POST['text'], list=list_)
+        return redirect(list_)
+    except ValidationError:
+        form.errors.update({'text': "You've already got this in your list"})
+return render(request, 'list.html', {'list': list_, "form": form})
 ----
 
 OK, we know that's an ugly hack, we need to use a form, just like
-we did for new lists, but -- it works.  We've got to 'Green', and we're
-definitely going to do the 'Refactor' part, very soon.
+we did for new lists, but -- it will probably work. 
+
+----
+Ran 23 tests in 0.104s
+
+OK
+----
 
 ----
 Ran 4 tests in 19.048s
@@ -469,12 +473,13 @@ Ran 4 tests in 19.048s
 OK
 ----
 
-First, a commit.
+What matters is that it gets us to 'Green'. We'll definitely do the 'Refactor'
+part very soon. First, a commit.
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff*
-$ *git commit -am"duplicate item validation implemented at views level"*
+$ *git commit -am"duplicate item validation hacked in at views level"*
 ----
 
 
@@ -518,6 +523,15 @@ class ExistingListItemFormTest(TestCase):
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
 ----
+
+NOTE: I've decided to go for an approach where we pass the list in
+as part of the data argument. An alternative would be to pass it in
+as a custom argument to the constructor.  I've found that made validation
+uglier rather than more attractive, but I'm very open to suggestions!  I 
+may have missed something.  Please do submit pull requests!  The repo for
+the project is on Github, just find the branch for the chapter we're working
+on... https://github.com/hjwp/book-example/
+
 
 Let's start with a minimal class:
 
@@ -691,6 +705,8 @@ $ *git commit -a*
 
 Using the existing lists item form in the list view
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+TODO: fix from here!
 
 Now let's see if we can put this form to work in our view.  We start by
 checking we're using it in the unit test:
