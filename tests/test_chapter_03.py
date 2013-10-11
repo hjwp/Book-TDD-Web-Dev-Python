@@ -22,13 +22,15 @@ class Chapter3Test(ChapterTest):
 
         self.sourcetree.start_with_checkout(self.chapter_no)
 
-        self.listings[6].skip = True # just shows what's on disk
-        self.listings[20].skip = True # git comment
-        self.listings[28].skip = True # repeated traceback
+        self.skip_with_check(20, 'will show you the diff')
 
         self.run_command(Command('python3 manage.py runserver'))
 
-        while self.pos < 60:
+        while self.pos < 43:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
+        self.start_dev_server()
+        while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 
