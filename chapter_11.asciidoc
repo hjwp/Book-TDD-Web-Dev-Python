@@ -706,14 +706,12 @@ $ *git commit -a*
 Using the existing lists item form in the list view
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-TODO: fix from here!
-
 Now let's see if we can put this form to work in our view.
 
 Let's start by using our constant, now that we've defined it. Tidy tidy!
 
 [role="sourcecode"]
-.lists/tests_test_views.py (ch11l050)
+.lists/tests/test_views.py (ch11l050)
 [source,python]
 ----
 from lists.forms import (
@@ -738,7 +736,7 @@ class. There's two checks in our view tests that we use the right
 form, let's change them both:
 
 [role="sourcecode"]
-.lists/tests_test_views.py
+.lists/tests/test_views.py
 [source,python]
 ----
 def test_displays_item_form(self):
@@ -751,65 +749,16 @@ def test_invalid_input_renders_form_with_errors(self):
     self.assertIsInstance(response.context['form'], ExistingListItemForm)
 ----
 
-And while we're at it, let's fix up our duplicate item test, so that it
-becomes several different tests, including one for the form class:
-
-[role="sourcecode"]
-.lists/tests_test_views.py
-[source,python]
-----
-    def post_invalid_duplicate_item_input(self):
-        list_ = List.objects.create()
-        item = Item.objects.create(list=list_, text='textey')
-        return self.client.post(
-            '/lists/%d/' % (list_.id,),
-            data={'text': 'textey'}
-        )
-
-    def test_invalid_duplicate_item_error_means_nothing_saved_to_db(self):
-        self.post_invalid_duplicate_item_input()
-        self.assertEqual(Item.objects.all().count(), 1)
-
-    def test_invalid_duplicate_item_input_renders_list_template(self):
-        response = self.post_invalid_duplicate_item_input()
-        self.assertTemplateUsed(response, 'list.html')
-
-    def test_invalid_duplicate_item_input_renders_form_with_errors(self):
-        response = self.post_invalid_duplicate_item_input()
-        self.assertIsInstance(response.context['form'], ExistingListItemForm)
-        self.assertContains(response, escape(EMPTY_LIST_ERROR))
-----
-
-
-And we rename the old ones, for clarity:
-
-----
-def post_invalid_empty_item_input(self):
-    list_ = List.objects.create()
-    return self.client.post(
-        '/lists/%d/' % (list_.id,),
-        data={'text': ''}
-    )
-
-def test_invalid_input_means_nothing_saved_to_db(self):
-    self.post_invalid_empty_item_input()
-
-def test_invalid_input_renders_list_template(self):
-    response = self.post_invalid_empty_item_input()
-
-def test_invalid_input_renders_form_with_errors(self):
-    response = self.post_invalid_empty_item_input()
-----
-
-
-
 // TODO: also move the template test and the context tests up,
 // or to a different test
 
 That gives us:
 
+//TODO: unskip
+[role="skipme"]
 ----
-KeyError: 'form'
+AssertionError: <lists.forms.ItemForm object at 0x7f767e4b7f90> is not an
+instance of <class 'lists.forms.ExistingListItemForm'>
 ----
 
 So we can adjust the view:
@@ -822,20 +771,18 @@ from lists.forms import ExistingListItemForm, ItemForm
 [...]
 
 def view_list(request, list_id):
-    list = List.objects.get(id=list_id)
-
+    list_ = List.objects.get(id=list_id)
+    form = ExistingListItemForm()
     if request.method == 'POST':
         form = ExistingListItemForm(data={
             'text': request.POST['text'],
-            'list': list.id
+            'list': list_.id
         })
         if form.is_valid():
             form.save()
-            return redirect(list)
-    else:
-        form = ExistingListItemForm()
+            return redirect(list_)
 
-    return render(request, 'list.html', {'list': list, "form": form})
+    return render(request, 'list.html', {'list': list_, "form": form})
 ----
 
 //TODO: use diff 078 to fix 1 bug in final diff
@@ -845,43 +792,13 @@ there's some of the real power of a ModelForm right there!
 
 //TODO use form.save in earlier case.  maybe add to scratchpad?
 
-We still have failures for the two validation tests:  
-
-----
-FAIL: test_duplicate_item_validation_errors_end_up_on_lists_page
-(lists.tests.test_views.ListViewTest)
-AssertionError: False is not true : Couldn't find 'You&#39;ve already got this
-in your list' in response
-[...]
-FAIL: test_empty_item_validation_errors_end_up_on_lists_page
-(lists.tests.test_views.ListViewTest)
-AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
-list item' in response
-----
-
-We adjust the template:
-
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
-----
-<form method="POST" action="{% url 'view_list' list.id %}">
-    {{ form.text }}
-    {% csrf_token %}
-    {% if form.errors %}
-        <div class="error">{{ form.text.errors }}</div>
-    {% endif %}
-</form>
-----
-
-
 And we're there!  Unit tests pass!
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test lists*]
 [...]
-Ran 22 tests in 0.082s
+Ran 26 tests in 0.082s
 
 OK
 ----
