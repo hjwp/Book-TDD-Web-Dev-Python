@@ -708,15 +708,99 @@ Using the existing lists item form in the list view
 
 TODO: fix from here!
 
-Now let's see if we can put this form to work in our view.  We start by
-checking we're using it in the unit test:
+Now let's see if we can put this form to work in our view.
+
+Let's start by using our constant, now that we've defined it. Tidy tidy!
+
+[role="sourcecode"]
+.lists/tests_test_views.py (ch11l050)
+[source,python]
+----
+from lists.forms import (
+    DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
+    ExistingListItemForm, ItemForm,
+)
+[...]
+
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+        [...]
+        expected_error =  escape(DUPLICATE_ITEM_ERROR)
+----
+
+----
+Ran 26 tests in 0.130s
+
+OK
+----
+
+Next -- let's find places where we should be using our new form
+class. There's two checks in our view tests that we use the right
+form, let's change them both:
 
 [role="sourcecode"]
 .lists/tests_test_views.py
 [source,python]
 ----
-self.assertIsInstance(response.context['form'], ExistingListItemForm)
+def test_displays_item_form(self):
+    list_ = List.objects.create()
+    response = self.client.get('/lists/%d/' % (list_.id,))
+    self.assertIsInstance(response.context['form'], ExistingListItemForm)
+
+def test_invalid_input_renders_form_with_errors(self):
+    response = self.post_invalid_input()
+    self.assertIsInstance(response.context['form'], ExistingListItemForm)
 ----
+
+And while we're at it, let's fix up our duplicate item test, so that it
+becomes several different tests, including one for the form class:
+
+[role="sourcecode"]
+.lists/tests_test_views.py
+[source,python]
+----
+    def post_invalid_duplicate_item_input(self):
+        list_ = List.objects.create()
+        item = Item.objects.create(list=list_, text='textey')
+        return self.client.post(
+            '/lists/%d/' % (list_.id,),
+            data={'text': 'textey'}
+        )
+
+    def test_invalid_duplicate_item_error_means_nothing_saved_to_db(self):
+        self.post_invalid_duplicate_item_input()
+        self.assertEqual(Item.objects.all().count(), 1)
+
+    def test_invalid_duplicate_item_input_renders_list_template(self):
+        response = self.post_invalid_duplicate_item_input()
+        self.assertTemplateUsed(response, 'list.html')
+
+    def test_invalid_duplicate_item_input_renders_form_with_errors(self):
+        response = self.post_invalid_duplicate_item_input()
+        self.assertIsInstance(response.context['form'], ExistingListItemForm)
+        self.assertContains(response, escape(EMPTY_LIST_ERROR))
+----
+
+
+And we rename the old ones, for clarity:
+
+----
+def post_invalid_empty_item_input(self):
+    list_ = List.objects.create()
+    return self.client.post(
+        '/lists/%d/' % (list_.id,),
+        data={'text': ''}
+    )
+
+def test_invalid_input_means_nothing_saved_to_db(self):
+    self.post_invalid_empty_item_input()
+
+def test_invalid_input_renders_list_template(self):
+    response = self.post_invalid_empty_item_input()
+
+def test_invalid_input_renders_form_with_errors(self):
+    response = self.post_invalid_empty_item_input()
+----
+
 
 
 // TODO: also move the template test and the context tests up,
