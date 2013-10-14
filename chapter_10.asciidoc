@@ -117,7 +117,7 @@ Switching to a Django ModelForm
 What's next?  We want our form to re-use the validation code that we've already
 defined on our model.  Django provides a special class which can auto-generate
 a form for a model, called ModelForm.  As you'll see, it's configured using a
-a special attribute called `Meta`:
+special attribute called `Meta`:
 
 [role="sourcecode"]
 .lists/forms.py 
@@ -900,6 +900,134 @@ render the input too:
         {% csrf_token %}
 ----
 
+
+Using the form's own save method
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There's a couple more things we can do to make our views even simpler.  I've
+mentioned that forms are suppose to be able to save data to the database for
+us.  Our case won't quite work out of the box, because the item needs to know
+what list to save to, but it's not hard to fix that.
+
+We start, as always, with a test.  Just to illustrate what the problem is,
+let's see what happens if we just try to call `form.save()`:
+
+
+[role="sourcecode"]
+.lists/tests/test_forms.py (ch10l027)
+[source,python]
+----
+    def test_form_save_handles_saving_to_a_list(self):
+        form = ItemForm(data={'text': 'do me'})
+        new_item = form.save()
+----
+
+Django isn't happy, because an item needs to belong to a list:
+
+----
+django.core.exceptions.ValidationError: {'list': ['This field cannot be
+null.']}
+----
+
+Our solution is to tell the form's save method what list it should save to:
+
+[role="sourcecode"]
+.lists/tests/test_forms.py
+[source,python]
+----
+from lists.models import Item, List
+[...]
+
+    def test_form_save_handles_saving_to_a_list(self):
+        list_ = List.objects.create()
+        form = ItemForm(data={'text': 'do me'})
+        new_item = form.save(for_list=list_)
+
+        self.assertEqual(new_item, Item.objects.all()[0])
+        self.assertEqual(new_item.text, 'do me')
+        self.assertEqual(new_item.list, list_)
+----
+
+We then make sure that the item is correctly saved to the database, with
+the right attributes. 
+
+----
+TypeError: save() got an unexpected keyword argument 'for_list'
+----
+
+And here's how we can implement our custom save method:
+
+[role="sourcecode"]
+.lists/forms.py (ch10l029)
+[source,python]
+----
+    def save(self, for_list):
+        self.instance.list = for_list
+        return super().save()
+----
+
+The `.instance` attribute on a form represents the database object that is
+being modified or created.  And I only learned that as I was writing this
+chapter!  There are other ways of getting this to work, including manually
+creating the object yourself, or using the `commit=False` argument to save,
+but this is by far the neatest!
+
+----
+Ran 19 tests in 0.086s
+
+OK
+----
+
+
+Finally we can refactor our views. `new_list` first:
+
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def new_list(request):
+    form = ItemForm(data=request.POST)
+    if form.is_valid():
+        list_ = List.objects.create()
+        form.save(for_list=list_)
+        return redirect(list_)
+    else:
+        return render(request, 'home.html', {"form": form})
+----
+
+Re-run the test to check everything still passes:
+
+----
+Ran 19 tests in 0.086s
+
+OK
+----
+
+And now `view_list`:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    form = ItemForm()
+    if request.method == 'POST':
+        form = ItemForm(data=request.POST)
+        if form.is_valid():
+            form.save(for_list=list_)
+            return redirect(list_)
+    return render(request, 'list.html', {'list': list_, "form": form})
+----
+
+
+Great!  Our two views are now looking very much like "normal" Django views:
+they take information from a user's request, combine it with some custom logic
+or information from the URL (`list_id`), pass it to a form for validation
+and possible saving, and then redirect or render a template.
+
+
 The request.POST or None trick
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -915,13 +1043,13 @@ def view_list(request, list_id):
     list_ = List.objects.get(id=list_id)
     form = ItemForm(data=request.POST or None)
     if form.is_valid():
-        Item.objects.create(text=request.POST['text'], list=list_)
+        form.save(for_list=list_)
         return redirect(list_)
     return render(request, 'list.html', {'list': list_, "form": form})
 ----
 
 It relies on the fact that the `or` operator, in Python, evaluates to the
-second argument if the first is falsy.  Constructing a form with data=None
+second argument if the first is falsy.  Constructing a form with `data=None`
 is equivalent to creating an "unbound" form, for which `is_valid()` will
 always be False.  On the other hand, if there is something in the POST dict,
 then we 'will' pass it to the form, and `is_valid()` will do its normal 
@@ -933,11 +1061,10 @@ docs on bound and unbound forms] may be worth it at this point.
 
 
 So that trick saves us at least two lines of code and one level of indentation,
-and in my opinion we don't really lose in readability.   It's up to you whether
-you adopt it though!
+but some people might argue it's less readable.   It's up to you whether you
+adopt it!
 
 
-TODO: form.save()?
 
 
 Forms and validation are really important in Django, and in web programming in
