@@ -417,9 +417,6 @@ In case you didn't see it as it flew past, the site is 500ing.  A
 quick unit test at the view level ought to clear this up:
 
 
-Returning different error messages for different validation errors
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 [role="sourcecode"]
 .lists/tests/test_views.py (ch11l014)
 [source,python]
@@ -457,18 +454,20 @@ Here's one possible solution:
 ----
 if form.is_valid():
     try:
-        Item.objects.create(text=request.POST['text'], list=list_)
+        form.save(for_list=list_)
         return redirect(list_)
     except ValidationError:
         form.errors.update({'text': "You've already got this in your list"})
 return render(request, 'list.html', {'list': list_, "form": form})
 ----
 
-OK, we know that's an ugly hack, we need to use a form, just like
+//TODO: use _update_errors? or don't use it later.
+
+OK, we know that's an ugly hack, we need to get the form to do this work,
 we did for new lists, but -- it will probably work. 
 
 ----
-Ran 23 tests in 0.104s
+Ran 24 tests in 0.104s
 
 OK
 ----
@@ -493,7 +492,9 @@ A more complex form to handle uniqueness validation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The form to create a new list only needs to know one thing, the new item text.
-A form which validates that list items are unique needs to know both.  
+A form which validates that list items are unique needs to know both.  Just
+like we overrode the save method on our ItemForm, this time we'll override
+the constructor on our new form class so that it knows what list it applies to.
 
 We duplicate up our tests for the previous form, tweaking them slightly:
 
@@ -505,19 +506,19 @@ from lists.forms import (
     DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
     ExistingListItemForm, ItemForm
 )
-from lists.models import Item, List
 [...]
 
 class ExistingListItemFormTest(TestCase):
 
     def test_form_renders_item_text_input(self):
-        form = ExistingListItemForm()
+        listey = List.objects.create()
+        form = ExistingListItemForm(for_list=listey)
         self.assertIn('placeholder="Enter a to-do item"', form.as_p())
 
 
     def test_form_validation_for_blank_items(self):
         listey = List.objects.create()
-        form = ExistingListItemForm(data={'list': listey.id, 'text': ''})
+        form = ExistingListItemForm(for_list=listey, data={'text': ''})
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors['text'], [EMPTY_LIST_ERROR])
 
@@ -525,21 +526,14 @@ class ExistingListItemFormTest(TestCase):
     def test_form_validation_for_duplicate_items(self):
         listey = List.objects.create()
         Item.objects.create(list=listey, text='no twins!')
-        form = ExistingListItemForm(data={'list': listey.id, 'text': 'no twins!'})
+        form = ExistingListItemForm(for_list=listey, data={'text': 'no twins!'})
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
 ----
 
-NOTE: I've decided to go for an approach where we pass the list in
-as part of the data argument. An alternative would be to pass it in
-as a custom argument to the constructor.  I've found that made validation
-uglier rather than more attractive, but I'm very open to suggestions!  I 
-may have missed something.  Please do submit pull requests!  The repo for
-the project is on Github, just find the branch for the chapter we're working
-on... https://github.com/hjwp/book-example/
-
-
-Let's start with a minimal class:
+We can iterate through a few TDD cycles (I won't show them all, but I'm sure
+you'll do them, right? Remember, the Goat sees all) until we get a form with a
+custom constructor, which just ignores its for_list argument:
 
 [role="sourcecode"]
 .lists/forms.py (ch09l071)
@@ -547,18 +541,16 @@ Let's start with a minimal class:
 ----
 DUPLICATE_ITEM_ERROR = "You've already got this in your list"
 [...]
-class ExistingListItemForm(forms.Form):
-    pass
+class ExistingListItemForm(forms.models.ModelForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 ----
 
 Gives
 
 ----
-AssertionError: 'placeholder="Enter a to-do item"' not found in ''
-AssertionError: True is not false
-AssertionError: True is not false
+ValueError: ModelForm has no model class specified.
 ----
-
 
 Now let's see if making it inherit from our existing form helps:
 
@@ -567,7 +559,8 @@ Now let's see if making it inherit from our existing form helps:
 [source,python]
 ----
 class ExistingListItemForm(ItemForm):
-    pass
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 ----
 
 That takes us down to just one failure:
@@ -579,126 +572,36 @@ FAIL: test_form_validation_for_duplicate_items
 AssertionError: True is not false
 ----
 
-We'll need to override the fields list from our parent form class.  We 
-can do this by inheriting the class `Meta` (you know, I didn't know this
-would work before I set off writing this chapter.  It's pretty cool):
+The next step requires a little knowledge of Django's internals, but you
+can read up on it in the Django docs on 
+https://docs.djangoproject.com/en/1.5/ref/models/instances/#validating-objects[Model
+validation] and
+https://docs.djangoproject.com/en/1.5/ref/forms/validation/[Form validation].
+
+Django uses a method called `validate_unique`, both on forms and models, and
+we can use both, in conjunction with the `instance` attribute:
 
 [role="sourcecode"]
 .lists/forms.py
 [source,python]
 ----
+from django.core.exceptions import ValidationError
+[...]
+
 class ExistingListItemForm(ItemForm):
 
-    class Meta(ItemForm.Meta):
-        fields = ('list', 'text')
-----
-
-We now get a little further:
-
-----
-KeyError: 'text'
-----
-
-Hm, a little debugging required.  Let's try this in our test:
-
-[role="sourcecode"]
-.lists/tests/test_forms.py (ch09l074)
-[source,python]
-----
-    self.assertFalse(form.is_valid())
-    self.fail(dict(form.errors))
-    self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
-----
-
-Gives us:
-
-----
-AssertionError: {'__all__': ['Item with this List and Text already exists.']}
-----
-
-Right,  Django puts uniqueness validation errors into a special `__all__` key,
-because it's not clear which field it should apply to -- list or item.  We
-want it to be in the `text` field though.
-
-
-.Development-driven tests: using unit tests for exploratory coding.
-*******************************************************************************
-Does this feel a bit like development-driven-tests?  That's OK, now 
-and again.  
-
-When you're exploring a new API, you're absolutely allowed to mess about with
-it for a while before you get back to rigorous TDD.  You might use the 
-interactive console, or write some exploratory code (but you have to promise
-the testing goat that you'll throw it away and re-write it properly later)
-
-Here we're actually using a unit test as a way of experimenting with the
-forms API. It's actually a pretty good way of learning how it works!
-*******************************************************************************
-
-
-One more little customisation should do it:  Django uses a method called
-`validate_unique` for this check, which we can customise:
-
-[role="sourcecode"]
-.lists/forms.py
-[source,python]
-----
-class ExistingListItemForm(ItemForm):
-    [...]
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.list = for_list
 
 
     def validate_unique(self):
-        super().validate_unique()
-        if self.non_field_errors(): #<1>
-            self._update_errors({'text': [DUPLICATE_ITEM_ERROR]}) #<2>
-----
-
-We use a couple of special Django methods here:
-
-<1> `self.non_field_errors()`, which is just the same as
-+self.errors['__all__']+, but more readable, and
-<2> `self._update_errors`, a Django helper method which takes care of the fact
-that dictionary keys may not exist, and fields may already have errors in their
-list which we want to append to (see the Django source if you're curious).
-
-Our little debug `self.fail` tells us things are working:
-
-----
-AssertionError: {'text': ["You've already got this in your list"], '__all__':
-['Item with this List and Text already exists.']}
-----
-
-Just to stay neat and tidy, let's say we want to remove that `__all__`
-non-field error.  Adjust the unit test, removing the `self.fail` while we're at
-it:
-
-[role="sourcecode"]
-.lists/tests/test_forms.py (ch09l076)
-[source,python]
-----
-    self.assertFalse(form.is_valid())
-    self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
-    self.assertFalse(form.non_field_errors())
-----
-
-Almost there:
-
-----
-AssertionError: ['Item with this List and Text already exists.'] is not false
-----
-
-Final step:
-
-[role="sourcecode"]
-.lists/forms.py
-[source,python]
-----
-    def validate_unique(self):
-        super().validate_unique()
-        if self.non_field_errors():
+        try:
+            self.instance.validate_unique()
+        except ValidationError:
             self._update_errors({'text': [DUPLICATE_ITEM_ERROR]})
-            del self.errors['__all__']
 ----
+
 
 And we're there!  A quick commit
 
@@ -717,7 +620,7 @@ Now let's see if we can put this form to work in our view.
 Let's start by using our constant, now that we've defined it. Tidy tidy!
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch11l050)
+.lists/tests/test_views.py (ch11l049)
 [source,python]
 ----
 from lists.forms import (
@@ -732,7 +635,7 @@ from lists.forms import (
 ----
 
 ----
-Ran 26 tests in 0.130s
+Ran 27 tests in 0.130s
 
 OK
 ----
@@ -750,13 +653,11 @@ def test_displays_item_form(self):
     response = self.client.get('/lists/%d/' % (list_.id,))
     self.assertIsInstance(response.context['form'], ExistingListItemForm)
 
+
 def test_invalid_input_renders_form_with_errors(self):
     response = self.post_invalid_input()
     self.assertIsInstance(response.context['form'], ExistingListItemForm)
 ----
-
-// TODO: also move the template test and the context tests up,
-// or to a different test
 
 That gives us:
 
@@ -770,33 +671,51 @@ instance of <class 'lists.forms.ExistingListItemForm'>
 So we can adjust the view:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch11l051)
 [source,python]
 ----
 from lists.forms import ExistingListItemForm, ItemForm
 [...]
-
 def view_list(request, list_id):
     list_ = List.objects.get(id=list_id)
-    form = ExistingListItemForm()
-    if request.method == 'POST':
-        form = ExistingListItemForm(data={
-            'text': request.POST['text'],
-            'list': list_.id
-        })
-        if form.is_valid():
-            form.save()
-            return redirect(list_)
-
+    form = ExistingListItemForm(for_list=list_, data=request.POST or None)
+    if form.is_valid():
+        form.save()
+        return redirect(list_)
     return render(request, 'list.html', {'list': list_, "form": form})
 ----
 
-//TODO: use diff 078 to fix 1 bug in final diff
+And, oops, an unexpected fail:
 
-How about that `form.save()` eh?  If you'd never met Django ModelForms, 
-there's some of the real power of a ModelForm right there!
+----
+TypeError: save() missing 1 required positional argument: 'for_list'
+----
 
-//TODO use form.save in earlier case.  maybe add to scratchpad?
+Our custom save method from the parent `ItemForm` is no longer needed. 
+Let's make a quick unit test for that:
+
+
+[role="sourcecode"]
+.lists/tests/test_forms.py (ch11l053)
+[source,python]
+----
+def test_form_save(self):
+    listey = List.objects.create()
+    form = ExistingListItemForm(for_list=listey, data={'text': 'hi'})
+    new_item = form.save()
+    self.assertEqual(new_item, Item.objects.all()[0])
+----
+
+We can make our form call the grandparent save method:
+
+[role="sourcecode"]
+.lists/forms.py (ch11l054)
+[source,python]
+----
+    def save(self):
+        return super(forms.models.ModelForm, self).save()
+----
+
 
 And we're there!  Unit tests pass!
 
@@ -804,7 +723,7 @@ And we're there!  Unit tests pass!
 ----
 $ pass:quotes[*python3 manage.py test lists*]
 [...]
-Ran 26 tests in 0.082s
+Ran 28 tests in 0.082s
 
 OK
 ----
@@ -837,7 +756,8 @@ OK
 Destroying test database for alias 'default'...
 ----
 
-Hooray! Time for a final commit, and a wrap-up.
+Hooray! Time for a final commit, and a wrap-up of what we've learned about
+testing views over the last few chapters:
 
 
 .Tips for testing views
