@@ -47,8 +47,7 @@ party auth system you want to integrate:
 * Don't test other people's code or APIs
 * But, test that you've integrated them correctly into your own code
 * Check everything works from the point of view of the user
-* Test that your system degrades gracefully if the third party is 
-down
+* Test that your system degrades gracefully if the third party is down
 
 
 Exploratory coding, aka "spiking"
@@ -58,7 +57,7 @@ Before I wrote this chapter all I'd seen of Persona was a talk at PyCon by Dan
 Callahan, in which he promised it could be implemented in 30 lines of code, and
 magic'd his way through a demo -- in other words, I knew it not at all.
 
-In the last chapter we saw that you can use a unit test as a way of
+In chapters 10 & 11 we saw that you can use a unit test as a way of
 exploring a new API, but sometimes you just want to hack something together
 without any tests at all, just to see if it works, to learn it or get a feel for
 it.  That's absolutely fine.  When learning a new tool or exploring a new
@@ -68,7 +67,7 @@ tests.  The goat doesn't mind looking the other way for a bit.
 
 This kind of prototyping activity is often called a "spike", for 
 http://stackoverflow.com/questions/249969/why-are-tdd-spikes-called-spikes[reasons
-best known]
+best known].
 
 The first thing I did was take a look at an existing  django-persona integration
 called https://github.com/mozilla/django-browserid[Django-BrowserID], but
@@ -80,14 +79,11 @@ It took me about 3 hours of hacking about, using a combination of code stolen
 from Dan's talk and the example code on the
 https://developer.mozilla.org/en-US/docs/Mozilla/Persona[Persona site], but by
 the end I had something which just about works.  I'll take you on a tour,
-and then we'll go through and "de-spike" the implementation.  Don't worry
-about adding any of this code to your own source tree yet.
+and then we'll go through and "de-spike" the implementation.  Feel free to
+add this code to your own site too, and then you can have a play with it too!
 
-Let's start with the front-end -- oh noes, JavaScript!  Thankfully I was able
-to cut & paste code from the Persona site and Dan's slides with essentially
-no modification:
-
-NOTE: 
+Let's start with the front-end.  I was able to cut & paste code from the
+Persona site and Dan's slides with essentially no modification:
 
 
 [source,html]
@@ -134,6 +130,25 @@ We bind its `request` method to our a link called "login" (which I've put
 in any old where at the top of the page), and similarly a "logout" link 
 gets bound to a `logout` function.
 
+[role="sourcecode"]
+.lists/templates/base.html
+[source,html]
+----
+<body>
+    <div id="auth">
+        {% if user.email %}
+            <p>Logged in as {{ user.email}}</p>
+            <p><a id="logout" href="{% url 'logout' %}">Sign out</a></p>
+        {% else %}
+            <a href="#" id="login">Sign in</a>
+        {% endif %}
+        <p>User: {{user}}</p>
+    </div>
+    <div class="container">
+    [...]
+----
+
+
 Persona will now pop up its authentication dialog box if users
 click the log in link. What happens next is the clever part of the Persona
 protocol:  the user enters an email address, and the browser takes care
@@ -150,7 +165,7 @@ At this point the browser can trust that you do own that email address, and
 it can incidentally re-use that certificate for any other websites that use
 Persona.
 
-For now, it combines the certificate with the domain name of the website
+Now it combines the certificate with the domain name of the website
 you want to log into into a blob called an "assertion", and sends them on
 to our site for validation.
 
@@ -230,7 +245,7 @@ class PersonaAuthenticationBackend(object):
         return ListUser.objects.get(email=email)
 ----
 
-This code is copy-pasted directly from the Mozilla site, as you can see from 
+This code is copy-pasted directly from the Mozilla site, as you can see from
 the explanatory comments.  To finish off the job of customising authentication
 in Django, we just need a custom user model:
 
@@ -263,7 +278,7 @@ NOTE: At this point I'd recommend a little browse through the
 https://docs.djangoproject.com/en/1.5/topics/auth/customizing/[Django 
 auth documentation]
 
-Aside from that, all you need is a model manager for the user:
+Aside from that, you need a model manager for the user:
 
 [source,python]
 .accounts/models.py
@@ -289,41 +304,184 @@ def logout(request):
     return redirect('/')
 ----
 
+And finally, switch on the auth backend and our new accounts app in
+'settings.py':
+
+[role="sourcecode"]
+.superlists/settings.py
+[source,python]
+----
+    'django.contrib.staticfiles',
+    # Uncomment the next line to enable the admin:
+    'django.contrib.admin',
+    # Uncomment the next line to enable admin documentation:
+    # 'django.contrib.admindocs',
+    'lists',
+    'functional_tests',
+    'south',
+    'accounts',
+)
+
+AUTH_USER_MODEL = 'accounts.ListUser'
+AUTHENTICATION_BACKENDS = (
+    'accounts.authentication.PersonaAuthenticationBackend',
+)
+----
+
 Why not spin up a dev server with `runserver` and see how it all looks?
 
-TODO: screenshot
+.It works! It works! mwahahahaha.
+image::images/mozilla_persona_signin.png["The Persona login screen"]
+
+NB - you will need to run a `syncdb` to get the accounts tables all
+set up.
 
 That's pretty much it! Along the way, I had to fight pretty hard, including
 debugging ajax requests by hand in the Firefox console, catching infinite
 page-refresh loops, stumbling over several missing attributes on my custom user
 model (because I didn't read the docs properly), and finally discovering that
 we have to upgrade to the dev version of Django to actually get it to work in
-the admin site.  But we now have a working solution!  Time to de-spike
+the admin site.
+footnote:[http://stackoverflow.com/questions/16983547/django-problems-with-id-in-custom-usermodel/18458659#18458659]
+But we now have a working solution!  Time to de-spike
 
 //TODO screenshot ajax debug
-
-
-
-BUG - if want to use admin site, will need to upgrade to 1.6 beta!
-
-http://stackoverflow.com/questions/16983547/django-problems-with-id-in-custom-usermodel/18458659#18458659
 
 
 
 De-Spiking
 ~~~~~~~~~~
 
-bla
+De-Spiking means re-writing your prototype code using TDD.  We now have enough
+information to "do it properly".  So what's the first step?  An FT of course!
+
+A common Selenium technique: waiting for 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Here's the basic outline:
+
+[role="sourcecode"]
+.lists/functional_tests/tests/test_login.py
+[source,python]
+----
+from .base import FunctionalTest
+
+class LoginTest(FunctionalTest):
+
+    def test_login_with_persona(self):
+        # Edith goes to the awesome superlists site
+        # and notices a "Sign in" link for the first time.
+        self.browser.get(self.server_url)
+        self.browser.find_element_by_id('login').click()
+
+        # A Persona login box appears
+        self.switch_to_new_window('Mozilla Persona')
+        self.browser.find_element_by_id(
+            'authentication_email'
+        ).send_keys(TEST_EMAIL)
+        self.browser.find_element_by_tag_name('button').click()
+
+        # We get redirected to the Yahoo page
+        self.wait_for_element_with_id('username')
+        self.browser.find_element_by_id(
+            'username'
+        ).send_keys(TEST_EMAIL)
+        self.browser.find_element_by_id(
+            'passwd'
+        ).send_keys(TEST_PASSWORD)
+        self.browser.find_element_by_id('.save').click()
+
+        # The Persona window closes
+        self.switch_to_new_window('To-Do')
+
+        # She can see that she is logged in
+        self.wait_for_element_with_id('logout')
+----
+
+It needs two helper functions, both of which do something that's very
+common in Selenium testing:  the wait for something to happen.  Here's
+the first:
 
 
-Javascript tests
-~~~~~~~~~~~~~~~~
+[role="sourcecode"]
+.lists/functional_tests/tests/test_login.py
+[source,python]
+----
+import time
+[...]
 
-topic for next chapter!
+    def switch_to_new_window(self, text_in_title, retries=0):
+        if retries > 100:
+            self.fail('could not find window')
+        for handle in self.browser.window_handles:
+            self.browser.switch_to_window(handle)
+            if text_in_title in self.browser.title:
+                return
+        time.sleep(0.1)
+        self.switch_to_new_window(text_in_title, retries + 1)
+----
+
+In this one we've "rolled our own" wait -- we iterate through all the
+current browser windows, looking for one with a particular title. If
+we can't find it, we do a short wait, and try again, decrementing a retry
+counter.
+
+This is such a common pattern in Selenium tests that the team created an API
+for waiting -- it doesn't quite handle all use cases though, so that's why we 
+had to roll our own the first time around.  When doing something simpler like
+waiting for an element with a given ID to appear on the page, we can use the
+`WebDriverWait` class:
 
 
-Deploy
-~~~~~~
+[role="sourcecode"]
+.lists/functional_tests/tests/test_login.py
+[source,python]
+----
+from selenium.webdriver.support.ui import WebDriverWait
+[...]
 
-south etc
+    def wait_for_element_with_id(self, element_id):
+        WebDriverWait(self.browser, timeout=10).until(
+            lambda b: b.find_element_by_id(element_id)
+        )
+----
+
+This is what Selenium calls an "explicit wait".  If you remember, we
+already defined an "implicit wait" in the `FunctionalTest.setUp`.  We set that
+to just 3 seconds though, which is fine in most cases, but when we're waiting
+for an external service like Persona, we sometimes need to bump that default
+timeout.
+
+There are more examples in the 
+http://docs.seleniumhq.org/docs/04_webdriver_advanced.jsp[Selenium docs], but I
+actually found reading the 
+http://code.google.com/p/selenium/source/browse/py/selenium/webdriver/support/wait.py[source
+code] more instructive -- there are good docstrings!
+
+And if we run the FT, it works!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.LoginTest*]
+Creating test database for alias 'default'...
+login view
+sending to mozilla {'audience': 'localhost', 'assertion':
+[...]
+/usr/lib/python3.3/http/client.py:1172: DeprecationWarning: the 'strict'
+argument isn't supported anymore; http.client now always assumes HTTP/1.x
+compliant servers.
+  source_address)
+
+got <Response [200]>
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 32.222s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+You can even see some of the debug output I left in my spiked view
+implementations.  Now it's time to revert all of our temporary changes,
+and re-introduce them one by one in a test-driven way.
 
