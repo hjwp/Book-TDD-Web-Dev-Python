@@ -660,8 +660,228 @@ scrp
     <script>
 
 test("initialize binds sign in button to navigator.id.request", function () {
-    var mockRequestCalled = false;
-    var mockRequestFunction = function() { mockRequestCalled = true; };
+    var requestWasCalled = false; //<6>
+    var mockRequestFunction = function() { requestWasCalled = true; }; //<5>
+    var mockNavigator = { //<4>
+        id: {
+            request: mockRequestFunction
+        }
+    };
+
+    Superlists.Accounts.initialize(mockNavigator) //<3>
+
+    $('#id_login').trigger('click'); //<2>
+
+    equal(requestWasCalled, true); //<1>
+});
+
+    </script>
+----
+
+One of the best ways to understand this test, or indeed any test, is to work 
+backwards.  The first thing we see is the assertion:
+
+<1> We are asserting that a variable called `requestWasCalled` is true. We're
+checking that, one way or another, the `request` function, as in `navigator.id.request`, was called
+<2> Called when?  When a click event happens to the `id_login` element
+<3> Before we trigger that click event, we call our 
+`Superlists.Accounts.Initialize` function, just like we will on the real page.
+The only difference is, instead of passing it the real global `navigator`
+object from Persona, we pass in a fake one called `mockNavigator`
+<4> That's defined as a generic JavaScript object, with an attribute called
+`id` which in turn has an attribute called `request`, which we're assigning
+to a variable called `mockRequestFunction`
+<5> `mockRequestFunction` we define as a very simple function which, if called
+will simply set the value of the `requestWasCalled` variable to `true`.
+<6> And finally (firstly?) we make sure that `requestWasCalled` starts out
+as `false`.
+
+The upshot of all this is:  the only way this test will pass is if our
+`initialize` function binds the `click` event on `id_login` to the method
+`.id.request` of the object we pass it.
+
+Does that make sense?  Let's play around with the test and see if we can 
+get the hang of it.
+
+Our first error is this:
+
+----
+Died on test #1 @file:///home/harry/Dropbox/book/source/chapter_14/superlists/accounts/static/tests/tests.html:20 : Superlists is not defined
+----
+
+That's the equivalent of an `ImportError` in Python.  Let's got start work
+on 'accounts/static/accounts.js':
+
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+$(document).ready(function() {
+
+    window.Superlists = null;
+
+});
+----
+
+We start with the usual on-document-ready boilerplate, and then address our
+immediate problem: Superlists is not defined.  Now, just as in Python we
+might do `Superlists = None`, we do `window.Superlists = null`.  Using
+`window.` makes sure we get the global object.
+
+TODO: $.extend
+
+----
+Died on test #1 @file:///home/harry/Dropbox/book/source/chapter_14/superlists/accounts/static/tests/tests.html:20 : Superlists is null
+----
+
+OK, next baby step or two:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    window.Superlists = {
+        Accounts: {}
+    };
+----
+
+Gives
+
+----
+: Superlists.Accounts.initialize is not a function
+----
+
+So let's make it a function:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    window.Superlists = {
+        Accounts: {
+            initialize: function () {}
+        }
+    };
+----
+
+And now we get a real test failure instead of just errors
+
+----
+initialize binds sign in button to navigator.id.request (1, 0, 1)
+
+    failed
+    Expected: 	true
+    Result: 	false
+
+    Diff: 	true false 
+----
+
+Next -- let's separate defining our initialize function from the part where we
+export it into the Superlists namespace.  We'll also do a `console.log`, which
+is the JavaScript equivalent of a debug-print, to take a look at what the
+initialize function is being called with:
+
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var initialize = function (navigator){
+        console.log(navigator);
+    };
+
+    window.Superlists = {
+        Accounts: {
+            initialize: initialize
+        }
+    };
+----
+
+.Debugging in the JavaScript console
+image::images/console_dot_log.png["The JavaScript console in our qunit run, showing the console.log"]
+
+In Firefox and I believe Chrome also, you can use the shortcut `Ctrl-Shift-I` 
+to bring up the JavaScript console, and see the [object Object] that was
+logged.  If you click on it, you can see it has the properties we defined in
+our test: an `id`, and inside that, a function called `request`.
+
+So let's now just pile in and get the test to pass:
+
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var initialize = function (navigator){
+        navigator.id.request();
+    };
+----
+
+That gets the tests to pass, but it's not quite the implementation we
+want.  We're called `navigator.id.request` always, instead of only
+on click.  We'll need to adjust our tests.
+
+----
+Tests completed in 51 milliseconds.
+1 assertions of 1 passed, 0 failed.
+
+    initialize binds sign in button to navigator.id.request (0, 1, 1)Rerun
+----
+
+Before we do, let's just have a play around to see if we really understand
+what's going on.  What happens if we do this:
+
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var initialize = function (navigator){
+        navigator.id.request();
+        navigator.id.doSomethingElse();
+    };
+----
+
+We get:
+
+----
+Died on test #1 @file:///home/harry/Dropbox/book/source/chapter_14/superlists/accounts/static/tests/tests.html:20 : navigator.id.doSomethingElse is not a function
+----
+
+You see, the mock navigator object that we pass in is entirely under our
+control. It has only the attributes and methods we give it.  You can
+play around with it now if you like:
+
+
+[role="sourcecode"]
+.accounts/static/tests/tests.html
+[source,html]
+----
+    var mockNavigator = {
+        id: {
+            request: mockRequestFunction,
+            doSomethingElse: function () { console.log("called me!");}
+        }
+    };
+----
+
+That will give you a pass, and if you open up the debug window, you'll see:
+
+----
+[01:22:27.456] "called me!"
+----
+
+Does that help to see what's going on?  Let's revert those last two changes,
+and tweak our unit test so that it checks the `request` function is only
+called 'after' we fire off the click event.  We also add some error messages
+to help see which of the two `equal` assertions is failing:
+
+
+[role="sourcecode"]
+.accounts/static/tests/tests.html
+[source,html]
+----
     var mockNavigator = {
         id: {
             request: mockRequestFunction
@@ -669,13 +889,69 @@ test("initialize binds sign in button to navigator.id.request", function () {
     };
 
     Superlists.Accounts.initialize(mockNavigator)
+    equal(requestWasCalled, false, 'called request before click triggered'); 
 
-    $('id_login').trigger('click');
+    $('#id_login').trigger('click');
+    equal(requestWasCalled, true, 'did not call request on click'); 
+----
 
-    equal(mockRequestCalled, true); 
-});
+Now we get a neater failure:
 
+----
+    initialize binds sign in button to navigator.id.request (1, 1, 2)
+        called request before click triggered
+        Expected: 	false
+        Result: 	true
+----
+
+So let's make it so that the call to `navigator.id.request` only happens
+if our `id_login` is clicked:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var initialize = function (navigator){
+        $('#id_login').on('click', function () {
+            navigator.id.request();
+        });
+    };
+----
+
+A good start!  Let's try pulling it into our template:
+
+[source,html]
+.lists/templates/base.html
+----
+    <script src="http://code.jquery.com/jquery.js"></script>
+    <script src="https://login.persona.org/include.js"></script>
+    <script src="/static/list.js"></script>
+    <script src="/static/accounts.js"></script>
+    <script>
+        $(document).ready( function () {
+            Superlists.Accounts.initialize(navigator);
+        });
     </script>
+----
+
+We also need to add the `accounts` app to 'settings.py', otherwise
+it won't be serving the static file at 'accounts/static/accounts.js':
+
+----
++++ b/superlists/settings.py
+@@ -130,6 +130,7 @@ INSTALLED_APPS = (
+     'lists',
+     'functional_tests',
+     'south',
++    'accounts',
+ )
+----
+
+A quick check on the FT ... Doesn't get any further unfortunately.  So,
+let's see what happens in the debug console if we do things manually:
+
+----
+[01:36:54.572] Error: navigator.id.watch must be called before navigator.id.request @ https://login.persona.org/include.js:8
 ----
 
 
