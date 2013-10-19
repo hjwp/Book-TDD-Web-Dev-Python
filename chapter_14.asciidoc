@@ -19,9 +19,9 @@ Naturally we're not going to mess about with remembering passwords ourselves
 nightmare we'd rather leave to someone else.  We'll use federated
 authentication system instead.
 
-NOTE: If you 'insist' on storing your own passwords, Django's default auth module
-ready and waiting for you. It's nice and straightforward, and I'll leave it to
-you to discover on your own.
+NOTE: If you 'insist' on storing your own passwords, Django's default auth
+module ready and waiting for you. It's nice and straightforward, and I'll leave
+it to you to discover on your own.
 
 
 Mozilla Persona (Browser-ID)
@@ -104,12 +104,12 @@ if (logoutLink) {
   logoutLink.onclick = function() { navigator.id.logout(); };
 }
 
-var currentUser = '{{ user.email }}' || null;
+var loggedInUser = '{{ user.email }}' || null;
 var csrf_token = '{{ csrf_token }}';
-console.log(currentUser);
+console.log(loggedInUser);
 
 navigator.id.watch({
-  loggedInUser: currentUser,
+  loggedInUser: loggedInUser,
   onlogin: function(assertion) {
     $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token})
     .done(function() { window.location.reload(); })
@@ -535,6 +535,9 @@ OK -- so let's add a do-nothing log in link:
     [...]
 ----
 
+TODO: I have silently upgraded to bootstrap 3.  Grandfather this into ch. 7
+
+
 After 10 seconds, that gives:
 
 ----
@@ -546,9 +549,6 @@ License to move on!  Next thing: more javascript!
 
 Javascript unit tests involving external components.  Our first Mock!
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Housekeeping
-++++++++++++
 
 First off, a bit of housekeeping.  We create a site-wide static files 
 directory inside 'superlists/superlists', and we move all the 
@@ -608,6 +608,9 @@ if (loginLink) {
 }
 ----
 
+Why Mock?
+^^^^^^^^^
+
 We want our login link's on-click to be bound to a function provided by
 the Persona library, `navigator.id.request`.
 
@@ -619,12 +622,17 @@ it's going to be JavaScript instead.  Ah well, needs must.  Thankfully, it's
 quite a straightforward one.  Still, you may find you need to read this next
 section a few times before it all makes total sense.
 
+WARNING: It took me weeks to get my head around mocking when I first
+encountered it.  I'm worried that this chapter has a much steeper learning
+curve than any other so far.  Please, let me know how you feel about this!
+//TODO: remove me
+
 What we're going to do is replace the real `navigator` object with a 'fake'
 one that we've built ourselves, one that will be able to tell us what happens
 to it.
 
 Namespacing
-+++++++++++
+^^^^^^^^^^^
 
 In the context of 'base.html', `navigator` is just an object in the global
 scope, as provided by the 'include.js' `<script>` tag that we get from 
@@ -658,8 +666,10 @@ TODO: look into require.js as an alternative to namespacing?
 
 This code is short enough that I'm happy it doesn't need any unit tests.
 
-Unit tests for our initialize function
-++++++++++++++++++++++++++++++++++++++
+
+
+A simple mock to unit tests our initialize function
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The initialize function itself, we will test though:
 
@@ -914,6 +924,9 @@ to help see which of the two `equal` assertions is failing:
     equal(requestWasCalled, true, 'did not call request on click'); 
 ----
 
+TODO: messages in jquery tests are actually susccess messages.  rewrite all of
+these!
+
 Now we get a neater failure:
 
 ----
@@ -966,12 +979,343 @@ it won't be serving the static file at 'accounts/static/accounts.js':
  )
 ----
 
-A quick check on the FT ... Doesn't get any further unfortunately.  So,
-let's see what happens in the debug console if we do things manually:
+A quick check on the FT ... Doesn't get any further unfortunately.  To see
+why, we can open up the site manually, and check the JavaScript debug console:
 
 ----
 [01:36:54.572] Error: navigator.id.watch must be called before
 navigator.id.request @ https://login.persona.org/include.js:8
 ----
 
+
+Checking a call to a 3rd party API with a more complex mock
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We now need to call Mozilla's `navigator.id.watch` correctly. Taking another
+look at our spike, it should be something like this:
+
+
+[source,javascript]
+----
+var loggedInUser = '{{ user.email }}' || null;
+var csrf_token = '{{ csrf_token }}';
+console.log(loggedInUser);
+
+navigator.id.watch({
+  loggedInUser: loggedInUser, //<1>
+  onlogin: function(assertion) {
+    $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token}) //<2>
+    .done(function() { window.location.reload(); })
+    .fail(function() { navigator.id.logout();});
+  },
+  onlogout: function() {
+    $.post('/accounts/logout')
+    .always(function() { window.location.reload(); });
+  }
+});
+----
+
+Decoding that, the watch function needs to know a couple of things from 
+the global scope:  
+
+<1> the current user's email, to be passed in as the `loggedInUser` parameter
+to watch
+
+<2> the current CSRF token, to pass in the Ajax POST request to the login
+view
+
+We've also got two hard-coded URLs in there, which it would be better to
+get from Django, something like this:
+
+----
+var urls = {
+    login: "{% url 'login' %}",
+    logout: "{% url 'logout' %}",
+};
+----
+
+So that would be a third parameter to pass in from the global scope.  We've
+already got an initialize function, so let's imagine using it like this:
+
+-----
+Superlists.Accounts.initialize(navigator, loggedInUser, urls);
+-----
+
+
+A mock that makes assertions
+++++++++++++++++++++++++++++
+
+How to write some unit test for this?  More mocking!
+
+----
+test("initialize calls navigator.id.watch", function () {
+    var loggedInUser = 'current user';
+    var urls = { login: 'login url', logout: 'logout url'};
+
+    var watchFunctionCalled = false;
+    var mockWatchFunction = function (params) { //<2>
+        equal(params.loggedInUser, loggedInUser, 'wrong user'); //<3>
+        equal(params.onlogin, Superlists.Accounts.onLogin, 'wrong onlogin function'); //<4>
+        equal(params.onlogout, Superlists.Accounts.onLogout, 'wrong onlogout function'); //<4>
+        watchFunctionCalled = true;
+    };
+    var mockNavigator = {
+        id: {
+            watch: mockWatchFunction //<2>
+        }
+    };
+
+    Superlists.Accounts.initialize(mockNavigator, loggedInUser, urls); //<1>
+
+    equal(watchFunctionCalled, true, 'never called watch function');
+
+});
+----
+
+This is a slightly more advanced mocking technique.  In the previous test, our
+mock function's job was just set a flag if it was called, and it was the job of
+a later assertion in the test to check that flag.  In this test, the mock
+function actually makes several assertions if it gets called, and can cause the
+test to fail on its own. Let's work through it step by step:
+
+<1> We call initialize with a mock navigator object, as before, and two extra
+parameters which are straightforward constants.
+
+<2> The mock navigator object provides a mock watch function.  It takes a
+single argument, "params" (short for parameters).  JavaScript doesn't have
+keyword arguments for functions, so passing in an object with various
+attributes as parameters is a common pattern.
+
+<3> This time, in the mock function, we don't just set a flag saying it was
+called, we also make several assertions:  we check that it was called with the
+correct parameters, with the right user, and ...
+
+<4> ... with the correct onlogin and onlogout functions.  You can see we're
+comparing them to some objects we expect to be on the `Superlists.Accounts` 
+namespace.  In Python, we would import the objects from the source file into
+our tests, and use them for these assertions -- like we do when we import a
+constant, to check that a function under test uses the correct constant.
+
+That gives
+
+----
+2 assertions of 3 passed, 1 failed.
+initialize binds sign in button to navigator.id.request (0, 2, 2)
+initialize calls navigator.id.watch (1, 0, 1)
+    never called watch function
+    Expected: 	true
+    Result: 	false
+    Diff: 	true false 
+    Source:
+    @file:///workspace/superlists/accounts/static/tests/tests.html:54
+----
+
+Minimal change:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var initialize = function (navigator){
+        $('#id_login').on('click', function () {
+            navigator.id.request();
+        });
+
+        navigator.id.watch();
+    };
+----
+
+Breaks everything!
+
+----
+0 assertions of 2 passed, 2 failed.
+
+initialize binds sign in button to navigator.id.request (1, 0, 1)
+    Died on test #1
+    @file:///workspace/superlists/accounts/static/tests/tests.html:20 :
+    missing argument 1 when calling function navigator.id.watch
+
+initialize calls navigator.id.watch (1, 0, 1)Rerun1 ms
+    Died on test #1
+    @file:///workspace/superlists/accounts/static/tests/tests.html:36 :
+    params is undefined
+----
+
+The fact that our first test fails as well was a puzzler. That "missing
+argument 1 when calling function navigator.id.watch" took me a while to figure
+out.
+https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/watch[Turns
+out that], in Firefox, `.watch` is a function on every object.  We'll need
+to mock it out in there too:
+
+
+[role="sourcecode"]
+.accounts/static/tests/tests.html
+[source,html]
+----
+test("initialize binds sign in button to navigator.id.request", function () {
+    var requestWasCalled = false;
+    var mockRequestFunction = function() { requestWasCalled = true; };
+    var mockNavigator = {
+        id: {
+            request: mockRequestFunction,
+            watch: function () {}
+        }
+    };
+----
+
+That gets us back to just the expected failure:
+
+----
+2 assertions of 3 passed, 1 failed.
+initialize binds sign in button to navigator.id.request (0, 2, 2)
+initialize calls navigator.id.watch (1, 0, 1)
+    Died on test #1
+    @file:///workspace/superlists/accounts/static/tests/tests.html:37 :
+    params is undefined
+----
+
+Now we can get some more specific error messages by:
+
+----
+    navigator.id.watch({});
+----
+
+Which gives:
+
+----
+initialize calls navigator.id.watch
+    wrong user
+    Expected: 	"current user"
+    Result: 	undefined
+----
+
+And we're off!  Our mock function is telling us that we're not calling it
+correctly, it wants us to pass in the user inside the params object.  Let's
+do that:
+
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var initialize = function (navigator, loggedInUser, urls){
+        $('#id_login').on('click', function () {
+            navigator.id.request();
+        });
+
+        navigator.id.watch({
+            loggedInUser: loggedInUser
+        });
+    };
+----
+
+Notice I've had to adjust the `initialize` function's arguments, so that it
+now expects the logged-in user and urls.
+
+undefined equals undefined
+++++++++++++++++++++++++++
+
+Slightly unexpectedly, that gets all the tests passing!
+
+----
+Tests completed in 52 milliseconds.
+6 assertions of 6 passed, 0 failed.
+    initialize binds sign in button to navigator.id.request (0, 2, 2)
+    initialize calls navigator.id.watch (0, 4, 4)
+----
+
+How about our assertions on the `onlogin` and `onlogout` functions?  Shouldn't
+they be failing?  Actually, this is just one of those brain-melting JavaScript
+things:  in Javascript, if you try and access an attribute on an object that's
+not been explicitly defined, you get the `undefined`.  `params.onlogin` hasn't
+been set, so it is `undefined`... but `Superlists.Accounts.onLogin` doesn't
+exist either, so it is also `undefined`.  And `undefined == undefined`.
+Thankfully. Nothing is certain in JavaScript, as TDD supremo Gary Bernhardt 
+once hilariously demonstrated in a talk called
+https://www.destroyallsoftware.com/talks/wat[WAT]).
+
+Let's add them to our namespace then:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var onLogin = function () {};
+    var onLogout = function () {};
+
+    window.Superlists = {
+        Accounts: {
+            initialize: initialize,
+            onLogin: onLogin,
+            onLogout: onLogout
+        }
+    };
+----
+
+We now get:
+
+----
+wrong onlogin function
+----
+
+So let's fix them both:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+        navigator.id.watch({
+            loggedInUser: loggedInUser,
+            onlogin: onLogin,
+            onlogout: onLogout
+        });
+----
+
+And that gets us passing.  How about the FT?  It does actually get a fair
+bit further!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.LoginTest*]
+Creating test database for alias 'default'...
+E
+======================================================================
+ERROR: test_login_with_persona (functional_tests.tests.test_login.LoginTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File
+  "/home/harry/Dropbox/book/source/chapter_14/superlists/functional_tests/tests/test_login.py",
+  line 56, in test_login_with_persona
+    self.wait_for_element_with_id('id_logout')
+  File
+  "/home/harry/Dropbox/book/source/chapter_14/superlists/functional_tests/tests/test_login.py",
+  line 25, in wait_for_element_with_id
+    lambda b: b.find_element_by_id(element_id)
+  File
+  "/usr/local/lib/python3.3/dist-packages/selenium/webdriver/support/wait.py",
+  line 71, in until
+    raise TimeoutException(message)
+selenium.common.exceptions.TimeoutException: Message: '' 
+----
+
+The FT gets through all of the username + password submission steps, but when
+it gets back to our website, it can't find a "logout" element -- in other
+words, our site doesn't recognise that the user is logged in.  To do that, we
+have to send our authentication information to the server, and have the server
+validated it.  And to do that, we'll need at least the `onLogin` function.
+
+
+Just another tiny bit of JavaScript and we're there!
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Here's what our spiked login function looked like:
+
+----
+  onlogin: function(assertion) {
+    $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token})
+    .done(function() { window.location.reload(); })
+    .fail(function() { navigator.id.logout();});
+  },
+----
 
