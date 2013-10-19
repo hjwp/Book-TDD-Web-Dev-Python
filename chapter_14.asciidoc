@@ -104,12 +104,12 @@ if (logoutLink) {
   logoutLink.onclick = function() { navigator.id.logout(); };
 }
 
-var loggedInUser = '{{ user.email }}' || null;
+var currentUser = '{{ user.email }}' || null;
 var csrf_token = '{{ csrf_token }}';
-console.log(loggedInUser);
+console.log(currentUser);
 
 navigator.id.watch({
-  loggedInUser: loggedInUser,
+  loggedInUser: currentUser,
   onlogin: function(assertion) {
     $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token})
     .done(function() { window.location.reload(); })
@@ -853,7 +853,7 @@ on click.  We'll need to adjust our tests.
 Tests completed in 51 milliseconds.
 1 assertions of 1 passed, 0 failed.
 
-    initialize binds sign in button to navigator.id.request (0, 1, 1)Rerun
+    initialize binds sign in button to navigator.id.request (0, 1, 1)
 ----
 
 Before we do, let's just have a play around to see if we really understand
@@ -918,20 +918,22 @@ to help see which of the two `equal` assertions is failing:
     };
 
     Superlists.Accounts.initialize(mockNavigator)
-    equal(requestWasCalled, false, 'called request before click triggered'); 
+    equal(requestWasCalled, false, 'check request not called before click'); 
 
     $('#id_login').trigger('click');
-    equal(requestWasCalled, true, 'did not call request on click'); 
+    equal(requestWasCalled, true, 'check request called after click'); 
 ----
 
-TODO: messages in jquery tests are actually success messages.  rewrite all of
-these!
+NOTE: assertion messages (the third argument to `equal`), in Qunit, are
+actually "success" messages. Rather than only being displayed if the test
+fails, they are also displayed when the test passes.  That's why they have
+the positive phrasing.
 
 Now we get a neater failure:
 
 ----
     initialize binds sign in button to navigator.id.request (1, 1, 2)
-        called request before click triggered
+        check request called before click
         Expected: 	false
         Result: 	true
 ----
@@ -950,7 +952,7 @@ if our `id_login` is clicked:
     };
 ----
 
-A good start!  Let's try pulling it into our template:
+That passes. A good start!  Let's try pulling it into our template:
 
 [source,html]
 .lists/templates/base.html
@@ -997,12 +999,12 @@ look at our spike, it should be something like this:
 
 [source,javascript]
 ----
-var loggedInUser = '{{ user.email }}' || null;
+var currentUser = '{{ user.email }}' || null;
 var csrf_token = '{{ csrf_token }}';
-console.log(loggedInUser);
+console.log(currentUser);
 
 navigator.id.watch({
-  loggedInUser: loggedInUser, //<1>
+  loggedInUser: currentUser, //<1>
   onlogin: function(assertion) {
     $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token}) //<2>
     .done(function() { window.location.reload(); })
@@ -1038,7 +1040,7 @@ So that would be a third parameter to pass in from the global scope.  We've
 already got an initialize function, so let's imagine using it like this:
 
 -----
-Superlists.Accounts.initialize(navigator, loggedInUser, urls);
+Superlists.Accounts.initialize(navigator, user, token, urls);
 -----
 
 
@@ -1049,25 +1051,22 @@ How to write some unit test for this?  More mocking!
 
 ----
 test("initialize calls navigator.id.watch", function () {
-    var loggedInUser = 'current user';
+    var user = 'current user';
+    var token = 'csrf token';
     var urls = { login: 'login url', logout: 'logout url'};
 
     var watchFunctionCalled = false;
-    var mockWatchFunction = function (params) { //<2>
-        equal(params.loggedInUser, loggedInUser, 'wrong user'); //<3>
-        equal(params.onlogin, Superlists.Accounts.onLogin, 'wrong onlogin function'); //<4>
-        equal(params.onlogout, Superlists.Accounts.onLogout, 'wrong onlogout function'); //<4>
+    var mockWatchFunction = function (params) {
+        equal(params.loggedInUser, user, 'check user'); //<3>
+        equal(params.onlogin, Superlists.Accounts.submitAssertion, 'check login fn'); //<4>
+        equal(params.onlogout, Superlists.Accounts.logOut, 'check logout fn'); //<4>
         watchFunctionCalled = true;
     };
-    var mockNavigator = {
-        id: {
-            watch: mockWatchFunction //<2>
-        }
-    };
+    var mockNavigator = { id: { watch: mockWatchFunction } }; //<2>
 
-    Superlists.Accounts.initialize(mockNavigator, loggedInUser, urls); //<1>
+    Superlists.Accounts.initialize(mockNavigator, user, token, urls); //<1>
 
-    equal(watchFunctionCalled, true, 'never called watch function');
+    equal(watchFunctionCalled, true, 'check watch function called');
 
 });
 ----
@@ -1102,7 +1101,7 @@ That gives
 2 assertions of 3 passed, 1 failed.
 initialize binds sign in button to navigator.id.request (0, 2, 2)
 initialize calls navigator.id.watch (1, 0, 1)
-    never called watch function
+    check watch function called
     Expected: 	true
     Result: 	false
     Diff: 	true false 
@@ -1110,7 +1109,7 @@ initialize calls navigator.id.watch (1, 0, 1)
     @file:///workspace/superlists/accounts/static/tests/tests.html:54
 ----
 
-Minimal change:
+And we're off. Minimal change:
 
 [role="sourcecode"]
 .accounts/static/accounts.js
@@ -1135,7 +1134,7 @@ initialize binds sign in button to navigator.id.request (1, 0, 1)
     @file:///workspace/superlists/accounts/static/tests/tests.html:20 :
     missing argument 1 when calling function navigator.id.watch
 
-initialize calls navigator.id.watch (1, 0, 1)Rerun1 ms
+initialize calls navigator.id.watch (1, 0, 1)
     Died on test #1
     @file:///workspace/superlists/accounts/static/tests/tests.html:36 :
     params is undefined
@@ -1185,27 +1184,26 @@ Which gives:
 
 ----
 initialize calls navigator.id.watch
-    wrong user
+    check user
     Expected: 	"current user"
     Result: 	undefined
 ----
 
-And we're off!  Our mock function is telling us that we're not calling it
-correctly, it wants us to pass in the user inside the params object.  Let's
-do that:
+Our mock function is telling us that we're not calling it correctly, it wants
+us to pass in the user inside the params object.  Let's do that:
 
 
 [role="sourcecode"]
 .accounts/static/accounts.js
 [source,javascript]
 ----
-    var initialize = function (navigator, loggedInUser, urls){
+    var initialize = function (navigator, user, token, urls){
         $('#id_login').on('click', function () {
             navigator.id.request();
         });
 
         navigator.id.watch({
-            loggedInUser: loggedInUser
+            loggedInUser: user
         });
     };
 ----
@@ -1229,10 +1227,10 @@ How about our assertions on the `onlogin` and `onlogout` functions?  Shouldn't
 they be failing?  Actually, this is just one of those brain-melting JavaScript
 things:  in Javascript, if you try and access an attribute on an object that's
 not been explicitly defined, you get the `undefined`.  `params.onlogin` hasn't
-been set, so it is `undefined`... but `Superlists.Accounts.onLogin` doesn't
-exist either, so it is also `undefined`.  And `undefined == undefined`.
-Thankfully. Nothing is certain in JavaScript, as TDD supremo Gary Bernhardt 
-once hilariously demonstrated in a talk called
+been set, so it is `undefined`... but `Superlists.Accounts.submitAssertion`
+doesn't exist either, so it is also `undefined`.  And `undefined ==
+undefined`. Thankfully. Nothing is certain in JavaScript, as TDD supremo Gary
+Bernhardt once hilariously demonstrated in a talk called
 https://www.destroyallsoftware.com/talks/wat[WAT]).
 
 Let's add them to our namespace then:
@@ -1241,14 +1239,14 @@ Let's add them to our namespace then:
 .accounts/static/accounts.js
 [source,javascript]
 ----
-    var onLogin = function () {};
-    var onLogout = function () {};
+    var submitAssertion = function () {};
+    var logOut = function () {};
 
     window.Superlists = {
         Accounts: {
             initialize: initialize,
-            onLogin: onLogin,
-            onLogout: onLogout
+            submitAssertion: submitAssertion,
+            logOut: logOut
         }
     };
 ----
@@ -1256,7 +1254,7 @@ Let's add them to our namespace then:
 We now get:
 
 ----
-wrong onlogin function
+check login fn
 ----
 
 So let's fix them both:
@@ -1265,11 +1263,11 @@ So let's fix them both:
 .accounts/static/accounts.js
 [source,javascript]
 ----
-        navigator.id.watch({
-            loggedInUser: loggedInUser,
-            onlogin: onLogin,
-            onlogout: onLogout
-        });
+    navigator.id.watch({
+        loggedInUser: user,
+        onlogin: submitAssertion,
+        onlogout: logOut
+    });
 ----
 
 And that gets us passing.  How about the FT?  It does actually get a fair
@@ -1303,7 +1301,8 @@ The FT gets through all of the username + password submission steps, but when
 it gets back to our website, it can't find a "logout" element -- in other
 words, our site doesn't recognise that the user is logged in.  To do that, we
 have to send our authentication information to the server, and have the server
-validated it.  And to do that, we'll need at least the `onLogin` function.
+validated it.  And to do that, we'll need at least the `submitAssertion`
+function.
 
 
 Just another tiny bit of JavaScript and we're there!
@@ -1319,3 +1318,205 @@ Here's what our spiked login function looked like:
   },
 ----
 
+We need to do an Ajax post to our login url, passing in an assertion and
+our csrf token.  We also want to refresh the window if it succeeds, and call
+logout if it fails, but we can test those two things later.
+
+Unit testing Ajax requests can be a bit of a pain, but there's a popular
+mocking libary called 'sinon.js' that makes it a lot easier.  We should
+download it (from http://sinonjs.org) and put it in our site-wide static tests
+folder:
+
+
+----
+$ tree superlists/static/tests/
+superlists/static/tests/
+├── qunit.css
+├── qunit.js
+└── sinon.js
+----
+
+Next we include it in our accounts tests:
+
+[role="sourcecode"]
+.accounts/static/tests/tests.html
+[source,html]
+----
+    <script src="../../../superlists/static/jquery.js"></script>
+    <script src="../../../superlists/static/tests/qunit.js"></script>
+    <script src="../../../superlists/static/tests/sinon.js"></script>
+    <script src="../accounts.js"></script>
+----
+
+And now we can write a test that uses sinon's
+http://sinonjs.org/docs/#server[fake XMLHttpRequest].
+This patches out the native JavaScript XMLHttpRequest class, so it's good
+practice to make sure we restore it afterwards.  This gives us a good
+excuse to learn about Qunit's `setUp` and `tearDown` methods -- they
+are used in a function called `module`, which acts a bit like a 
+`unittest.TestCase` class, and groups all the tests that follow it
+together:
+
+[role="sourcecode"]
+.accounts/static/tests/tests.html
+[source,html]
+----
+var xhr;
+var requests = [];
+
+module("ajax tests", {
+    setUp: function () {
+        requests = [];
+        xhr = sinon.useFakeXMLHttpRequest();
+        xhr.onCreate = function (request) { requests.push[request]; };
+    },
+    tearDown: function() {
+        xhr.restore() 
+    }
+});
+
+test("submitAssertion does ajax post", function () {
+)};
+----
+
+This is standard boilerplate for sinon, here's what's happening:
+
+We declare the variables `xhr` and `requests` in the global scope, so they're
+available to all our tests.  Then, in `setUp`, we activate sinon's fake
+XMLHttpRequest, and we also set its special `onCreate` function, which logs any
+requests it sees into the `requests` array.  `xhr.restore` puts everything
+back the way it was.
+
+That allows us to write a test for our Ajax submission function that 
+looks like this: 
+
+
+[role="sourcecode"]
+.accounts/static/tests/tests.html
+[source,html]
+----
+test("submitAssertion does ajax post", function () {
+    var user = 'user';
+    var token = 'csrf token';
+    var urls = {'login': 'login url'};
+    var assertion = 'an assertion';
+    var mockNavigator = {id: { watch: function () {}}};
+
+    Superlists.Accounts.initialize(mockNavigator, user, token, urls); //<1>
+    Superlists.Accounts.submitAssertion(assertion); //<2>
+
+    equal(requests.length, 1, 'check request made') //<3>
+    var request = requests[0]; 
+    equal(request.method, 'POST', 'check request was a POST'); //<3>
+    equal(request.url, urls.login, 'check url'); //<3>
+    equal(
+        request.requestBody,
+        $.param({ assertion: assertion, csrfmiddlewaretoken: token }), //<4>
+        'check POST data'
+    );
+});
+----
+
+The first block just sets up some test variables, including a mock navigator
+object. Then:
+
+<1> We call the initialize function to pass in the various bits of global state
+
+<2> We call the function under test, submitAssertion
+
+<3> We check that an Ajax request was made using POST to the correct URL
+
+<4> And we check what data was sent as part of the request.  The `$.param` 
+function decodes it from url-encoded format for us.
+
+Let's see how we get on!
+
+----
+ajax tests: submitAssertion does ajax post (2, 0, 2)Rerun0 ms
+    check request made
+    Expected: 	1
+    Result: 	0
+----
+
+So:
+
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var submitAssertion = function () {
+        $.post();
+    };
+----
+
+And then:
+
+----
+check url
+Expected: 	"login url"
+Result: 	"file:///workspace/superlists/accounts/static/tests/tests.html"
+----
+
+How about?
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    $.post(urls.login);
+----
+
+Nope:
+
+----
+Died on test #1
+@file:///workspace/superlists/accounts/static/tests/tests.html:72 : urls is
+not defined
+----
+
+The urls that we pass in are only available inside the scope of the 
+`initialize` function.  To pop them out of it, we do this:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var urls;
+
+    var initialize = function (navigator, user, token, urls_){
+        urls = urls_;
+        [...]
+----
+
+TODO: do we like that `urls_`?  Or should we rename one to, eg,
+`siteUrls`?  
+
+
+That gets us onto:
+
+----
+check POST data
+Expected: 	"assertion=an+assertion&csrfmiddlewaretoken=csrf+token"
+Result: 	null
+----
+
+A final step, with another yanking up of a variable to the top scope:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    var urls;
+    var csrfToken;
+
+    var initialize = function (navigator, user, token, urls_){
+        urls = urls_;
+        csrfToken = token;
+        [...]
+
+
+    var submitAssertion = function (assertion) {
+        $.post(urls.login, { assertion: assertion, csrfmiddlewaretoken: csrfToken });
+    };
+----
