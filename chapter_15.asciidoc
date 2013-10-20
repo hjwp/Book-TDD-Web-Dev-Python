@@ -3,7 +3,308 @@ Server-side authentication and the admin site
 
 Let's crack on with the server side of our new auth system
 
-Something
-~~~~~~~~~
+Mocking in Python
+~~~~~~~~~~~~~~~~~
 
+Here's the spiked version of our view:
+
+[source,python]
+----
+def login(request):
+    print('login view', file=sys.stderr)
+    #user = PersonaAuthenticationBackend().authenticate(request.POST['assertion'])
+    user = authenticate(assertion=request.POST['assertion'])
+    if user is not None:
+        auth_login(request, user)
+    return redirect('/')
+----
+
+Our authenticate function is going to make calls out, over the internet, to Mozilla's
+servers.  We don't want that to happen in our unit test, so we'll want to mock
+out `authenticate`.
+
+The popular 'mock' package was added to the standard libary as part of Python 3.
+It provides a magical object called a Mock, which is a bit like the sinon spy
+objects we saw in the last chapter, only much cooler.  Check this out:
+
+----
+>>> from unittest.mock import Mock
+>>> m = Mock()
+>>> m.any_attribute
+<Mock name='mock.any_attribute' id='140716305179152'>
+>>> m.foo
+<Mock name='mock.foo' id='140716297764112'>
+>>> m.any_method()
+<Mock name='mock.any_method()' id='140716331211856'>
+>>> m.foo()
+<Mock name='mock.foo()' id='140716331251600'>
+>>> m.called
+False
+>>> m.foo.called
+True
+>>> m.bar.return_value = 1
+>>> m.bar()
+1
+----
+
+
+A mock object would be a pretty neat thing to use to mock out the authenticate
+function, wouldn't it?  Here's how you can do that:
+
+(I trust you to set up a tests folder, and do the imports in the dunderinit)
+
+
+[role="sourcecode"]
+.accounts/tests/test_views.py
+[source,python]
+----
+from django.test import TestCase
+from unittest.mock import patch
+
+
+class LoginViewTest(TestCase):
+
+    @patch('accounts.views.authenticate') #<1>
+    def test_calls_authenticate_with_assertion_from_post(
+        self, mock_authenticate #<2>
+    ):
+        mock_authenticate.return_value = None #<3>
+        self.client.post('/accounts/login', {'assertion': 'assert this'})
+        mock_authenticate.assert_called_once_with(assertion='assert this') #<4>
+----
+
+<1> The decorator called `patch` is a bit like the sinon `spy` function we 
+    saw in the last chapter.  It lets you specify an object you want to "mock out".
+    In this case we're mocking out the authenticate function, which we expect to
+    be using in 'accounts/views.py'. 
+
+<2> The decorator adds the mock object as an additional argument to the
+    function it's applied to.
+
+<3> We can then configure the mock so that it has certain behaviours. Having
+    authenticate return None is the simplest, so we set the special
+    `.return_value` attribute.  Otherwise it would return another mock, and
+    that would probably confuse our view.
+
+<4> Mocks can make assertions! in this case, they can check whether they were
+    called, and what with
+    
+
+So what does that give us?
+
+----
+AttributeError: <module 'accounts.views' from
+'/workspace/superlists/accounts/views.py'> does not have the attribute
+'authenticate'
+----
+
+We tried to patch something that doesn't exist yet!  We need to import 
+authenticate into our views.py:
+
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+from django.contrib.auth import authenticate
+----
+
+Now we get:
+
+----
+AssertionError: Expected 'authenticate' to be called once. Called 0 times.
+----
+
+Expected failure!  To implement it, we'll have to wire up a URL for our
+login view:
+
+[role="sourcecode"]
+.superlists/urls.py
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^lists/', include('lists.urls')),
+    url(r'^accounts/', include('accounts.urls')),
+----
+
+
+[role="sourcecode"]
+.accounts/urls.py
+[source,python]
+----
+from django.conf.urls import patterns, url
+
+urlpatterns = patterns('',
+    url(r'^-login$', 'accounts.views.login', name='login'),
+)
+----
+
+Will a minimal view do anything?
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login():
+    pass
+----
+
+Yep:
+
+----
+TypeError: login() takes 0 positional arguments but 1 was given
+----
+
+And so:
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    pass
+----
+
+Then
+
+----
+ValueError: The view accounts.views.login didn't return an HttpResponse object.
+----
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+from django.contrib.auth import authenticate
+from django.http import HttpResponse
+
+def login(request):
+    return HttpResponse()
+----
+
+And we're back to:
+
+----
+AssertionError: Expected 'authenticate' to be called once. Called 0 times.
+----
+
+We try:
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    authenticate()
+    return HttpResponse()
+----
+
+And sure enough, we get:
+
+----
+AssertionError: Expected call: authenticate(assertion='assert this')
+Actual call: authenticate()
+----
+
+And then we can fix that too:
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    authenticate(assertion=request.POST['assertion'])
+    return HttpResponse()
+----
+
+
+Fine, but our authenticate view also needs to call the Django auth.login 
+function if authenticate returns a user, and then it needs to return 
+something other than an empty response -- since this is an Ajax view,
+it should probably return some kind of JSON.  We'll need to mock out 
+the `auth_login` view as well:
+
+[role="sourcecode"]
+.lists/tests/test_views.py
+[source,python]
+----
+from django.http import HttpRequest
+from django.test import TestCase
+from unittest.mock import patch
+from accounts.views import login
+[...]
+
+    @patch('accounts.views.authenticate')
+    def test_returns_OK(
+        self, mock_authenticate
+    ):
+        mock_authenticate.return_value = None
+        response = self.client.post('/accounts/login', {'assertion': 'a'})
+        self.assertEqual(response.content.decode(), 'OK')
+
+
+    @patch('accounts.views.auth_login')
+    @patch('accounts.views.authenticate')
+    def test_calls_auth_login_if_authenticate_returns_a_user(
+        self, mock_authenticate, mock_auth_login
+    ):
+        request = HttpRequest()
+        request.POST['assertion'] = 'asserted'
+        mock_user = mock_authenticate.return_value
+        login(request)
+        mock_auth_login.assert_called_once_with(request, mock_user)
+
+
+    @patch('accounts.views.auth_login')
+    @patch('accounts.views.authenticate')
+    def test_does_not_call_auth_login_if_authenticate_returns_None(
+        self, mock_authenticate, mock_auth_login
+    ):
+        request = HttpRequest()
+        request.POST['assertion'] = 'asserted'
+        mock_authenticate.return_value = None
+        login(request)
+        self.assertFalse(mock_auth_login.called)
+----
+
+Notice that, for these tests, we go back to importing the view function directly,
+and calling it with an HttpRequest we build manually.  The Django Test Client does a
+bit too much magic, and for these highly mocky tests, we need more control -- we
+need to check that `auth_login` was passed the same `request` object that we called
+the view with, for example.
+
+That gives us:
+
+----
+AttributeError: <module 'accounts.views' from '/home/harry/Dropbox/book/source/chapter_15/superlists/accounts/views.py'> does not have the attribute 'auth_login'
+AttributeError: <module 'accounts.views' from '/home/harry/Dropbox/book/source/chapter_15/superlists/accounts/views.py'> does not have the attribute 'auth_login'
+AssertionError: '' != 'OK'
++ OK
+----
+
+Adding the import takes us down to two failures:
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+from django.contrib.auth import login as auth_login
+----
+
+And we go through another couple of TDD cycles, until:
+
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    user = authenticate(assertion=request.POST['assertion'])
+    if user:
+        auth_login(request, user)
+    return HttpResponse('OK')
+----
+
+Our custom authentication back-end
 
