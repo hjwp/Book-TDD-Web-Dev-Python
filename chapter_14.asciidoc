@@ -1,5 +1,5 @@
-User authentication, the admin site and integrating 3rd party plugins
----------------------------------------------------------------------
+User authentication, integrating 3rd party plugins, and Mocking with JavaScript
+-------------------------------------------------------------------------------
 
 So our beautiful lists site has been live for a few days, and our users are
 starting to come back to us with feedback.  "We love the site", they say, "but
@@ -19,9 +19,22 @@ Naturally we're not going to mess about with remembering passwords ourselves
 nightmare we'd rather leave to someone else.  We'll use federated
 authentication system instead.
 
-NOTE: If you 'insist' on storing your own passwords, Django's default auth
+(If you 'insist' on storing your own passwords, Django's default auth
 module ready and waiting for you. It's nice and straightforward, and I'll leave
-it to you to discover on your own.
+it to you to discover on your own.)
+
+In this chapter, we're going to get pretty deep into a testing
+technique called "mocking". Personally, I know it took me a few weeks to
+really get my head around mocking, so don't worry if it's confusing at first.
+In this chapter we do a lot of mocking in JavaScript.  In the next chapter
+we'll do some mocking with Python, which you might find a little easier to 
+grasp.  I would recommend reading both of them through together, and just
+letting the whole concept wash over you, and then come back and do them again,
+and see if you understand all of the steps a little better on the second round.
+
+NOTE: Do let me know via obeythetestinggoat@gmail.com if you feel there's
+any particular sections where I don't explain things well, or where I'm 
+going too fast.
 
 
 Mozilla Persona (Browser-ID)
@@ -86,8 +99,9 @@ Let's start with the front-end.  I was able to cut & paste code from the
 Persona site and Dan's slides with essentially no modification:
 
 
-[source,html]
+[role="sourcecode"]
 .lists/templates/base.html
+[source,html]
 ----
         <script src="/static/bootstrap/js/bootstrap.min.js"></script>
         <script src="https://login.persona.org/include.js"></script>
@@ -622,8 +636,7 @@ it's going to be JavaScript instead.  Ah well, needs must.  Thankfully, it's
 quite a straightforward one.  Still, you may find you need to read this next
 section a few times before it all makes total sense.
 
-WARNING: It took me weeks to get my head around mocking when I first
-encountered it.  I'm worried that this chapter has a much steeper learning
+WARNING: I'm worried that this chapter has a much steeper learning
 curve than any other so far.  Please, let me know how you feel about this!
 //TODO: remove me
 
@@ -1143,7 +1156,7 @@ We add in the call to watch, and:
 .accounts/static/accounts.js
 [source,javascript]
 ----
-    var initialize = function (navigator, user, token, urls_){
+    var initialize = function (navigator, user, token, urls){
         $('#id_login').on('click', function () {
             navigator.id.request();
         });
@@ -1252,8 +1265,8 @@ And we fix it thusly:
 
 
 
-Qunit setup and teardown
-^^^^^^^^^^^^^^^^^^^^^^^^
+Qunit setup and teardown, testing Ajax
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Next we need to check the `onlogin` callback, which is called when Persona
 has some user authentication information, and we need to send it up to our
@@ -1286,7 +1299,7 @@ module("sinon tests of navigator.id.watch", {
         };
         xhr = sinon.useFakeXMLHttpRequest(); //<3>
         requests = []; //<4>
-        xhr.onCreate = function (request) { requests.push[request]; }; //<4>
+        xhr.onCreate = function (request) { requests.push(request); }; //<4>
     },
     teardown: function () {
         mockNavigator.id.watch.reset(); //<5>
@@ -1357,22 +1370,282 @@ And here's how we test the onlogin callback:
 .accounts/static/tests/tests.html
 [source,html]
 ----
-test("onlogin posts assertion with csrf token to login url", function () {
+test("onlogin does ajax post to login url", function () {
     Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var onlogin = mockNavigator.id.watch.firstCall.args[0].onlogin;
-    var assertion = '';
-
-    onlogin(assertion);
-
-    equal(requests.length, 1, 'check ajax request');
+    var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin; //<1>
+    onloginCallback(); //<2>
+    equal(requests.length, 1, 'check ajax request'); //<3>
     equal(requests[0].method, 'POST');
     equal(requests[0].url, urls.login, 'check url');
+});
+
+test("onlogin sends assertion with middleware token", function () {
+    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+    var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin;
+    var assertion = 'browser-id assertion'
+    onloginCallback(assertion);
     equal(
         requests[0].requestBody,
-        $.param({ assertion: assertion, csrfmiddlewaretoken: token }),
+        $.param({ assertion: assertion, csrfmiddlewaretoken: token }), //<4>
         'check POST data'
     );
 });
 ----
 
-That gives us 
+<1> The spy we set on the mock navigator's watch function lets us extract the
+    callback function we set as "onlogin"
+
+<2> We can then actually call that function in order to test it
+
+<3> Sinon's fakeXMLHttpRequest server will catch any Ajax requests we make,
+    and put them into the `requests` array.  We can then check on things
+    like, whether it was a POST, what URL it was sent to
+
+<4> The actual POST parameters are held in `.requestBody`, but they are
+    URL-encoded (using the &key=val syntax).  jQuery `$.param` function
+    does URL-encoding, so we use that to do our comparison.
+    
+
+And the two tests fail as expected:
+
+[role="sourcecode"]
+.accounts/static/tests/tests.html
+[source,html]
+----
+sinon tests of navigator.id.watch: onlogin does ajax post to login url (1, 0, 1)
+    Died on test #1
+    @file:///workspace/superlists/accounts/static/tests/tests.html:72
+    : onloginCallback is not a function
+
+sinon tests of navigator.id.watch: onlogin sends assertion with middleware token (1, 0, 1)
+    Died on test #1
+    @file:///workspace/superlists/accounts/static/tests/tests.html:81 :
+    onloginCallback is not a function
+----
+
+Another unit test-code cycle.  Here's the failure messages I went through:
+
+----
+check ajax request
+Expected: 	1
+...
+check url
+Expected: 	"login url"
+...
+7 assertions of 8 passed, 1 failed.
+...
+check POST data
+Expected: 	"assertion=browser-id+assertion&csrfmiddlewaretoken=csrf+token"
+Result: 	null
+...
+check POST data
+Expected: 	"assertion=browser-id+assertion&csrfmiddlewaretoken=csrf+token"
+Result: 	"assertion=browser-id+assertion"
+...
+8 assertions of 8 passed, 0 failed.
+----
+
+And I ended up with this code:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    navigator.id.watch({
+        loggedInUser: user,
+        onlogin: function (assertion) {
+            $.post(
+                urls.login, 
+                { assertion: assertion, csrfmiddlewaretoken: token }
+            );
+        },
+    });
+----
+
+Logout
+++++++
+
+Similarly, we need to set a logout callback that does a post to our log out
+URL.  This is a very similar test to the first login test:
+
+
+[role="sourcecode"]
+.accounts/static/tests/tests.html
+[source,html]
+----
+    test("onlogout posts to logout url", function () {
+        Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+        var onlogoutCallback = mockNavigator.id.watch.firstCall.args[0].onlogout;
+        onlogoutCallback();
+        equal(requests.length, 1, 'check ajax request');
+        equal(requests[0].method, 'POST');
+        equal(requests[0].url, urls.logout, 'check url');
+    });
+----
+
+And we get quite a simple logout function:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    onlogout: function (assertion) {
+        $.post(urls.logout);
+    }
+----
+
+More nested callbacks!  Testing asynchronous code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This is what JavaScript's all about folks!  Thankfully, sinon.js really does
+help.  We still need to test that our post methods 'also' set some
+callbacks for things to do 'after' the POST request comes back:
+
+----
+    .done(function() { window.location.reload(); })
+    .fail(function() { navigator.id.logout();});
+----
+
+I'm going to skip testing the `window.location.relaod`, because it's a bit
+unnecessarily complicated
+footnote:[you can't mock out window.location.reload, so instead you have to 
+define an (untested) function called eg Superlists.Accounts.refreshPage, and
+then put a spy on 'that' to check that it gets set as the ajax .done callback]
+, and I think we can allow that this will be tested by our Selenium test.  We
+will do a test for the on-fail callback though, just to demonstrate that it is
+possible:
+
+----
+test("onlogin post failure should do navigator.id.logout ", function () {
+    mockNavigator.id.logout = sinon.spy(); //<1>
+    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+    var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin;
+    server = sinon.fakeServer.create(); //<2>
+    server.respondWith([403, {}, "permission denied"]); //<3>
+
+    onloginCallback();
+    equal(mockNavigator.id.logout.called, false, 'should not logout yet');
+
+    server.respond() //<4>
+    equal(mockNavigator.id.logout.called, true, 'should call logout');
+});
+----
+
+<1> We put a spy on the `navigator.id.logout` function which we're interested
+    in.
+
+<2> We use sinon's fakeServer, which is an abstraction on top of the 
+    fakeXMLHttpRequest to simulate ajax server responses
+
+<3> We set up our fake server to respond with a 403: permission denied
+    response, to simulate what will happen for unauthorized users
+
+<4> We then explicitly tell the fake server to send that response. Only
+    then should we see the logout call
+
+
+That gets us to this -- a slight change to our spiked code:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+    onlogin: function (assertion) {
+        $.post(
+            urls.login,
+            { assertion: assertion, csrfmiddlewaretoken: token }
+        ).fail(function () { navigator.id.logout(); } );
+    },
+    onlogout: function (assertion) {
+----
+
+Finally we add the two window.location.reloads, just to check they don't
+break any unit tests:
+
+[role="sourcecode"]
+.accounts/static/accounts.js
+[source,javascript]
+----
+        navigator.id.watch({
+            loggedInUser: user,
+            onlogin: function (assertion) {
+                $.post(
+                    urls.login,
+                    { assertion: assertion, csrfmiddlewaretoken: token }
+                )
+                .done(function () { window.location.reload(); })
+                .fail(function () { navigator.id.logout(); } );
+            },
+            onlogout: function (assertion) {
+                $.post(urls.logout)
+                .always(function () { window.location.reload(); });
+            }
+        });
+----
+
+If those chained `.done` and `.fail` calls are bugging you -- they bug me a
+little -- you can rewrite that as, eg:
+
+[source,javascript]
+----
+    var deferred = $.post(urls.logout);
+    deferred.always(function () { window.location.reload(); });
+----
+
+But async code is always a bit mind-bending.  I find it just about readable
+as it is:  "do a post to urls.login with the assertion and csrf token, when
+it's done, do a window reload, or if it fails, do a navigator.id.logout"
+
+We're approaching the moment of truth:  will our FTs get any further? First,
+let's adjust our initialize call:
+
+[role="sourcecode"]
+.lists/templates/base.html
+[source,html]
+----
+    <script>
+        $(document).ready( function () {
+            var user = "{{ user.email }}" || null;
+            var token = "{% csrf_token %}";
+            var urls = {
+                login: "TODO",
+                logout: "TODO",
+            };
+            Superlists.Accounts.initialize(navigator, user, token, urls);
+        });
+    </script>
+----
+
+And we run the FT...
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.LoginTest*]
+$ python3 manage.py test functional_tests.LoginTest
+Creating test database for alias 'default'...
+E
+======================================================================
+ERROR: test_login_with_persona (functional_tests.tests.test_login.LoginTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/superlists/functional_tests/tests/test_login.py", line 56,
+  in test_login_with_persona
+    self.wait_for_element_with_id('id_logout')
+  File "/workspace/superlists/functional_tests/tests/test_login.py", line 25,
+  in wait_for_element_with_id
+    lambda b: b.find_element_by_id(element_id)
+  File
+  "/usr/local/lib/python3.3/dist-packages/selenium/webdriver/support/wait.py",
+  line 71, in until
+    raise TimeoutException(message)
+selenium.common.exceptions.TimeoutException: Message: '' 
+
+ ---------------------------------------------------------------------
+Ran 1 test in 28.779s
+
+FAILED (errors=1)
+Destroying test database for alias 'default'...
+----
+
+Hooray!  I mean, I know it failed, but we saw it popping up the Persona
+dialog and getting through it and everything!  Next chapter: the server-side.
