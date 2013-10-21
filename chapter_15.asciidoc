@@ -1,7 +1,7 @@
 Server-side authentication and the admin site
 ---------------------------------------------
 
-Let's crack on with the server side of our new auth system
+Let's crack on with the server side of our new auth system.
 
 Mocking in Python
 ~~~~~~~~~~~~~~~~~
@@ -19,13 +19,13 @@ def login(request):
     return redirect('/')
 ----
 
-Our authenticate function is going to make calls out, over the internet, to Mozilla's
-servers.  We don't want that to happen in our unit test, so we'll want to mock
-out `authenticate`.
+Our authenticate function is going to make calls out, over the internet, to
+Mozilla's servers.  We don't want that to happen in our unit test, so we'll
+want to mock out `authenticate`.
 
-The popular 'mock' package was added to the standard libary as part of Python 3.
-It provides a magical object called a Mock, which is a bit like the sinon spy
-objects we saw in the last chapter, only much cooler.  Check this out:
+The popular 'mock' package was added to the standard libary as part of Python
+3. It provides a magical object called a Mock, which is a bit like the sinon
+spy objects we saw in the last chapter, only much cooler.  Check this out:
 
 ----
 >>> from unittest.mock import Mock
@@ -74,9 +74,9 @@ class LoginViewTest(TestCase):
 ----
 
 <1> The decorator called `patch` is a bit like the sinon `spy` function we 
-    saw in the last chapter.  It lets you specify an object you want to "mock out".
-    In this case we're mocking out the authenticate function, which we expect to
-    be using in 'accounts/views.py'. 
+    saw in the last chapter.  It lets you specify an object you want to "mock
+    out". In this case we're mocking out the authenticate function, which we
+    expect to be using in 'accounts/views.py'. 
 
 <2> The decorator adds the mock object as an additional argument to the
     function it's applied to.
@@ -229,17 +229,23 @@ the `auth_login` view as well:
 .lists/tests/test_views.py
 [source,python]
 ----
+from django.contrib.auth import get_user_model
 from django.http import HttpRequest
 from django.test import TestCase
 from unittest.mock import patch
+
+User = get_user_model()
+
 from accounts.views import login
 [...]
 
     @patch('accounts.views.authenticate')
-    def test_returns_OK(
+    def test_returns_OK_when_user_found(
         self, mock_authenticate
     ):
-        mock_authenticate.return_value = None
+        user = User.objects.create(email='a@b.com')
+        user.backend = '' # required for auth_login to work
+        mock_authenticate.return_value = user
         response = self.client.post('/accounts/login', {'assertion': 'a'})
         self.assertEqual(response.content.decode(), 'OK')
 
@@ -268,17 +274,21 @@ from accounts.views import login
         self.assertFalse(mock_auth_login.called)
 ----
 
-Notice that, for these tests, we go back to importing the view function directly,
-and calling it with an HttpRequest we build manually.  The Django Test Client does a
-bit too much magic, and for these highly mocky tests, we need more control -- we
-need to check that `auth_login` was passed the same `request` object that we called
-the view with, for example.
+Notice that, for these tests, we go back to importing the view function
+directly, and calling it with an HttpRequest we build manually.  The Django
+Test Client does a bit too much magic, and for these highly mocky tests, we
+need more control -- we need to check that `auth_login` was passed the same
+`request` object that we called the view with, for example.
 
 That gives us:
 
 ----
-AttributeError: <module 'accounts.views' from '/home/harry/Dropbox/book/source/chapter_15/superlists/accounts/views.py'> does not have the attribute 'auth_login'
-AttributeError: <module 'accounts.views' from '/home/harry/Dropbox/book/source/chapter_15/superlists/accounts/views.py'> does not have the attribute 'auth_login'
+AttributeError: <module 'accounts.views' from
+'/workspace/superlists/accounts/views.py'> does not have the attribute
+'auth_login'
+AttributeError: <module 'accounts.views' from
+'/workspace/superlists/accounts/views.py'> does not have the attribute
+'auth_login'
 AssertionError: '' != 'OK'
 + OK
 ----
@@ -356,9 +366,12 @@ Decoding this:
 * we then extract an email address, and either find an existing user with that 
   address, or create a new one.
 
-A rule of thumb for these sorts of tests:  any `if` means an extra test, and any
-`try/except` means an extra test, so this should be about 4 tests.  Let's start
-with one:
+1 if = 1 more test
+^^^^^^^^^^^^^^^^^^
+
+A rule of thumb for these sorts of tests:  any `if` means an extra test, and
+any `try/except` means an extra test, so this should be about 4 tests.  Let's
+start with one:
 
 
 [role="sourcecode"]
@@ -453,7 +466,12 @@ Next test:
 
 And that passes straight away -- we currently return None in all cases! 
 
-The next test involves a bit of duplication -- let's apply the "3 strikes" rule:
+
+patching at the Class level
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The next test involves a bit of duplication -- let's apply the "3 strikes"
+rule:
 
 
 [role="sourcecode"]
@@ -636,6 +654,9 @@ And that one we fix in the code:
         return self.get_user(email)
 ----
 
+Testing exception handling
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Last test:
 
 ----
@@ -648,6 +669,7 @@ Last test:
         self.assertEqual(user, new_user)
         self.assertEqual(user.email, 'a@b.com')
 ----
+
 
 This is another common mocking technique: patching out a function to raise
 an error. 
@@ -725,5 +747,237 @@ There we go! I prefer an early return rather than another nested if:
 
 And I 'think' we have ourselves an authentication backend.  It won't work yet
 though, because we need to define our custom user model next.
+
+
+A minimal custom user model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Django's built-in user model makes all sorts of assumptions about what
+information you want to track about users, from explicitly recodring
+first name and last name, to forcing you to use a username.   I'm a great
+believer in not storing information about users unless you absolutely must,
+so a User model that records an email address and nothing else sounds good to
+me!
+
+[role="sourcecode"]
+.accounts/tests/test_models.py
+[source,python]
+----
+from django.test import TestCase
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class UserModelTest(TestCase):
+
+    def test_user_is_valid_with_email_only(self):
+        user = User(email='a@b.com')
+        user.full_clean() # should not raise
+-----
+
+That gives us an expected failure:
+
+----
+django.core.exceptions.ValidationError: {'password': ['This field cannot be blank.'], 'username': ['This field cannot be blank.']}
+----
+
+Password?  Username?  Bah!  How about this?
+
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+from django.db import models
+
+class User(models.Model):
+    email = models.EmailField()
+----
+
+And we wire it up inside 'settings.py':
+
+[role="sourcecode"]
+.superlists/settings.py
+[source,python]
+----
+AUTH_USER_MODEL = 'accounts.User'
+----
+
+Now Django tells us off because it wants a couple of bits of metadata on any
+custom user model:
+
+----
+AttributeError: type object 'User' has no attribute 'USERNAME_FIELD'
+----
+
+So:
+
+----
+class User(models.Model):
+    email = models.EmailField()
+    USERNAME_FIELD = 'email'
+----
+
+Django wants more help:
+
+----
+AttributeError: type object 'User' has no attribute 'REQUIRED_FIELDS'
+----
+
+----
+class User(models.Model):
+    email = models.EmailField()
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ()
+----
+
+What now?
+
+----
+accounts.user: The USERNAME_FIELD must be unique. Add unique=True to the field parameters.
+----
+
+I'll do one better! Let's make the email field into the primary key, and
+remove the auto-generated `id` column:
+
+----
+class User(models.Model):
+    email = models.EmailField(unique=True)
+----
+
+That gets our tests running.  We'll write a test for this feature
+anyway, just as a form of documentation:
+
+----
+    def test_email_is_primary_key(self):
+        user = User()
+        self.assertFalse(hasattr(user, 'id'))
+----
+
+And just to double-check, we can temporarily switch back the `EmailField` to
+using `unique=True` instead of `primary_key=True`, just to see the test fail
+
+NOTE: People sometimes say that your tests are a form of documentation for your
+code -- they express what your requirements are of a particular class.
+Sometimes, if you forget why you've done something a particular way, going back
+and looking at the tests will give you the answer.  That's why it's important
+to give your tests explicit, verbose method names.
+
+Now we get an unexpected failure:
+
+----
+ERROR: test_returns_OK_when_user_found (accounts.tests.test_views.LoginViewTest)
+  File "/worskpace/superlists/accounts/tests/test_views.py", line 29, in test_returns_OK_when_user_found
+    response = self.client.post('/accounts/login', {'assertion': 'a'})
+[...]
+  File "/worskpace/superlists/accounts/views.py", line 8, in login
+    auth_login(request, user)
+[...]
+  File "/usr/local/lib/python3.3/dist-packages/django/contrib/auth/models.py", line 31, in update_last_login
+    user.save(update_fields=['last_login'])
+  File "/usr/local/lib/python3.3/dist-packages/django/db/models/base.py", line 526, in save
+    % ', '.join(non_model_fields))
+ValueError: The following fields do not exist in this model or are m2m fields: last_login
+----
+
+Ah.  Looks like Django is going to insist on us having a `last_login` field on
+our User model too.  Oh well.
+
+----
+from django.db import models
+from django.utils import timezone
+
+class User(models.Model):
+    email = models.EmailField(primary_key=True)
+    last_login = models.DateTimeField(default=timezone.now)
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ()
+----
+
+Right!  That works!
+
+----
+$ python3 manage.py test accounts
+Creating test database for alias 'default'...
+...............
+ ---------------------------------------------------------------------
+Ran 15 tests in 0.020s
+
+OK
+----
+
+The moment of truth:  will the FT pass?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+I think we're just about ready to try our functional test!  Let's just wire 
+up our base template.  Firstly, it needs to show a different message for
+logged-in and non-logged-in users:
+
+[role="sourcecode"]
+.lists/templates/base.html
+[source,html]
+----
+<nav class="navbar navbar-default" role="navigation">
+    <a class="navbar-brand" href="/">Superlists</a>
+    {% if user.email %}
+        <a class="btn navbar-btn navbar-right" id="id_logout" href="#">Log out</a>
+        <span class="navbar-text navbar-right">Logged in as {{ user.email }}</span>
+    {% else %}
+        <a class="btn navbar-btn navbar-right" id="id_login" href="#">Sign in</a>
+    {% endif %}
+</nav>
+----
+
+TODO: add check for email address in navbar to FT
+
+Lovely.  Then we wire up our various context variables for the call to
+`initialize`:
+
+[role="sourcecode"]
+.lists/templates/base.html
+[source,html]
+----
+<script>
+    $(document).ready( function () {
+        var user = "{{ user.email }}" || null;
+        var token = "{{ csrf_token }}";
+        var urls = {
+            login: "{% url 'login' %}",
+            logout: "TODO",
+        };
+        Superlists.Accounts.initialize(navigator, user, token, urls);
+    });
+</script>
+----
+
+So how does our FT get along?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.LoginTest*]
+Creating test database for alias 'default'...
+
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 26.382s
+
+OK
+Destroying test database for alias 'default'...
+-----
+
+Woohoo!
+
+
+Extending our Ft to test logout
+-------------------------------
+
+TODO
+
+
+Allowing users to save a list, and skipping the login process for future fts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+TODO
 
 
