@@ -21,35 +21,35 @@ class Chapter7Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        self.skip_with_check(23, 'the -b means ignore whitespace')
-        self.skip_with_check(26, 'leave static, for now')
-        self.skip_with_check(49, 'will now show all the bootstrap')
+        self.skip_with_check(24, 'the -b means ignore whitespace')
+        self.skip_with_check(27, 'leave static, for now')
+        self.skip_with_check(46, 'will now show all the bootstrap')
+        self.skip_with_check(49, 'projects') # tree showing where static goes
 
-        while self.pos < 31:
+        while self.pos < 32:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
         settings = self.sourcetree.get_contents('superlists/settings.py')
-        assert self.listings[31].filename == 'superlists/settings.py'
-        for line in self.listings[31].contents.split('\n'):
+        assert self.listings[32].filename == 'superlists/settings.py'
+        for line in self.listings[32].contents.split('\n'):
             assert line in settings
-        self.listings[31].skip = True
+        self.listings[32].skip = True
 
-        while self.pos < 51:
+        while self.pos < 48:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
         settings = self.sourcetree.get_contents('superlists/settings.py')
-        assert self.listings[51].filename == 'superlists/settings.py'
-        for line in self.listings[51].contents.split('\n'):
+        assert self.listings[48].filename == 'superlists/settings.py'
+        for line in self.listings[48].contents.split('\n'):
             assert line in settings
-        self.listings[51].skip = True
-        self.listings[52].skip = True # tree showing where static will go
+        self.listings[48].skip = True
 
         #import time
         #print(self.tempdir)
         #time.sleep(200)
-        while self.pos < 62:
+        while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 
