@@ -23,8 +23,8 @@ class Chapter7Test(ChapterTest):
         # skips
         self.skip_with_check(24, 'the -b means ignore whitespace')
         self.skip_with_check(27, 'leave static, for now')
-        self.skip_with_check(46, 'will now show all the bootstrap')
-        self.skip_with_check(49, 'projects') # tree showing where static goes
+        self.skip_with_check(47, 'will now show all the bootstrap')
+        self.skip_with_check(50, 'projects') # tree showing where static goes
 
         while self.pos < 32:
             print(self.pos)
@@ -36,15 +36,15 @@ class Chapter7Test(ChapterTest):
             assert line in settings
         self.listings[32].skip = True
 
-        while self.pos < 48:
+        while self.pos < 49:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
         settings = self.sourcetree.get_contents('superlists/settings.py')
-        assert self.listings[48].filename == 'superlists/settings.py'
-        for line in self.listings[48].contents.split('\n'):
+        assert self.listings[49].filename == 'superlists/settings.py'
+        for line in self.listings[49].contents.split('\n'):
             assert line in settings
-        self.listings[48].skip = True
+        self.listings[49].skip = True
 
         #import time
         #print(self.tempdir)
