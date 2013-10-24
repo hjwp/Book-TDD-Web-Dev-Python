@@ -21,7 +21,7 @@ class Chapter10Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        self.skip_with_check(30, '# review changes') # diff
+        self.skip_with_check(31, '# review changes') # diff
 
         # hack fast-forward
         skip = False

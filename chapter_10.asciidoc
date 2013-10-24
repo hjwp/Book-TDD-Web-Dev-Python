@@ -84,21 +84,25 @@ AssertionError: <p><label for="id_item_text">Item text:</label> <input
 id="id_item_text" name="item_text" type="text" /></p>
 ----
 
-It's already pretty close to what we have in 'home.html' and 'list.html'.  One
-thing we're missing is the placeholder attribute.  Let's make a unit test
-for that:
+It's already pretty close to what we have in 'base.html'.  We're missing
+the placeholder attribute and the bootstrap CSS classes.  Let's make our
+unit test into a test for that:
 
 [role="sourcecode"]
 .lists/tests/test_forms.py 
 [source,python]
 ----
-def test_form_renders_item_text_input(self):
-    form = ItemForm()
-    self.assertIn('placeholder="Enter a to-do item"', form.as_p())
+class ItemFormTest(TestCase):
+
+    def test_form_item_input_has_placeholder_and_css_classes(self):
+        form = ItemForm()
+        self.assertIn('placeholder="Enter a to-do item"', form.as_p())
+        self.assertIn('class="form-control input-lg"', form.as_p())
 ----
 
 That gives us a fail which justifies some real coding.  How can we customise
-the input for a form field?  Using a "widget":
+the input for a form field?  Using a "widget".  Here it is with just
+the placeholder:
 
 
 [role="sourcecode"]
@@ -107,9 +111,32 @@ the input for a form field?  Using a "widget":
 ----
 class ItemForm(forms.Form):
     item_text = forms.CharField(
-        widget=forms.fields.TextInput(attrs={'placeholder': 'Enter a to-do item'})
+        widget=forms.fields.TextInput(attrs={
+            'placeholder': 'Enter a to-do item',
+        }),
     )
 ----
+
+That gives:
+
+----
+AssertionError: 'class="form-control input-lg"' not found in '<p><label
+for="id_item_text">Item text:</label> <input id="id_item_text" name="item_text"
+placeholder="Enter a to-do item" type="text" /></p>'
+----
+
+And then:
+
+        widget=forms.fields.TextInput(attrs={
+            'placeholder': 'Enter a to-do item',
+            'class': 'form-control input-lg',
+        }),
+
+NOTE: doing this sort of widget customisation would get tedious if we 
+had a much larger, more complex form.  Check out
+https://django-crispy-forms.readthedocs.org/[django-crispy-forms] and
+http://django-floppyforms.readthedocs.org/en/latest/[django-floppy-forms]
+for some help.
 
 
 .Development-driven tests: using unit tests for exploratory coding.
@@ -167,11 +194,11 @@ for="id_text">Text:</label> <textarea cols="40" id="id_text" name="text"
 rows="10">\r\n</textarea></p>'
 ----
 
-You can see that it's using `name="text"` instead of `name="item_text"`. We
-can probably live with that. But it's using a `textarea` instead of a normal
-input, and that's not the UI we want for our app. Thankfully, you can override
-widgets for ModelForm fields, similarly to the way we did it with the normal
-form:
+It's lost our placeholder and CSS class. But you can also see that it's using
+`name="text"` instead of `name="item_text"`. We can probably live with that.
+But it's using a `textarea` instead of a normal input, and that's not the UI we
+want for our app. Thankfully, you can override widgets for ModelForm fields,
+similarly to the way we did it with the normal form:
 
 
 [role="sourcecode"]
@@ -184,15 +211,21 @@ class ItemForm(forms.models.ModelForm):
         model = Item
         fields = ('text',)
         widgets = {
-            'text': forms.fields.TextInput(
-                attrs={'placeholder': 'Enter a to-do item'}
-            ),
+            'text': forms.fields.TextInput(attrs={
+                'placeholder': 'Enter a to-do item',
+                'class': 'form-control input-lg',
+            }),
         }
 ----
 
-That gets the test passing. Now let's see if the ModelForm has picked up the
-same validation rules which we defined on the model.  We'll also learn how to
-pass data into the form, as if it came from the user:
+That gets the test passing. 
+
+Testing and customising form validation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Now let's see if the ModelForm has picked up the same validation rules which we
+defined on the model.  We'll also learn how to pass data into the form, as if
+it came from the user:
 
 //TODO consider skipping this?
 
@@ -215,7 +248,8 @@ ValueError: The Item could not be created because the data didn't validate.
 Good, the form won't allow you to save if you give it an empty item text.
 
 Now let's see if we can get it to use the specific error message that we 
-want:
+want.  The API for checking form validation 'before' we try and save any
+data is a function called `is_valid`:
 
 [role="sourcecode"]
 .lists/tests/test_forms.py (ch09l047)
@@ -383,10 +417,10 @@ OK, now let's try using it in the template:
 
 
 [role="sourcecode"]
-.lists/templates/home.html (ch09l053)
+.lists/templates/base.html (ch10l015)
 [source,html]
 ----
-    <form method="POST" action="{% url 'new_list' %}">
+    <form method="POST" action="{% block form_action %}{% endblock %}">
         {{ form.text }}
         {% csrf_token %}
         {% if error %}
@@ -539,13 +573,11 @@ code in line with the change.  We need to find any occurrences of the old id
 $ *grep -r id_new_item lists/*
 
 lists/static/base.css:#id_new_item {
-lists/templates/list.html:        <input name="item_text" id="id_new_item"
-placeholder="Enter a to-do item"/>
 ----
 
-That's two changes, and similarly for the `name`:
+That's one changes, and similarly for the `name`:
 
-[role="dofirst-ch09l059-1"] 
+[role="dofirst-ch10l021"] 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*grep -Ir item_text lists*]
@@ -553,7 +585,6 @@ lists/views.py:        Item.objects.create(text=request.POST['item_text'],
 list=list_)
 lists/views.py:            Item.objects.create(text=request.POST['item_text'],
 list=list_)
-lists/tests/test_forms.py:    def test_form_renders_item_text_input(self):
 lists/tests/test_views.py:            data={'item_text': 'A new list item'}
 lists/tests/test_views.py:            data={'item_text': 'A new list item'}
 lists/tests/test_views.py:        response = self.client.post('/lists/new',
@@ -563,7 +594,7 @@ data={'item_text': ''})
 
 Once we're done, we re-run the unit tests to check everything still works:
 
-[role="dofirst-ch09l059-2"] 
+[role="dofirst-ch10l022"] 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test lists*] 
@@ -647,7 +678,7 @@ class NewListTest(TestCase):
         self.assertIsInstance(response.context['form'], ItemForm)
 ----
 
-//TODO: split out into two tests?
+//TODO: split out into two tests, or make a note that it needs to be done.
 
 
 Sure enough, the form isn't being passed to the template:
@@ -691,14 +722,16 @@ At this point the tests will fail, because we're not yet using the form
 to display errors in the template:
 
 [role="sourcecode"]
-.lists/templates/home.html (ch09l068)
+.lists/templates/home.html (ch10l026)
 [source,html]
 ----
     <form method="POST" action="{% url 'new_list' %}">
         {{ form.text }}
         {% csrf_token %}
-        {% if form.errors %} #<1>
-            <div class="error">{{ form.text.errors }}</div> #<2>
+        {% if form.errors %} #<1> 
+            <div class="form-group has-error">
+                <div class="help-block">{{ form.text.errors }}</div> #<2>
+            </div>
         {% endif %}
     </form>
 ----
@@ -706,7 +739,7 @@ to display errors in the template:
 <1> `form.errors` contains a list of all the errors for the form
 <2> `form.text.errors` is a list of just the errors for the `text` field.
 
-//TODO div vs p, either mention it or change the earlier one.
+//TODO div vs span, either mention it or change the earlier one.
 
 That gets the unit tests passing.  How about the FTs?
 
