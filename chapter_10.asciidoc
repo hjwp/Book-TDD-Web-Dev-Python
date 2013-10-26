@@ -7,6 +7,10 @@ views. Django encourages you to use Form classes to do the work of validating
 user input, and choosing what error messages to display. Let's see how that
 works.
 
+As we go through the chapter, we'll also improve our view unit tests. Currently,
+many of them test several things at once.  We'll move them towards best practice,
+where each has a single assertion.
+
 
 Moving validation logic into a form
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -346,16 +350,18 @@ $ *git commit -m "new form for list items"*
 ----
 
 
-Using the form in our home page
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using the form in our views
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There's a sort of corollary to the "deploy as early as possible" lean
-methodology, which is "merge code as early as possible".  In other words: 
-while building this bit of forms code, it would be easy to go on for ages,
-adding more and more functionality to the form -- I should know, because that's
-exactly what I did during the drafting of this chapter, and I ended up doing
-all sorts of work making an all-singing, all-dancing form class before I
-realised it wouldn't really work for our most basic use case.
+I had originally thought to extend this form to capture uniqueness validation
+as well as empty-item validation.  But there's a sort of corollary to the
+"deploy as early as possible" lean methodology, which is "merge code as early
+as possible".  In other words: while building this bit of forms code, it would
+be easy to go on for ages, adding more and more functionality to the form -- I
+should know, because that's exactly what I did during the drafting of this
+chapter, and I ended up doing all sorts of work making an all-singing,
+all-dancing form class before I realised it wouldn't really work for our most
+basic use case.
 
 So, instead, try and use your new bit of code as soon as possible.  This makes
 sure you never have unused bits of code lying around, and that you start
@@ -363,35 +369,44 @@ checking your code against "the real world" as soon as possible.
 
 We have a form class which can render some HTML and do validation of at
 least one kind of error -- let's start using it!  We should be able to use
-it in our 'home.html' template, and in our new list view.  
+it in our 'base.html' template, and so in all of our views.
 
-Let's start in our unit tests for the home view. Let's replace the old-style
+Using the form in a view with a GET request
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Let's start in our unit tests for the home view. We'll replace the old-style
 `test_home_page_returns_correct_html` with a set of tests that use the Django
-Test Client.  We leave the old test in at first, to check that our new test is
+Test Client.  We leave the old test in at first, to check that our new tests are
 equivalent:
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch09l051)
+.lists/tests/test_views.py (ch10l013)
 [source,python]
 ----
 from lists.forms import ItemForm
 [...]
-
 
     def test_home_page_returns_correct_html(self):
         request = HttpRequest()
         [...]
 
 
-    def test_home_page_renders_home_template_with_form(self):
+    def test_home_page_renders_home_template(self):
         response = self.client.get('/')
-        self.assertTemplateUsed(response, 'home.html')
-        self.assertIsInstance(response.context['form'], ItemForm)
+        self.assertTemplateUsed(response, 'home.html') #<1>
+
+
+    def test_home_page_uses_item_form(self):
+        response = self.client.get('/')
+        self.assertIsInstance(response.context['form'], ItemForm) #<2>
 ----
 
-//TODO: mention that assertIsInstance can be dangerous.  what's the effect on maintenance? should check interface
+<1> We'll use the helper method `assertTemplateUsed` to replace our old
+    manual test of the template
 
-//TODO: split out into two tests??
+<2> We use `assertIsInstance` to check that our view uses the right form
+
+//TODO: mention that assertIsInstance can be dangerous.  what's the effect on maintenance? should check interface
 
 That gives us:
 
@@ -399,10 +414,11 @@ That gives us:
 KeyError: 'form'
 ----
 
+
 So we use the form in our home page view:
 
 [role="sourcecode"]
-.lists/views.py (ch09l052)
+.lists/views.py (ch10l014)
 [source,python]
 ----
 [...]
@@ -424,18 +440,16 @@ OK, now let's try using it in the template:
         {{ form.text }}
         {% csrf_token %}
         {% if error %}
-            <p class="error">{{ error }}</p>
-        {% endif %}
-    </form>
+             <div class="form-group has-error">
 ----
 
 `{{ form.text }}` renders just the HTML input for the `text` field of the form.
 
-Now our old test is out of date:
+Now the old test is out of date:
 
 ----
     self.assertEqual(response.content.decode(), expected_html)
-AssertionError: '<!DOCTYPE html>\n<html>\n    <head>\n        <meta
+AssertionError: '<!DOCTYPE html>\n<html lang="en">\n    <head>\n
 [...]
 ----
 
@@ -466,10 +480,10 @@ form :
 
 ----
 [...]
-      <form method="POST" action="/lists/new">
--         <input id="id_text" name="text" placeholder="Enter a to-do item"
-type="text" />
-+         
+                          <form method="POST" action="/lists/new">
+-                             <input class="form-control input-lg" id="id_text"
+name="text" placeholder="Enter a to-do item" type="text" />
++
 [...]
 ----
 
@@ -513,7 +527,7 @@ the logic change.
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff* # review changes in home.html, views.py and its tests
-$ *git commit -am "use new form in view, simplify tests. NB breaks stuff!"*
+$ *git commit -am "use new form in home_page, simplify tests. NB breaks stuff!"*
 ----
 
 Let's fix the functional tests.  A quick grep shows us there are several
@@ -599,9 +613,9 @@ Once we're done, we re-run the unit tests to check everything still works:
 ----
 $ pass:quotes[*python3 manage.py test lists*] 
 Creating test database for alias 'default'...
-...............
+................
  ---------------------------------------------------------------------
-Ran 15 tests in 0.126s
+Ran 16 tests in 0.126s
 
 OK
 Destroying test database for alias 'default'...
@@ -649,7 +663,7 @@ though, let's do a commit
 [subs="specialcharacters,quotes"]
 ----
 $ *git status*
-$ *git commit -am"rename all item input ids and names"*
+$ *git commit -am"rename all item input ids and names. still broken"*
 ----
 
 Using the form in a view that takes POST requests
@@ -658,7 +672,7 @@ Using the form in a view that takes POST requests
 Now we adjust the unit tests for the `new_list` view. Instead of manually
 checking for a hard-coded error string, we check for the `EMPTY_LIST_ERROR`
 from 'forms.py', and we can also check that a form of the right class
-was passed to the template:
+was passed to the template.
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch09l066)
@@ -722,10 +736,10 @@ At this point the tests will fail, because we're not yet using the form
 to display errors in the template:
 
 [role="sourcecode"]
-.lists/templates/home.html (ch10l026)
+.lists/templates/base.html (ch10l026)
 [source,html]
 ----
-    <form method="POST" action="{% url 'new_list' %}">
+     <form method="POST" action="{% block form_action %}{% endblock %}">
         {{ form.text }}
         {% csrf_token %}
         {% if form.errors %} #<1> 
@@ -741,67 +755,23 @@ to display errors in the template:
 
 //TODO div vs span, either mention it or change the earlier one.
 
-That gets the unit tests passing.  How about the FTs?
+What does that do to our tests?
 
-
-[subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests*]
-Creating test database for alias 'default'...
-...
- ---------------------------------------------------------------------
-Ran 3 tests in 12.154s
-
-OK
-Destroying test database for alias 'default'...
+FAIL: test_validation_errors_end_up_on_lists_page
+(lists.tests.test_views.ListViewTest)
+[...]
+AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
+list item' in response
 ----
 
-Woohoo!  Can you feel that feeling of relief wash over you?  We've just made
-a fairly major change to our small app -- that input field, its name and ID,
-is absolutely critical to making everything work.  We've touched 7 or 8
-different files, doing a refactor that's quite involved... This is the kind of
-thing that, without tests, would seriously worry me.  In fact, I might well
-have decided that it wasn't worth messing with code that works...  But, because
-we have a full tests suite, we can delve around in it, tidying things up, safe
-in the knowledge that the tests are there to spot any mistakes we make.  It
-just makes it that much likelier that you're going to keep refactoring, keep
-tidying up, keep gardening, keep tending your code, keep everything neat and
-tidy and clean and smooth and precise and concise and functional.
+An unexpected failure -- it's actually in the tests for our final view,
+`view_list`.  Because we've changed the way errors are displayed in 'all'
+templates, we're no longer showing the error that we manually pass into the
+template.
 
-Definitely time for a commit.
-
-[subs="specialcharacters,quotes"]
-----
-$ *git diff* 
-$ *git commit -am"use form in home page, rename item_text and id_new_item attrs"*
-----
-
-
-Before we forget, let's add our check that invalid new list forms don't create
-a pointless list object:
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch09l069)
-[source,python]
-----
-    def test_validation_errors_sent_back_to_home_page_template(self):
-        response = self.client.post('/lists/new', data={'text': ''})
-        self.assertEqual(List.objects.all().count(), 0)
-        self.assertEqual(Item.objects.all().count(), 0)
-        self.assertTemplateUsed(response, 'home.html')
-        expected_error =  escape("You can't have an empty list item")
-        self.assertContains(response, expected_error)
-----
-
-That should pass. Commit, strike items off list!
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am"extra test for not saving List on invalid input"*
-----
-
-* remove duplication of validation logic in views.
-* [strikethrough line-through]#add test that we don't save superfluous lists#
+That means we're going to need to re-work `view_list` as well, before we can
+get back to a working state.
 
 
 Using the form in the final view
@@ -811,7 +781,7 @@ This view handles both GET and POST requests.  Let's start with checking
 the form is used in GET requests.  Let's add a new test for that:
 
 
-//ch10l022
+//ch10l023-1
 [role="sourcecode"]
 .lists/tests/test_views.py
 [source,python]
@@ -843,6 +813,7 @@ def view_list(request, list_id):
     form = ItemForm()
     return render(request, 'list.html', {'list': list_, "form": form, "error": error})
 ----
+
 
 A helper method for several short tests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -881,20 +852,22 @@ we can make three separate tests without duplicating lots of lines of code.
 It often feels more natural to write view tests as a single, monolithic
 block of assertions -- the view should do this and this and this then 
 return that with this.  But breaking things out into multiple tests is
-definitely worthwhile.  Helper methods are one of the tools that lower
-the psychological barrier.
+definitely worthwhile; as we saw in previous chapters, it helps you isolate
+the exact problems you may have, when you later come and change your code.
+Helper methods are one of the tools that lower the psychological barrier.
+
+
 
 ----
-Ran 18 tests in 0.086s
-
-OK
+AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
+list item' in response
 ----
 
-All of those tests still pass. Now let's see if we can refactor the code to
-use our form.  Here's a first cut:
+Now let's see if we can properly rewrite the view to use our form.  Here's a
+first cut:
 
 
-//ch10l023
+//ch10l025
 [role="sourcecode"]
 .lists/views.py
 [source,python]
@@ -910,39 +883,79 @@ def view_list(request, list_id):
     return render(request, 'list.html', {'list': list_, "form": form})
 ----
 
-That gets us a fail in our sanity check -- errors aren't appearing in 
-the template:
+That gets the unit tests passing.  
 
 ----
-FAIL: test_invalid_input_renders_form_with_errors
-(lists.tests.test_views.ListViewTest)
-AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
-list item' in response
+Ran 19 tests in 0.086s
+
+OK
 ----
 
-We've removed our hand-rolled error. Getting it back involves a tweak to the
-template:
+How about the FTs?
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests*]
+Creating test database for alias 'default'...
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 12.154s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+Woohoo!  Can you feel that feeling of relief wash over you?  We've just made
+a fairly major change to our small app -- that input field, its name and ID,
+is absolutely critical to making everything work.  We've touched 7 or 8
+different files, doing a refactor that's quite involved... This is the kind of
+thing that, without tests, would seriously worry me.  In fact, I might well
+have decided that it wasn't worth messing with code that works...  But, because
+we have a full tests suite, we can delve around in it, tidying things up, safe
+in the knowledge that the tests are there to spot any mistakes we make.  It
+just makes it that much likelier that you're going to keep refactoring, keep
+tidying up, keep gardening, keep tending your code, keep everything neat and
+tidy and clean and smooth and precise and concise and functional.
+
+* [strikethrough line-through]#remove duplication of validation logic in views.#
+* add test that we don't save superfluous lists
+
+Definitely time for a commit.
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* 
+$ *git commit -am"use form in all views, back to working state"*
+----
+
+
+Before we forget, let's add our check that invalid new list forms don't create
+a pointless list object:
 
 [role="sourcecode"]
-.lists/templates/list.html (ch10l026-1)
-[source,html]
+.lists/tests/test_views.py (ch09l069)
+[source,python]
 ----
-    {% if form.errors %}
-        <div class="error">{{ form.text.errors }}</div>
-    {% endif %}
+    def test_validation_errors_sent_back_to_home_page_template(self):
+        response = self.client.post('/lists/new', data={'text': ''})
+        self.assertEqual(List.objects.all().count(), 0)
+        self.assertEqual(Item.objects.all().count(), 0)
+        self.assertTemplateUsed(response, 'home.html')
+        self.assertContains(response, escape(EMPTY_LIST_ERROR))
 ----
 
-That gets the tests passing, and while we're at it we can use the form to
-render the input too:
+That should pass. Commit, strike final item off list!
 
-[role="sourcecode"]
-.lists/templates/list.html (ch10l026-2)
-[source,html]
+[subs="specialcharacters,quotes"]
 ----
-    <form method="POST" action="{% url 'view_list' list.id %}">
-        {{ form.text }}
-        {% csrf_token %}
+$ *git commit -am"extra test for not saving List on invalid input"*
 ----
+
+* [strikethrough line-through]#remove duplication of validation logic in views.#
+* [strikethrough line-through]#add test that we don't save superfluous lists#
+
+
 
 
 Using the form's own save method
@@ -1017,7 +1030,7 @@ creating the object yourself, or using the `commit=False` argument to save,
 but this is by far the neatest.
 
 ----
-Ran 19 tests in 0.086s
+Ran 20 tests in 0.086s
 
 OK
 ----
@@ -1043,7 +1056,7 @@ def new_list(request):
 Re-run the test to check everything still passes:
 
 ----
-Ran 19 tests in 0.086s
+Ran 20 tests in 0.086s
 
 OK
 ----
