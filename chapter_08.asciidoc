@@ -1258,20 +1258,95 @@ def deploy():
     _update_virtualenv(source_folder)
     _update_static_files(source_folder)
     _update_database(source_folder)
+----
 
+<1> You'll want to update the `REPO_URL` variable with the URL of your
+    own git repo on its code sharing site
 
+<2> `env.host` will contain the address of the server we've specified at the 
+    command-line, eg 'superlists.ottg.eu'.
+
+Hopefully each of those helper functions have fairly self-descriptive names.
+Because any function in a fabfile can theoretically be invoked from the
+command- line, I've used the convention of a leading underscore to indicate
+that they're not meant to be part of the "public API" of the fabfile. Here
+they are in chronological order.
+
+Here's how we build our directory structure, in a way that doesn't fall 
+down if it already exists:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
 def _create_directory_structure_if_necessary(site_name):
     base_folder = path.join(SITES_FOLDER, site_name)
-    run('mkdir -p %s' % (base_folder)) #<3><4>
+    run('mkdir -p %s' % (base_folder)) #<1><2>
     for subfolder in ('database', 'static', 'virtualenv', 'source'):
         run('mkdir -p %s/%s' % (base_folder, subfolder))
+----
 
+<1> `run` is the most common fabric command.  It says "run this shell command
+    on the server".
+
+<2> `mkdir -p` is a useful flavor of `mkdir`, which is better than mkdir in two
+    ways: it can create directories several levels deep, and it only creates
+    them if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory
+    'foo' but also its parent directory 'bar' if it needs to.  It also won't
+    complain if 'bar' already exists.
+
+
+Next we want to pull down our source code:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
 def _get_latest_source(source_folder):
-    if exists(path.join(source_folder, '.git')): #<5><6>
-        run('cd %s && git reset --hard' % (source_folder,)) #<7><8>
-        run('cd %s && git pull' % (source_folder,)) #<8>
+    if exists(path.join(source_folder, '.git')): #<1>
+        run('cd %s && git fetch' % (source_folder,)) #<2><3>
     else:
-        run('git clone %s %s' % (REPO_URL, source_folder)) #<8>
+        run('git clone %s %s' % (REPO_URL, source_folder)) #<4>
+    current_commit = local("git log -n 1 --format=%H", capture=True) #<5>
+    run('cd %s && git reset --hard %s' % (source_folder, current_commit))
+----
+
+<1> `exists` checks whether a directory or file already exists on the server.
+    We look for the '.git' hidden folder to check whether the repo has already
+    been cloned in that folder.
+
+<2> Many commands start with a `cd` in order to set the current working
+    directory. Fabric doesn't have any state, so it doesn't remember what
+    directory you're in from one `run` to the next.
+    footnote:[there is a fabric "cd" command, but I figured it was one thing
+    too many to add in this file]
+
+<3> `git fetch` inside an existing repository pulls down all the latest commits
+    from the web
+
+<4> Alternatively we use `git clone` with the repo URL to bring down a fresh
+    source tree.
+
+<5> Fabric's `local` command runs a command on your local machine -- it's just
+    a wrapper around `subprocess.Popen` really, but it's quite convenient.
+    Here we capture the output from that `git log` invocation to get the hash
+    of the current commit that's in your local tree.  That means the server
+    will end up with whatever code is currently checked out on your machine
+    (as long as you've pushed it up to the server).
+
+<6> We `reset --hard` to that commit, which will blow away any current changes
+    in the server's code directory.  
+
+
+Next we update our settings file, to set the `ALLOWED_HOSTS` and `DEBUG`, and
+to create a new secret key:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+from django.utils.crypto import get_random_string
+[...]
 
 def _update_settings(source_folder, site_name):
     settings_path = path.join(source_folder, 'superlists/settings.py')
@@ -1280,61 +1355,48 @@ def _update_settings(source_folder, site_name):
 
 def _update_virtualenv(source_folder):
     virtualenv_folder = path.join(source_folder, '../virtualenv')
-    if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<11>
+    if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<1>
         run('virtualenv --python=python3.3 %s' % (virtualenv_folder,))
-    run('%s/bin/pip install -r %s/requirements.txt' % (
+    run('%s/bin/pip install -r %s/requirements.txt' % ( #<2>
             virtualenv_folder, source_folder
     ))
+----
 
 
+<1> We look inside the virtualenv folder for the `pip` executable as a way of
+    checking whether it already exists.
+
+<2> Then we use `pip install -r` like we did earlier.
+
+
+Updating static files is a single command:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
 def _update_static_files(source_folder):
-    run('cd %s && ../virtualenv/bin/python3 manage.py collectstatic --noinput' % ( # <12>
+    run('cd %s && ../virtualenv/bin/python3 manage.py collectstatic --noinput' % ( # <1>
         source_folder,
     ))
+----
 
+<1> We use the virtualenv binaries folder whenever we need to run a Django 
+    'manage.py' command, to make sure we get the virtualenv version of django,
+    not the system one.
 
+Finally, we update the database with `syncdb`:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
 def _update_database(source_folder):
     run('cd %s && ../virtualenv/bin/python3 manage.py syncdb --noinput' % (
         source_folder,
     ))
-
-
 ----
 
-//TODO: fix git reset code
-
-A few explanations of what's going on:
-
-<1> You'll want to update the `REPO_URL` variable with the URL of your
-own git repo on its code sharing site
-<2> `env.host` will contain the address of the server we've specified at the 
-command-line, eg 'superlists.ottg.eu'.
-<3> `run` is the most common fabric command.  It says "run this shell command
-on the server".
-<4> `mkdir -p` is a useful flavor of `mkdir`, which is better than mkdir in two
-ways: it can create directories several levels deep, and it only creates them
-if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory 'foo' but
-also its parent directory 'bar' if it needs to.  It also won't complain if
-'bar' already exists.
-<5> `exists` checks whether a directory or file already exists on the server.
-<6> We look for the '.git' hidden folder to check whether the repo has already
-been cloned in a particular folder
-<7> Many commands start with a `cd` in order to set the current working
-directory. Fabric doesn't have any state, so it doesn't remember what directory
-you're in from one `run` to the next.
-<8> We `reset --hard` to blow away any current changes on the server's code,
-directory (not that there should be any!).  In both the `clone` and `git pull`,
-it's assumed that we want to deploy whatever the head of the 'master' branch
-is, so if you're using a different branch you'll have to tweak this.
-<9> The fabric `sed` command does a string substitution in a file, here it's
-changing DEBUG from True to False.  
-<10> `append` just adds a line to the end of a file (it's clever enough not to
-bother if the line is already there)
-<11> We look inside the virtualenv folder for the `pip` executable as a way of
-checking whether it already exists.
-<12> We use the virtualenv version of Python whenever we need to run a Django 
-'manage.py' command, to make sure we get the virtualenv version of django, not
-the system one.
 
 We can try this command out on our existing staging site -- the script should
 work for an existing site as well as for a new one.  If you like words with
@@ -1345,54 +1407,41 @@ if run twice...
 ----
 $ pass:quotes[*cd deploy_tools*]
 $ pass:quotes[*fab deploy:host=harry@superlists-staging.ottg.eu*]
+
 [superlists-staging.ottg.eu] Executing task 'deploy'
 [superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu
-[superlists-staging.ottg.eu] Login password for 'harry': 
 [superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu/database
 [superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu/static
 [superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu/virtualenv
 [superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu/source
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && git reset --hard
+[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && git fetch
+[localhost] local: git log -n 1 --format=%H
+[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && git reset --hard 85a6c87d5d93c25b265ad0e712f402c76e2e01c3
+[superlists-staging.ottg.eu] out: HEAD is now at 85a6c87 Add a fabfile for automated deploys
 [superlists-staging.ottg.eu] out: 
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && git pull
-[superlists-staging.ottg.eu] out: remote: Counting objects: 28, done.
-[superlists-staging.ottg.eu] out: remote: Compressing objects: 100% (16/16), done.
-[superlists-staging.ottg.eu] out: remote: Total 26 (delta 12), reused 24 (delta 10)
-[superlists-staging.ottg.eu] out: Unpacking objects: 100% (26/26), done.
-[superlists-staging.ottg.eu] out: From https://github.com/hjwp/book-example
-[superlists-staging.ottg.eu] out:    cd86199..2f776ca  master     -> origin/master
-[superlists-staging.ottg.eu] out: Updating 8203253..f6b7c73
-[superlists-staging.ottg.eu] out: Fast-forward
-[superlists-staging.ottg.eu] out:  deploy_tools/fabfile.py                     |   51 +++++++++++++++++++++++++++
-[superlists-staging.ottg.eu] out:  deploy_tools/gunicorn-upstart.template.conf |    9 +++++
-[superlists-staging.ottg.eu] out:  deploy_tools/nginx.template.conf            |   12 +++++++
-[superlists-staging.ottg.eu] out:  deploy_tools/provisioning_notes.md          |   36 +++++++++++++++++++
-[superlists-staging.ottg.eu] out:  4 files changed, 108 insertions(+)
-[superlists-staging.ottg.eu] out:  create mode 100644 deploy_tools/fabfile.py
-[superlists-staging.ottg.eu] out:  create mode 100644 deploy_tools/gunicorn-upstart.template.conf
-[superlists-staging.ottg.eu] out:  create mode 100644 deploy_tools/nginx.template.conf
-[superlists-staging.ottg.eu] out:  create mode 100644 deploy_tools/provisioning_notes.md
-[superlists-staging.ottg.eu] out: HEAD is now at f6b7c73 tweaks to fabfile
-[superlists-staging.ottg.eu] out: 
-[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py
-[superlists-staging.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists-staging.ottg.eu"]' >> /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py
+
+[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
+[superlists-staging.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists-staging.ottg.eu"]' >> "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
+[superlists-staging.ottg.eu] run: echo 'SECRET_KEY = '\\''4p2u8fi6)bltep(6nd_3tt9r41skhr%ttyjatf4+n#)jr=vd-q'\\''' >> "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/secret_key.py)"
+[superlists-staging.ottg.eu] run: echo 'from .secret_key import SECRET_KEY' >> "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
+
 [superlists-staging.ottg.eu] run: /home/harry/sites/superlists-staging.ottg.eu/source/../virtualenv/bin/pip install -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt
 [superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): Django==1.5.1 in ./sites/superlists-staging.ottg.eu/virtualenv/lib/python3.3/site-packages (from -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt (line 1))
-[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): argparse==1.2.1 in /usr/lib/python3.3 (from -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt (line 2))
-[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): wsgiref==0.1.2 in /usr/lib/python3.3 (from -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt (line 3))
+[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): gunicorn==17.5 in ./sites/superlists-staging.ottg.eu/virtualenv/lib/python3.3/site-packages (from -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt (line 2))
 [superlists-staging.ottg.eu] out: Cleaning up...
 [superlists-staging.ottg.eu] out: 
+
 [superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && ../virtualenv/bin/python3 manage.py collectstatic --noinput
 [superlists-staging.ottg.eu] out: 
-[superlists-staging.ottg.eu] out: 0 static files copied, 9 unmodified.
+[superlists-staging.ottg.eu] out: 0 static files copied, 11 unmodified.
 [superlists-staging.ottg.eu] out: 
+
 [superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && ../virtualenv/bin/python3 manage.py syncdb --noinput
 [superlists-staging.ottg.eu] out: Creating tables ...
 [superlists-staging.ottg.eu] out: Installing custom SQL ...
 [superlists-staging.ottg.eu] out: Installing indexes ...
 [superlists-staging.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
 [superlists-staging.ottg.eu] out: 
-
 Done.
 Disconnecting from superlists-staging.ottg.eu... done.
 ----
@@ -1413,49 +1462,95 @@ So, let's try using it for our live site!
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*fab deploy:host=harry@superlists.ottg.eu*]
+
+$ fab deploy --host=superlists.ottg.eu
 [superlists.ottg.eu] Executing task 'deploy'
 [superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu
-[superlists.ottg.eu] Login password for 'harry':  <1>
 [superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/database
 [superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/static
 [superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/virtualenv
 [superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/source
 [superlists.ottg.eu] run: git clone https://github.com/hjwp/book-example.git /home/harry/sites/superlists.ottg.eu/source
 [superlists.ottg.eu] out: Cloning into '/home/harry/sites/superlists.ottg.eu/source'...
-[superlists.ottg.eu] out: remote: Counting objects: 461, done.
-[superlists.ottg.eu] out: remote: Compressing objects: 100% (262/262), done.
-[superlists.ottg.eu] out: Receiving objects: 100% (461/461), 137.86 KiB, done.
-[superlists.ottg.eu] out: Resolving deltas: 100% (208/208), done.
+[superlists.ottg.eu] out: remote: Counting objects: 3128, done.
+[superlists.ottg.eu] out: Receiving objects:   0% (1/3128)   
+[...]
+[superlists.ottg.eu] out: Receiving objects: 100% (3128/3128), 2.60 MiB | 829 KiB/s, done.
+[superlists.ottg.eu] out: Resolving deltas: 100% (1545/1545), done.
 [superlists.ottg.eu] out: 
-[superlists.ottg.eu] run: virtualenv /home/harry/sites/superlists.ottg.eu/source/../virtualenv
-[superlists.ottg.eu] out: New python executable in /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/python
-[superlists.ottg.eu] out: Installing setuptools............done.
-[superlists.ottg.eu] out: Installing pip...............done.
+
+[localhost] local: git log -n 1 --format=%H
+[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && git reset --hard 6c8615b6df4d766cb1f54d17d570e42d2db678f7
+[superlists.ottg.eu] out: HEAD is now at 6c8615b use a secret key file
 [superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' "$(echo /home/harry/sites/superlists.ottg.eu/source/superlists/settings.py)"
+[superlists.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists.ottg.eu"]' >> "$(echo /home/harry/sites/superlists.ottg.eu/source/superlists/settings.py)"
+[superlists.ottg.eu] run: echo 'SECRET_KEY = '\\''mqu(ffwid5vleol%ke^jil*x1mkj-44wz(7$f&^q2p15^4a(u!'\\''' >> "$(echo /home/harry/sites/superlists.ottg.eu/source/superlists/secret_key.py)"
+[superlists.ottg.eu] run: echo 'from .secret_key import SECRET_KEY' >> "$(echo /home/harry/sites/superlists.ottg.eu/source/superlists/settings.py)"
+[superlists.ottg.eu] run: virtualenv --python=python3.3 /home/harry/sites/superlists.ottg.eu/source/../virtualenv
+[superlists.ottg.eu] out: Already using interpreter /usr/bin/python3.3
+[superlists.ottg.eu] out: Using base prefix '/usr'
+[superlists.ottg.eu] out: New python executable in /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/python3.3
+[superlists.ottg.eu] out: Also creating executable in /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/python
+[superlists.ottg.eu] out: Installing Setuptools..............................................................................................................................................................................................................................done.
+[superlists.ottg.eu] out: Installing Pip.....................................................................................................................................................................................................................................................................................................................................done.
+[superlists.ottg.eu] out: 
+
 [superlists.ottg.eu] run: /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/pip install -r /home/harry/sites/superlists.ottg.eu/source/requirements.txt
 [superlists.ottg.eu] out: Downloading/unpacking Django==1.5.1 (from -r /home/harry/sites/superlists.ottg.eu/source/requirements.txt (line 1))
-[superlists.ottg.eu] out:   Downloading Django-1.5.1.tar.gz (8.0MB): 8.0MB downloaded
-[superlists.ottg.eu] out:   Running setup.py egg_info for package Django
+[superlists.ottg.eu] out:   Downloading Django-1.5.1.tar.gz (8.0MB): 
 [...]
-[superlists.ottg.eu] out: Successfully installed Django
+[superlists.ottg.eu] out:   Downloading Django-1.5.1.tar.gz (8.0MB): 100%  8.0MB
+[superlists.ottg.eu] out:   Running setup.py egg_info for package Django
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     warning: no previously-included files matching '__pycache__' found under directory '*'
+[superlists.ottg.eu] out:     warning: no previously-included files matching '*.py[co]' found under directory '*'
+[superlists.ottg.eu] out: Downloading/unpacking gunicorn==17.5 (from -r /home/harry/sites/superlists.ottg.eu/source/requirements.txt (line 2))
+[superlists.ottg.eu] out:   Downloading gunicorn-17.5.tar.gz (367kB): 100%  367kB
+[...]
+[superlists.ottg.eu] out:   Downloading gunicorn-17.5.tar.gz (367kB): 367kB downloaded
+[superlists.ottg.eu] out:   Running setup.py egg_info for package gunicorn
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out: Installing collected packages: Django, gunicorn
+[superlists.ottg.eu] out:   Running setup.py install for Django
+[superlists.ottg.eu] out:     changing mode of build/scripts-3.3/django-admin.py from 664 to 775
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     warning: no previously-included files matching '__pycache__' found under directory '*'
+[superlists.ottg.eu] out:     warning: no previously-included files matching '*.py[co]' found under directory '*'
+[superlists.ottg.eu] out:     changing mode of /home/harry/sites/superlists.ottg.eu/virtualenv/bin/django-admin.py to 775
+[superlists.ottg.eu] out:   Running setup.py install for gunicorn
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     Installing gunicorn_paster script to /home/harry/sites/superlists.ottg.eu/virtualenv/bin
+[superlists.ottg.eu] out:     Installing gunicorn script to /home/harry/sites/superlists.ottg.eu/virtualenv/bin
+[superlists.ottg.eu] out:     Installing gunicorn_django script to /home/harry/sites/superlists.ottg.eu/virtualenv/bin
+[superlists.ottg.eu] out: Successfully installed Django gunicorn
 [superlists.ottg.eu] out: Cleaning up...
 [superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && ../virtualenv/bin/python3 manage.py collectstatic --noinput
 [superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/base.css'
+[superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/bootstrap/fonts/glyphicons-halflings-regular.ttf'
 [...]
-[superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/bootstrap/img/glyphicons-halflings-white.png'
+[superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/bootstrap/css/bootstrap.css'
 [superlists.ottg.eu] out: 
-[superlists.ottg.eu] out: 9 static files copied.
+[superlists.ottg.eu] out: 11 static files copied.
 [superlists.ottg.eu] out: 
-[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && ../virtualenv/bin/python manage.py syncdb --noinput
+
+[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && ../virtualenv/bin/python3 manage.py syncdb --noinput
 [superlists.ottg.eu] out: Creating tables ...
 [superlists.ottg.eu] out: Creating table auth_permission
 [...]
+[superlists.ottg.eu] out: Creating table lists_item
+[superlists.ottg.eu] out: Installing custom SQL ...
 [superlists.ottg.eu] out: Installing indexes ...
 [superlists.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
 [superlists.ottg.eu] out: 
 
+
 Done.
 Disconnecting from superlists.ottg.eu... done.
+
 ----
 
 
