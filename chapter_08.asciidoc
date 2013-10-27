@@ -1242,10 +1242,10 @@ that we've passed in.
 .deploy_tools/fabfile.py
 [source,python]
 ----
+from django.utils.crypto import get_random_string
 from fabric.contrib.files import append, exists, sed
 from fabric.api import env, run
 from os import path
-
 
 REPO_URL = 'https://github.com/hjwp/book-example.git' #<1>
 SITES_FOLDER = '/home/harry/sites'
@@ -1350,9 +1350,40 @@ from django.utils.crypto import get_random_string
 
 def _update_settings(source_folder, site_name):
     settings_path = path.join(source_folder, 'superlists/settings.py')
-    sed(settings_path, "DEBUG = True", "DEBUG = False") #<9>
-    append(settings_path, 'ALLOWED_HOSTS = ["%s"]' % (site_name,)) #<10>
+    sed(settings_path, "DEBUG = True", "DEBUG = False") #<1>
+    append(settings_path, 'ALLOWED_HOSTS = ["%s"]' % (site_name,)) #<2>
+    secret_key_file = path.join(source_folder, 'superlists/secret_key.py')
+    if not exists(secret_key_file): #<3>
+        key = get_random_string(50, 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)')
+        append(secret_key_file, "SECRET_KEY = '%s'" % (key,))
+        append(settings_path, 'from .secret_key import SECRET_KEY')
+----
 
+//TODO: swap out the secret key at this point.
+
+<1> The fabric `sed` command does a string substitution in a file, here it's
+    changing DEBUG from True to False.  
+
+<2> `append` just adds a line to the end of a file (it's clever enough not to
+    bother if the line is already there).
+
+<3> Django uses `SECRET_KEY` for some if its crypto -- cookies and CSRF
+    protection. It's good practice to make sure the secret key on the server
+    is different from the one in your (possibly public) source code repo. This
+    code will generate a new key to import into settings, if there isn't one
+    there already (once you have a secret key, it should stay the same between
+    deploys).  More info in the
+    https://docs.djangoproject.com/en/1.5/topics/signing/[Django docs]
+    
+NOTE: Other people suggest using environment variables to set things like 
+secret keys, you should use whatever is most secure in your environment.
+
+Next we create or update the virtualenv:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
 def _update_virtualenv(source_folder):
     virtualenv_folder = path.join(source_folder, '../virtualenv')
     if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<1>
