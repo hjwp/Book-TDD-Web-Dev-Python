@@ -3,8 +3,10 @@ Server-side authentication and the admin site
 
 Let's crack on with the server side of our new auth system.
 
-WARNING: this chapter is not finished, but it does get as far as a working
-login.
+NOTE: as with all new chapters, I'd really appreciate feedback.  How is 
+the pace?  What do you think of the "left as an exercise for the reader"
+bit at the end?
+
 
 Mocking in Python
 ~~~~~~~~~~~~~~~~~
@@ -225,8 +227,10 @@ def login(request):
 Fine, but our authenticate view also needs to call the Django auth.login 
 function if authenticate returns a user, and then it needs to return 
 something other than an empty response -- since this is an Ajax view,
-it should probably return some kind of JSON.  We'll need to mock out 
-the `auth_login` view as well:
+it doesn't need to return HTML, just an "OK" string will do.  We'll need to
+mock out the `auth_login` view as well:
+
+
 
 [role="sourcecode"]
 .lists/tests/test_views.py
@@ -277,7 +281,7 @@ from accounts.views import login
         self.assertFalse(mock_auth_login.called)
 ----
 
-<1> I should explain this us of `get_user_model` from `django.contrib.auth`.
+<1> I should explain this use of `get_user_model` from `django.contrib.auth`.
     Its job is to find the project's User model, and it works whether you're
     using the standard User model or a custom one (like we will be)
 
@@ -368,10 +372,10 @@ class PersonaAuthenticationBackend(object):
 
 Decoding this:
 
-* we take an assertion and send it off to Mozilla using `requests.post`
-* we check its response code (`resp.ok`), and then check for a `status=okay` in
+* We take an assertion and send it off to Mozilla using `requests.post`.
+* We check its response code (`resp.ok`), and then check for a `status=okay` in
   the response JSON.
-* we then extract an email address, and either find an existing user with that 
+* We then extract an email address, and either find an existing user with that 
   address, or create a new one.
 
 1 if = 1 more test
@@ -1168,6 +1172,23 @@ User and Session objects we create will end up in the same database as the
 test server.  When we switch to trying to run this against the staging server,
 we'll need to use a different technique.  More on this in future chapters.
 
+.On test fixtures
+*******************************************************************************
+When we pre-populate the database with test data, as we've done here with the
+User object and its associated Session object, what we're doing is setting up
+a "test fixture".
+
+Django comes with built-in support for saving database objects as JSON (using
+the `manage.py dumpdata`), and automatically loading them in your test runs 
+using the `fixtures` class attribute on `TestCase`.
+
+More and more people are starting 
+http://blog.muhuk.com/2012/04/09/carl-meyers-testing-talk-at-pycon-2012.html[to
+say]: don't use JSON fixtures.  They're a nightmare to maintain when your model
+changes.  Instead, if you can, load data directly using the Django ORM, or look
+into a tool like https://factoryboy.readthedocs.org/en/latest/[factory_boy]
+*******************************************************************************
+
 
 [roly="sourcecode"]
 .functional_tests/tests/test_my_lists.py
@@ -1214,5 +1235,70 @@ And that gets us:
 ----
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate element: {"method":"link text","selector":"My lists"}' ; Stacktrace: 
 ----
+
+
+To implement this, we'll need:
+
+* A new template 'my_lists.html', and some tweaks to 'base.html'
+* An optional foreign key on the List model
+* To change the `new_list` view, with optional addition of `list_.owner` from
+  `request.user`. 
+* And/or change `ItemForm.save` to take the `request.user`
+    * A possible refactor could be: rename `ItemForm` to `NewListItemForm`.
+    Maybe its `save` method doesn't need the `for_list` arg after all?
+* A new view + urls entry in 'accounts', `my_lists`.
+
+Rather than spell everything out exactly for you, I thought I would just show
+you the new unit tests I had to write:
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+class MyListsViewTest(TestCase):
+    def test_uses_my_lists_template(self):
+    def test_passes_user_in_context(self):
+    def test_template_displays_lists_using_first_item_text(self):
+
+class ItemFormTest(TestCase):
+    def test_form_save_sets_owner_if_real_user(self):
+    def test_form_save_ignores_anon_user(self):
+
+class ListModelTest(TestCase):
+    def test_get_absolute_url(self):
+    def test_can_optionally_set_owner(self):
+
+class NewListTest(TestCase):
+    def test_POST_from_real_user_sets_owner_on_list(self):
+----
+
+Can you come up with an implementation on your own?  The FT should tell
+you once everything works OK.  Then, compare yourself against my implementation
+https://github.com/hjwp/book-example/tree/chapter_15[on GitHub]
+
+Here's a couple of tips:
+
+* You can't really use `self.client.login` in the view tests.  I called the 
+  raw view function instead
+
+* You'll probably find the `AnonymousUser` class useful, it's at
+  `django.contrib.auth.models`
+
+* You'll probably need to add a new `{% block %}` to the 'base.html' template.
+
+
+Wrap-up (under construction)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Use mock, but use it sparingly
+* Dedupe your FTs: every single FT doesn't need to test every single feature.
+  But be aware that FTs are there to catch strange and unpredictable between
+  features.  Try to keep your "cheats" for deduplication reasonably plausible
+  in the real world.
+
+
+TODO: test what happens if Persona is down? Show how to test?
+TODO: deploy.  Adapt FTs to be able to create users on the staging server
+TODO: wider discussion of "test fixtures"?
 
 
