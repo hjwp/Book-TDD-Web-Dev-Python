@@ -10,6 +10,6 @@ test: build
 	asciidoc $<
 
 clean:
-	rm -i $(HTML_PAGES)
+	rm -v $(HTML_PAGES)
 
 .PHONY = test clean
