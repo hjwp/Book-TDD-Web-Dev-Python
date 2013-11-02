@@ -80,6 +80,7 @@ class SourceTree(object):
                 os.path.join(os.path.dirname(__file__), '../downloads/bootstrap-2-rezipped.zip'),
                 os.path.join(cwd, 'bootstrap.zip')
             )
+            #TODO: fix this for new bootrstrap
             return
         process = subprocess.Popen(
             command, shell=True, cwd=cwd, executable='/bin/bash',
@@ -91,11 +92,11 @@ class SourceTree(object):
         process._command = command
         self.processes.append(process)
         if 'runserver' in command:
-            return #test this another day
+            # can't read output, stdout.read just hangs.
+            return
+
         if user_input and not user_input.endswith('\n'):
             user_input += '\n'
-        #import time
-        #time.sleep(1)
         output, _ = process.communicate(user_input)
         if process.returncode and not ignore_errors:
             if 'test' in command:

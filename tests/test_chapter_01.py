@@ -37,9 +37,8 @@ class Chapter1Test(ChapterTest):
 
         self.assert_directory_tree_correct(self.listings[4])
 
-        runserver_output = self.run_command(self.listings[5])
-        #self.assert_console_output_correct(runserver_output, self.listings[6])
-        self.listings[6].was_checked = True #TODO - fix
+        self.run_command(self.listings[5]) #runserver
+        self.skip_with_check(6, 'Validating models...')
 
         second_ft_run_output = self.run_command(self.listings[7], cwd=self.tempdir)
         self.assertFalse(second_ft_run_output)
@@ -91,7 +90,7 @@ class Chapter1Test(ChapterTest):
             " )",
             " ",
             " # Make this unique, and don't share it with anybody.",
-            "-SECRET_KEY = 'k0(t##0$lx9d#7do0d-47tdxo)pvs+knkc@&mfapc(e%_74ghq'",
+            "-SECRET_KEY = 't216r6m7-kpptidvy7-r$=rswe%e8+a4of0^h@4w85bd9d90_!'",
             "+SECRET_KEY = '-pr7xq9-786$n9vasjc1!covnbayhfw%p0@zm9c-p-(-4y#lqf'",
             " ",
             " # List of callables that know how to import templates from various sources.",

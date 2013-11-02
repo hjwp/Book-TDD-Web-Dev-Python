@@ -2,19 +2,16 @@ SOURCES := $(wildcard *.asciidoc)
 HTML_PAGES := $(patsubst %.asciidoc, %.html, ${SOURCES})
 RUN_ASCIIDOC = python2.7 `which asciidoc` 
 
-build: $(HTML_PAGES)
 
 book.html: $(SOURCES)
-	$(RUN_ASCIIDOC) book.asciidoc
+
+build: $(HTML_PAGES)
 
 test: build
 	./run_all_tests.sh
 
 %.html: %.asciidoc
-	python2.7 `which asciidoc` $<
-
-testtest01: chapter_01.html
-	py.test -s ./tests/test_chapter_01.py
+	$(RUN_ASCIIDOC) $<
 
 test_chapter_%: chapter_%.html
 	py.test -s ./tests/$@.py

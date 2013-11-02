@@ -6,9 +6,6 @@ from book_tester import (
     ChapterTest,
     CodeListing,
     Command,
-    Output,
-    parsed_html,
-    parse_listing,
 )
 
 class Chapter2Test(ChapterTest):
