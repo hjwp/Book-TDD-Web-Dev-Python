@@ -35,33 +35,41 @@ class Chapter8Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        self.listings[4].skip = True # domain name registration
-        self.listings[5].skip = True # domain name registration
-        self.listings[17].skip = True # preview of future tree
-        self.listings[32].skip = True # comment in server commands
+        self.skip_with_check(4, 'manage.py test functional_tests')
+        self.skip_with_check(5, '123-reg')
 
-        assert self.listings[35] == 'python3 manage.py runserver'
-        self.listings[35].skip = True # TODO: - test this, ignore errors and check stderr
-        self.listings[36].skip = True # TODO: - test this, ignore errors and check stderr
+        self.skip_with_check(32, 'replace the URL in the next line with')
+        # TODO: - test this, ignore errors and check stderr
+        self.skip_with_check(35, 'python3 manage.py runserver')
+        self.skip_with_check(36, 'ImportError')
 
-        assert self.listings[37] == 'pip-3.3 install virtualenv'
-        self.listings[37].skip = True # TODO: - test this
+        self.skip_with_check(37, 'pip-3.3 install virtualenv') # TODO: - test this
 
-        assert self.listings[54] == 'git push'
-        self.listings[54].skip = True
+        self.skip_with_check(56, 'git push')
+        self.skip_with_check(61, 'installed Django') #TODO test this
+        self.skip_with_check(63, '0 errors found') #TODO test this
 
-        assert 'installed Django' in self.listings[59]
-        self.listings[59].skip = True #TODO test this
+        reboot_pos = 67
+        assert self.listings[reboot_pos] == 'sudo reboot'
+        assert self.listings[reboot_pos + 1] == 'sudo service nginx reload'
 
-        assert '0 errors found' in self.listings[61]
-        self.listings[61].skip = True #TODO test this
+        # find two runservers, the first one of which should be killed
+        # before we syncdb and restart it, and the second one should be
+        # killed before we switch to gunicorn
+        syncdb_pos = 73
+        assert 'syncdb' in self.listings[syncdb_pos], 'wrong pos in listings\n{}'.format(
+            '\n'.join('{} {}'.format(ix, l) for ix, l in enumerate(self.listings))
+        )
+        self.skip_with_check(syncdb_pos + 1, 'Creating tables')
+        self.skip_with_check(syncdb_pos + 2, 'ls')
+        self.skip_with_check(syncdb_pos + 3, 'database.sqlite')
+        assert 'Creating tables' in self.listings[syncdb_pos + 1]
+        assert 'runserver' in self.listings[syncdb_pos - 3]
+        gunicorn_pos = 83
+        assert 'gunicorn superlists.wsgi:application' in self.listings[gunicorn_pos]
+        assert 'runserver' in self.listings[gunicorn_pos - 6]
 
-        assert self.listings[66] == 'sudo service nginx reload'
-        assert 'runserver' in self.listings[68]
-        assert 'runserver' in self.listings[74]
-        assert self.listings[65] == 'sudo reboot'
-
-        while self.pos < 66:
+        while self.pos < reboot_pos + 1:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
@@ -71,18 +79,25 @@ class Chapter8Test(ChapterTest):
             'sudo sed -i "s/# server_names_hash_bucket_size/server_names_hash_bucket_size/g" /etc/nginx/nginx.conf'
         )
 
-        while self.pos < 72:
+        while self.pos < syncdb_pos:
             print(self.pos)
             self.recognise_listing_and_process_it()
+        self._cleanup_runserver()
+        syncdb_output = self.run_server_command(self.listings[syncdb_pos])
+        self.assertIn('Creating tables', syncdb_output)
+        self.skip_with_check(syncdb_pos + 1, 'Creating tables')
+        ls_output = self.run_server_command(self.listings[syncdb_pos + 2])
+        self.assertIn('database.sqlite', ls_output)
+        self.pos = syncdb_pos + 4
 
-        # kill runserver so we can re-run it later
+        while self.pos < gunicorn_pos:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
         self._cleanup_runserver()
 
-        while self.pos < 200:
+        while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
-        #print(self.tempdir)
-        #time.sleep(200)
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(self.chapter_no)
