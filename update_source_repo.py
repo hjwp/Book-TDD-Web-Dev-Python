@@ -34,6 +34,7 @@ def update_sources_for_chapter(chapter_no):
 
 if __name__ == '__main__':
     arguments = docopt(__doc__)
+    subprocess.check_output(['git', 'submodule', 'init'])
     if arguments['<chapter_no>']:
         update_sources_for_chapter(int(arguments['<chapter_no>']))
     else:
