@@ -77,12 +77,14 @@ def fix_creating_database_line(actual_text):
         actual_text = '\n'.join(actual_lines)
     return actual_text
 
-
+import sys
 
 class ChapterTest(unittest.TestCase):
     maxDiff = None
 
     def setUp(self):
+        print('encoding', sys.getdefaultencoding())
+        print('LANG', os.environ['LANG'])
         self.sourcetree = SourceTree()
         self.tempdir = self.sourcetree.tempdir
         self.processes = []
