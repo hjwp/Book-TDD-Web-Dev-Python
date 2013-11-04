@@ -9,6 +9,7 @@ book.html: $(SOURCES)
 build: $(HTML_PAGES)
 
 test: build
+	git submodule init
 	./update_source_repo.py
 	./run_all_tests.sh
 

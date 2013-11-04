@@ -20,6 +20,7 @@ def update_sources_for_chapter(chapter_no):
         THIS_FOLDER, 'source', 'chapter_{0:02d}'.format(chapter_no), 'superlists'
     )
     print('updating', target)
+    subprocess.check_output(['git', 'submodule', 'update', target])
     chapter_before = 'chapter_{0:02d}'.format(chapter_no - 1)
     current_commit = subprocess.check_output(['git', 'log', '-n 1', '--format=%H'], cwd=target).decode().strip()
     subprocess.check_output(['git', 'fetch'], cwd=target)
