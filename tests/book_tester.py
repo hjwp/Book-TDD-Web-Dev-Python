@@ -77,14 +77,11 @@ def fix_creating_database_line(actual_text):
         actual_text = '\n'.join(actual_lines)
     return actual_text
 
-import sys
 
 class ChapterTest(unittest.TestCase):
     maxDiff = None
 
     def setUp(self):
-        print('encoding', sys.getdefaultencoding())
-        print('LANG', os.environ['LANG'])
         self.sourcetree = SourceTree()
         self.tempdir = self.sourcetree.tempdir
         self.processes = []
@@ -100,7 +97,7 @@ class ChapterTest(unittest.TestCase):
     def parse_listings(self):
         base_dir = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
         filename = 'chapter_{0:02d}.html'.format(self.chapter_no)
-        with open(os.path.join(base_dir, filename)) as f:
+        with open(os.path.join(base_dir, filename), encoding='utf-8') as f:
             raw_html = f.read()
         parsed_html = html.fromstring(raw_html)
         #chapter = parsed_html.cssselect('div.sect1')[self.chapter_no]
