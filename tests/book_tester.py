@@ -110,7 +110,7 @@ class ChapterTest(unittest.TestCase):
             'git diff -b repo/chapter_{0:02d}'.format(chapter)
         ))
         if diff != '':
-            raise AssertionError('Final diff was not empty, was:\n%s' % (diff,))
+            raise AssertionError('Final diff was not empty, was:\n{}'.format(diff,))
 
 
     def write_to_file(self, codelisting):

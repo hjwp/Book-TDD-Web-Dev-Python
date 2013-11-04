@@ -12,6 +12,7 @@ test: build
 	git submodule init
 	python3 update_source_repo.py
 	export LANG=en_US.UTF-8
+	export PYTHONIOENCODING=utf-8 
 	./run_all_tests.sh
 
 %.html: %.asciidoc
@@ -20,6 +21,7 @@ test: build
 test_chapter_%: chapter_%.html
 	python3 update_source_repo.py $(subst test_chapter_,,$@)
 	export LANG=en_US.UTF-8
+	export PYTHONIOENCODING=utf-8 
 	py.test -s ./tests/$@.py
 
 clean:
