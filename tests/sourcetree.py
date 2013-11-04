@@ -119,7 +119,7 @@ class SourceTree(object):
     def start_with_checkout(self, chapter):
         self.run_command('mkdir superlists', cwd=self.tempdir)
         self.run_command('git init .')
-        self.run_command('git remote add repo %s' % (self.get_local_repo_path(chapter),))
+        self.run_command('git remote add repo "%s"' % (self.get_local_repo_path(chapter),))
         self.run_command('git fetch repo')
         self.run_command('git checkout chapter_{0:02d}'.format(chapter - 1))
         self.chapter = chapter
