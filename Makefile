@@ -10,14 +10,14 @@ build: $(HTML_PAGES)
 
 test: build
 	git submodule init
-	./update_source_repo.py
+	python3 update_source_repo.py
 	./run_all_tests.sh
 
 %.html: %.asciidoc
 	$(RUN_ASCIIDOC) $<
 
 test_chapter_%: chapter_%.html
-	./update_source_repo.py $(subst test_chapter_,,$@)
+	python3 update_source_repo.py $(subst test_chapter_,,$@)
 	py.test -s ./tests/$@.py
 
 clean:
