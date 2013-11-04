@@ -11,6 +11,7 @@ build: $(HTML_PAGES)
 test: build
 	git submodule init
 	python3 update_source_repo.py
+	export LANG=en_US.UTF-8
 	./run_all_tests.sh
 
 %.html: %.asciidoc
@@ -18,6 +19,7 @@ test: build
 
 test_chapter_%: chapter_%.html
 	python3 update_source_repo.py $(subst test_chapter_,,$@)
+	export LANG=`python3 -c "import locale; print('.'.join(locale.getdefaultlocale()))"`
 	py.test -s ./tests/$@.py
 
 clean:
