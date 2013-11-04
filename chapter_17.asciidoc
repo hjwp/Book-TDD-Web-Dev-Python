@@ -210,4 +210,88 @@ Now what?
 selenium.common.exceptions.WebDriverException: Message: 'The browser appears to have exited before we could connect. The output was: b"\\n(process:19757): GLib-CRITICAL **: g_slice_set_config: assertion \'sys_page_size == 0\' failed\\nError: no display specified\\n"' 
 ----
 
+Setting up a virtual display so the FTs can run headless
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+As you can see from the traceback, Firefox is unable to start because the
+server doesn't have a display.
+
+There are two ways to deal with this problem. The first is to switch to using
+a headless browser, like PhantomJS or SlimerJS.  Those tools definitely have
+their place -- they're faster, for one thing -- but they also have
+disadvantages.  The first is that they're not "real" web browsers, so you can't
+be sure you're going to catch all the strange quirks and behaviours of the
+actual browsers your users use.  The second is that they behave quite
+differently inside Selenium, and will require substantial amounts of re-writing
+of FT code.
+
+TIP: I would look into using headless browsers as a "dev-only" tool, to speed
+up the running of FTs on the developer's machine, while the tests on the CI
+server use actual browsers.
+
+The alternative is to set up a virtual display:  we get the server to pretend
+it has a screen attached to it, so Firefox runs happily. There's a few tools
+out there to do this, we'll use one called "Xvfb" (X Virtual Framebuffer) 
+because it's easy to install and use, and because it has a convenient Jenkins
+plug-in
+
+TIP: check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
+as a way of controlling virtual displays from Python.
+
+We go back to our project and hit "Configure" again, then find the section
+called "Build Environment".  Using the virtual display is as simple as
+ticking the box marked "Start Xvfb before the build, and shut it down after.":
+
+.Sometimes config is easy
+image::images/jenkins_start_xvfb.png["Tickbox saying we want Xvfb"]
+
+
+The build does much better now,
+
+----
+[...]
+Xvfb starting$ /usr/bin/Xvfb :2 -screen 0 1024x768x24 -fbdir /var/lib/jenkins/2013-11-04_03-27-221510012427739470928xvfb
+[...]
++ python manage.py test lists accounts
+...................................................
+ ---------------------------------------------------------------------
+Ran 51 tests in 0.410s
+
+OK
+Creating test database for alias 'default'...
+Destroying test database for alias 'default'...
++ pip install selenium
+Requirement already satisfied (use --upgrade to upgrade): selenium in /var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
+Cleaning up...
+
++ python manage.py test functional_tests
+.....E.
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.tests.test_my_lists.MyListsTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/var/lib/jenkins/jobs/Superlists/workspace/functional_tests/tests/test_my_lists.py", line 53, in test_logged_in_users_lists_are_saved_as_my_lists
+    self.browser.find_element_by_link_text('Click cows').click()
+    [...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate element: {"method":"link text","selector":"Click cows"}' ; Stacktrace: 
+[...]
+ ---------------------------------------------------------------------
+Ran 7 tests in 89.275s
+
+FAILED (errors=1)
+Creating test database for alias 'default'...
+[{'secure': False, 'domain': 'localhost', 'name': 'sessionid', 'expiry': 1920011311, 'path': '/', 'value': 'a8d8bbde33nreq6gihw8a7r1cc8bf02k'}]
+Destroying test database for alias 'default'...
+Build step 'Virtualenv Builder' marked build as failure
+Xvfb stopping
+Finished: FAILURE
+----
+
+Pretty close!  To debug that failure, we'll need screenshots though.
+
+Taking screenshots
+~~~~~~~~~~~~~~~~~~
+
+TODO - take screenshots with selenium
+TODO - add jenkins plugin to display them?
+TODO: Appendix on switching to PhantomJS?  Discuss wider use of "wait-for", etc
