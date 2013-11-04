@@ -12,6 +12,7 @@ test: build
 	git submodule init
 	python3 update_source_repo.py
 	export LANG=en_US.UTF-8
+	export LANG=en_US.UTF-8
 	./run_all_tests.sh
 
 %.html: %.asciidoc
