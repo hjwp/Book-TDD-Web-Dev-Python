@@ -193,7 +193,7 @@ class ChapterTest(unittest.TestCase):
         commands.append(command)
         output = subprocess.check_output(commands).decode('utf8')
 
-        print(output)
+        print(output.encode('utf-8'))
         return output
 
 
@@ -214,7 +214,7 @@ class ChapterTest(unittest.TestCase):
             )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
-        print('checking expected output', expected)
+        print('checking expected output', expected.encode('utf-8'))
         self.assertEqual(
             type(expected), Output,
             "passed a non-Output to run-command:\n%s" % (expected,)
@@ -228,8 +228,6 @@ class ChapterTest(unittest.TestCase):
             self.assertCountEqual(actual.split('\n'), expected.split())
             expected.was_checked = True
             return
-        #print('actual before')
-        #print(actual)
         actual_fixed = wrap_long_lines(actual)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
@@ -243,8 +241,6 @@ class ChapterTest(unittest.TestCase):
         if '\t' in actual_fixed:
             actual_fixed = re.sub(r'\s+', ' ', actual_fixed)
             expected_fixed = re.sub(r'\s+', ' ', expected_fixed)
-        #print('actual fixed')
-        #print(actual_fixed)
 
         actual_lines = actual_fixed.split('\n')
         expected_lines = expected_fixed.split('\n')
@@ -278,7 +274,7 @@ class ChapterTest(unittest.TestCase):
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.sourcetree.run_command('tree -I *.pyc --noreport', cwd)
-        print('checking tree', expected_tree)
+        print('checking tree', expected_tree.encode('utf-8'))
         # special case for first listing:
         original_tree = expected_tree
         if expected_tree.startswith('superlists/'):
