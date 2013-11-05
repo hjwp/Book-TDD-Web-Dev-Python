@@ -109,8 +109,15 @@ class ChapterTest(unittest.TestCase):
         diff = self.run_command(Command(
             'git diff -b repo/chapter_{0:02d}'.format(chapter)
         ))
-        if diff != '':
-            raise AssertionError('Final diff was not empty, was:\n{}'.format(diff,))
+        print('checking final diff', diff)
+        for line in diff.split('\n'):
+            if line and line.startswith('-') or line.startswith('+'):
+                rest_of_line = line[1:]
+                if rest_of_line.startswith('--') or rest_of_line.startswith('++'):
+                    continue
+
+                if rest_of_line.strip():
+                    raise AssertionError('Final diff was not empty, was:\n{}'.format(diff))
 
 
     def write_to_file(self, codelisting):
