@@ -26,13 +26,13 @@ def update_sources_for_chapter(chapter_no):
     current_chapter = 'chapter_{0:02d}'.format(chapter_no)
     chapter_before = 'chapter_{0:02d}'.format(chapter_no - 1)
     commit_specified_by_submodule = subprocess.check_output(['git', 'log', '-n 1', '--format=%H'], cwd=target).decode().strip()
+    print('current commit', commit_specified_by_submodule)
     subprocess.check_output(['git', 'fetch'], cwd=target)
-    #print('current commit', current_commit)
     if chapter_no > 1:
         subprocess.check_output(['git', 'checkout', chapter_before], cwd=target)
         subprocess.check_output(['git', 'reset', '--hard', 'origin/{}'.format(chapter_before)], cwd=target)
-        subprocess.check_output(['git', 'checkout', current_chapter], cwd=target)
-        subprocess.check_output(['git', 'reset', '--hard', commit_specified_by_submodule], cwd=target)
+    subprocess.check_output(['git', 'checkout', current_chapter], cwd=target)
+    subprocess.check_output(['git', 'reset', '--hard', commit_specified_by_submodule], cwd=target)
 
 def main(arguments):
     if getpass.getuser() == 'harry':
