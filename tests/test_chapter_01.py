@@ -76,7 +76,7 @@ class Chapter1Test(ChapterTest):
         self.run_command(commit)
         self.listings[27].was_run = True # TODO
         local_repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../source/chapter_01/superlists'))
-        self.run_command(Command('git remote add repo %s' % (local_repo_path,)))
+        self.run_command(Command('git remote add repo "%s"' % (local_repo_path,)))
         self.run_command(Command('git fetch repo'))
         diff = self.run_command(Command('git diff -b repo/chapter_01'))
         actual_diff_lines = diff.strip().split('\n')
