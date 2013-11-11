@@ -1,0 +1,168 @@
+[[appendix3]]
+[appendix]
+Provisioning with Ansible
+-------------------------
+
+We used fabric to automate deploying new versions of the source code to our
+servers.  But provisioning a fresh server, and updating the nginx and 
+gunicorn config files, was all left as a manual process.
+
+This is a job that's increasingly given to tools called "Configuration
+Management" or "Continuous Deployment" tools.  Chef and Puppet were the
+first popular ones, and in the Python world there's Salt and Ansible.
+
+Of all of these, Ansible is the easiest to get started with.  We
+can get it working with just two files
+
+    pip install ansible  # Python 2 sadly
+
+
+Inventory file, `deploy_tools/inventory.ansible` -- this defines what
+servers we can run against:
+
+.deploy_tools/inventory.ansible
+----
+[live]
+superlists.ottg.eu
+
+[staging]
+superlists-staging.ottg.eu
+
+[local]
+localhost ansible_ssh_port=6666 ansible_host=127.0.0.1
+----
+
+(the local entry is a virtualbox vm, with port forwarding for ports 22 and 80
+set up)
+
+
+Installing system packages and nginx
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Next the ansible "playbook", which defines what to do on the server.  This
+uses a syntax called YAML:
+
+[source,yaml]
+.deploy_tools/provision.ansible.yaml
+----
+---
+
+- hosts: all
+
+  sudo: yes
+
+  vars: 
+      host: $inventory_hostname
+
+  tasks:
+    - name: make sure required packages are installed
+      apt: pkg=nginx,git,python3,python3-pip state=present
+    - name: make sure virtualenv is installed
+      shell: pip3 install virtualenv
+
+    - name: allow long hostnames in nginx
+      lineinfile: 
+        dest=/etc/nginx/nginx.conf 
+        regexp='(\s+)#? ?server_names_hash_bucket_size' 
+        backrefs=yes
+        line='\1server_names_hash_bucket_size 64;'
+
+    - name: add nginx config to sites-available
+      template: src=./nginx.conf.j2 dest=/etc/nginx/sites-available/{{ host }}
+      notify:
+          - restart nginx
+
+    - name: add symlink in nginx sites-enabled
+      file: src=/etc/nginx/sites-available/{{ host }} dest=/etc/nginx/sites-enabled/{{ host }} state=link
+      notify:
+          - restart nginx
+----
+
+The vars section defines a variable "host" for convenience, which we can then
+use in the various filenames and pass to the config files themselves.  It comes
+from $inventory_hostname, which is the domain name of the server we're running
+against at the time.
+
+
+In this section, we install our required software using `apt`, tweak the nginx
+config to allow long hostnames using a regular expression replacer, and then
+we write the nginx config file using a template.  This is a tweaked version
+of the template file we saved into 'deploy_tools/nginx.template.conf', but it
+now uses the Jinja2 templating syntax, which is a lot like the Django template
+syntax:
+
+.deploy_tools/nginx.conf.j2
+----
+server {
+    listen 80;
+    server_name {{ host }};
+
+    location /static {
+        alias /home/harry/sites/{{ host }}/static;
+    }
+
+    location / {
+        proxy_set_header Host $host;
+        proxy_pass http://unix:/tmp/{{ host }}.socket;
+    }
+}
+----
+
+Configuring gunicorn, and using handlers to restart services
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Here's the second half of our playbook:
+
+
+[source,yaml]
+.deploy_tools/provision.ansible.yaml
+----
+    - name: write gunicorn init script
+      template: src=./gunicorn-upstart.conf.j2 dest=/etc/init/gunicorn-{{ host }}.conf
+      notify:
+          - restart gunicorn
+
+    - name: make sure nginx is running
+      service: name=nginx state=running
+    - name: make sure gunicorn is running
+      service: name=gunicorn-{{ host }} state=running
+
+  handlers:
+    - name: restart nginx
+      service:  name=nginx state=restarted
+
+    - name: restart gunicorn
+      service:  name=gunicorn-{{ host }} state=restarted
+----
+
+Once again we use a template for our gunicorn config:
+
+----
+description "Gunicorn server for {{ host }}"
+
+start on net-device-up
+stop on shutdown
+
+respawn
+
+chdir /home/harry/sites/{{ host }}/source
+exec ../virtualenv/bin/gunicorn \
+    --bind unix:/tmp/{{ host }}.socket \
+    --access-logfile ../access.log \
+    --error-logfile ../error.log \
+    superlists.wsgi:application
+----
+
+Then we have two "handlers" to restart nginx and gunicorn.  Ansible is
+clever, so if it sees multiple steps all call the same handlers, it 
+waits until the last one before calling it.
+
+
+And that's it!  The command to kick all these off is:
+
+----
+ansible-playbook -i ansible.inventory provision.ansible.yaml --limit=staging
+----
+
