@@ -24,16 +24,15 @@ class Chapter5Test(ChapterTest):
         self.start_dev_server()
 
         # skips
-        self.listings[59].skip = True
-        self.assertIn('fill out the database NAME', self.listings[59])
-        self.listings[68].skip = True
-        self.assertIn("3: Buy peacock feathers", self.listings[68])
+        self.skip_with_check(61, 'fill out the database NAME')
+        self.skip_with_check(70, "3: Buy peacock feathers")
+
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(5)
+        self.check_final_diff(5, ignore_moves=True)
 
 
 if __name__ == '__main__':

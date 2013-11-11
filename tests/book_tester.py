@@ -15,7 +15,7 @@ from book_parser import (
     Output,
     parse_listing,
 )
-from sourcetree import SourceTree
+from sourcetree import Commit, SourceTree
 
 
 
@@ -105,19 +105,20 @@ class ChapterTest(unittest.TestCase):
         self.listings = [p for n in listings_nodes for p in parse_listing(n)]
 
 
-    def check_final_diff(self, chapter):
+    def check_final_diff(self, chapter, ignore_moves=False):
         diff = self.run_command(Command(
             'git diff -b repo/chapter_{0:02d}'.format(chapter)
         ))
         print('checking final diff', diff)
-        for line in diff.split('\n'):
-            if line and line.startswith('-') or line.startswith('+'):
-                rest_of_line = line[1:]
-                if rest_of_line.startswith('--') or rest_of_line.startswith('++'):
-                    continue
+        start_marker = 'diff --git a/\n'
+        commit = Commit(start_marker + diff)
+        if ignore_moves:
+            if commit.deleted_lines or commit.new_lines:
+                raise AssertionError('Final diff was not empty, was:\n{}'.format(diff))
 
-                if rest_of_line.strip():
-                    raise AssertionError('Final diff was not empty, was:\n{}'.format(diff))
+        elif commit.lines_to_add or commit.lines_to_remove:
+            raise AssertionError('Final diff was not empty, was:\n{}'.format(diff))
+
 
 
     def write_to_file(self, codelisting):

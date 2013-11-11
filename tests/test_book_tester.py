@@ -646,6 +646,56 @@ class DictOrderingTest(ChapterTest):
         self.assertEqual(os.environ['PYTHONHASHSEED'], "0")
 
 
+class CheckFinalDiffTest(ChapterTest):
+
+    def test_empty_passes(self):
+        self.run_command = lambda _: ""
+        self.check_final_diff(1) # should pass
+
+
+    def test_diff_fails(self):
+        diff = dedent(
+        """
+        + a missing line
+        - a line that was wrong
+        bla
+        """)
+        self.run_command = lambda _: diff
+        with self.assertRaises(AssertionError):
+            self.check_final_diff(1)
+
+
+    def test_blank_lines_ignored(self):
+        diff = dedent(
+        """
+        +
+        -
+        bla
+        """)
+        self.run_command = lambda _: diff
+        self.check_final_diff(1) # should pass
+
+
+    def test_ignore_moves(self):
+        diff = dedent(
+        """
+        + some
+        + block
+        stuff
+        - some
+        - block
+
+        bla
+        """)
+        self.run_command = lambda _: diff
+        with self.assertRaises(AssertionError):
+            self.check_final_diff(1)
+        self.check_final_diff(chapter=1, ignore_moves=True) # should pass
+        with self.assertRaises(AssertionError):
+            diff += '\n+a genuinely different line'
+            self.check_final_diff(chapter=1, ignore_moves=True)
+
+
 
 if __name__ == '__main__':
     unittest.main()
