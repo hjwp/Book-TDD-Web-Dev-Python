@@ -1,15 +1,273 @@
-Allowing multiple users to share lists
---------------------------------------
+Test database management on the staging server
+----------------------------------------------
 
-TODO
+When we next deploy our code to staging, we'll find our FTs don't behave as
+expected, because they can't interact with the test database on the server in
+the same way as they do with the one that `LiveServerTestCase` creates for us. 
+In this chapter, we'll develop our functional testing tools to be able to 
+modify the staging server database.
 
-* FT with two users.  Show using two browsers
-* Introduce page pattern?
-* Admin site?
-* notifications
+Deployment and fixing our database migration code
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-but first (or in a separate chapter?)
+Naive deploy:
 
-* Switching FT to being able to test against staging
-* Management commands
-* Using ansible for provisioning?
+----
+[superlists-staging.ottg.eu] out: FATAL ERROR - The following SQL query failed: CREATE UNIQUE INDEX "lists_item_list_id__text" ON "lists_item"("list_id", "text");
+[...]
+[superlists-staging.ottg.eu] out: Error in migration: lists:0002_auto__add_unique_item_list_text
+[superlists-staging.ottg.eu] out: DatabaseError: index lists_item_list_id__text already exists
+[superlists-staging.ottg.eu] out: 
+----
+
+Strip out one-time migration from fabfile
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+[...]
+def _update_database(source_folder):
+    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb --migrate --noinput' % (source_folder,))
+----
+
+Fix back on the server:  we're actually  at 0002, but now it's done a fake back to 0001
+
+[subs="specialcharacters,quotes"]
+----
+user@server:~/sites/superlists-staging.ottg.eu/source$ *../virtualenv/bin/python manage.py migrate lists 0002 --fake*
+----
+
+And now the deploy will work. 
+
+Restart gunicorn
+
+[subs="specialcharacters,quotes"]
+----
+user@server: *sudo restart gunicorn-superlists-staging.ottg.eu*
+----
+
+
+The tests discover a bug!
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here's what happened when I ran the functional tests:
+
+----
+======================================================================
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.tests.test_my_lists.MyListsTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/worskpace/functional_tests/tests/test_my_lists.py", line 39, in
+test_logged_in_users_lists_are_saved_as_my_lists
+[...]
+NoSuchElementException: Message: u'Unable to locate element: {"method":"link
+text","selector":"My lists"}' ; Stacktrace: 
+
+======================================================================
+ERROR: test_login_with_persona (functional_tests.tests.test_login.LoginTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/worskpace/functional_tests/tests/test_login.py", line 56, in
+test_login_with_persona
+    self.assert_logged_in()
+[...]
+TimeoutException: Message: '' 
+----
+
+That was unexpected!  It looks like the Personal login system isn't working in
+staging.  It turns out it's because I overlooked an important part of the
+Persona system, which is that authentications are only valid for particular
+domains.  We've left the domain hard-code as "localhost" in
+'accounts/authentication.py':
+
+----
+PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
+DOMAIN = 'localhost'
+User = get_user_model()
+----
+
+I had considered just going back and fixing this in the previous chapter,
+and pretending it never happened, but I think leaving it in teaches a better
+lesson:  first off, I'm not that smart, and second: this is exactly the point
+of running tests against a staging environment.  It would have been pretty 
+embarrassing if we'd deployed this bug straight to our live site!
+
+Here's how we go about fixing it, starting by defining a variable called
+`DOMAIN` in 'settings.py', where we will later use the deploy script to
+override it:
+
+[role="sourcecode"]
+.superlists/settings.py
+[source,python]
+----
+# This setting is changed by the deploy script
+DOMAIN = "localhost"
+
+# Hosts/domain names that are valid for this site; required if DEBUG is False
+# See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
+ALLOWED_HOSTS = [DOMAIN]
+----
+
+We reference that in the tests:
+
+[role="sourcecode"]
+.accounts/authenticate.py
+[source,diff]
+----
+@@ -1,9 +1,9 @@
+ from unittest.mock import Mock, patch
++from django.conf import settings
+ from django.test import TestCase
+ 
+ from accounts.authentication import (
+-    PERSONA_VERIFY_URL, DOMAIN,
++    PERSONA_VERIFY_URL,
+     PersonaAuthenticationBackend, User
+ )
+ 
+@@ -28,7 +28,7 @@ class AuthenticateTest(TestCase):
+         self.backend.authenticate('an assertion')
+         mock_post.assert_called_once_with(
+             PERSONA_VERIFY_URL,
+-            data={'assertion': 'an assertion', 'audience': DOMAIN}
++            data={'assertion': 'an assertion', 'audience': settings.DOMAIN}
+         )
+----
+
+And then we change the implementation:
+
+[role="sourcecode"]
+.accounts/authenticate.py
+[source,diff]
+----
+@@ -1,8 +1,8 @@
+ import requests
+ from django.contrib.auth import get_user_model
++from django.conf import settings
+ 
+ PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
+-DOMAIN = 'localhost'
+ User = get_user_model()
+ 
+ 
+@@ -11,7 +11,7 @@ class PersonaAuthenticationBackend(object):
+     def authenticate(self, assertion):
+         response = requests.post(
+             PERSONA_VERIFY_URL,
+-            data={'assertion': assertion, 'audience': DOMAIN}
++            data={'assertion': assertion, 'audience': settings.DOMAIN}
+         )
+         if not response.ok:
+             return
+----
+
+Re-running the tests just to be sure:
+
+----
+$ python3 manage.py test accounts
+[...]
+Ran 18 tests in 0.053s
+OK
+----
+
+Next we adjust our fabfile to make it adjust the domain in settings.py:
+
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_settings(source_folder, site_name):
+    settings_path = path.join(source_folder, 'superlists/settings.py')
+    sed(settings_path, "DEBUG = True", "DEBUG = False")
+    sed(settings_path, 'DOMAIN = "localhost"', 'DOMAIN = "%s"' % (site_name,))
+    secret_key_file = path.join(source_folder, 'superlists/secret_key.py')
+    if not exists(secret_key_file):
+        [...]
+----
+
+
+And then we re-deploy
+
+----
+$ fab deploy --host=superlists-staging.ottg.eu
+
+[...]
+
+[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DOMAIN = "localhost"/DOMAIN = "superlists-staging.ottg.eu"/g' "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
+
+----
+
+And run the tests 
+
+
+----
+$ python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu
+
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.tests.test_my_lists.MyListsTest)
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"My lists"}' ; Stacktrace: 
+
+Ran 7 tests in 72.742s
+
+FAILED (errors=1)
+----
+
+And we're onto our real problem!
+
+TODO: fix secret_key dedentedness bug
+
+Creating a Django management command to create sessions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When trying to build standalone scripts that work with the Django environment,
+can talk to the database etc, there are some fiddly issues you need to get
+right, like setting the `DJANGO_SETTINGS_MODULE` environment variable
+correctly, and getting the `sys.path` right.  Instead of fiddling with all
+this, Django lets you create your own "management commands" (commands you
+can run with `python manage.py`), which will do all that path mangling for
+you.  They live in a folder called 'management/commands' inside your apps.
+
+[subs="specialcharacters,quotes"]
+----
+$ *mkdir -p functional_tests/management/commands*
+$ *touch functional_tests/management/__init__.py*
+$ *touch functional_tests/management/commands/__init__.py*
+----
+
+The boilerplate in a management command is a class that inherits from 
+`django.core.management.BaseCommand`, that defines a method called
+`handle`:
+
+[role="sourcecode"]
+.functional_tests/management/commands/create_session.py
+[source,python]
+----
+from django.conf import settings
+from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
+User = get_user_model()
+from django.contrib.sessions.backends.db import SessionStore
+from django.core.management.base import BaseCommand
+
+
+class Command(BaseCommand):
+
+    def handle(self, *_, **__):
+        session_key = create_pre_authenticated_session()
+        self.stdout.write(session_key)
+
+
+def create_pre_authenticated_session():
+    user = User.objects.create(email='edith@email.com')
+    session = SessionStore()
+    session[SESSION_KEY] = user.pk
+    session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
+    session.save()
+    return session.session_key
+----
+
+
+
