@@ -10,17 +10,44 @@ modify the staging server database.
 Deployment and fixing our database migration code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Naive deploy:
+Let's just dive in and try and deploy our code, without thinking too 
+much:
 
+[subs="specialcharacters,quotes"]
 ----
-[superlists-staging.ottg.eu] out: FATAL ERROR - The following SQL query failed: CREATE UNIQUE INDEX "lists_item_list_id__text" ON "lists_item"("list_id", "text");
+$ *fab deploy --host=superlists-staging.ottg.eu*
 [...]
-[superlists-staging.ottg.eu] out: Error in migration: lists:0002_auto__add_unique_item_list_text
-[superlists-staging.ottg.eu] out: DatabaseError: index lists_item_list_id__text already exists
+[superlists-staging.ottg.eu] out: FATAL ERROR - The following SQL query failed:
+CREATE UNIQUE INDEX "lists_item_list_id__text" ON "lists_item"("list_id",
+"text");
+[...]
+[superlists-staging.ottg.eu] out: Error in migration:
+lists:0002_auto__add_unique_item_list_text
+[superlists-staging.ottg.eu] out: DatabaseError: index lists_item_list_id__text
+already exists
 [superlists-staging.ottg.eu] out: 
 ----
 
-Strip out one-time migration from fabfile
+Oops -- we forgot that we'd left a one-off fake migration in our
+deploy script, back in chapter 12:
+
+TODO: consider dropping this, by removing it straight after the deploy in 12. 
+This may be more of a distraction than a useful example...  (readers, let me
+know what you think!)
+
+
+[role="sourcecode"]
+.dploy_tools/fabfile.py
+[source,python]
+----
+def _update_database(source_folder):
+    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb' % (source_folder,))
+    # one-off fake database migration. remove me before next deploy
+    run('cd %s && ../virtualenv/bin/python3 manage.py migrate lists --fake 0001' % (
+----
+
+So let's strip it out, simplifying the database update code to a single line,
+`syncdb --migrate`, which does both the syncdb and the migration...
 
 [role="sourcecode"]
 .lists/tests.py
@@ -31,7 +58,9 @@ def _update_database(source_folder):
     run('cd %s && ../virtualenv/bin/python3 manage.py syncdb --migrate --noinput' % (source_folder,))
 ----
 
-Fix back on the server:  we're actually  at 0002, but now it's done a fake back to 0001
+Back on the server, we need to restore South to a state that matches reality.
+The database is actually at position 0002, but because we did a fake back
+to 0001, it's confused.  We fake it back:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -94,9 +123,9 @@ lesson:  first off, I'm not that smart, and second: this is exactly the point
 of running tests against a staging environment.  It would have been pretty 
 embarrassing if we'd deployed this bug straight to our live site!
 
-Here's how we go about fixing it, starting by defining a variable called
-`DOMAIN` in 'settings.py', where we will later use the deploy script to
-override it:
+Here's how we go about fixing it, starting by moving the definition for the
+`DOMAIN` variable into 'settings.py', where we can later use the deploy script
+to override it:
 
 [role="sourcecode"]
 .superlists/settings.py
@@ -110,7 +139,7 @@ DOMAIN = "localhost"
 ALLOWED_HOSTS = [DOMAIN]
 ----
 
-We reference that in the tests:
+We feed that change back through the tests:
 
 [role="sourcecode"]
 .accounts/authenticate.py
@@ -172,7 +201,7 @@ Ran 18 tests in 0.053s
 OK
 ----
 
-Next we adjust our fabfile to make it adjust the domain in settings.py:
+Next we update our fabfile to make it adjust the domain in settings.py:
 
 
 [role="sourcecode"]
@@ -188,20 +217,21 @@ def _update_settings(source_folder, site_name):
         [...]
 ----
 
+We re-deploy, and spot the `sed` in the output:
 
-And then we re-deploy
-
+[subs="specialcharacters,quotes"]
 ----
-$ fab deploy --host=superlists-staging.ottg.eu
-
+$ *fab deploy --host=superlists-staging.ottg.eu*
 [...]
-
-[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DOMAIN = "localhost"/DOMAIN = "superlists-staging.ottg.eu"/g' "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
-
+[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DOMAIN =
+"localhost"/DOMAIN = "superlists-staging.ottg.eu"/g' "$(echo
+/home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
+[...]
 ----
 
-And run the tests 
-
+Now we can re-run our FTs, and get to the bug we were actually expecting:
+our attempt to create pre-authenticated sessions doesn't work, so the 
+"My lists" test fails:
 
 ----
 $ python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu
@@ -216,7 +246,7 @@ Ran 7 tests in 72.742s
 FAILED (errors=1)
 ----
 
-And we're onto our real problem!
+We're onto our real problem!
 
 
 
@@ -226,8 +256,8 @@ Creating a Django management command to create sessions
 When trying to build standalone scripts that work with the Django environment,
 can talk to the database etc, there are some fiddly issues you need to get
 right, like setting the `DJANGO_SETTINGS_MODULE` environment variable
-correctly, and getting the `sys.path` right.  Instead of fiddling with all
-this, Django lets you create your own "management commands" (commands you
+correctly, and getting the `sys.path` right.  Instead of messing about with all
+that, Django lets you create your own "management commands" (commands you
 can run with `python manage.py`), which will do all that path mangling for
 you.  They live in a folder called 'management/commands' inside your apps.
 
@@ -239,7 +269,7 @@ $ *touch functional_tests/management/commands/__init__.py*
 ----
 
 The boilerplate in a management command is a class that inherits from 
-`django.core.management.BaseCommand`, that defines a method called
+`django.core.management.BaseCommand`, and that defines a method called
 `handle`:
 
 [role="sourcecode"]
@@ -269,5 +299,212 @@ def create_pre_authenticated_session():
     return session.session_key
 ----
 
+We've taken the code for `create_pre_authenticated_session` code from
+'test_my_lists.py'.  The function returns the session key that we'll 
+want to add to our browser cookies, and the management command prints
+it out at the command-line. Try it out!
+
+----
+$ python3 manage.py create_session
+qnslckvp2aga7tm6xuivyb0ob1akzzwl
+----
+
+Now we need to adjust test_my_lists so that it runs the local function
+when we're on the local server, and make it run the management command
+on the staging server if we're on that:
+
+[role="sourcecode"]
+.functional_tests/tests/test_my_lists.py
+[source,python]
+----
+from django.conf import settings
+from .base import FunctionalTest
+from .server_tools import create_session_on_server
+from ..management.commands.create_session import create_pre_authenticated_session
+
+class MyListsTest(FunctionalTest):
+
+    def create_pre_authenticated_session(self):
+        if self.against_staging:
+            session_key = create_session_on_server(self.server_host)
+        else:
+            session_key = create_pre_authenticated_session()
+        ## to set a cookie we need to first visit the domain.
+        ## 404 pages load the quickest!
+        self.browser.get(self.server_url + "/404_no_such_url/")
+        self.browser.add_cookie(dict(
+            name=settings.SESSION_COOKIE_NAME,
+            value=session_key,
+            path='/',
+        ))
+
+    [...]
+----
+
+First let's see how we know whether or not we're working against the 
+staging server. `self.against_staging` gets populated in 'base.py':
+
+
+[role="sourcecode"]
+.functional_tests/tests/base.py
+[source,python]
+----
+from .server_tools import reset_database
+
+class FunctionalTest(LiveServerTestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for arg in sys.argv:
+            if 'liveserver' in arg:
+                cls.server_host = arg.split('=')[1] #<1>
+                cls.server_url = 'http://' + cls.server_host
+                cls.against_staging = True #<1>
+                return
+        LiveServerTestCase.setUpClass()
+        cls.against_staging = False
+        cls.server_url = cls.live_server_url
+
+    @classmethod
+    def tearDownClass(cls):
+        if not self.against_staging:
+            LiveServerTestCase.tearDownClass()
+
+    def setUp(self):
+        if self.against_staging:
+            reset_database(self.server_host) #<2>
+        self.browser = webdriver.Firefox()
+        self.browser.implicitly_wait(3)
+----
+
+<1> Instead of just storing `cls.server_url`, we also store the `server_host` 
+    and `against_staging` attributes if we detect the `liveserver` command-line
+    argument
+
+<2> We also need a way of resetting the server database in between each test.
+
+It's time to take a look at 'server_tools':
+
+[role="sourcecode"]
+.functional tests/tests/server_tools.py
+[source,python]
+----
+from os import path
+import subprocess
+THIS_FOLDER = path.abspath(path.dirname(__file__))
+
+def reset_database(host):
+    subprocess.check_call(
+        ['fab', 'reset_database', '--host={}'.format(host)],
+        cwd=THIS_FOLDER
+    )
+
+
+def create_session_on_server(host):
+    return subprocess.check_output(
+        [
+            'fab',
+            'create_session_on_server',
+            '--host={}'.format(host),
+            '--hide=everything,status', #<1>
+        ],
+        cwd=THIS_FOLDER
+    ).decode().strip() #<1>
+----
+
+Here we use the `subprocess` module to call some fabric functions using the
+`fab` command. We have to use `subprocess` because fabric is currently only
+available in Python 2. Otherwise we could have called fabric functions directly
+within the test process.
+
+<1> Because of all the hopping around via fabric and subprocesses, we're forced
+    to be quite careful about extracting the session key from the output of the
+    command as it gets run on the server.
+
+Finally, let's look at the fabfile that defines those two commands we want to
+run server-side, to reset the database or setup the session:
+
+
+[role="sourcecode"]
+.functional tests/tests/fabfile.py
+[source,python]
+----
+from fabric.api import env, run
+
+
+def _get_base_folder(host):
+    return '~/sites/' + host
+
+def _get_manage_dot_py(host):
+    return '{path}/virtualenv/bin/python {path}/source/manage.py'.format(
+        path=_get_base_folder(host)
+    )
+
+
+def reset_database():
+    run('rm -f {path}/database/database.sqlite'.format(
+        path=_get_base_folder(env.host)
+    ))
+    run('{manage_py} syncdb --migrate --noinput'.format(
+        manage_py=_get_manage_dot_py(env.host)
+    ))
+
+
+def create_session_on_server():
+    session_key = run('{manage_py} create_session'.format(
+        manage_py=_get_manage_dot_py(env.host)
+    ))
+    print(session_key)
+----
+
+Does that make a reasonable amount of sense?  We've got a function that
+can create a session in the database.  If we detect we're running locally,
+we call it directly.  If we're against the server, there's a couple of hops:
+we use `subprocess` to use fabric via `fab`, which lets us run a management
+command that calls that function on the server.
+
+Let's see if it works!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.MyListsTest \
+--liveserver=superlists-staging.ottg.eu*]
+Creating test database for alias 'default'...
+[superlists-staging.ottg.eu] Executing task 'reset_database'
+[superlists-staging.ottg.eu] run: rm -f
+~/sites/superlists-staging.ottg.eu/database/database.sqlite
+[superlists-staging.ottg.eu] run:
+~/sites/superlists-staging.ottg.eu/virtualenv/bin/python
+~/sites/superlists-staging.ottg.eu/source/manage.py syncdb --migrate --noinput
+[superlists-staging.ottg.eu] out: Syncing...
+[superlists-staging.ottg.eu] out: Creating tables ...
+[...]
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 25.701s
+
+OK
+----
+
+Looking good!  We can re-run all the tests to make sure...
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
+Creating test database for alias 'default'...
+[superlists-staging.ottg.eu] Executing task 'reset_database'
+[...]
+Ran 7 tests in 89.494s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+Hooray!
+
+Now we can safely deploy our live site.
+
+I'll tell you what though, those FTs are taking an annoyingly long time to 
+run though.  I wonder if there's something we can do about that?
 
 
