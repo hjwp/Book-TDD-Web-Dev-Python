@@ -62,7 +62,7 @@ class Chapter8Test(ChapterTest):
         )
         self.skip_with_check(syncdb_pos + 1, 'Creating tables')
         self.skip_with_check(syncdb_pos + 2, 'ls')
-        self.skip_with_check(syncdb_pos + 3, 'database.sqlite')
+        self.skip_with_check(syncdb_pos + 3, 'db.sqlite3')
         assert 'Creating tables' in self.listings[syncdb_pos + 1]
         assert 'runserver' in self.listings[syncdb_pos - 3]
         gunicorn_pos = 83
@@ -87,7 +87,7 @@ class Chapter8Test(ChapterTest):
         self.assertIn('Creating tables', syncdb_output)
         self.skip_with_check(syncdb_pos + 1, 'Creating tables')
         ls_output = self.run_server_command(self.listings[syncdb_pos + 2])
-        self.assertIn('database.sqlite', ls_output)
+        self.assertIn('db.sqlite3', ls_output)
         self.pos = syncdb_pos + 4
 
         while self.pos < gunicorn_pos:

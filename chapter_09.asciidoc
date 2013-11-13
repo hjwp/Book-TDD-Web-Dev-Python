@@ -90,6 +90,7 @@ WARNING: Skips are dangerous -- you need to remember to remove them
 before you commit your changes back to the repo.  This is why line-by-line 
 reviews of each of your diffs are a good idea!
 
+
 .Don't forget the "Refactor" in "Red, Green, Refactor"
 **********************************************************************
 A criticism that's sometimes levelled at TDD is that it leads to badly
@@ -121,53 +122,22 @@ refactoring.
 **********************************************************************
 
 
-Putting functional tests into a tests folder
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Splitting functional tests out into many files
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-//TODO: this will no longer be necessary in Django 1.6. leave files in base
-//folder?
-
-We start by switching from a single tests file to a tests folder, which will
-have many files in it. As of Django 1.5 (it's set to change in 1.6), in
-order for the test runner to still be able to find our tests, they still all
-need to be "in" a module called tests. We do this by importing them in the new
-folder's '__init__.py':
+We start by switching from a single tests file to using multiple ones,
+and one "base" file to contain the base class all the tests will 
+inherit from
 
 [subs="specialcharacters,quotes"]
 ----
-$ *mkdir functional_tests/tests*
-$ *touch functional_tests/tests/__init__.py*
-$ *git mv functional_tests/tests.py functional_tests/tests/base.py*
-$ @echo "from .base import *" >> functional_tests/tests/__init__.py@
+$ *git mv functional_tests/tests.py functional_tests/base.py*
 ----
 
-Two things re: `from .base import *`. Firstly, these universal 
-test-imports are one of the only places in which it's a good idea to use
-`import *`.   Secondly, I used a relative import (`from .base`). Some people
-like to use those a lot more often in Django code (eg, your views might import
-models using `from .models import List`, instead of `from list.models`).
-Ultimately this is a matter of personal preference.  I prefer to use relative 
-imports only when I'm super-super sure that the relative position of source
-code files isn't going to change.
-http://www.python.org/dev/peps/pep-0008/#imports[PEP 8] has more to say on
-this.
-
-And now we check that we can still see all three tests being run if we run
-the FTs as before:
-
-[subs="specialcharacters,quotes"]
-----
-$ *python3 manage.py test functional_tests*
-
-OK
-Ran 3 tests in 11.290s
-----
-
-Now we prepare a base class for all the tests to inherit from, and have
-each test be in its own class:
+Now we prepare the class structure:
 
 [role="sourcecode"]
-.functional_tests/tests/base.py (ch09l002)
+.functional_tests/base.py (ch09l002)
 [source,python]
 ----
 class FunctionalTest(LiveServerTestCase):
@@ -217,21 +187,17 @@ just keeping one import:
 
 [subs="specialcharacters,quotes"]
 ----
-*cp functional_tests/tests/base.py functional_tests/tests/test_simple_list_creation.py*
-*cp functional_tests/tests/base.py functional_tests/tests/test_layout_and_styling.py*
-*cp functional_tests/tests/base.py functional_tests/tests/test_list_item_validation.py*
+*cp functional_tests/base.py functional_tests/test_simple_list_creation.py*
+*cp functional_tests/base.py functional_tests/test_layout_and_styling.py*
+*cp functional_tests/base.py functional_tests/test_list_item_validation.py*
 ----
 
 'base.py' can be cut down to just the FunctionalTest class.  We leave the
 helper method on the base class, because we suspect we're about to re-use
 it in our new FT.
 
-NOTE: Keeping helper methods in a base FunctionalTest class is one useful way 
-of preventing duplication in FTs.  Later in the book we'll use the "Page
-pattern", which is related, but prefers composition over inheritance.
-
 [role="sourcecode"]
-.functional_tests/tests/base.py (ch09l003)
+.functional_tests/base.py (ch09l003)
 [source,python]
 ----
 from django.test import LiveServerTestCase
@@ -253,10 +219,15 @@ class FunctionalTest(LiveServerTestCase):
         [...]
 ----
 
+NOTE: Keeping helper methods in a base FunctionalTest class is one useful way 
+of preventing duplication in FTs.  Later in the book we'll use the "Page
+pattern", which is related, but prefers composition over inheritance.
+
+
 Our first FT is now in its own file, with one class and one test method:
 
 [role="sourcecode"]
-.functional_tests/tests/test_simple_list_creation.py (ch09l004)
+.functional_tests/test_simple_list_creation.py (ch09l004)
 [source,python]
 ----
 from .base import FunctionalTest
@@ -264,14 +235,23 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 
 class NewVisitorTest(FunctionalTest):
+
     def test_can_start_a_list_and_retrieve_it_later(self):
         [...]
 ----
 
+I used a relative import (`from .base`). Some people like to use those a lot
+more often in Django code (eg, your views might import models using `from
+.models import List`, instead of `from list.models`). Ultimately this is a
+matter of personal preference.  I prefer to use relative imports only when I'm
+super-super sure that the relative position of source.  That applies in this
+case because I know for sure all the test will sit next to base.py which they
+inherit from.
+
 The layout and styling FT is now one file and one class:
 
 [role="sourcecode"]
-.functional_tests/tests/test_layout_and_styling.py (ch09l005)
+.functional_tests/test_layout_and_styling.py (ch09l005)
 [source,python]
 ----
 from .base import FunctionalTest
@@ -283,29 +263,17 @@ class LayoutAndStylingTest(FunctionalTest):
 Lastly our new validation test is in a file of its own too:
 
 [role="sourcecode"]
-.functional_tests/tests/test_list_item_validation.py (ch09l006)
+.functional_tests/test_list_item_validation.py (ch09l006)
 [source,python]
 ----
+from unittest import skip
 from .base import FunctionalTest
 
 class ItemValidationTest(FunctionalTest):
+
+    @skip
+    def test_cannot_add_empty_list_items(self):
         [...]
-----
-
-To glue it all together, we need to change the tests module's dunderinit
-footnote:["dunder" is shorthand for double-underscore, so "dunderinit" means
-'__init__.py']
-to import our 3 test classes (this is the part which we won't need to do
-any more as of Django 1.6, hopefully):
-
-
-[role="sourcecode"]
-.functional_tests/tests/__init__.py (ch09l007)
-[source,python]
-----
-from .test_simple_list_creation import NewVisitorTest
-from .test_layout_and_styling import LayoutAndStylingTest
-from .test_list_item_validation import ItemValidationTest
 ----
 
 And we can test everything worked by re-running `manage.py test`, and checking
@@ -320,7 +288,7 @@ OK
 Now we can remove our skip:
 
 [role="sourcecode"]
-.functional_tests/tests/test_list_item_validation.py (ch09l007-1)
+.functional_tests/test_list_item_validation.py (ch09l007)
 [source,python]
 ----
 class ItemValidationTest(FunctionalTest):
@@ -329,11 +297,11 @@ class ItemValidationTest(FunctionalTest):
         [...]
 ----
 
-As a side-bonus, we're now able to run an individual test class, like this:
+As a side-bonus, we're now able to run an individual test file, like this:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python3 manage.py test functional_tests.ItemValidationTest*
+$ *python3 manage.py test functional_tests.test_list_item_validation*
 [...]
 AssertionError: write me!
 ----
@@ -356,7 +324,7 @@ Now let's start implementing the test, or at least the beginning of it.
 
 
 [role="sourcecode"]
-.functional_tests/tests/test_list_item_validation.py (ch09l008)
+.functional_tests/test_list_item_validation.py (ch09l008)
 [source,python]
 ----
 def test_cannot_add_empty_list_items(self):
@@ -425,7 +393,9 @@ Refactoring unit tests into several files
 
 We're going to want to add another test for our model, but before we
 do so, it's time to tidy up our unit tests in a similar way to the
-functional tests:
+functional tests.  A difference will be that, because the `lists`
+app contains real application code as well as test, we'll separate
+out the tests into their own folder:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -588,7 +558,7 @@ Overriding the save method on a model to ensure validation
 
 And now we discover one of Django's dirty little secrets. 'This test should
 already pass'.  If you take a look at the
-https://docs.djangoproject.com/en/1.5/ref/models/fields/#blank[docs for the
+https://docs.djangoproject.com/en/1.6/ref/models/fields/#blank[docs for the
 Django model fields], you'll see that `TextField` actually defaults to
 `blank=False`, which means that it 'should' disallow empty values.
 
@@ -836,13 +806,11 @@ from django.utils.html import escape
 
 That passes!  Do the FTs pass?
 
-
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.ItemValidationTest*] 
+$ pass:quotes[*python3 manage.py test functional_tests.test_list_item_validation*] 
 [...]
-  File
-"/workspace/superlists/functional_tests/tests/test_list_item_validation.py",
+  File "/workspace/superlists/functional_tests/test_list_item_validation.py",
 line 24, in test_cannot_add_empty_list_items
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
@@ -897,7 +865,7 @@ This will immediately break our original functional test:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.NewVisitorTest*]
+$ pass:quotes[*python3 manage.py test functional_tests.test_simple_list_creation*]
 AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
 peacock feathers']
 ----
@@ -1176,7 +1144,7 @@ because we pass it a parameter:
 ----
 
 Check out the 
-https://docs.djangoproject.com/en/1.5/ref/templates/builtins/#url[Django docs
+https://docs.djangoproject.com/en/1.6/ref/templates/builtins/#url[Django docs
 on template tags] for more info.
 
 We run the tests again, and check they all pass (or get to the expected
@@ -1269,7 +1237,7 @@ def new_list(request):
 ----
 
 There's more info in the
-https://docs.djangoproject.com/en/1.5/topics/http/shortcuts/#redirect[Django
+https://docs.djangoproject.com/en/1.6/topics/http/shortcuts/#redirect[Django
 docs]
 
 Grand.  A full unit test and functional test run to assure ourselves that
