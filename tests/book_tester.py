@@ -47,26 +47,21 @@ def strip_git_hashes(output):
     return fixed_commit_numbers
 
 
+def strip_callouts(output):
+    return re.sub(
+        r"^(.+)( ?<\d+>)$",
+        r"\1",
+        output,
+        flags=re.MULTILINE,
+    )
+
+
 def strip_test_speed(output):
     return re.sub(
         r"Ran (\d+) tests? in \d+\.\d\d\ds",
         r"Ran \1 tests in X.Xs",
         output,
     )
-
-
-def fix_dict_repr_order(string):
-    dict_finder = r"({'\w+': .+, '\w+': .+})"
-    if not re.search(dict_finder, string):
-        return string
-
-    for dict_repr in re.findall(dict_finder, string):
-        items = re.search(
-            r"{('\w+': .+), ('\w+': .+)}",
-            dict_repr,
-        ).groups()
-        string = string.replace(dict_repr, "{%s}" % (', '.join(sorted(items)),))
-    return string
 
 
 def fix_creating_database_line(actual_text):
@@ -236,15 +231,16 @@ class ChapterTest(unittest.TestCase):
             self.assertCountEqual(actual.split('\n'), expected.split())
             expected.was_checked = True
             return
+
         actual_fixed = wrap_long_lines(actual)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
-        actual_fixed = fix_dict_repr_order(actual_fixed)
 
         expected_fixed = fix_test_dashes(expected)
         expected_fixed = strip_test_speed(expected_fixed)
         expected_fixed = strip_git_hashes(expected_fixed)
+        expected_fixed = strip_callouts(expected_fixed)
 
         if '\t' in actual_fixed:
             actual_fixed = re.sub(r'\s+', ' ', actual_fixed)

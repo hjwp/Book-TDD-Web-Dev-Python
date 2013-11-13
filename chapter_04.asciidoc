@@ -299,7 +299,7 @@ be what makes sure that our refactoring is behaviour-preserving.
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python3 manage.py test lists*
+$ *python3 manage.py test*
 [...]
 OK
 ----
@@ -343,12 +343,92 @@ not using this feature yet, but we will do in future chapters.  That's
 why we use `render` and (later) `render_to_string` rather than, say, manually
 reading the file from disk with the builtin `open`.
 
+Let's see if it works:
 
-That's a change to the code - do the tests still pass?
+[subs="specialcharacters,macros,callouts"]
+----
+$ pass:quotes[*python3 manage.py test*]
+[...]
+======================================================================
+ERROR: test_home_page_returns_correct_html (lists.tests.HomePageTest) <2>
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/superlists/lists/tests.py", line 17, in
+test_home_page_returns_correct_html
+    response = home_page(request) <3>
+  File "/workspace/superlists/lists/views.py", line 5, in home_page
+    return render(request, 'home.html') <4>
+  File "/usr/local/lib/python3.3/dist-packages/django/shortcuts/__init__.py",
+line 53, in render
+    return HttpResponse(loader.render_to_string(*args, **kwargs),
+  File "/usr/local/lib/python3.3/dist-packages/django/template/loader.py", line
+162, in render_to_string
+    t = get_template(template_name)
+  File "/usr/local/lib/python3.3/dist-packages/django/template/loader.py", line
+138, in get_template
+    template, origin = find_template(template_name)
+  File "/usr/local/lib/python3.3/dist-packages/django/template/loader.py", line
+131, in find_template
+    raise TemplateDoesNotExist(name)
+django.template.base.TemplateDoesNotExist: home.html <1>
+
+ ---------------------------------------------------------------------
+Ran 2 tests in 0.004s
+----
+
+Another chance to analyse a traceback
+
+<1> We start with the error: it can't find the template
+
+<2> Then we double-check what test is failing: sure enough, it's our test
+    of the view HTML
+
+<3> Then we find the line in our tests that caused the failure: it's when
+    we call the `home_page` function
+
+<4> Finally we look for the part of our own application code that caused the
+    failure: it's when we try and call `render`
+
+
+So why can't Django find the template?  It's right where it's supposed to be,
+in the 'lists/templates' folder.
+
+The thing is that we haven't yet 'officially' registered our lists app with
+Django. Unfortunately, just running the `startapp` command and
+having what is obviously an app in your project folder isn't quite enough.  You
+have to tell Django that you 'really' mean it, and add it to 'settings.py' as
+well. Belt and braces. Open it up and look for a variable called
+`INSTALLED_APPS`, to which we'll add `lists`:
+
+
+[role="sourcecode"]
+.superlists/settings.py
+[source,python]
+----
+# Application definition
+
+INSTALLED_APPS = (
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'lists',
+)
+----
+
+
+You can see there's lots of apps already in there by default.  We just need to
+add ours, `lists`, to the bottom of the list.  Don't forget the trailing comma
+- it may not be required, but one day you'll be really annoyed when you forget
+it and Python concatenates two strings on different lines...
+
+Now we can try running the tests again:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python3 manage.py test*]
     [...]
     self.assertTrue(response.content.endswith(b'</html>'))
 AssertionError: False is not true
@@ -360,7 +440,8 @@ footnote:[Depending on whether your text editor insists on adding newlines to
 the end of files, you may not even see this error.  If so, you can safely
 ignore the next bit, and skip straight to where you can see the listing
 says OK].
-The last of the three assertions is failing, apparently there's something wrong
+But it did get further!  It seems it's managed to find our template, but
+the last of the three assertions is failing. Apparently there's something wrong
 at the end of the output. I had to do a little +print repr(response.content)+
 to debug this, but it turns out that the switch to templates has introduced an
 additional newline (`\n') at the end. We can get them to pass like this:
@@ -378,7 +459,7 @@ shouldn't matter to us. Let's try running the tests again:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python3 manage.py test lists*
+$ *python3 manage.py test*
 [...]
 OK
 ----
@@ -460,8 +541,8 @@ It's a good idea to do a commit after any refactoring:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git status* # see changes to tests.py, views.py + new templates folder
-$ *git add .*  # will add the untracked templates folder
+$ *git status* # see tests.py, views.py, settings.py, + new templates folder
+$ *git add .*  # will also add the untracked templates folder
 $ *git diff --staged* # review the changes we're about to commit
 $ *git commit -m"Refactor home page view to use a template"*
 ----

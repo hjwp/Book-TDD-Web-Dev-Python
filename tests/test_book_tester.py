@@ -6,7 +6,6 @@ import unittest
 
 from book_tester import (
     ChapterTest,
-    fix_dict_repr_order,
     wrap_long_lines,
 )
 from book_parser import (
@@ -426,6 +425,28 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_ignores_callouts(self):
+        actual =dedent("""
+            bla bla
+            stuff
+            """).strip()
+        expected = Output(dedent("""
+            bla bla<1>
+            stuff
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+        expected2 = Output(dedent("""
+            bla bla <11>
+            stuff
+            """).strip()
+        )
+        self.assert_console_output_correct(actual, expected)
+
+
     def test_ignores_git_commit_numers_in_logs(self):
         actual =dedent("""
             ea82222 Basic view now returns minimal HTML
@@ -586,57 +607,6 @@ AttributeError: _original_allowed_hosts
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-
-    def test_handles_dict_key_ordering_randomness(self):
-        expected = Output(
-            dedent("""
-            line 334, in resolve
-                raise Resolver404({'path': new_path, 'tried': tried})
-            django.core.urlresolvers.Resolver404: {'path': '', 'tried': []}
-            """).lstrip()
-        )
-        actual = dedent(
-            """
-            line 440, in resolve
-                return get_resolver(urlconf).resolve(path)
-              File "/usr/local/lib/python3.3/dist-packages/django/core/urlresolvers.py",
-            line 334, in resolve
-                raise Resolver404({'tried': tried, 'path': new_path})
-            django.core.urlresolvers.Resolver404: {'path': '', 'tried': []}
-            """
-        )
-        self.assert_console_output_correct(actual, expected)
-        self.assertTrue(expected.was_checked)
-
-
-class FixDictReprOrderingTest(unittest.TestCase):
-
-    def test_fixing_dict_ordering(self):
-        self.assertEqual(
-            fix_dict_repr_order(
-                "django.core.urlresolvers.Resolver404: {'tried': [], 'path': ''}"
-            ),
-            "django.core.urlresolvers.Resolver404: {'path': '', 'tried': []}"
-        )
-
-
-    def test_fixing_dict_ordering_doesnt_barf_if_no_dict(self):
-        self.assertEqual(
-            fix_dict_repr_order(
-                "foo"
-            ),
-            "foo"
-        )
-
-    def test_fixing_dict_ordering_for_more_that_one(self):
-        self.assertEqual(
-            fix_dict_repr_order(
-                "bla {'b': 1, 'a': 2}\n"
-                "wiz {'d': 9, 'c': 3}\n"
-            ),
-            "bla {'a': 2, 'b': 1}\n"
-            "wiz {'c': 3, 'd': 9}\n"
-    )
 
 
 class DictOrderingTest(ChapterTest):
