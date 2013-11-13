@@ -22,7 +22,7 @@ class Chapter3Test(ChapterTest):
 
         self.sourcetree.start_with_checkout(self.chapter_no)
 
-        self.skip_with_check(20, 'will show you the diff')
+        self.skip_with_check(10, 'will show you')
 
         self.run_command(Command('python3 manage.py runserver'))
 

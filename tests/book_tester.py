@@ -372,10 +372,9 @@ class ChapterTest(unittest.TestCase):
             'diff' in self.listings[pos] or 'status' in self.listings[pos]
         )
         git_output = self.run_command(self.listings[pos])
-        self.assertTrue(
-            any('/' + l in git_output for l in LIKELY_FILES),
-            'no likely files in diff output %s' % (git_output,)
-        )
+        if not any('/' + l in git_output for l in LIKELY_FILES):
+            if not 'lists/' in git_output:
+                self.fail('no likely files in diff output %s' % (git_output,))
         self.pos += 1
         comment = self.listings[pos + 1]
         if comment.skip:
@@ -488,6 +487,15 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'diff':
             print("DIFF")
             self.apply_patch(listing)
+
+        elif listing.type == 'code listing currentcontents':
+            print("CHECK CURRENT CONTENTS")
+            self.assertEqual(
+                self.sourcetree.get_contents(listing.filename).strip(),
+                listing.contents.strip()
+            )
+            listing.was_written = True
+            self.pos += 1
 
         elif listing.type == 'code listing':
             print("CODE")

@@ -17,6 +17,7 @@ from examples import (
     CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF,
     CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF,
     CODE_LISTING_WITH_SKIPME,
+    OUTPUTS_WITH_CURRENTCONTENTS,
     OUTPUT_WITH_SKIPME,
     OUTPUTS_WITH_DOFIRST,
     COMMAND_MADE_WITH_ATS,
@@ -124,6 +125,16 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(len(listings), 1)
         listing = listings[0]
         self.assertEqual(listing.skip, True)
+
+
+    def test_recognises_currentcontents_tag(self):
+        code_html = OUTPUTS_WITH_CURRENTCONTENTS.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        self.assertEqual(len(listings), 1)
+        listing = listings[0]
+        assert listing.currentcontents is True
+        assert listing.type == 'code listing currentcontents'
 
 
     def test_recognises_dofirst_tag(self):

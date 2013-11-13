@@ -23,11 +23,14 @@ class CodeListing(object):
         self.contents = contents
         self.was_written = False
         self.skip = False
+        self.currentcontents = False
 
     @property
     def type(self):
         if self.is_server_listing:
             return 'server code listing'
+        elif self.currentcontents:
+            return 'code listing currentcontents'
         elif self.commit_ref:
             return 'code listing with git ref'
         elif any(l.count('@@') > 1 for l in self.contents.split('\n')):
@@ -102,6 +105,8 @@ def parse_listing(listing):
         listing = CodeListing(filename, contents)
         listing.skip = skip
         listing.dofirst = dofirst
+        if 'currentcontents' in classes:
+            listing.currentcontents = True
         return [listing]
 
     else:

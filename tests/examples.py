@@ -104,4 +104,21 @@ lists/templates/list.html:        &lt;input name="item_text" id="id_new_item"
 placeholder="Enter a to-do item" /&gt;</code></pre>
 </div></div>"""
 
+OUTPUTS_WITH_CURRENTCONTENTS = """
+<div class="listingblock sourcecode currentcontents">
+<div class="title">superlists/urls.py</div>
+<div class="content"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">django.conf.urls</span> <span class="kn">import</span> <span class="n">patterns</span><span class="p">,</span> <span class="n">include</span><span class="p">,</span> <span class="n">url</span>
+
+<span class="kn">from</span> <span class="nn">django.contrib</span> <span class="kn">import</span> <span class="n">admin</span>
+<span class="n">admin</span><span class="o">.</span><span class="n">autodiscover</span><span class="p">()</span>
+
+<span class="n">urlpatterns</span> <span class="o">=</span> <span class="n">patterns</span><span class="p">(</span><span class="s">''</span><span class="p">,</span>
+    <span class="c"># Examples:</span>
+    <span class="c"># url(r'^$', 'superlists.views.home', name='home'),</span>
+    <span class="c"># url(r'^blog/', include('blog.urls')),</span>
+
+    <span class="n">url</span><span class="p">(</span><span class="s">r'^admin/'</span><span class="p">,</span> <span class="n">include</span><span class="p">(</span><span class="n">admin</span><span class="o">.</span><span class="n">site</span><span class="o">.</span><span class="n">urls</span><span class="p">)),</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">django.conf.urls</span> <span class="kn">import</span> <span class="n">patterns</span><span class="p">,</span> <span class="n">include</span><span class="p">,</span> <span class="n">url</span>
+</pre></div></div></div>"""
 
