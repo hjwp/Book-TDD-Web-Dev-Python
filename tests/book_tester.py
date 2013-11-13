@@ -95,7 +95,6 @@ class ChapterTest(unittest.TestCase):
         with open(os.path.join(base_dir, filename), encoding='utf-8') as f:
             raw_html = f.read()
         parsed_html = html.fromstring(raw_html)
-        #chapter = parsed_html.cssselect('div.sect1')[self.chapter_no]
         listings_nodes = parsed_html.cssselect('div.listingblock')
         self.listings = [p for n in listings_nodes for p in parse_listing(n)]
 
@@ -485,11 +484,20 @@ class ChapterTest(unittest.TestCase):
             self.apply_patch(listing)
 
         elif listing.type == 'code listing currentcontents':
-            print("CHECK CURRENT CONTENTS")
-            self.assertEqual(
-                self.sourcetree.get_contents(listing.filename).strip(),
-                listing.contents.strip()
+            actual_contents = self.sourcetree.get_contents(
+                listing.filename
             )
+            print("CHECK CURRENT CONTENTS")
+            if '[...]' in listing.contents:
+                stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
+                for line in listing.contents.split('\n'):
+                    if line and not '[...]' in line:
+                        self.assertIn(line.strip(), stripped_actual_lines)
+            else:
+                self.assertEqual(
+                    listing.contents.strip(),
+                    actual_contents.strip(),
+                )
             listing.was_written = True
             self.pos += 1
 
