@@ -24,42 +24,43 @@ class Chapter6Test(ChapterTest):
         self.run_command(Command('python3 manage.py syncdb --noinput'))
 
         # skips
-        self.skip_with_check(18, 'msg eg') # git
-        self.skip_with_check(53, 'should show 4 changed files') # git
-        self.skip_with_check(58, 'add a message summarising') # git
-        self.skip_with_check(76, '5 changed files') # git
-        self.skip_with_check(78, 'forms x2') # git
-        self.skip_with_check(93, '3 changed files') # git
+        self.skip_with_check(15, 'msg eg') # git
+        self.skip_with_check(54, 'should show 4 changed files') # git
+        self.skip_with_check(59, 'add a message summarising') # git
+        self.skip_with_check(77, '5 changed files') # git
+        self.skip_with_check(79, 'forms x2') # git
+        self.skip_with_check(94, '3 changed files') # git
+        touch_pos = 45
+        touch = self.listings[touch_pos]
+        assert 'touch' in touch
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 60
+            self.pos = 59
             self.sourcetree.run_command('git checkout {0}'.format(
                 self.sourcetree.get_commit_spec('ch06l021-1')
             ))
 
-        while self.pos < 44:
+        while self.pos < touch_pos:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
 
         # special-case: we have a touch followed by some output.
         # just do this one manually
-        if self.pos < 45:
-            touch = self.listings[44]
-            assert 'touch' in touch
+        if self.pos < touch_pos + 1:
             output = self.run_command(touch)
             self.assertFalse(output)
             touch.was_checked = True
-            self.pos = 45
+            self.pos = touch_pos + 1
 
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no)
+        self.check_final_diff(self.chapter_no, ignore_moves=True)
 
 
 if __name__ == '__main__':

@@ -21,7 +21,7 @@ results when you next ran the tests.
 When we run 'unit' tests, the Django test runner automatically creates a brand
 new test database (separate from the real one), which it can safely reset 
 before each individual test is run, and then throw away at the end.  But our
-functional tests currently run against the ``real'' database, 'database.sqlite'
+functional tests currently run against the ``real'' database, 'db.sqlite3'
 
 One way to tackle this would be to ``roll our own'' solution, and add some code
 to 'functional_tests.py' which would do the cleaning up. The `setUp` and
@@ -60,43 +60,38 @@ https://github.com/hjwp/Test-Driven-Django-Tutorial/blob/old-ft-runner/mysite/fu
 *******************************************************************************
 
 `LiveServerTestCase` expects to be run by the Django test runner using
-'manage.py', so the first step is to create a new Django app to hold our
-functional tests.  Last time, to create an app, we used the `manage.py startapp` 
-command, but this time we'll do it manually, because there are some files that
-Django puts into an app by default which we dont need. 
-
-All Django needs for an app is a folder which is a valid Python module (ie one
-with a '__init__.py' in). The only other requirement is that it should contain
-a 'models.py', even if it's just an empty one:
-//TODO: this will change in 1.7. vcheck?
+'manage.py'. As of Django 1.6, the test runner will find any files whose name
+begins with 'test_'.  To keep things need and tidy, let's make a folder for 
+our functional tests, so that it looks a bit like an app. All Django needs is
+for it to be a valid Python module (ie one with a '__init__.py' in):
 
 [subs="specialcharacters,quotes"]
 ----
 $ *mkdir functional_tests*
 $ *touch functional_tests/__init__.py* 
-$ *touch functional_tests/models.py* 
 ----
 
 Then we 'move' our functional tests, from being a standalone file called
 'functional_tests.py', to being the 'tests.py' of the `functional_tests` app.
 We use *`git mv`* so that git notices that we've moved the file:
 
-[subs="specialcharacters,quotes"]
+
+[subs="specialcharacters,macros"]
 ----
-$ *git mv functional_tests.py functional_tests/tests.py*
-$ *git status* # shows the rename to functional_tests/tests.py and 2 untracked files
+$ pass:quotes[*git mv functional_tests.py functional_tests/tests.py*]
+$ pass:quotes[*git status*] # shows the rename to functional_tests/tests.py and __init__.py
 ----
 
 At this point your directory tree should look like this:
 
 ----
 .
-├── database.sqlite
+├── db.sqlite3
 ├── functional_tests
 │   ├── __init__.py
-│   ├── models.py
 │   └── tests.py
 ├── lists
+│   ├── admin.py
 │   ├── __init__.py
 │   ├── models.py
 │   ├── __pycache__
@@ -157,28 +152,6 @@ Next, instead of hard-coding the visit to localhost port 8000,
 We can also remove the `if __name__ == '__main__'` from the end if we want,
 since we'll be using the Django test runner to launch the FT.
 
-Finally, we add `functional_tests` as a new app in 'superlists/settings.py':
-
-[role="sourcecode"]
-.superlists/settings.py
-[source,python]
-----
-INSTALLED_APPS = (
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.sites',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    # Uncomment the next line to enable the admin:
-    # 'django.contrib.admin',
-    # Uncomment the next line to enable admin documentation:
-    # 'django.contrib.admindocs',
-    'lists',
-    'functional_tests',
-)
-----
-
 Now we are able to run our Functional tests using the Django test runner, by
 telling it to run just the tests for our new `functional_tests` app:
 
@@ -212,11 +185,8 @@ itself.  Success! We should commit it as an atomic change:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git status* # should show renamed functional_tests.py,
-             # modified functional_tests/tests.py & settings.py
-             # and 2 new files, __init__.py and models.py
+$ *git status* # functional_tests.py renamed + modified, new __init__.py
 $ *git add functional_tests*
-$ *git add superlists/settings.py*
 $ *git diff --staged -M*
 $ *git commit*  # msg eg "move functional_tests to functional_tests app, use LiveServerTestCase"
 ----
@@ -224,6 +194,53 @@ $ *git commit*  # msg eg "move functional_tests to functional_tests app, use Liv
 The `-M` flag on the `git diff` is a useful one. It means "detect moves", so it
 will notice that `functional_tests.py` and `functional_tests/tests.py` are the
 same file, and show you a more sensible diff (try it without!).
+
+
+Running just the unit tests
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Now if we run `manage.py test`, Django will run both the functional and the
+unit tests:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test*]
+Creating test database for alias 'default'...
+.......F
+======================================================================
+FAIL: test_can_start_a_list_and_retrieve_it_later
+(functional_tests.tests.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/superlists/functional_tests/tests.py", line 61, in
+test_can_start_a_list_and_retrieve_it_later
+    self.fail('Finish the test!')
+AssertionError: Finish the test!
+
+ ---------------------------------------------------------------------
+Ran 8 tests in 3.132s
+
+FAILED (failures=1)
+Destroying test database for alias 'default'...
+----
+
+In order to run just the unit tests, we can specify that we want to
+only run the tests for the `lists` app:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+Creating test database for alias 'default'...
+.......
+ ---------------------------------------------------------------------
+Ran 7 tests in 0.009s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+
 
 .Useful commands updated
 *******************************************************************************
@@ -633,7 +650,8 @@ urlpatterns = patterns('',
     url(r'^lists/the-only-list-in-the-world/$', 'lists.views.view_list',
         name='view_list'
     ),
-    # url(r'^superlists/', include('superlists.foo.urls')),
+
+    # url(r'^admin/', include(admin.site.urls)),
     [...]
 ----
 
@@ -986,6 +1004,8 @@ urlpatterns = patterns('',
         name='view_list'
     ),
     url(r'^lists/new$', 'lists.views.new_list', name='new_list'),
+    # url(r'^admin/', include(admin.site.urls)),
+)
 ----
 
 Next we get a `ViewDoesNotExist`, so let's fix that, in 'lists/views.py':
@@ -1280,15 +1300,14 @@ class ListViewTest(TestCase):
         Item.objects.create(text='itemey 2', list=list_)
 ----
 
-//TODO: good spot for another bit on reading tracebacks?
-
 That gets us down to two failing tests, both on tests that try to POST
-to our new_list view. Decoding the tracebacks, the area comes from a line
-in the view:
+to our new_list view. Decoding the tracebacks using our usual technique, working
+back from error, to line of test code, to the line of our own code that caused
+the failure, we identify:
 
 [subs="specialcharacters,macros"]
 ----
-File "/workspace/superlists/lists/views.py", line 14, in new_list
+File "/workspace/superlists/lists/views.py", line 15, in new_list
 Item.objects.create(text=request.POST['item_text'])
 ----
 
@@ -1413,6 +1432,8 @@ urlpatterns = patterns('',
     url(r'^$', 'lists.views.home_page', name='home'),
     url(r'^lists/(.+)/$', 'lists.views.view_list', name='view_list'),
     url(r'^lists/new$', 'lists.views.new_list', name='new_list'),
+    # url(r'^admin/', include(admin.site.urls)),
+)
 ----
 
 We adjust the regular expression for our URL to include a 'capture group',
@@ -1618,6 +1639,8 @@ urlpatterns = patterns('',
     url(r'^lists/(\d+)/$', 'lists.views.view_list', name='view_list'),
     url(r'^lists/(\d+)/new_item$', 'lists.views.add_item', name='add_item'),
     url(r'^lists/new$', 'lists.views.new_list', name='new_list'),
+    # url(r'^admin/', include(admin.site.urls)),
+)
 ----
 
 Three very similar-looking URLs there.  Let's make a note on our
@@ -1833,11 +1856,6 @@ as well as giving our code a better structure).
 urlpatterns = patterns('',
     url(r'^$', 'lists.views.home_page', name='home'),
     url(r'^lists/', include('lists.urls')),
-
-    # Uncomment the admin/doc line below to enable admin documentation:
-    # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
-
-    # Uncomment the next line to enable the admin:
     # url(r'^admin/', include(admin.site.urls)),
 )
 ----
@@ -1854,8 +1872,8 @@ of our 3 URLs, and none of the other stuff from the parent urls.py:
 from django.conf.urls import patterns, url
 
 urlpatterns = patterns('',
-    url(r'^(.+)/$', 'lists.views.view_list', name='view_list'),
-    url(r'^(.+)/new_item$', 'lists.views.add_item', name='add_item'),
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(\d+)/new_item$', 'lists.views.add_item', name='add_item'),
     url(r'^new$', 'lists.views.new_list', name='new_list'),
 )
 ----

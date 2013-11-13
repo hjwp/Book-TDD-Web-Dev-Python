@@ -368,7 +368,7 @@ class ChapterTest(unittest.TestCase):
         )
         git_output = self.run_command(self.listings[pos])
         if not any('/' + l in git_output for l in LIKELY_FILES):
-            if not 'lists/' in git_output:
+            if not any(f in git_output for f in ('lists/', 'functional_tests.py')):
                 self.fail('no likely files in diff output %s' % (git_output,))
         self.pos += 1
         comment = self.listings[pos + 1]
