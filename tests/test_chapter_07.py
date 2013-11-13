@@ -24,38 +24,23 @@ class Chapter7Test(ChapterTest):
         self.skip_with_check(24, 'the -b means ignore whitespace')
         self.skip_with_check(27, 'leave static, for now')
         self.skip_with_check(47, 'will now show all the bootstrap')
-        self.skip_with_check(50, 'projects') # tree showing where static goes
+        self.skip_with_check(49, 'projects') # tree showing where static goes
 
-        while self.pos < 32:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
+        # hack fast-forward
+        skip = False
+        if skip:
+            self.pos = 51
+            self.sourcetree.run_command('git checkout {0}'.format(
+                self.sourcetree.get_commit_spec('ch07l018')
+            ))
 
-        settings = self.sourcetree.get_contents('superlists/settings.py')
-        assert self.listings[32].filename == 'superlists/settings.py'
-        for line in self.listings[32].contents.split('\n'):
-            assert line in settings
-        self.listings[32].skip = True
-
-        while self.pos < 49:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
-
-        settings = self.sourcetree.get_contents('superlists/settings.py')
-        assert self.listings[49].filename == 'superlists/settings.py'
-        for line in self.listings[49].contents.split('\n'):
-            assert line in settings
-        self.listings[49].skip = True
-
-        #import time
-        #print(self.tempdir)
-        #time.sleep(200)
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no)
+        self.check_final_diff(self.chapter_no, ignore_moves=True)
 
 
 if __name__ == '__main__':
