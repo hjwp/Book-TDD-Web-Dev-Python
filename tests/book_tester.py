@@ -105,19 +105,26 @@ class ChapterTest(unittest.TestCase):
         self.listings = [p for n in listings_nodes for p in parse_listing(n)]
 
 
-    def check_final_diff(self, chapter, ignore_moves=False):
+    def check_final_diff(self, chapter, ignore_moves=False, ignore_secret_key=False):
         diff = self.run_command(Command(
             'git diff -b repo/chapter_{0:02d}'.format(chapter)
         ))
         print('checking final diff', diff)
         start_marker = 'diff --git a/\n'
         commit = Commit(start_marker + diff)
-        if ignore_moves:
+        error = AssertionError('Final diff was not empty, was:\n{}'.format(diff))
+
+        if ignore_secret_key:
+            for line in commit.lines_to_add + commit.lines_to_remove:
+                if 'SECRET_KEY' not in line:
+                    raise error
+
+        elif ignore_moves:
             if commit.deleted_lines or commit.new_lines:
-                raise AssertionError('Final diff was not empty, was:\n{}'.format(diff))
+                raise error
 
         elif commit.lines_to_add or commit.lines_to_remove:
-            raise AssertionError('Final diff was not empty, was:\n{}'.format(diff))
+            raise error
 
 
 

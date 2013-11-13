@@ -80,27 +80,8 @@ class Chapter1Test(ChapterTest):
         self.run_command(Command('git fetch repo'))
         diff = self.run_command(Command('git diff -b repo/chapter_01'))
         actual_diff_lines = diff.strip().split('\n')
-
-        expected_diff_lines = [
-           u"diff --git a/superlists/settings.py b/superlists/settings.py",
-            "index 2326f30..956bff8 100644",
-            "--- a/superlists/settings.py",
-            "+++ b/superlists/settings.py",
-            "@@ -83,7 +83,7 @@ STATICFILES_FINDERS = (",
-            " )",
-            " ",
-            " # Make this unique, and don't share it with anybody.",
-            "-SECRET_KEY = 't216r6m7-kpptidvy7-r$=rswe%e8+a4of0^h@4w85bd9d90_!'",
-            "+SECRET_KEY = '-pr7xq9-786$n9vasjc1!covnbayhfw%p0@zm9c-p-(-4y#lqf'",
-            " ",
-            " # List of callables that know how to import templates from various sources.",
-            " TEMPLATE_LOADERS = (",
-        ]
-        self.assertEqual(actual_diff_lines[0], expected_diff_lines[0])
-        self.assertTrue(actual_diff_lines[1].startswith("index"))
-        self.assertEqual(actual_diff_lines[2:9], expected_diff_lines[2:9])
-        self.assertEqual(actual_diff_lines[10:], expected_diff_lines[10:])
-        self.assertTrue(actual_diff_lines[8].startswith("-SECRET_KEY"))
+        print('actual diff lines', actual_diff_lines)
+        self.check_final_diff(1, ignore_secret_key=True)
 
         self.assert_all_listings_checked(self.listings)
 

@@ -696,6 +696,30 @@ class CheckFinalDiffTest(ChapterTest):
             self.check_final_diff(chapter=1, ignore_moves=True)
 
 
+    def test_ignore_secret_key(self):
+        diff = dedent(
+        """
+        diff --git a/superlists/settings.py b/superlists/settings.py
+        index 7463a4c..6eb4bde 100644
+        --- a/superlists/settings.py
+        +++ b/superlists/settings.py
+        @@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+         # See https://docs.djangoproject.com/en/1.6/howto/deployment/checklist/
+
+         # SECURITY WARNING: keep the secret key used in production secret!
+        -SECRET_KEY = '!x8-9w9o%s#c8u(4^zb9n2g(xy4q*@c^$9axl2o48wkz(v%_!*'
+        +SECRET_KEY = 'y)exet(6z6z6)(b!v1m8it$a0q^e=b^#*r8a2o5er1u(=sl=7f'
+
+         # SECURITY WARNING: don't run with debug turned on in production!
+        """)
+        self.run_command = lambda _: diff
+        with self.assertRaises(AssertionError):
+            self.check_final_diff(1)
+        self.check_final_diff(chapter=1, ignore_secret_key=True) # should pass
+        with self.assertRaises(AssertionError):
+            diff += '\n+a genuinely different line'
+            self.check_final_diff(chapter=1, ignore_secret_key=True)
+
 
 if __name__ == '__main__':
     unittest.main()
