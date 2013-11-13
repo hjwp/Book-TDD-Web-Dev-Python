@@ -22,8 +22,11 @@ URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/ch13.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch14.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch15.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/ch16.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/ch17.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/apa.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/apb.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/apc.html',
 ]
 
 
