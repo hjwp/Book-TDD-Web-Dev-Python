@@ -76,6 +76,7 @@ class SourceTree(object):
             cwd = os.path.join(self.tempdir, 'superlists')
 
         if command == 'wget -O bootstrap.zip https://codeload.github.com/twbs/bootstrap/zip/v2.3.2':
+            #$ *wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip*
             shutil.copy(
                 os.path.join(os.path.dirname(__file__), '../downloads/bootstrap-2-rezipped.zip'),
                 os.path.join(cwd, 'bootstrap.zip')

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
+import time
 
 from book_tester import (
     ChapterTest,
@@ -11,6 +12,13 @@ from book_tester import (
 
 class Chapter5Test(ChapterTest):
     chapter_no = 5
+
+    def restart_dev_server(self):
+        self.run_command(Command('pkill -f runserver'))
+        time.sleep(1)
+        self.start_dev_server()
+        time.sleep(1)
+
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -27,6 +35,9 @@ class Chapter5Test(ChapterTest):
         self.skip_with_check(69, "3: Buy peacock feathers")
 
         while self.pos < len(self.listings):
+            if self.pos ==  66:
+                self.restart_dev_server()
+
             print(self.pos)
             self.recognise_listing_and_process_it()
 
