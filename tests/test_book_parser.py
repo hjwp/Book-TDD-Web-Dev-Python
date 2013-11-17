@@ -17,6 +17,7 @@ from examples import (
     CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF,
     CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF,
     CODE_LISTING_WITH_SKIPME,
+    OUTPUT_QUNIT,
     OUTPUTS_WITH_CURRENTCONTENTS,
     OUTPUT_WITH_SKIPME,
     OUTPUTS_WITH_DOFIRST,
@@ -145,6 +146,18 @@ class ParseCodeListingTest(unittest.TestCase):
         listing = listings[0]
         assert listing.dofirst == 'ch09l058'
 
+
+    def test_recognises_qunit_tag(self):
+        code_html = OUTPUT_QUNIT.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        self.assertEqual(len(listings), 1)
+        listing = listings[0]
+        self.assertEqual(listing.type, 'qunit output')
+        self.assertEqual(
+            listing,
+            '2 assertions of 2 passed, 0 failed.\n1. smoke test (0, 2, 2)'
+        )
 
     def test_recognises_server_commands(self):
         code_html = COMMAND_LISTING_WITH_CAPTION.replace('\n', '\r\n')

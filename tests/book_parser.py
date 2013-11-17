@@ -79,10 +79,13 @@ class Output(str):
         self.was_checked = False
         self.skip = False
         self.dofirst = None
+        self.qunit_output = False
         str.__init__(a_string)
 
     @property
     def type(self):
+        if self.qunit_output:
+            return 'qunit output'
         if u'├' in self:
             return 'tree'
         else:
@@ -108,6 +111,12 @@ def parse_listing(listing):
         if 'currentcontents' in classes:
             listing.currentcontents = True
         return [listing]
+
+    elif 'qunit-output' in classes:
+        contents = listing.cssselect('.content')[0].text_content().replace('\r\n', '\n').strip('\n')
+        output = Output(contents)
+        output.qunit_output = True
+        return [output]
 
     else:
         commands = get_commands(listing)

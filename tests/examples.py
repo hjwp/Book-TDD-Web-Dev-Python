@@ -122,3 +122,10 @@ OUTPUTS_WITH_CURRENTCONTENTS = """
 <span class="kn">from</span> <span class="nn">django.conf.urls</span> <span class="kn">import</span> <span class="n">patterns</span><span class="p">,</span> <span class="n">include</span><span class="p">,</span> <span class="n">url</span>
 </pre></div></div></div>"""
 
+OUTPUT_QUNIT = """
+<div class="listingblock qunit-output">
+<div class="title">Expected results from Qunit in browser</div>
+<div class="content">
+<pre><code>2 assertions of 2 passed, 0 failed.
+1. smoke test (0, 2, 2)</code></pre>
+</div></div>"""
