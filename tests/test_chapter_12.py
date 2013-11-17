@@ -26,6 +26,8 @@ class Chapter12Test(ChapterTest):
         self.assertEqual(self.listings[0].type, 'other command')
         self.assertEqual(self.listings[1].type, 'output')
         self.assertEqual(self.listings[2].type, 'code listing with git ref')
+        self.skip_with_check(47, 'needs the -f')
+        self.skip_with_check(50, 'git push -f origin')
         fab_pos = 36
         assert 'fab' in self.listings[fab_pos]
 
@@ -45,17 +47,17 @@ class Chapter12Test(ChapterTest):
                 self.sourcetree.get_commit_spec('ch12l015')
             ))
 
-        while self.pos < fab_pos:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
+        # while self.pos < fab_pos:
+        #     print(self.pos)
+        #     self.recognise_listing_and_process_it()
 
-        self.sourcetree.run_command('git stash')
-        self.sourcetree.run_command('git checkout repo/chapter_12^')
-        self.sourcetree.run_command('git stash pop')
-        self.recognise_listing_and_process_it()
-        self.sourcetree.run_command('git stash')
-        self.sourcetree.run_command('git checkout master')
-        self.sourcetree.run_command('git stash pop')
+        # self.sourcetree.run_command('git stash')
+        # self.sourcetree.run_command('git checkout repo/chapter_12^')
+        # self.sourcetree.run_command('git stash pop')
+        # self.recognise_listing_and_process_it()
+        # self.sourcetree.run_command('git stash')
+        # self.sourcetree.run_command('git checkout master')
+        # self.sourcetree.run_command('git stash pop')
 
         while self.pos < len(self.listings):
             print(self.pos)
