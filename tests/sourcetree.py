@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 
+BOOTSTRAP_WGET = 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip'
 
 class Commit(object):
     def __init__(self, commit_info):
@@ -75,7 +76,7 @@ class SourceTree(object):
         if cwd is None:
             cwd = os.path.join(self.tempdir, 'superlists')
 
-        if command == 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip':
+        if command == BOOTSTRAP_WGET:
             shutil.copy(
                 os.path.join(os.path.dirname(__file__), '../downloads/bootstrap-3.0.zip'),
                 os.path.join(cwd, 'bootstrap.zip')

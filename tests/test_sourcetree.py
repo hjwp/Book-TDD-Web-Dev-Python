@@ -5,7 +5,11 @@ from textwrap import dedent
 import os
 
 from book_parser import CodeListing
-from sourcetree import ApplyCommitException, Commit, SourceTree
+from sourcetree import (
+    BOOTSTRAP_WGET,
+    ApplyCommitException,
+    Commit, SourceTree
+)
 
 
 class GetFileTest(unittest.TestCase):
@@ -27,7 +31,7 @@ class StartWithCheckoutTest(unittest.TestCase):
         ))
 
 
-    def test_checks_out_repo_current_chapter(self):
+    def test_checks_out_repo_current_chapter_as_master(self):
         sourcetree = SourceTree()
         sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
@@ -36,8 +40,9 @@ class StartWithCheckoutTest(unittest.TestCase):
         remotes = sourcetree.run_command('git remote').split()
         assert remotes == ['repo']
         branch = sourcetree.run_command('git branch').strip()
-        assert branch == '* chapter_20'
-        assert sourcetree.chapter == 21
+        assert branch == '* master'
+        diff = sourcetree.run_command('git diff repo/chapter_20').strip()
+        assert diff == ''
 
 
 
@@ -413,13 +418,11 @@ class SourceTreeRunCommandTest(unittest.TestCase):
             mock_subprocess.Popen.return_value.communicate.return_value = (
                     'bla bla', None
             )
-            sourcetree.run_command(
-                'wget -O bootstrap.zip https://codeload.github.com/twbs/bootstrap/zip/v2.3.2'
-            )
+            sourcetree.run_command(BOOTSTRAP_WGET)
             assert not mock_subprocess.Popen.called
         assert os.path.exists(os.path.join(sourcetree.tempdir, 'superlists', 'bootstrap.zip'))
         diff = sourcetree.run_command('diff %s bootstrap.zip' % (
-            os.path.join(os.path.dirname(__file__), '..', 'downloads', 'bootstrap-2-rezipped.zip'))
+            os.path.join(os.path.dirname(__file__), '..', 'downloads', 'bootstrap-3.0.zip'))
         )
         assert diff == ''
 
