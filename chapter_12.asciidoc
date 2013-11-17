@@ -204,10 +204,10 @@ a database that has the old state, ie one that looks like live:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git checkout LIVE -- .*
+$ *git checkout LIVE*
 $ *rm ../database/db.sqlite3*
 $ *python3 manage.py syncdb --noinput*
-$ *git checkout HEAD -- .*
+$ *git checkout master*
 ----
 
 Now, if you try doing a migration, you'll see that South explodes violently:
@@ -284,7 +284,7 @@ adjust it now:
 
 
 [role="sourcecode"]
-.dploy_tools/fabfile.py
+.deploy_tools/fabfile.py
 [source,python]
 ----
 def _update_database(source_folder):
@@ -297,18 +297,30 @@ def _update_database(source_folder):
 ----
 
 Still nervous?  Me too, but that's why we have a staging environment. Here 
-goes nothing!
+goes nothing!  We start by pushing up our latest changes so that we can pull
+them down on the server:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*git push*]  
+----
+
+And deploy!
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*cd deploy_tools*]
 $ pass:quotes[*fab deploy --host=superlists-staging.ottg.eu*]
 [superlists-staging.ottg.eu] Executing task 'deploy'
-[superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu
+[superlists-staging.ottg.eu] run: mkdir -p
+/home/harry/sites/superlists-staging.ottg.eu
 
 [...]
 
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && ../virtualenv/bin/python3 manage.py syncdb
+[superlists-staging.ottg.eu] run: cd
+/home/harry/sites/superlists-staging.ottg.eu/source &&
+../virtualenv/bin/python3 manage.py syncdb
 [superlists-staging.ottg.eu] out: Syncing...
 [superlists-staging.ottg.eu] out: Creating tables ...
 [superlists-staging.ottg.eu] out: Creating table south_migrationhistory
@@ -331,16 +343,21 @@ $ pass:quotes[*fab deploy --host=superlists-staging.ottg.eu*]
 [superlists-staging.ottg.eu] out: (use ./manage.py migrate to migrate these)
 [superlists-staging.ottg.eu] out: 
 
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && ../virtualenv/bin/python3 manage.py migrate lists --fake 0001
+[superlists-staging.ottg.eu] run: cd
+/home/harry/sites/superlists-staging.ottg.eu/source &&
+../virtualenv/bin/python3 manage.py migrate lists --fake 0001
 [superlists-staging.ottg.eu] out:  - Soft matched migration 0001 to 0001_initial.
 [superlists-staging.ottg.eu] out: Running migrations for lists:
 [superlists-staging.ottg.eu] out:  - Migrating forwards to 0001_initial.
 [superlists-staging.ottg.eu] out:  > lists:0001_initial
 [superlists-staging.ottg.eu] out:    (faked)
 [superlists-staging.ottg.eu] out: 
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && ../virtualenv/bin/python3 manage.py migrate
+[superlists-staging.ottg.eu] run: cd
+/home/harry/sites/superlists-staging.ottg.eu/source &&
+../virtualenv/bin/python3 manage.py migrate
 [superlists-staging.ottg.eu] out: Running migrations for lists:
-[superlists-staging.ottg.eu] out:  - Migrating forwards to 0002_auto__add_unique_item_list_text.
+[superlists-staging.ottg.eu] out:  - Migrating forwards to
+0002_auto__add_unique_item_list_text.
 [superlists-staging.ottg.eu] out:  > lists:0002_auto__add_unique_item_list_text
 [superlists-staging.ottg.eu] out:  - Loading initial data for lists.
 [superlists-staging.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
@@ -351,7 +368,7 @@ Looks good.  We then go in and restart our web server:
 
 .server commands
 ----
-harry@obeyttg1:~/sites/superlists-staging.ottg.eu/source$ sudo restart gunicorn-superlists-staging.ottg.eu 
+user@server:$ sudo restart gunicorn-superlists-staging.ottg.eu 
 ----
 
 And we can now run our FTs against staging:
@@ -366,10 +383,61 @@ Ran 4 tests in 17.308s
 OK
 ----
 
-Everything seems in order!
 
-TODO: remove that temporary fake migration from the fabfile now, avoid
-confusion later.
+Everything seems in order!  Let's do it against live:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*cd deploy_tools*]
+$ pass:quotes[*fab deploy --host=superlists.ottg.eu*]
+[superlists.ottg.eu] Executing task 'deploy'
+
+[...]
+----
+
+
+Wrap-up: remove fake migration and git tag
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before we forget, let's remove that fake migration from the fabfile.  We 
+don't want to run that next time we deploy, because south is now in sync on
+the server.  In fact we can simplify it down to a single command, the `syncb
+--migrate`:
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+def _update_database(source_folder):
+    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb --migrate --noinput' % (
+    source_folder,
+))
+----
+
+We commit that:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status*
+$ *git commit -am "deploy script now does syncdb --migrate"*
+----
+
+And finally we tag our latest release:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git tag -f LIVE*  # needs the -f because we are replacing the old tag
+$ *export TAG=`date +DEPLOYED-%F/%H%M`*  # this generates a timestamp
+$ *git tag $TAG*
+$ *git push -f origin LIVE $TAG*
+----
+
+NOTE: We went through quite a bit of pain setting up that fake migrations. If
+we'd started using South at the time of our first deployment, none of this
+would have been necessary.  I hope that going through this more complex 
+procedure has given you more of an insight into how South works but... In
+your real projects, start using South from the very first deploy!
 
 
 On testing database migrations

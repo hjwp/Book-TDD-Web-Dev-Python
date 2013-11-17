@@ -75,16 +75,17 @@ class SourceTree(object):
         if cwd is None:
             cwd = os.path.join(self.tempdir, 'superlists')
 
-        if command == 'wget -O bootstrap.zip https://codeload.github.com/twbs/bootstrap/zip/v2.3.2':
-            #$ *wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip*
+        if command == 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip':
             shutil.copy(
-                os.path.join(os.path.dirname(__file__), '../downloads/bootstrap-2-rezipped.zip'),
+                os.path.join(os.path.dirname(__file__), '../downloads/bootstrap-3.0.zip'),
                 os.path.join(cwd, 'bootstrap.zip')
             )
-            #TODO: fix this for new bootrstrap
             return
+        actual_command = command
+        if command.startswith('fab deploy'):
+            actual_command = 'cd deploy_tools && ' + command
         process = subprocess.Popen(
-            command, shell=True, cwd=cwd, executable='/bin/bash',
+            actual_command, shell=True, cwd=cwd, executable='/bin/bash',
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE,
             preexec_fn=os.setsid,
@@ -105,6 +106,7 @@ class SourceTree(object):
             print('process %s return a non-zero code (%s)' % (command, process.returncode))
             print('output:\n', output)
             raise Exception('process %s return a non-zero code (%s)' % (command, process.returncode))
+        print(output)
         return output
 
 
@@ -116,11 +118,13 @@ class SourceTree(object):
 
 
     def start_with_checkout(self, chapter):
+        print('starting with checkout')
         self.run_command('mkdir superlists', cwd=self.tempdir)
         self.run_command('git init .')
         self.run_command('git remote add repo "%s"' % (self.get_local_repo_path(chapter),))
         self.run_command('git fetch repo')
-        self.run_command('git checkout chapter_{0:02d}'.format(chapter - 1))
+        self.run_command('git reset --hard repo/chapter_{0:02d}'.format(chapter - 1))
+        print(self.run_command('git status'))
         self.chapter = chapter
 
 
