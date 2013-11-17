@@ -1,8 +1,4 @@
 var system = require('system');
-// var env = system.env;
-// Object.keys(env).forEach(function(key) {
-//     console.log(key + '=' + env[key]);
-// });
 
 var path = system.env.PWD + '/' + system.args[1];
 console.log(path);
@@ -34,21 +30,13 @@ page.open('file://' + path, function () {
                     var fails = li.find('.fail');
                     if (fails.text()) {
                         resultLine += '\n';
-                        resultLine += fails.find('tr.test-expected').text();
-                        resultLine += '\n';
-                        resultLine += fails.find('tr.test-actual').text();
-                        resultLine += '\n';
-                        resultLine += fails.find('tr.test-diff').text();
-                        resultLine += '\n';
-                        resultLine += fails.find('tr.test-source').text();
+                        resultLine += fails.text();
                     }
                     results += resultLine + '\n';
                 }
             });
 
             return results;
-
-            //return document.getElementById('qunit-testresult').textContent;
         });
         console.log(output);
         phantom.exit();
