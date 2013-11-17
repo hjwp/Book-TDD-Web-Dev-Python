@@ -100,9 +100,7 @@ class SourceTree(object):
             user_input += '\n'
         output, _ = process.communicate(user_input)
         if process.returncode and not ignore_errors:
-            if 'test' in command:
-                return output
-            if 'diff' in command:
+            if 'test' in command or 'diff' in command or 'migrate' in command:
                 return output
             print('process %s return a non-zero code (%s)' % (command, process.returncode))
             print('output:\n', output)

@@ -20,7 +20,8 @@ finished a
 http://www.kickstarter.com/projects/andrewgodwin/schema-migrations-for-django[project]
 to integrate South into the Django core, in the shape of a new feature called
 https://docs.djangoproject.com/en/dev/topics/migrations/[Migrations]. I plan to
-upgrade to this as soon as it gets released in Django 1.7...
+upgrade to this as soon as it gets released in Django 1.7...  The basic
+concepts and steps involved aren't going to change much though.
 
 
 We start by installing South:
@@ -72,39 +73,62 @@ The place this really matters is on the live server, so we want to be able
 to migrate from the database state as it currently is on live, to the state
 that's in the latest version of the code.
 
-Here's where version control comes in useful. We can use `git log` to look back
-for a commit that we made during chapter 8, or maybe right at the beginning of
-chapter 9.
+Here's where version control comes in useful. You remember in chapter 8
+we tagged the current release?  That makes it easy for us to get an old
+version of our code that matches what's deployed.
 
+.If you didn't tag the release back in chapter 8
+******************************************************************************
+If you were working from a previous version of the book, you might not have
+tagged the release.  You know, because I just only decided to add that bit.
+Instead, you can use `git log` to look back for a commit that we made during
+chapter 8, or maybe right at the beginning of chapter 9.
+
+[role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
 $ *git log --oneline*
-18480bd Create base FT class and a class for each test. --ch09l002--
-87e99b5 Move functional tests into a folder
-7fa00f1 New ft for item validaiton. --ch09l001--
+[...]
+18480bd Create base FT class and a class for each test.
+87e99b5 Moved functional tests into a folder.
+7fa00f1 New ft for item validation.
 8ca488b Add a fabfile for automated deploys    # <---  this looks like it!
 d28e6ea Notes and template config files for provisioning
 6b0d814 Add gunicorn to virtualenv requirements
 6a6c91e Add requirements.txt for virtualenv
-$ *git checkout 8ca488b*
 ----
 
-TODO: use a git tag to mark the last deployed version back in chapter 8
+Note down that commit number and then use it to retrospectively add the tag:
 
-Once our source tree is back to a state that matches live, we create our
-initial migration.  First you'll need to re-add south to `INSTALLED_APPS` in
-'settings.py', because it's just been blow away by our checkout. Yes, I know.
-But we're essentially re-writing history here, and sometimes that's hard.
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *git tag LIVE 8ca488b*  # substitute in your own commit number!
+----
 
-Once you've done that, here's how we do an initial migration:
+Then you should be able to follow on with the instructions.
+******************************************************************************
+
+
+To revert our models to the state they were in at that point: 
 
 [subs="specialcharacters,quotes"]
 ----
-$ ../virtualenv/bin/python3 manage.py schemamigration lists --initial
-Creating __init__.py in '/home/harry/Dropbox/book/source/chapter_09/superlists/lists/migrations'...
+$ *git checkout LIVE -- lists/models.py*
+----
+
+Now we can create our initial migration.  This tells south what the "starting"
+state of the database should be:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*../virtualenv/bin/python3 manage.py schemamigration lists --initial*]
+Creating migrations directory at '/workspace/superlists/lists/migrations'...
+[...]
  + Added model lists.List
  + Added model lists.Item
-Created 0001_initial.py. You can now apply this migration with: ./manage.py migrate lists
+Created 0001_initial.py. You can now apply this migration with: ./manage.py
+migrate lists
 ----
 
 The migration is stored in a directory called 'migrations' inside the
@@ -123,10 +147,10 @@ We go back to the latest code version:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git checkout -f master*  # -f ignores change to settings.py
+$ *git checkout HEAD -- lists/models.py* 
 ----
 
-And we add the migration to version control:
+And we add the initial migration to version control:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -138,9 +162,9 @@ $ *git commit -m"initial migration to match live"*
 Next we create the "real" migration that we want to apply.  This time
 we use `--auto`:
 
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *../virtualenv/bin/python manage.py schemamigration --auto lists*
+$ pass:quotes[*../virtualenv/bin/python manage.py schemamigration --auto lists*]
  + Added unique constraint for ['list', 'text'] on lists.Item
 Created 0002_auto__add_unique_item_list_text.py. You can now apply this
 migration with: ./manage.py migrate lists
@@ -168,38 +192,52 @@ where it currently is.  In order to tell it, we do what's called a "fake"
 migration, to tell it that the current database state is at the 0001 migration
 that we stored earlier, and that the one we want to go to is 0002.
 
-Let's test this out locally.  First, we go and make a database that has the old
-state, ie one that looks like live:
+If that hasn't melted your brain enough, how about this: so South needs to
+store information about what it thinks the current state of the database is,
+right?  And where do you think it stores it?  You can see this coming, can't 
+you?  It stores it in the database.  South has its own set of tables.  Please
+don't ask me whether south stores information in those tables about the tables
+themselves.
+
+Let's test this out locally and try and get used to it.  First, we go and make
+a database that has the old state, ie one that looks like live:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git checkout 8ca488b*
-$ *rm ../database/database.sqlite*
+$ *git checkout LIVE -- .*
+$ *rm ../database/db.sqlite3*
 $ *python3 manage.py syncdb --noinput*
-$ *git checkout master*
+$ *git checkout HEAD -- .*
 ----
 
-Now, back on master, if you try doing a migration, you'll see that
-Django is confused:
+Now, if you try doing a migration, you'll see that South explodes violently:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *../virtualenv/bin/python3 manage.py migrate*
+$ *../virtualenv/bin/python3 manage.py syncdb --migrate*
+Syncing...
+Creating tables ...
+Creating table south_migrationhistory
+[...]
+Migrating...
 Running migrations for lists:
  - Migrating forwards to 0002_auto__add_unique_item_list_text.
  > lists:0001_initial
-FATAL ERROR - The following SQL query failed: CREATE TABLE "lists_list" ("id" integer NOT NULL PRIMARY KEY)
+FATAL ERROR - The following SQL query failed: CREATE TABLE "lists_list" ("id"
+integer NOT NULL PRIMARY KEY)
 [...]
  ! NOTE: The error which caused the migration to fail is further up.
 Error in migration: lists:0001_initial
-DatabaseError: table "lists_list" already exists
+[...]
+django.db.utils.OperationalError: table "lists_list" already exists
 ----
 
-It's because Django is confused about the current state of the database. It 
-thinks it needs to create this lists table, but it's already there. Here's how
-we tell it that the database currently reflects the place where we are at
-migration 0001, ie the place where live is:
+It's because it's confused about the current state of the database. It 
+thinks it needs to create the lists table, but it's already there. Here's how
+we tell it that the database actually matches migration 0001, ie the place
+where live is:
 
+[subs="specialcharacters,quotes"]
 ----
 $ *../virtualenv/bin/python3 manage.py migrate lists --fake 0001*
 Running migrations for lists:
@@ -208,11 +246,11 @@ Running migrations for lists:
    (faked)
 ----
 
-And now we can test applying the real migration we want to do to
-live:
+And now we can test applying the real migration we want to do to live:
 
+[subs="specialcharacters,quotes"]
 ----
-$ *../virtualenv/bin/python3 manage.py migrate lists
+$ *../virtualenv/bin/python3 manage.py migrate lists*
 Running migrations for lists:
  - Migrating forwards to 0002_auto__add_unique_item_list_text.
  > lists:0002_auto__add_unique_item_list_text
@@ -223,17 +261,22 @@ Installed 0 object(s) from 0 fixture(s)
 Brilliant! Are you confused?  I am, slightly, and I'm the one writing this.
 Here's a recap:
 
-* we need to apply a database migration to the live database when we deploy, 
-to add the uniqueness constraint
-* we're going to use South migrations for this.  We've created two migrations,
-one (0001) which takes us from nothing to the old state, and one which takes
-us from there to the state we want (0002)
-* to test this, we've created a database in the same state as live by
-checking out our old codebase and doing a syncdb
-* in order to apply a migration, South needs to know what the current state
-of the database is
-* we tell it by applying a "fake" version of migration 0001
-* then we're in a position to apply the real migration, 0002
+* We need to apply a database migration to the live database when we deploy, 
+  to add the uniqueness constraint.
+
+* We're going to use South migrations for this.  We've created two migrations,
+  one (0001) which takes us from nothing to the old state, and one which takes
+  us from there to the state we want (0002).
+
+* To test this, we've created a database in the same state as live by
+  checking out our old model code and doing a syncdb.
+
+* In order to apply a migration, South needs to know what the current state
+  of the database is.
+
+* We tell it by applying a "fake" version of migration 0001.
+
+* Then we're in a position to apply the real migration, 0002.
 
 So how are we actually going to do this on our live servers?  By replicating
 those last two steps.  We're using a fabfile for our deployments, so let's 
@@ -256,9 +299,10 @@ def _update_database(source_folder):
 Still nervous?  Me too, but that's why we have a staging environment. Here 
 goes nothing!
 
+[subs="specialcharacters,macros"]
 ----
-$ cd deploy_tools
-$ fab deploy --host=superlists-staging.ottg.eu
+$ pass:quotes[*cd deploy_tools*]
+$ pass:quotes[*fab deploy --host=superlists-staging.ottg.eu*]
 [superlists-staging.ottg.eu] Executing task 'deploy'
 [superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu
 
@@ -305,6 +349,7 @@ $ fab deploy --host=superlists-staging.ottg.eu
 
 Looks good.  We then go in and restart our web server:
 
+.server commands
 ----
 harry@obeyttg1:~/sites/superlists-staging.ottg.eu/source$ sudo restart gunicorn-superlists-staging.ottg.eu 
 ----
@@ -322,6 +367,9 @@ OK
 ----
 
 Everything seems in order!
+
+TODO: remove that temporary fake migration from the fabfile now, avoid
+confusion later.
 
 
 On testing database migrations
@@ -342,6 +390,7 @@ The answer to that is: you should if you're 'particularly' nervous.  Hopefully
 you've now got enough building blocks from this book to see how you might be 
 able to write some automated tests that would do just that.
 
+
 Don't test third party code
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -352,6 +401,7 @@ decide whether you trust them or not.  South is an incredibly popular tool,
 it's been around for ages, and we can be pretty confident that it's going
 to do what it says it does.
 
+
 Do test migrations for speed
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -360,6 +410,7 @@ Database migrations typically involve down-time, as, depending on your
 database, the schema update operation may lock the table it's working on
 until it completes.  It's a good idea to use your staging site to find out
 how long a migration will take.
+
 
 Be extremely careful if using a dump of production data
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -373,6 +424,7 @@ customer details, and I've personally been responsible for accidentally sending
 out a few hundred incorrect invoices after an automated process on my staging
 server started processing the copied production data I'd just loaded into it.
 Not a fun afternoon.
+
 
 And on that stern note, time to move on to the next chapter!  Hopefully it'll
 have something fun in it to cheer us up.  Oh, wait --
