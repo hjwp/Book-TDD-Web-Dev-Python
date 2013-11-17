@@ -18,6 +18,12 @@ from book_parser import (
 from sourcetree import Commit, SourceTree
 
 
+PHANTOMJS_RUNNER = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    'my-phantomjs-qunit-runner.js'
+)
+
+
 
 def wrap_long_lines(text):
     paragraphs = text.split('\n')
@@ -342,6 +348,15 @@ class ChapterTest(unittest.TestCase):
         self.pos += 2
 
 
+    def check_qunit_output(self, listing):
+        lists_tests = os.path.join(
+            self.tempdir,
+            'superlists/lists/static/tests/tests.html'
+        )
+        actual_run = subprocess.check_output(['phantomjs', PHANTOMJS_RUNNER, lists_tests]).decode()
+        self.assert_console_output_correct(actual_run, listing)
+
+
     def check_commit(self, pos):
         if self.listings[pos].endswith('commit -a'):
             self.listings[pos] = Command(
@@ -519,6 +534,10 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'server code listing':
             print("SERVER CODE")
             self.write_file_on_server(listing.filename, listing.contents)
+            self.pos += 1
+
+        elif listing.type == 'qunit output':
+            self.check_qunit_output(listing)
             self.pos += 1
 
         elif listing.type == 'output':

@@ -6,6 +6,7 @@ import unittest
 
 from book_tester import (
     ChapterTest,
+    PHANTOMJS_RUNNER,
     wrap_long_lines,
 )
 from book_parser import (
@@ -614,6 +615,33 @@ class DictOrderingTest(ChapterTest):
     def test_dict_ordering_is_stable(self):
         assert list({'a':'b', 'c':'d'}.keys()) == ['a', 'c']
         self.assertEqual(os.environ['PYTHONHASHSEED'], "0")
+
+
+
+class CheckQunitOuptutTest(ChapterTest):
+
+    def test_partial_listing_passes(self):
+        self.chapter_no = 13
+        self.sourcetree.start_with_checkout(14)
+        expected = Output("2 assertions of 2 passed, 0 failed")
+        self.check_qunit_output(expected) # should pass
+        assert expected.was_checked
+        with self.assertRaises(AssertionError):
+            self.check_qunit_output(Output('arg'))
+
+
+    def test_runs_phantomjs_runner_against_lists_tests(self):
+        self.chapter_no = 13
+        self.sourcetree.start_with_checkout(14)
+        lists_tests = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)),
+            '../source/chapter_13/superlists/lists/static/tests/tests.html'
+        )
+
+        manual_run = subprocess.check_output(['phantomjs', PHANTOMJS_RUNNER, lists_tests])
+        expected = Output(manual_run.strip().decode())
+        self.check_qunit_output(expected) # should pass
+
 
 
 class CheckFinalDiffTest(ChapterTest):
