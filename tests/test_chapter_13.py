@@ -19,7 +19,7 @@ class Chapter13Test(ChapterTest):
         #self.skip_with_check(30, '# review changes') # diff
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 5
             self.sourcetree.run_command('git checkout {0}'.format(
@@ -31,6 +31,7 @@ class Chapter13Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
+        self.sourcetree.run_command('git add . && git commit -m"final commit"')
         self.check_final_diff(self.chapter_no)
 
 

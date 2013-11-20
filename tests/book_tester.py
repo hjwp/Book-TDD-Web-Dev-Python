@@ -266,7 +266,8 @@ class ChapterTest(unittest.TestCase):
                 self.assertLineIn(line, [l.strip() for l in actual_lines])
 
         if len(expected_lines) > 4 and '[...' not in expected_fixed:
-            self.assertMultiLineEqual(actual_fixed.strip(), expected_fixed.strip())
+            if expected.type != 'qunit output':
+                self.assertMultiLineEqual(actual_fixed.strip(), expected_fixed.strip())
 
         expected.was_checked = True
 

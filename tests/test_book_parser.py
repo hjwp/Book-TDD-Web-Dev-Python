@@ -281,19 +281,6 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
 
-    def test_specialcase_for_asterisk(self):
-        listing = html.fromstring(
-            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>git rm --cached superlists/</strong>*<strong>.pyc</strong>\r\nrm <em>superlists/__init__.pyc</em>\r\nrm <em>superlists/settings.pyc</em>\r\nrm <em>superlists/urls.pyc</em>\r\nrm <em>superlists/wsgi.pyc</em>\r\n\r\n$ <strong>echo "*.pyc" &gt; .gitignore</strong></code></pre>\r\n</div></div>&#13;\n'
-        )
-        self.assertEqual(
-            get_commands(listing),
-            [
-                'git rm --cached superlists/*.pyc',
-                'echo "*.pyc" > .gitignore',
-            ]
-        )
-
-
     def test_catches_command_with_trailing_comment(self):
         listing = html.fromstring(
             dedent("""
@@ -314,6 +301,32 @@ class ParseCodeListingTest(unittest.TestCase):
         )
         self.assertEqual(type(parsed_listings[0]), Command)
         self.assertEqual(type(parsed_listings[1]), Output)
+
+
+    def DONTtest_handles_multiline_commands(self):
+        listing = html.fromstring(dedent(
+                """
+                <div class="listingblock">
+                <div class="content">
+                <pre><code>$ <strong>python3 manage.py test \\
+                functional_tests.ItemValidationTest.test_error_messages_are_cleared_on_input</strong>
+
+                .
+                 ---------------------------------------------------------------------
+                Ran 1 test in 3.023s
+
+                OK</code></pre>
+                </div></div>
+                """
+        ))
+        commands = get_commands(listing)
+        assert len(commands) == 1
+        assert commands[0] == 'python3 manage.py test \\\nfunctional_tests.ItemValidationTest.test_error_messages_are_cleared_on_input'
+
+        # too hard for now
+        parsed_listings = parse_listing(listing)
+        self.assertEqual(type(parsed_listings[0]), Command)
+        self.assertEqual(parsed_listings[0], commands[0])
 
 
 
@@ -343,17 +356,6 @@ class GetCommandsTest(unittest.TestCase):
         )
 
 
-    def test_specialcase_for_asterisk(self):
-        listing = html.fromstring(
-            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>git rm --cached superlists/</strong>*<strong>.pyc</strong>\r\nrm <em>superlists/__init__.pyc</em>\r\nrm <em>superlists/settings.pyc</em>\r\nrm <em>superlists/urls.pyc</em>\r\nrm <em>superlists/wsgi.pyc</em>\r\n\r\n$ <strong>echo "*.pyc" &gt; .gitignore</strong></code></pre>\r\n</div></div>&#13;\n'
-        )
-        self.assertEqual(
-            get_commands(listing),
-            [
-                'git rm --cached superlists/*.pyc',
-                'echo "*.pyc" > .gitignore',
-            ]
-        )
 
 
 if __name__ == '__main__':

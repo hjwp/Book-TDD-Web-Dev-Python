@@ -157,16 +157,8 @@ def parse_listing(listing):
 
 
 def get_commands(node):
-    commands = [
+    return [
         el.text_content()
         for el in node.cssselect('pre code strong')
     ]
-    if commands.count("git rm --cached superlists/"):
-        ## hack -- listings with a star in are weird
-        fix_pos = commands.index("git rm --cached superlists/")
-        commands.remove("git rm --cached superlists/")
-        commands.remove(".pyc")
-        commands.insert(fix_pos, "git rm --cached superlists/*.pyc")
-
-    return commands
 
