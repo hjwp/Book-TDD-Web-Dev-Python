@@ -32,7 +32,7 @@ class Chapter5Test(ChapterTest):
         self.start_dev_server()
 
         # skips
-        self.skip_with_check(69, "3: Buy peacock feathers")
+        self.skip_with_check(70, "3: Buy peacock feathers")
 
         while self.pos < len(self.listings):
             if self.pos ==  66:
