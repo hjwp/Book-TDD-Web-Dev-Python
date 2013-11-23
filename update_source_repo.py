@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Update required checkouts in source repo (branch for chap. n-1)
-Does nothing when username = harry
+Does not affect working branch when username = harry
 
 Usage:
   update_source_repo.py [<chapter_no>]
@@ -25,19 +25,24 @@ def update_sources_for_chapter(chapter_no):
     subprocess.check_output(['git', 'submodule', 'update', target])
     current_chapter = 'chapter_{0:02d}'.format(chapter_no)
     chapter_before = 'chapter_{0:02d}'.format(chapter_no - 1)
-    commit_specified_by_submodule = subprocess.check_output(['git', 'log', '-n 1', '--format=%H'], cwd=target).decode().strip()
+    commit_specified_by_submodule = subprocess.check_output(
+        ['git', 'log', '-n 1', '--format=%H'], cwd=target
+    ).decode().strip()
     print('current commit', commit_specified_by_submodule)
     subprocess.check_output(['git', 'fetch'], cwd=target)
     if chapter_no > 1:
         subprocess.check_output(['git', 'checkout', chapter_before], cwd=target)
         subprocess.check_output(['git', 'reset', '--hard', 'origin/{}'.format(chapter_before)], cwd=target)
     subprocess.check_output(['git', 'checkout', current_chapter], cwd=target)
-    subprocess.check_output(['git', 'reset', '--hard', commit_specified_by_submodule], cwd=target)
+    if getpass.getuser() == 'harry':
+        print("skipping {} reset on harry's dev machine".format(current_chapter))
+    else:
+        subprocess.check_output(
+            ['git', 'reset', '--hard', commit_specified_by_submodule],
+            cwd=target
+        )
 
 def main(arguments):
-    if getpass.getuser() == 'harry':
-        print("skipping updates on harry's dev machine")
-        return
     subprocess.check_output(['git', 'submodule', 'init'])
     if arguments['<chapter_no>']:
         update_sources_for_chapter(int(arguments['<chapter_no>']))
