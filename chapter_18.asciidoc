@@ -14,6 +14,9 @@ Possible things to include:
 * notifications?
 
 
+An FT with multiple users, and addCleanup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Here we go!  Ft:
 
 [role="sourcecode"]
@@ -54,12 +57,138 @@ class SharingTest(FunctionalTest):
             'your@friends-email.com'
         )
 ----
+//TODO: rename Edith to Francis, as per ch. 6?
 
-bla talk about addCleanup
+The interesting feature to note about this section is the `addCleanup`
+function, whose documentation you can find 
+http://docs.python.org/3/library/unittest.html#unittest.TestCase.addCleanup[here].
+It can be used as an alternative to the `tearDown` function as a way of
+cleaning up resources used during the test.  It's most useful when the resource
+is only allocated half-way through a test.
+
+`addCleanup` is run after `tearDown`, which is why we need that try/except
+formulation for `quit_if_possible` -- whichever of `edith_browser` and 
+`oni_browser` is also assigned to `self.browser` at the point at which the 
+test end will already have been quit by the tearDown function.
+
+We also need to change the way our pre-authenticated session creator works,
+so that it can take an arbirtray email address for the user to create an
+account and session for.  We start by moving the helper function out of
+`MyListsTest` and into 'base.py', and changing its signature:
 
 
-Now we can extend to Edith seeing the share has been noticed,
-and then see that Oniciferous can also see the list
+[role="sourcecode"]
+.functional_tests/base.py
+[source,diff]
+----
+    def create_pre_authenticated_session(self, email):
+        if self.against_staging:
+            session_key = create_session_on_server(self.server_host, email)
+        else:
+            session_key = create_pre_authenticated_session(email)
+        ## to set a cookie we need to first visit the domain.
+        ## 404 pages load the quickest!
+        self.browser.get(self.server_url + "/404_no_such_url/")
+        self.browser.add_cookie(dict(
+            name=settings.SESSION_COOKIE_NAME,
+            value=session_key,
+            path='/',
+        ))
+----
+
+
+Passing arguments to management commands and fabric commands
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+As you may remember, `create_pre_authenticated_session` is defined in
+our management command file, so that it can be called both locally and
+against the staging server.  Here's how we adjust them to take an
+email as an argument:
+
+ 
+[role="sourcecode"]
+.functional_tests/management/commands/create_session.py 
+[source,diff]
+----
+ class Command(BaseCommand):
++    args = '<email>'
+ 
+-    def handle(self, *_, **__):
+-        session_key = create_pre_authenticated_session()
++    def handle(self, email, **__):
++        session_key = create_pre_authenticated_session(email)
+         self.stdout.write(session_key)
+ 
+ 
+-def create_pre_authenticated_session():
+-    user = User.objects.create(email='edith@email.com')
++def create_pre_authenticated_session(email):
++    user = User.objects.create(email=email)
+     session = SessionStore()
+     session[SESSION_KEY] = user.pk
+     session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
+----
+
+
+And now we adjust our fabfile and fabfile-caller for the case where we
+are running this against the server:
+
+[role="sourcecode"]
+.functional_tests/fabfile.py
+[source,python]
+----
+def create_session_on_server(email):
+    session_key = run('{manage_py} create_session {email}'.format(
+        manage_py=_get_manage_dot_py(env.host),
+        email=email
+    ))
+    print(session_key)
+----
+
+And the function that calls it in 'server_tools.py' also gets a slight tweak
+
+[role="sourcecode"]
+.functional_tests/server_tools.py
+[source,diff]
+----
+-def create_session_on_server(host):
++def create_session_on_server(host, email):
+     return subprocess.check_output(
+         [
+             'fab',
+-            'create_session_on_server',
++            'create_session_on_server:email={}'.format(email),
+             '--host={}'.format(host),
+             '--hide=everything,status',
+         ],
+----
+
+As you can see, the command-line syntax for arguments to fab functions is
+quite simple, a colon and then a variable=argument syntax.
+
+OK, let's just see if that all works:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+[...]
+Traceback (most recent call last):
+  File "/workspace/superlists/functional_tests/test_sharing.py", line 29, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    share_box = self.browser.find_element_by_css_selector('input[name=email]')
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":"input[name=email]"}' ;
+----
+
+Great! It seems to have got through creating the two user sessions, and
+it gets onto an expected failure -- there is no input for an email address
+of a person to share a list with on the page.
+
+Before we continue, let's spec out just a little more detail of what we want
+our sharing user story to be.  Edith will see on her list page that the list
+is now "shared with" Oniciferous, and then we can have Oni log in and see the
+list on his "My Lists" page, maybe in a section called "lists shared with me".
 
 [role="sourcecode"]
 .functional_tests/test_sharing.py
@@ -105,6 +234,15 @@ And finally, Oniciferous can also add things to the list:
         self.check_for_row_in_list_table('2: Hi Edith!')
 ----
 
+At this point we might re-run the FT to check we haven't broken anything,
+and then do a commit
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "New FT for sharing, adjust session creation code to take an email"
+----
 
 
 
@@ -144,104 +282,6 @@ index cf15e6a..b3710a7 100644
  
  DEFAULT_WAIT = 3
  
-@@ -31,7 +33,6 @@ class FunctionalTest(LiveServerTestCase):
-     def setUp(self):
-         if self.against_staging:
-             reset_database(self.server_host)
--
-         self.browser = webdriver.Firefox()
-         self.browser.implicitly_wait(DEFAULT_WAIT)
- 
-@@ -39,8 +40,8 @@ class FunctionalTest(LiveServerTestCase):
-         if not self._outcomeForDoCleanups.success:
-             self.take_screenshot()
-             self.dump_html()
--
--        self.browser.quit()
-+        try: self.browser.quit()
-+        except: pass
-         super().tearDown()
- 
- 
-@@ -83,3 +84,18 @@ class FunctionalTest(LiveServerTestCase):
-         rows = table.find_elements_by_tag_name('tr')
-         self.assertIn(row_text, [row.text for row in rows])
- 
-+
-+    def create_pre_authenticated_session(self, email):
-+        if self.against_staging:
-+            session_key = create_session_on_server(self.server_host, email)
-+        else:
-+            session_key = create_pre_authenticated_session(email)
-+        ## to set a cookie we need to first visit the domain.
-+        ## 404 pages load the quickest!
-+        self.browser.get(self.server_url + "/404_no_such_url/")
-+        self.browser.add_cookie(dict(
-+            name=settings.SESSION_COOKIE_NAME,
-+            value=session_key,
-+            path='/',
-+        ))
-+        print(self.browser.get_cookies())
-diff --git a/functional_tests/fabfile.py b/functional_tests/fabfile.py
-index d11de65..bf76e7c 100644
---- a/functional_tests/fabfile.py
-+++ b/functional_tests/fabfile.py
-@@ -19,9 +19,10 @@ def reset_database():
-     ))
- 
- 
--def create_session_on_server():
--    session_key = run('{manage_py} create_session'.format(
--        manage_py=_get_manage_dot_py(env.host)
-+def create_session_on_server(email):
-+    session_key = run('{manage_py} create_session {email}'.format(
-+        manage_py=_get_manage_dot_py(env.host),
-+        email=email
-     ))
-     print(session_key)
- 
-diff --git a/functional_tests/management/commands/create_session.py b/functional_tests/management/commands/create_session.py
-index a1a8cf1..09f170d 100644
---- a/functional_tests/management/commands/create_session.py
-+++ b/functional_tests/management/commands/create_session.py
-@@ -6,14 +6,15 @@ from django.core.management.base import BaseCommand
- 
- 
- class Command(BaseCommand):
-+    args = '<email>'
- 
--    def handle(self, *_, **__):
--        session_key = create_pre_authenticated_session()
-+    def handle(self, email, **__):
-+        session_key = create_pre_authenticated_session(email)
-         self.stdout.write(session_key)
- 
- 
--def create_pre_authenticated_session():
--    user = User.objects.create(email='edith@email.com')
-+def create_pre_authenticated_session(email):
-+    user = User.objects.create(email=email)
-     session = SessionStore()
-     session[SESSION_KEY] = user.pk
-     session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
-diff --git a/functional_tests/server_tools.py b/functional_tests/server_tools.py
-index 74cad53..30324ea 100644
---- a/functional_tests/server_tools.py
-+++ b/functional_tests/server_tools.py
-@@ -9,11 +9,11 @@ def reset_database(host):
-     )
- 
- 
--def create_session_on_server(host):
-+def create_session_on_server(host, email):
-     return subprocess.check_output(
-         [
-             'fab',
--            'create_session_on_server',
-+            'create_session_on_server:email={}'.format(email),
-             '--host={}'.format(host),
-             '--hide=everything,status',
-         ],
 diff --git a/functional_tests/test_my_lists.py b/functional_tests/test_my_lists.py
 index 9bc991a..3a0da15 100644
 --- a/functional_tests/test_my_lists.py
