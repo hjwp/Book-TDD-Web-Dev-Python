@@ -1,10 +1,413 @@
 Token social bit: list sharing
 ------------------------------
 
-TODO
+Are jokes about how "everything has to be social now" slightly old hat?
+Everything has to be all A/B tested big data lists of 10 Things This Inspiring
+Teacher Said Will Make You Change Your Mind About Bla Bla now. Anyway. Lists,
+be they Inspirational or otherwise, are often better shared. Let's allow our
+users to share their lists with other users.
 
-* FT with two users.  Show using two browsers
+Possible things to include:
+
 * Introduce page pattern?
 * Admin site?
-* notifications
+* notifications?
+
+
+Here we go!  Ft:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+from selenium import webdriver
+from .base import FunctionalTest
+
+def quit_if_possible(browser):
+    try: browser.quit()
+    except: pass
+
+
+class SharingTest(FunctionalTest):
+
+    def test_logged_in_users_lists_are_saved_as_my_lists(self):
+        # Edith is a logged-in user
+        self.create_pre_authenticated_session('edith@email.com')
+        edith_browser = self.browser
+        self.addCleanup(lambda: quit_if_possible(edith_browser))
+
+        # Her friend Oniciferous is also hanging out on the lists site
+        oni_browser = webdriver.Firefox()
+        self.addCleanup(lambda: quit_if_possible(oni_browser))
+        self.browser = oni_browser
+        self.create_pre_authenticated_session('oniciferous@email.com')
+
+        # Edith goes to the home page and starts a list
+        self.browser = edith_browser
+        self.browser.get(self.server_url)
+        self.get_item_input_box().send_keys('Get help\n')
+
+        # She notices a "Share this list" option
+        share_box = self.browser.find_element_by_css_selector('input[name=email]')
+        self.assertEqual(
+            share_box.get_attribute('placeholder'),
+            'your@friends-email.com'
+        )
+----
+
+bla talk about addCleanup
+
+
+Now we can extend to Edith seeing the share has been noticed,
+and then see that Oniciferous can also see the list
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+        share_box.send_keys('oniciferous@email.com\n')
+
+        # The page updates to say that it's shared with Oniciferous:
+        body_text = self.browser.find_element_by_tag_name('body').text
+        self.assertIn('Shared with', body_text)
+        self.assertIn('oniciferous@email.com', body_text)
+
+        # Oniciferous now goes to the lists page with his browser
+        self.browser = oni_browser
+        self.browser.get(self.server_url)
+        self.browser.find_element_by_link_text('My lists').click()
+
+        # He sees edith's list in there!
+        self.browser.find_element_by_link_text('Get help').click()
+----
+
+
+And finally, Oniciferous can also add things to the list:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+        # It says that it's edith's list
+        self.wait_for(
+            lambda: self.assertIn(
+                'List owner: edith@email.com',
+                self.browser.find_element_by_tag_name('body').text
+            )
+        )
+
+        # He adds an item to the list
+        self.get_item_input_box().send_keys('Hi Edith!\n')
+
+        # When edith refreshes the page, she sees Oniciferous's addition
+        self.browser = edith_browser
+        self.browser.refresh()
+        self.check_for_row_in_list_table('2: Hi Edith!')
+----
+
+
+
+
+[role="sourcecode"]
+.Full diff
+[source,diff]
+----
+diff --git a/accounts/templates/my_lists.html b/accounts/templates/my_lists.html
+index 1687d99..7c29940 100644
+--- a/accounts/templates/my_lists.html
++++ b/accounts/templates/my_lists.html
+@@ -13,4 +13,11 @@
+     {% endfor %}
+     </ul>
+ 
++    <h2>Shared lists:</h2>
++    <ul>
++        {% for shared_list in user.shared_lists.all %}
++            <li><a href="{{ shared_list.get_absolute_url }}">{{ shared_list.item_set.all.0.text }}</a></li>
++        {% endfor %}
++    </ul>
++
+ {% endblock more_content %}
+diff --git a/functional_tests/base.py b/functional_tests/base.py
+index cf15e6a..b3710a7 100644
+--- a/functional_tests/base.py
++++ b/functional_tests/base.py
+@@ -3,8 +3,10 @@ from selenium import webdriver
+ import sys
+ import time
+ 
++from django.conf import settings
+ from django.test import LiveServerTestCase
+-from .server_tools import reset_database
++from .server_tools import create_session_on_server, reset_database
++from .management.commands.create_session import create_pre_authenticated_session
+ 
+ DEFAULT_WAIT = 3
+ 
+@@ -31,7 +33,6 @@ class FunctionalTest(LiveServerTestCase):
+     def setUp(self):
+         if self.against_staging:
+             reset_database(self.server_host)
+-
+         self.browser = webdriver.Firefox()
+         self.browser.implicitly_wait(DEFAULT_WAIT)
+ 
+@@ -39,8 +40,8 @@ class FunctionalTest(LiveServerTestCase):
+         if not self._outcomeForDoCleanups.success:
+             self.take_screenshot()
+             self.dump_html()
+-
+-        self.browser.quit()
++        try: self.browser.quit()
++        except: pass
+         super().tearDown()
+ 
+ 
+@@ -83,3 +84,18 @@ class FunctionalTest(LiveServerTestCase):
+         rows = table.find_elements_by_tag_name('tr')
+         self.assertIn(row_text, [row.text for row in rows])
+ 
++
++    def create_pre_authenticated_session(self, email):
++        if self.against_staging:
++            session_key = create_session_on_server(self.server_host, email)
++        else:
++            session_key = create_pre_authenticated_session(email)
++        ## to set a cookie we need to first visit the domain.
++        ## 404 pages load the quickest!
++        self.browser.get(self.server_url + "/404_no_such_url/")
++        self.browser.add_cookie(dict(
++            name=settings.SESSION_COOKIE_NAME,
++            value=session_key,
++            path='/',
++        ))
++        print(self.browser.get_cookies())
+diff --git a/functional_tests/fabfile.py b/functional_tests/fabfile.py
+index d11de65..bf76e7c 100644
+--- a/functional_tests/fabfile.py
++++ b/functional_tests/fabfile.py
+@@ -19,9 +19,10 @@ def reset_database():
+     ))
+ 
+ 
+-def create_session_on_server():
+-    session_key = run('{manage_py} create_session'.format(
+-        manage_py=_get_manage_dot_py(env.host)
++def create_session_on_server(email):
++    session_key = run('{manage_py} create_session {email}'.format(
++        manage_py=_get_manage_dot_py(env.host),
++        email=email
+     ))
+     print(session_key)
+ 
+diff --git a/functional_tests/management/commands/create_session.py b/functional_tests/management/commands/create_session.py
+index a1a8cf1..09f170d 100644
+--- a/functional_tests/management/commands/create_session.py
++++ b/functional_tests/management/commands/create_session.py
+@@ -6,14 +6,15 @@ from django.core.management.base import BaseCommand
+ 
+ 
+ class Command(BaseCommand):
++    args = '<email>'
+ 
+-    def handle(self, *_, **__):
+-        session_key = create_pre_authenticated_session()
++    def handle(self, email, **__):
++        session_key = create_pre_authenticated_session(email)
+         self.stdout.write(session_key)
+ 
+ 
+-def create_pre_authenticated_session():
+-    user = User.objects.create(email='edith@email.com')
++def create_pre_authenticated_session(email):
++    user = User.objects.create(email=email)
+     session = SessionStore()
+     session[SESSION_KEY] = user.pk
+     session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
+diff --git a/functional_tests/server_tools.py b/functional_tests/server_tools.py
+index 74cad53..30324ea 100644
+--- a/functional_tests/server_tools.py
++++ b/functional_tests/server_tools.py
+@@ -9,11 +9,11 @@ def reset_database(host):
+     )
+ 
+ 
+-def create_session_on_server(host):
++def create_session_on_server(host, email):
+     return subprocess.check_output(
+         [
+             'fab',
+-            'create_session_on_server',
++            'create_session_on_server:email={}'.format(email),
+             '--host={}'.format(host),
+             '--hide=everything,status',
+         ],
+diff --git a/functional_tests/test_my_lists.py b/functional_tests/test_my_lists.py
+index 9bc991a..3a0da15 100644
+--- a/functional_tests/test_my_lists.py
++++ b/functional_tests/test_my_lists.py
+@@ -1,30 +1,10 @@
+-from django.conf import settings
+ from .base import FunctionalTest
+-from .server_tools import create_session_on_server
+-from .management.commands.create_session import create_pre_authenticated_session
+-
+ 
+ class MyListsTest(FunctionalTest):
+ 
+-    def create_pre_authenticated_session(self):
+-        if self.against_staging:
+-            session_key = create_session_on_server(self.server_host)
+-        else:
+-            session_key = create_pre_authenticated_session()
+-        ## to set a cookie we need to first visit the domain.
+-        ## 404 pages load the quickest!
+-        self.browser.get(self.server_url + "/404_no_such_url/")
+-        self.browser.add_cookie(dict(
+-            name=settings.SESSION_COOKIE_NAME,
+-            value=session_key,
+-            path='/',
+-        ))
+-        print(self.browser.get_cookies())
+-
+-
+     def test_logged_in_users_lists_are_saved_as_my_lists(self):
+         # Edith is a logged-in user
+-        self.create_pre_authenticated_session()
++        self.create_pre_authenticated_session(email='edith@email.com')
+ 
+         # She goes to the home page and starts a list
+         self.browser.get(self.server_url)
+--- a/lists/models.py
++++ b/lists/models.py
+@@ -3,14 +3,15 @@ from django.shortcuts import resolve_url
+ from django.conf import settings
+ 
+ 
++
+ class List(models.Model):
+     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
++    shared_with = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='shared_lists')
+ 
+     def get_absolute_url(self):
+         return resolve_url('view_list', self.id)
+ 
+ 
+-
+ class Item(models.Model):
+     text = models.TextField()
+     list = models.ForeignKey(List)
+diff --git a/lists/templates/list.html b/lists/templates/list.html
+index 87a6683..91646ed 100644
+--- a/lists/templates/list.html
++++ b/lists/templates/list.html
+@@ -10,4 +10,30 @@
+             <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+         {% endfor %}
+     </table>
++    <p><em>List owner: {{ list.owner.email }}</em></p>
++
++{% endblock %}
++
++{% block more_content %}
++    <div class="row">
++
++        <div class="col-md-8">
++            <h3>Shared with:</h3>
++            <ul>
++                {% for sharee in list.shared_with.all %}
++                    <li>{{ sharee.email }}</li>
++                {% endfor %}
++            </ul>
++        </div>
++
++
++        <div class="col-md-4">
++            <form class="form-inline" method="POST" action="{% url 'share_list' list.id %}">
++                <label for="email">Share this list:</label>
++                <input name="email" placeholder="your@friends-email.com" />
++                {% csrf_token %}
++            </form>
++        </div>
++
++    </div>
+ {% endblock %}
+diff --git a/lists/tests/test_models.py b/lists/tests/test_models.py
+index 78ed452..a21c09c 100644
+--- a/lists/tests/test_models.py
++++ b/lists/tests/test_models.py
+@@ -20,6 +20,14 @@ class ListModelTest(TestCase):
+         list2.full_clean()
+ 
+ 
++    def test_shared_with(self):
++        user = User.objects.create(email='a@b.com')
++        list_ = List.objects.create()
++        list_.shared_with.add('a@b.com')
++        self.assertIn(user, list_.shared_with.all())
++
++
++
+ class ListAndItemModelsTest(TestCase):
+ 
+     def test_saving_and_retrieving_items(self):
+@@ -87,3 +95,4 @@ class ListAndItemModelsTest(TestCase):
+         item1 = Item.objects.create(list=list1, text='some text')
+         self.assertEqual(str(item1), item1.text)
+ 
++
+diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py
+index 466ca8f..fbc3247 100644
+--- a/lists/tests/test_views.py
++++ b/lists/tests/test_views.py
+@@ -157,3 +157,24 @@ class ListViewTest(TestCase):
+         self.assertContains(response, expected_error)
+         self.assertTemplateUsed(response, 'list.html')
+         self.assertEqual(Item.objects.all().count(), 1)
++
++
++
++class ShareListTest(TestCase):
++
++    def test_redirects_back_to_list(self):
++        list1 = List.objects.create()
++        list2 = List.objects.create()
++        response = self.client.post(
++            '/lists/%d/share' % (list2.id,),
++            {'email': 'a@b.com'}
++        )
++        self.assertRedirects(response, list2.get_absolute_url())
++
++
++    def test_sharing_list(self):
++        list_ = List.objects.create()
++        user = User.objects.create(email='a@b.com')
++        self.client.post('/lists/%d/share' % (list_.id,), {'email': 'a@b.com'})
++        self.assertIn(user, list_.shared_with.all())
++
+diff --git a/lists/urls.py b/lists/urls.py
+index 83f384a..424c91e 100644
+--- a/lists/urls.py
++++ b/lists/urls.py
+@@ -3,4 +3,5 @@ from django.conf.urls import patterns, url
+ urlpatterns = patterns('',
+     url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+     url(r'^new$', 'lists.views.new_list', name='new_list'),
++    url(r'^(\d+)/share$', 'lists.views.share', name='share_list'),
+ )
+diff --git a/lists/views.py b/lists/views.py
+index da4b082..9ce8cf4 100644
+--- a/lists/views.py
++++ b/lists/views.py
+@@ -26,3 +26,9 @@ def view_list(request, list_id):
+         form.save()
+         return redirect(list_)
+     return render(request, 'list.html', {'list': list_, "form": form})
++
++
++def share(request, list_id):
++    list_ = List.objects.get(id=list_id)
++    list_.shared_with.add(request.POST['email'])
++    return redirect(list_)
+----
 
