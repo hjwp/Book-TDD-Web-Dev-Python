@@ -41,14 +41,6 @@ def update_sources_for_chapter(chapter_no):
             ['git', 'reset', '--hard', commit_specified_by_submodule],
             cwd=target
         )
-    if chapter_no == 7:
-        print('cherry-picking screenshots')
-        cherry_pick = subprocess.check_output(
-            ['git', 'cherry-pick', 'origin/add_screenshots'],
-            cwd=target
-        )
-        print(cherry_pick.decode())
-
 
 def main(arguments):
     subprocess.check_output(['git', 'submodule', 'init'])
