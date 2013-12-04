@@ -257,6 +257,10 @@ how we start with the most outward-facing (presentation layer), through to the
 view functions (or "controllers"), and lastly the innermost layers, which in
 this case will be model code.
 
+The outside layer: presentation & templates
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
 The test is currently failing saying that it can't find a field to input
 the sharee email.  We can address that at the presentation layer, in
 the 'list.html' template:
@@ -315,7 +319,7 @@ Let's add a "Shared with" section:
 You can see that we're starting to do some outside-in design.  We've specified
 that we want to be able to retrieve a list of people that a list is shared with
 using an attribute on the list class called `shared_with`, and it's going to 
-be a Django Queryset, so we'll use its `.all` method to retrieve all the shared 
+be a Django Queryset, so we'll use its `.all` method to retrieve all the shared
 users.
 
 Let's let our FT point us to the next thing we need to build:
@@ -339,167 +343,284 @@ again, we can start work in the template, and see where it guides us:
 <form class="form-inline" method="POST" action="{% url 'share_list' list.id %}" >
 ----
 
-That will cause a server error 
+That will cause a server error until we define the URL:
 
+----
+django.core.urlresolvers.NoReverseMatch: Reverse for 'share_list' with
+arguments '(1,)' and keyword arguments '{}' not found. 0 pattern(s) tried: []
+----
 
+The middle layer: controller views, and urls
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+[role="sourcecode"]
+.lists/urls.py
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(\d+)/share$', 'lists.views.share_list', name='share_list'),
+)
+----
+
+And now we'll need to define at least a placeholder view:
+
+----
+django.core.exceptions.ViewDoesNotExist: Could not import
+lists.views.share_list. View does not exist in module lists.views.
+----
+
+Something like this:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def share_list(request, list_id):
+    pass
+----
+
+That'll get our unit tests happy again.
+
+----
+OK
+----
+
+Next we should start writing a new unit test for our list sharing view
+
+[role="sourcecode"]
+.lists/tests/test_views.py
+[source,python]
+----
+class ShareListTest(TestCase):
+
+    def test_sharing_a_list_via_post(self):
+        sharee = User.objects.create(email='share.with@me.com')
+        list_ = List.objects.create()
+        self.client.post(
+            '/lists/%d/share' % (list_.id),
+            {'email': 'share.with@me.com'}
+        )
+        self.assertIn(list_.shared_with.all(), sharee)
+-----
+
+Gives
+
+-----
+ValueError: The view lists.views.share_list didn't return an HttpResponse object.
+-----
+
+That suggests another test:
 
 
 [role="sourcecode"]
-.Full diff
-[source,diff]
+.lists/tests/test_views.py
+[source,python]
 ----
-diff --git a/accounts/templates/my_lists.html b/accounts/templates/my_lists.html
-index 1687d99..7c29940 100644
---- a/accounts/templates/my_lists.html
-+++ b/accounts/templates/my_lists.html
-@@ -13,4 +13,11 @@
-     {% endfor %}
-     </ul>
- 
-+    <h2>Shared lists:</h2>
-+    <ul>
-+        {% for shared_list in user.shared_lists.all %}
-+            <li><a href="{{ shared_list.get_absolute_url }}">{{ shared_list.item_set.all.0.text }}</a></li>
-+        {% endfor %}
-+    </ul>
-+
- {% endblock more_content %}
-diff --git a/functional_tests/base.py b/functional_tests/base.py
-index cf15e6a..b3710a7 100644
-
-+++ b/lists/models.py
-@@ -3,14 +3,15 @@ from django.shortcuts import resolve_url
- from django.conf import settings
- 
- 
-+
- class List(models.Model):
-     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
-+    shared_with = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='shared_lists')
- 
-     def get_absolute_url(self):
-         return resolve_url('view_list', self.id)
- 
- 
--
- class Item(models.Model):
-     text = models.TextField()
-     list = models.ForeignKey(List)
-diff --git a/lists/templates/list.html b/lists/templates/list.html
-index 87a6683..91646ed 100644
---- a/lists/templates/list.html
-+++ b/lists/templates/list.html
-@@ -10,4 +10,30 @@
-             <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
-         {% endfor %}
-     </table>
-+    <p><em>List owner: {{ list.owner.email }}</em></p>
-+
-+{% endblock %}
-+
-+{% block more_content %}
-+    <div class="row">
-+
-+        <div class="col-md-8">
-+            <h3>Shared with:</h3>
-+            <ul>
-+                {% for sharee in list.shared_with.all %}
-+                    <li>{{ sharee.email }}</li>
-+                {% endfor %}
-+            </ul>
-+        </div>
-+
-+
-+        <div class="col-md-4">
-+            <form class="form-inline" method="POST" action="{% url 'share_list' list.id %}">
-+                <label for="email">Share this list:</label>
-+                <input name="email" placeholder="your@friends-email.com" />
-+                {% csrf_token %}
-+            </form>
-+        </div>
-+
-+    </div>
- {% endblock %}
-diff --git a/lists/tests/test_models.py b/lists/tests/test_models.py
-index 78ed452..a21c09c 100644
---- a/lists/tests/test_models.py
-+++ b/lists/tests/test_models.py
-@@ -20,6 +20,14 @@ class ListModelTest(TestCase):
-         list2.full_clean()
- 
- 
-+    def test_shared_with(self):
-+        user = User.objects.create(email='a@b.com')
-+        list_ = List.objects.create()
-+        list_.shared_with.add('a@b.com')
-+        self.assertIn(user, list_.shared_with.all())
-+
-+
-+
- class ListAndItemModelsTest(TestCase):
- 
-     def test_saving_and_retrieving_items(self):
-@@ -87,3 +95,4 @@ class ListAndItemModelsTest(TestCase):
-         item1 = Item.objects.create(list=list1, text='some text')
-         self.assertEqual(str(item1), item1.text)
- 
-+
-diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py
-index 466ca8f..fbc3247 100644
---- a/lists/tests/test_views.py
-+++ b/lists/tests/test_views.py
-@@ -157,3 +157,24 @@ class ListViewTest(TestCase):
-         self.assertContains(response, expected_error)
-         self.assertTemplateUsed(response, 'list.html')
-         self.assertEqual(Item.objects.all().count(), 1)
-+
-+
-+
-+class ShareListTest(TestCase):
-+
-+    def test_redirects_back_to_list(self):
-+        list1 = List.objects.create()
-+        list2 = List.objects.create()
-+        response = self.client.post(
-+            '/lists/%d/share' % (list2.id,),
-+            {'email': 'a@b.com'}
-+        )
-+        self.assertRedirects(response, list2.get_absolute_url())
-+
-+
-+    def test_sharing_list(self):
-+        list_ = List.objects.create()
-+        user = User.objects.create(email='a@b.com')
-+        self.client.post('/lists/%d/share' % (list_.id,), {'email': 'a@b.com'})
-+        self.assertIn(user, list_.shared_with.all())
-+
-diff --git a/lists/urls.py b/lists/urls.py
-index 83f384a..424c91e 100644
---- a/lists/urls.py
-+++ b/lists/urls.py
-@@ -3,4 +3,5 @@ from django.conf.urls import patterns, url
- urlpatterns = patterns('',
-     url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
-     url(r'^new$', 'lists.views.new_list', name='new_list'),
-+    url(r'^(\d+)/share$', 'lists.views.share', name='share_list'),
- )
-diff --git a/lists/views.py b/lists/views.py
-index da4b082..9ce8cf4 100644
---- a/lists/views.py
-+++ b/lists/views.py
-@@ -26,3 +26,9 @@ def view_list(request, list_id):
-         form.save()
-         return redirect(list_)
-     return render(request, 'list.html', {'list': list_, "form": form})
-+
-+
-+def share(request, list_id):
-+    list_ = List.objects.get(id=list_id)
-+    list_.shared_with.add(request.POST['email'])
-+    return redirect(list_)
+    def test_redirects_after_POST(self):
+        sharee = User.objects.create(email='share.with@me.com')
+        list_ = List.objects.create()
+        self.client.post(
+            '/lists/%d/share' % (list_.id),
+            {'email': 'share.with@me.com'}
+        )
+        self.assertRedirects(response, list_.get_absolute_url())
 ----
 
+
+So we can start with a couple of boilerplate lines to do the redirect:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def share_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    return redirect(list_)
+----
+
+
+And we get:
+
+----
+AttributeError: 'List' object has no attribute 'shared_with'
+----
+
+//TODO -- this might be a good place to jump off and talk about triangulation, test permissions
+
+
+The inside layer: models
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+And now we step down one more level to the model layer. 
+
+[role="sourcecode"]
+.lists/tests/test_models.py
+[source,python]
+----
+class ListModelTest(TestCase):
+
+    def test_get_absolute_url(self):
+        [...]
+
+
+    def test_can_optionally_set_owner(self):
+        [...]
+
+
+    def test_can_share_with_another_user(self):
+        list_ = List.objects.create()
+        user = User.objects.create(email='a@b.com')
+        list_.shared_with.add('a@b.com')
+        list_in_db = List.objects.get(id=list_.id)
+        self.assertIn(user, list_in_db.shared_with.all())
+----
+
+Gives
+
+----
+AttributeError: 'List' object has no attribute 'shared_with'
+AttributeError: 'List' object has no attribute 'shared_with'
+----
+
+We start fixing in models
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+    shared_with = models.ManyToManyField(settings.AUTH_USER_MODEL)
+----
+
+That won't quite work:
+
+
+----
+CommandError: One or more models did not validate:
+lists.list: Accessor for field 'owner' clashes with related m2m field
+'User.list_set'. Add a related_name argument to the definition for 'owner'.
+lists.list: Accessor for m2m field 'shared_with' clashes with related field
+'User.list_set'. Add a related_name argument to the definition for
+'shared_with'.
+----
+
+Adding the related_name field:
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+    shared_with = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, related_name='shared_lists'
+    )
+----
+
+Some database errors:
+
+----
+django.db.utils.OperationalError: no such table: lists_list_shared_with
+----
+
+We add a schema migration:
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+python3 manage.py schemamigration --auto lists
+----
+
+Now we're down to just one failure in our view tests:
+
+----
+FAIL: test_sharing_a_list_via_post (lists.tests.test_views.ShareListTest)
+[...]
+AssertionError: <User: User object> not found in []
+
+Ran 36 tests in 0.156s
+
+FAILED (failures=1)
+----
+
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+def share_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    list_.shared_with.add(request.POST['email'])
+    return redirect(list_)
+----
+
+Are we there?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+
+AssertionError: 'Shared with' not found in 'Forbidden (403)\nCSRF verification failed. Request aborted.\nMore information is available with DEBUG=True.'
+----
+
+
+Ah, not quite.  One last thing:
+
+
+[role="sourcecode"]
+.lists/templates/list.html
+[source,html]
+----
+        <form class="form-inline" method="POST" action="{% url 'share_list' list.id %}" >
+            {% csrf_token %}
+            <input name="email" placeholder="your@friends-email.com" />
+        </form>
+----
+
+Now the Ft gets further, up to Oni trying to see the list:
+
+----
+    self.browser.find_element_by_link_text('Get help').click()
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"Get help"}' ; Stacktrace: 
+----
+
+Fix that in my_lists.html
+
+
+And one final thing:
+
+----
+AssertionError: 'List owner: edith@email.com' not found in 'Superlists\nMy lists\nLog out\nLogged in as oniciferous@email.com\nYour To-Do list\n1: Get help\nShared with\noniciferous@email.com\nShare this list:'
+----
+
+Identify list owners:
+
+[role="sourcecode"]
+.lists/templates/list.html
+[source,html]
+----
+{% block table %}
+    <table id="id_list_table">
+        {% for item in list.item_set.all %}
+            <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+        {% endfor %}
+    </table>
+    <p>List owner: {{ list.owner.email }}</p>
+{% endblock %}
+----
+
+And we get to a pass!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+
+Ran 1 test in 21.886s
+
+OK
+----
 
 
 
