@@ -27,6 +27,9 @@ class Chapter5Test(ChapterTest):
         self.assertEqual(type(self.listings[0]), CodeListing)
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
+        syncdb_pos = 63
+        assert 'syncdb' in self.listings[syncdb_pos]
+        assert self.listings[syncdb_pos].type == 'interactive manage.py'
 
         self.sourcetree.start_with_checkout(5)
         self.start_dev_server()
@@ -34,11 +37,12 @@ class Chapter5Test(ChapterTest):
         # skips
         self.skip_with_check(70, "3: Buy peacock feathers")
 
+        dev_server_restarted = False
         while self.pos < len(self.listings):
-            if self.pos ==  66:
-                self.restart_dev_server()
-
             print(self.pos)
+            if self.pos > syncdb_pos and not dev_server_restarted:
+                self.restart_dev_server()
+                dev_server_restarted = True
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
