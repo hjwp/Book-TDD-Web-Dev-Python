@@ -421,23 +421,33 @@ then pass it into our `wait_for` helper.
 .functional_tests/base.py
 [source,python]
 ----
+from selenium.common.exceptions import WebDriverException
+[...]
+
     def wait_for(self, function_with_assertion, timeout=DEFAULT_WAIT):
         start_time = time.time()
-        while True:
+        while time.time() - start_time < timeout:
             try:
                 return function_with_assertion()
-            except AssertionError:
-                if time.time() - start_time > timeout:
-                    raise
+            except (AssertionError, WebDriverException):
+                pass
+        # one more try, which will raise any errors if they are outstanding
+        return function_with_assertion()
 ----
 
 `wait_for` then tries to execute that function, but instead of letting the 
 test fail if the assertion fails, it catches the `AssertionError` that
-`assertEqual` would ordinarily raise, and loops around inside the `while True`
-retrying it, until a given timeout.
+`assertEqual` would ordinarily raise, and loops around retrying it, until a
+given timeout.  It also catches any `WebDriverException` that
+might happen if, say, an element hasn't appeared on the page yet.  It tries
+one last time after the timeout has expired, this time without the try/except,
+so that if there really is still an AssertionError, the test will fail
+appropriately.
 
-TODO: rewrite this using `WebDriverWait`, passing in `AssertionError` as an
-allowed exception...
+NOTE: Selenium does provide `WebdriverWait` as a tool for doing waits, but
+it's a little restrictive.  This hand-rolled version lets us pass a function
+that does a unittest assertion, with all the benefits of the readable error
+messages that it gives us.
 
 I've added the timeout there as an optional argument, and I'm basing it on 
 a constant we'll add to 'base.py'.  We'll also use it in our original 
