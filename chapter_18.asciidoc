@@ -14,6 +14,9 @@ with something called the Page Object pattern.
 Once we get to the unit testing phase, we'll talk a bit about the concept
 of "Outside-In" TDD.
 
+WARNING: As always, this last chapter is an early draft, and may not be very
+polished yet.  Your feedback is humbly solicited.
+
 
 An FT with multiple users, and addCleanup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -410,7 +413,7 @@ We add the following three functions to our ListPage:
 
     def get_shared_with_list(self):
         return self.test.browser.find_elements_by_css_selector(
-            'list-sharee'
+            '.list-sharee'
         )
 
 
@@ -467,13 +470,14 @@ That means another function in our `HomePage` class:
 [source,python]
 ----
 class HomePage(object):
+
     [...]
 
     def go_to_my_lists_page(self):
         self.test.browser.find_element_by_link_text('My lists').click()
-        self.test.wait_for(self.test.assertEqual(
-            self.test.browser.find_elements_by_tag_name('h1'),
-            'My Lists'
+        self.test.wait_for(lambda: self.test.assertEqual(
+            self.test.browser.find_element_by_tag_name('h1').text,
+            'My lists'
         ))
 ----
 
@@ -657,12 +661,20 @@ again, we can start work in the template, and see where it guides us:
 That will cause a server error until we define the URL:
 
 ----
-django.core.urlresolvers.NoReverseMatch: Reverse for 'share_list' with
-arguments '(1,)' and keyword arguments '{}' not found. 0 pattern(s) tried: []
+AssertionError: '1: Get help' not found in []
 ----
+
+(If you take a look with the dev server, is actually an error a bit like this:
+
+    django.core.urlresolvers.NoReverseMatch: Reverse for 'share_list' with
+    arguments '(1,)' and keyword arguments '{}' not found. 0 pattern(s) tried: []
+
+
 
 The middle layer: controller views, and urls
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+So we gradually move inwards in our TDD-MVC onion:
 
 [role="sourcecode"]
 .lists/urls.py
@@ -675,7 +687,7 @@ urlpatterns = patterns('',
 )
 ----
 
-And now we'll need to define at least a placeholder view:
+And the unit tests will tell us we need to define at least a placeholder view:
 
 ----
 django.core.exceptions.ViewDoesNotExist: Could not import
@@ -742,12 +754,18 @@ building an abstraction layer around the database, then it might make sense,
 but with a simple database-driven site like ours, I don't think adding the 
 extra layer of indirection is worth it.
 
-TODO: demo this instead?
+TODO: demo this instead? Spell out the two options side-by-side, showing 
+difference in unit tests, implementation?
+
+We can still get the main benefits of outside-in TDD from this more pragmatic
+approach. Going outside-in still forces us to think about the code from the
+point of view of the code that's going to use it, rather than trying to 
+guess things from the ground up.
 
 *******************************************************************************
 
 
-That suggests another test:
+That test failure suggests another test:
 
 
 [role="sourcecode"]
@@ -841,7 +859,14 @@ lists.list: Accessor for m2m field 'shared_with' clashes with related field
 'shared_with'.
 ----
 
-Adding the related_name field:
+This is a particularity of the Django ORM - you can look related objects from
+either side of a relation. If you're looking at a List object, you can inspect
+its `.owner`, but you can also go backwards from a User object and inspect
+its `list_set` (the name is derived from the lowercased name of the model).
+But in our case, List has two different relationsips
+with User -- the "owner" relationship and the "shared with" relationship.  We
+need to give the new reverse relation a name that disambiguates it:
+
 
 [role="sourcecode"]
 .lists/models.py
@@ -852,13 +877,18 @@ Adding the related_name field:
     )
 ----
 
-Some database errors:
+Now `user.list_set.all()` will give all the lists that the user is the 
+owner of, and `user.shared_lists.all()` will give the lists that have
+been shared with her.
+
+Next, some database errors:
 
 ----
 django.db.utils.OperationalError: no such table: lists_list_shared_with
 ----
 
-We add a schema migration:
+Now that we have South, any change to the models requires a new schema
+migration:
 
 [role="sourcecode"]
 .lists/tests.py
@@ -867,7 +897,7 @@ We add a schema migration:
 python3 manage.py schemamigration --auto lists
 ----
 
-Now we're down to just one failure in our view tests:
+Now we're down to just the one failure in our view tests:
 
 ----
 FAIL: test_sharing_a_list_via_post (lists.tests.test_views.ShareListTest)
@@ -878,6 +908,8 @@ Ran 36 tests in 0.156s
 
 FAILED (failures=1)
 ----
+
+So we can start to work back outwards in from our outside-in TDD process:
 
 
 [role="sourcecode"]
@@ -895,12 +927,13 @@ Are we there?
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
-
-AssertionError: 'Shared with' not found in 'Forbidden (403)\nCSRF verification failed. Request aborted.\nMore information is available with DEBUG=True.'
+AssertionError: 'oniciferous@email.com' not found in []
 ----
+//TODO: use a 'wait for body text' sos we can see the csrf failure??
 
 
-Ah, not quite.  One last thing:
+Ah, not quite.  You probably spotted the CSRF error on the way.
+Let's fix that:
 
 
 [role="sourcecode"]
@@ -913,6 +946,32 @@ Ah, not quite.  One last thing:
         </form>
 ----
 
+Next is a minor oversight of mine:
+
+----
+    home_page.go_to_my_lists_page()
+AttributeError: 'NoneType' object has no attribute 'go_to_my_lists_page'
+----
+
+It's because I intuitively used the following code:
+
+        home_page = HomePage(self).go_to_home_page()
+
+But it won't work until we make that method return self:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+    def go_to_home_page(self):
+        self.test.browser.get(self.test.server_url)
+        self.test.wait_for(self.get_item_input)
+        return self
+----
+
+(This is called https://en.wikipedia.org/wiki/Method_chaining[method chaining])
+
+
 Now the Ft gets further, up to Oni trying to see the list:
 
 ----
@@ -922,13 +981,26 @@ selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
 element: {"method":"link text","selector":"Get help"}' ; Stacktrace: 
 ----
 
-Fix that in my_lists.html
 
+We fix that in my_lists.html
+
+[role="sourcecode"]
+.lists/templates/my_lists.html
+[source,html]
+----
+    <h2>Lists shared by other users</h2>
+    <ul>
+    {% for list in owner.shared_lists.all %}
+        <li><a href="{{ list.get_absolute_url }}">{{ list.item_set.all.0.text }}</a></li>
+    {% endfor %}
+    </ul>
+----
 
 And one final thing:
 
 ----
-AssertionError: 'List owner: edith@email.com' not found in 'Superlists\nMy lists\nLog out\nLogged in as oniciferous@email.com\nYour To-Do list\n1: Get help\nShared with\noniciferous@email.com\nShare this list:'
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"id","selector":"id_list_owner"}' ; Stacktrace: 
 ----
 
 Identify list owners:
@@ -943,7 +1015,7 @@ Identify list owners:
             <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
         {% endfor %}
     </table>
-    <p>List owner: {{ list.owner.email }}</p>
+    <p>List owner: <span id="id_list_owner">{{ list.owner.email }}</span></p>
 {% endblock %}
 ----
 
@@ -963,7 +1035,6 @@ OK
 Possible things to include:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* Introduce page pattern?
 * Admin site?
 * django notifications?
 * email notifications?
