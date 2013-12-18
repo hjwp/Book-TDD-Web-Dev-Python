@@ -7,12 +7,18 @@ This Inspiring Teacher Said That Will Make You Change Your Mind About Bla Bla
 now. Anyway. Lists, be they Inspirational or otherwise, are often better
 shared. Let's allow our users to share their lists with other users.
 
+Along the way we'll improve our FTs by starting to implement the interact/wait
+Selenium pattern that we learned in the last chapter.  We'll also experiment
+with something called the Page Object pattern.
+
+Once we get to the unit testing phase, we'll talk a bit about the concept
+of "Outside-In" TDD.
 
 
 An FT with multiple users, and addCleanup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here we go!  Ft:
+Let's get started -- we'll need two users for this FT:
 
 [role="sourcecode"]
 .functional_tests/test_sharing.py
@@ -67,7 +73,7 @@ formulation for `quit_if_possible` -- whichever of `edith_browser` and
 test end will already have been quit by the tearDown function.
 
 We also need to change the way our pre-authenticated session creator works,
-so that it can take an arbirtray email address for the user to create an
+so that it can take an arbitrary email address for the user to create an
 account and session for.  We start by moving the helper function out of
 `MyListsTest` and into 'base.py', and changing its signature:
 
@@ -100,7 +106,7 @@ Passing arguments to management commands and fabric commands
 
 As you may remember, `create_pre_authenticated_session` is defined in
 our management command file, so that it can be called both locally and
-against the staging server.  Here's how we adjust them to take an
+against the staging server.  Here's how we adjust it to take an
 email as an argument:
 
  
@@ -128,8 +134,8 @@ email as an argument:
 ----
 
 
-And now we adjust our fabfile and fabfile-caller for the case where we
-are running this against the server:
+And now we change our fabfile and fabfile-caller for the case where we are
+running against the server:
 
 [role="sourcecode"]
 .functional_tests/fabfile.py
@@ -183,63 +189,371 @@ Great! It seems to have got through creating the two user sessions, and
 it gets onto an expected failure -- there is no input for an email address
 of a person to share a list with on the page.
 
-Before we continue, let's spec out just a little more detail of what we want
-our sharing user story to be.  Edith will see on her list page that the list
-is now "shared with" Oniciferous, and then we can have Oni log in and see the
-list on his "My Lists" page, maybe in a section called "lists shared with me".
-
-[role="sourcecode"]
-.functional_tests/test_sharing.py
-[source,python]
-----
-        share_box.send_keys('oniciferous@email.com\n')
-
-        # The page updates to say that it's shared with Oniciferous:
-        body_text = self.browser.find_element_by_tag_name('body').text
-        self.assertIn('Shared with', body_text)
-        self.assertIn('oniciferous@email.com', body_text)
-
-        # Oniciferous now goes to the lists page with his browser
-        self.browser = oni_browser
-        self.browser.get(self.server_url)
-        self.browser.find_element_by_link_text('My lists').click()
-
-        # He sees edith's list in there!
-        self.browser.find_element_by_link_text('Get help').click()
-----
-
-
-And finally, Oniciferous can also add things to the list:
-
-[role="sourcecode"]
-.functional_tests/test_sharing.py
-[source,python]
-----
-        # It says that it's edith's list
-        self.wait_for(
-            lambda: self.assertIn(
-                'List owner: edith@email.com',
-                self.browser.find_element_by_tag_name('body').text
-            )
-        )
-
-        # He adds an item to the list
-        self.get_item_input_box().send_keys('Hi Edith!\n')
-
-        # When edith refreshes the page, she sees Oniciferous's addition
-        self.browser = edith_browser
-        self.browser.refresh()
-        self.check_for_row_in_list_table('2: Hi Edith!')
-----
-
-At this point we might re-run the FT to check we haven't broken anything,
-and then do a commit
-
+Let's do a commit at this point, because we've got at least a placeholder 
+for our FT, we've got a useful modification of the
+`create_pre_authenticated_session` function, and we're about to embark on
+a bit of an FT refactor
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git add functional_tests*
 $ *git commit -m "New FT for sharing, adjust session creation code to take an email"
+----
+
+
+Implementing the Selenium interact/wait pattern
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before we continue, let's take a closer look at our the interactions with the
+site that we have in our FT so far:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+    # Edith goes to the home page and starts a list
+    self.browser = edith_browser
+    self.browser.get(self.server_url)
+    self.get_item_input_box().send_keys('Get help\n') #<1>
+
+    # She notices a "Share this list" option
+    share_box = self.browser.find_element_by_css_selector('input[name=email]') #<2>
+    self.assertEqual(
+        share_box.get_attribute('placeholder'),
+        'your@friends-email.com'
+    )
+----
+
+<1> Interaction with site
+
+<2> Assumption about updated state of page
+
+We learned in the last chapter that it's dangerous to assume too much about
+the state of the browser after we do an interaction (like `send_keys`). In
+theory, `implicitly_wait` will make sure that, if the call to
+`find_element_by_css_selector` doesn't find our `input[name=email]` at first,
+it will silently retry a few times.  But it can also go wrong -- imagine if
+there was an input on the previous page, with the same `name=email`, but a
+different placeholder text?  We'd get a strange failure.
+
+So instead, it's always prudent to follow the "wait-for" pattern whenever we
+want to check on the effects of an interaction that we've just triggered.
+Something like this:
+
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+    self.get_item_input_box().send_keys('Get help\n')
+
+    # She notices a "Share this list" option
+    self.wait_for(
+        lambda:  self.assertEqual(
+            self.browser.find_element_by_css_selector(
+                'input[name=email]'
+            ).get_attribute('placeholder'),
+            'your@friends-email.com'
+        )
+    )
+----
+
+
+The page pattern
+~~~~~~~~~~~~~~~~
+
+But do you know what would be even better?  This is an occasion for a "3
+strikes and refactor".  This test, and many others, all begin off with the user
+starting a new list.  What if we had a helper function called "start new list",
+that would do the `wait_for` as well as the list item input?  
+
+We've already seen how to use helper methods on the base `FunctionalTest`
+class, but if we continue using too many of them, it's going to get very
+crowded. I've worked on a base FT class that's was over 1,500 lines long, and
+that got pretty unwieldy.
+
+One accepted pattern for splitting up your FT helper code is called the 
+http://www.seleniumhq.org/docs/06_test_design_considerations.jsp#page-object-design-pattern[Page
+pattern], and it involves having objects to represent the different pages on
+your site, and to be the single place to store information about how to 
+interact with them.
+
+Let's see how we would build a page object for the home page, and one for the
+lists page.  Here's one for the home page
+
+
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+LIST_ITEM_INPUT_ID = 'id_text'
+
+class HomePage(object):
+
+    def __init__(self, test):
+        self.test = test #<1>
+
+    def go_to_home_page(self): #<2>
+        self.test.browser.get(self.test.server_url)
+        self.test.wait_for(self.get_item_input)
+
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id('id_text')
+
+
+    def start_new_list(self, item_text): #<3>
+        self.go_to_home_page()
+        inputbox = self.get_item_input()
+        inputbox.send_keys(item_text + '\n')
+        list_page = ListPage(self.test) #<4>
+        list_page.wait_for_new_item_in_list(item_text, 1) #<5>
+        return list_page #<6>
+
+----
+
+<1> It's initialised with an object that represents the current test.  That
+    gives us the ability to make assertions, access the browser instance via
+    `self.test.browser`, and use the `wait_for` function
+
+<2> Most Page objects have a "go to this page" function.  Notice that it
+    implements the interaction/wait pattern -- first we `get` the page URL,
+    then we wait for an element that we know is on the home page.
+//TODO: consider the fact that the lists page has that too...
+
+<3> Here's our function that starts a new list.  It goes to the home page,
+    finds the input box, and sends the new item text to it, as well as a
+    carriage return.  It also then uses a wait to check that the interaction
+    has completed, but you'll see it actually uses a new Page object:
+
+<4> The `ListPage`, which we'll see the code for shortly. It's initialized just
+    like a `HomePage`.
+
+<5> We use the `ListPage` to `wait_for_new_item_in_list`.  We specify the
+    expected text of the item, and its expected position in the list.
+
+<6> Finally, we return the `list_page` object to the caller, because they
+    will probably find it useful (as we'll see shortly).
+
+
+Here's how `ListPage` looks:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+[...]
+
+class ListPage(object):
+
+    def __init__(self, test):
+        self.test = test
+
+    def get_list_table_rows(self):
+        return self.test.browser.find_elements_by_css_selector(
+            '#id_list_table tr'
+        )
+
+    def wait_for_new_item_in_list(self, item_text, position):
+        expected_row = '{}: {}'.format(position, item_text)
+        self.test.wait_for(lambda: self.test.assertIn(
+            expected_row,
+            [row.text for row in self.get_list_table_rows()]
+        ))
+----
+
+
+Let's see how to use it in our test:
+
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+        # Edith goes to the home page and starts a list
+        self.browser = edith_browser
+        HomePage(self).start_new_list('Get help')
+----
+
+Let's continue rewriting our test, using the Page object whenever
+we want to access elements from the lists page:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+        # She notices a "Share this list" option
+        share_box = list_page.get_share_box()
+        self.assertEqual(
+            share_box.get_attribute('placeholder'),
+            'your@friends-email.com'
+        )
+
+        # She shares her list.
+        # The page updates to say that it's shared with Oniciferous:
+        list_page.share_list_with('oniciferous@email.com')
+----
+
+We add the following three functions to our ListPage:
+
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+    def get_share_box(self):
+        return self.test.browser.find_element_by_css_selector(
+            'input[name=email]'
+        )
+
+
+    def get_shared_with_list(self):
+        return self.test.browser.find_elements_by_css_selector(
+            'list-sharee'
+        )
+
+
+    def share_list_with(self, email):
+        self.get_share_box().send_keys(email + '\n')
+        self.test.wait_for(lambda: self.test.assertIn(
+            email,
+            [item.text for item in self.get_shared_with_list()]
+        )
+----
+
+The idea behind the Page pattern is that it should capture all the information
+about a particular page in your site, so that if, later, you want to go and
+make changes to that page -- even just simple tweaks to its HTML layout for
+example -- you have a single place to go and look for to adjust your functional
+tests, rather than having to dig through dozens of FTs.
+
+So the next step would be to pursue the refactor through our other tests. I'm
+not going to show that here, but I'd recommend you spend a bit of time doing 
+that now, to start getting a feel for how these things work. You can then
+compare your results to the way I did it at 
+TODO: insert github link.
+Pull requests are always encouraged!
+
+
+Extend the FT to a second user, and the My Lists page
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Next let's spec out just a little more detail of what we want our sharing user
+story to be.  Edith has seen on her list page that the list is now "shared
+with" Oniciferous, and then we can have Oni log in and see the list on his "My
+Lists" page, maybe in a section called "lists shared with me".
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+    [...]
+    list_page.share_list_with('oniciferous@email.com')
+
+    # Oniciferous now goes to the lists page with his browser
+    self.browser = oni_browser
+    home_page = HomePage(self).go_to_home_page()
+    home_page.go_to_my_lists_page()
+
+    # He sees Edith's list in there!
+    self.browser.find_element_by_link_text('Get help').click()
+----
+
+That means another function in our `HomePage` class:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+class HomePage(object):
+    [...]
+
+    def go_to_my_lists_page(self):
+        self.test.browser.find_element_by_link_text('My lists').click()
+        self.test.wait_for(self.test.assertEqual(
+            self.test.browser.find_elements_by_tag_name('h1'),
+            'My Lists'
+        ))
+----
+
+Once again, this is a function which it would be good to carry across into
+'test_my_lists.py', along with maybe a `MyListsPage` object. Exercise
+for the reader!
+
+        # On the list page, Oniciferous can see says that it's Edith's list
+        self.wait_for(lambda: self.assertEqual(
+            list_page.get_list_owner(),
+            'edith@email.com'
+        ))
+
+
+Finally, Oniciferous can also add things to the list:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+    # On the list page, Oniciferous can see says that it's Edith's list
+    self.wait_for(lambda: self.assertEqual(
+        list_page.get_list_owner(),
+        'edith@email.com'
+    ))
+
+    # He adds an item to the list
+    list_page.add_new_item('Hi Edith!')
+
+    # When Edith refreshes the page, she sees Oniciferous's addition
+    self.browser = edith_browser
+    self.browser.refresh()
+    list_page.wait_for_new_item_in_list('Hi Edith!', 2)
+----
+
+That's a couple more additions to our page object:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+ITEM_INPUT_ID = 'id_text'
+[...]
+
+class ListPage(object):
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
+
+    [...]
+
+    def add_new_item(self, item_text):
+        current_pos = len(self.get_list_table_rows())
+        self.get_item_input().send_keys(item_text + '\n')
+        self.wait_for_new_item_in_list(item_text, current_pos + 1)
+
+
+    def get_list_owner(self):
+        return self.test.browser.find_element_by_id('id_list_owner').text
+----
+
+At this point we might run the FT to check all of this works!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+
+    share_box = list_page.get_share_box()
+    [...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":"input[name=email]"}' ;
+----
+
+And then do a commit
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "Create Page objects for Home and List pages, use in sharing FT"
 ----
 
 
@@ -271,6 +585,7 @@ the 'list.html' template:
 ----
 {% block more_content %}
 <div class="row">
+    <h3>Share this list:</h3>
     <form class="form-inline">
         <label for="email">Share this list:</label>
         <input name="email" placeholder="your@friends-email.com" />
@@ -282,9 +597,7 @@ the 'list.html' template:
 That gets the FT one step further:
 
 ----
-AssertionError: 'Shared with' not found in 'Superlists\nMy lists\nLog
-out\nLogged in as edith@email.com\nYour To-Do list\n1: Get help\nShare this
-list:'
+AssertionError: 'oniciferous@email.com' not found in []
 ----
 
 Let's add a "Shared with" section:
@@ -300,7 +613,7 @@ Let's add a "Shared with" section:
         <h3>Shared with</h3>
         <ul>
             {% for sharee in list.shared_with.all %}
-                <li>{{ sharee.email }}</li>
+                <li class="list-sharee">{{ sharee.email }}</li>
             {% endfor %}
         </ul>
     </div>
@@ -326,9 +639,7 @@ Let's let our FT point us to the next thing we need to build:
 
 [subs="specialcharacters,macros"]
 ----
-AssertionError: 'oniciferous@email.com' not found in 'Superlists\nMy lists\nLog
-out\nLogged in as edith@email.com\nYour To-Do list\n1: Get help\nShared
-with\nShare this list:'
+AssertionError: 'oniciferous@email.com' not found in []
 ----
 
 So the server isn't currently saving the addition of Oniciferous to the sharee
@@ -410,6 +721,31 @@ Gives
 -----
 ValueError: The view lists.views.share_list didn't return an HttpResponse object.
 -----
+
+.A more purist approach involving mocks
+*******************************************************************************
+
+Is this "pure" outside-in TDD? No.  A purist approach to outside-in TDD would
+want you to use a mock at this point, and have unit tests that are more 
+isolated from one level to another.  Something like this:
+
+    @patch('lists.views.List')
+    def test_post_leads_to_adding_to_shared_with(self, mockList):
+        self.client.post('/lists/12/share', {'email': 'an email'})
+        mock_list = mockList.objects.get.return_value
+        mock_list.shared_with.add.assert_called_once_with('an email')
+
+I'm don't like that sort of approach though.  Perfectly isolated tests are
+best for an environment with no boundaries, and for a simple app like ours,
+the database and the Django ORM are too prevalent in our code.  If we started
+building an abstraction layer around the database, then it might make sense,
+but with a simple database-driven site like ours, I don't think adding the 
+extra layer of indirection is worth it.
+
+TODO: demo this instead?
+
+*******************************************************************************
+
 
 That suggests another test:
 
