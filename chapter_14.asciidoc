@@ -101,10 +101,11 @@ Persona site and Dan's slides with minimal modification:
 
 
 [role="sourcecode"]
-.lists/templates/base.html
+.lists/templates/base.html (ch14l001)
 [source,html]
 ----
-        <script src="/static/bootstrap/js/bootstrap.min.js"></script>
+        <script src="http://code.jquery.com/jquery.min.js"></script>
+        <script src="/static/list.js"></script>
         <script src="https://login.persona.org/include.js"></script>
         <script>
             $(document).ready(function() {
@@ -146,11 +147,11 @@ in any old where at the top of the page), and similarly a "logout" link
 gets bound to a `logout` function.
 
 [role="sourcecode"]
-.lists/templates/base.html
+.lists/templates/base.html (ch14l002)
 [source,html]
 ----
 <body>
-    <div id="auth">
+    <div class="navbar">
         {% if user.email %}
             <p>Logged in as {{ user.email}}</p>
             <p><a id="logout" href="{% url 'logout' %}">Sign out</a></p>
@@ -202,12 +203,27 @@ site], including all the clever public key crypto that keeps Google from
 knowing what site you want to log into, but also stops replay attacks and
 so on. Smart.
 
+Before starting on a spike, it's a good idea to start a new branch:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git checkout -b persona-auth-spike*
+----
+
+Next we prep an app for our accounts stuff:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python3 manage.py startapp accounts*
+----
 
 Here's the view that handles the POST to 'accounts/login':
 
-[source,python]
+[role="sourcecode"]
 .accounts/views.py
+[source,python]
 ----
+import sys
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as auth_login
 from django.shortcuts import redirect
@@ -222,8 +238,8 @@ def login(request):
 ----
 
 You can see that's definitely "spike" code, from things like that commented-out
-line as evidence of an experiment that failed.  We'll definitely put something 
-tidier into production.
+line as evidence of an early experiment that failed.  We'll definitely put
+something tidier into production.
 
 
 Here's the `authenticate` function, which is implemented as a custom
@@ -233,9 +249,12 @@ authentication system in the admin site, for example).
 
 //TODO: check, is this actually true?
 
-[source,python]
+[role="sourcecode"]
 .accounts/authentication.py
+[source,python]
 ----
+import requests
+import sys
 from accounts.models import ListUser
 
 class PersonaAuthenticationBackend(object):
@@ -245,7 +264,7 @@ class PersonaAuthenticationBackend(object):
         data = {'assertion': assertion, 'audience': 'localhost'}
         print('sending to mozilla', data, file=sys.stderr)
         resp = requests.post('https://verifier.login.persona.org/verify', data=data)
-        print('got', resp, file=sys.stderr)
+        print('got', resp.content, file=sys.stderr)
 
         # Did the verifier respond?
         if resp.ok:
@@ -266,12 +285,22 @@ class PersonaAuthenticationBackend(object):
 ----
 
 This code is copy-pasted directly from the Mozilla site, as you can see from
-the explanatory comments.  To finish off the job of customising authentication
-in Django, we just need a custom user model:
+the explanatory comments.  
 
-[source,python]
+You'll need to `pip install requests`.  If you've never used it before, 
+http://docs.python-requests.org/en/latest/[requests] is a great alternative
+to the Python standard library tools for HTTP requests.
+
+To finish off the job of customising authentication in Django, we just need a
+custom user model:
+
+[role="sourcecode"]
 .accounts/models.py
+[source,python]
 ----
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.db import models
+
 class ListUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(primary_key=True)
     USERNAME_FIELD = 'email'
@@ -290,7 +319,7 @@ class ListUser(AbstractBaseUser, PermissionsMixin):
 
 That's what I call a minimal user model!  One field, none of this
 firstname/lastname/username nonsense, and, pointedly, no password! 
-Somebody else's problem!   But you can see that this code isn't ready
+Somebody else's problem!   But, again, you can see that this code isn't ready
 for production, from the commented-out lines to the hard-coded harry
 email address.
 
@@ -300,9 +329,12 @@ auth documentation]
 
 Aside from that, you need a model manager for the user:
 
+[role="sourcecode"]
+.accounts/models.py (ch14l006)
 [source,python]
-.accounts/models.py
 ----
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+
 class ListUserManager(BaseUserManager):
 
     def create_user(self, email):
@@ -312,17 +344,49 @@ class ListUserManager(BaseUserManager):
         self.create_user(email)
 ----
 
-And a logout view:
+A logout view:
 
 
 [role="sourcecode"]
-.lists/tests.py
+.accounts/views.py (ch14l007)
 [source,python]
 ----
+from django.contrib.auth import login as auth_login, logout as auth_logout
+[...]
+
 def logout(request):
     auth_logout(request)
     return redirect('/')
 ----
+
+Some urls for our two views:
+
+[role="sourcecode"]
+.superlists/urls.py (ch14l008)
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^lists/', include('lists.urls')),
+    url(r'^accounts/', include('accounts.urls')),
+    # url(r'^admin/', include(admin.site.urls)),
+)
+----
+
+and
+
+[role="sourcecode"]
+.accounts/urls.py
+[source,python]
+----
+from django.conf.urls import patterns, url
+
+urlpatterns = patterns('',
+    url(r'^login$', 'accounts.views.login', name='login'),
+    url(r'^logout$', 'accounts.views.logout', name='logout'),
+)
+----
+
 
 And finally, switch on the auth backend and our new accounts app in
 'settings.py':
@@ -332,7 +396,7 @@ And finally, switch on the auth backend and our new accounts app in
 [source,python]
 ----
 INSTALLED_APPS = (
-    'django.contrib.admin',
+    #'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -347,6 +411,9 @@ AUTH_USER_MODEL = 'accounts.ListUser'
 AUTHENTICATION_BACKENDS = (
     'accounts.authentication.PersonaAuthenticationBackend',
 )
+
+MIDDLEWARE_CLASSES = (
+[...]
 ----
 
 Why not spin up a dev server with `runserver` and see how it all looks?
@@ -364,10 +431,52 @@ model (because I didn't read the docs properly), and finally discovering that
 we have to upgrade to the dev version of Django to actually get it to work in
 the admin site.
 footnote:[http://stackoverflow.com/questions/16983547/django-problems-with-id-in-custom-usermodel/18458659#18458659]
-But we now have a working solution!  Time to de-spike
+
+.Aside: Logging to stderr
+*******************************************************************************
+While spiking, it's pretty critical to be able to see exceptions that are being
+generated by your code. Annoyingly, Django doesn't send exceptions to the 
+terminal by default, but you can make it do so with a variable called `LOGGING`
+in 'settings.py':
+
+[role="sourcecode"]
+.superlists/settings.py (ch14l011)
+[source,python]
+----
+LOGGING = {
+    'version': 1,
+    'handlers': {
+        'console':{
+            'level':'DEBUG',
+            'class':'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+        },
+    },
+}
+----
+
+Django uses the rather "enterprisey" logging module from the Python standard
+library, which, although very fully-featured, does suffer from a fairly steep
+learning curve. More info in the
+https://docs.djangoproject.com/en/1.6/topics/logging/[docs]
+*******************************************************************************
+
+But we now have a working solution!  Let's commit it on our spike branch:
 
 //TODO screenshot ajax debug
 
+[subs="specialcharacters,quotes"]
+----
+$ *git status*
+$ *git add accounts*
+$ *git commit -am"spiked in custom auth backend with persona"*
+----
+
+Time to de-spike!
 
 
 De-Spiking
@@ -375,6 +484,9 @@ De-Spiking
 
 De-Spiking means re-writing your prototype code using TDD.  We now have enough
 information to "do it properly".  So what's the first step?  An FT of course!
+
+We'll stay on the spike branch for now, to see our FT pass against our spiked
+code.  Then we'll go back to master, and commit just the FT.
 
 A common Selenium technique: waiting for 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -421,8 +533,8 @@ class LoginTest(FunctionalTest):
         self.assertIn(TEST_EMAIL, navbar.text)
 ----
 
-Where did I get test_email and test_password from?  I just set up a 
-yahoo account especially for this... you could do the same, or check
+Where did I get TEST_EMAIL and TEST_PASSWORD from?  I just set up a 
+free webmail account especially for this... You could do the same, or check
 out http://www.mockmyid.com and http://wwww.personatestuser.org.
 
 The FT needs two helper functions, both of which do something that's very
@@ -430,22 +542,22 @@ common in Selenium testing:  they wait for something to happen.  Here's
 the first:
 
 
-[role="sourcecode"]
-.lists/functional_tests/test_login.py
+[role="dofirst-ch14l013 sourcecode"]
+.functional_tests/test_login.py (ch14l014)
 [source,python]
 ----
 import time
 [...]
 
     def switch_to_new_window(self, text_in_title):
-        retries = 50
+        retries = 60
         while retries > 0:
             for handle in self.browser.window_handles:
                 self.browser.switch_to_window(handle)
                 if text_in_title in self.browser.title:
                     return
             retries -= 1
-            time.sleep(0.2)
+            time.sleep(0.5)
         self.fail('could not find window')
 ----
 
@@ -462,14 +574,14 @@ waiting for an element with a given ID to appear on the page, we can use the
 
 
 [role="sourcecode"]
-.lists/functional_tests/test_login.py
+.functional_tests/test_login.py (ch14l015)
 [source,python]
 ----
 from selenium.webdriver.support.ui import WebDriverWait
 [...]
 
     def wait_for_element_with_id(self, element_id):
-        WebDriverWait(self.browser, timeout=10).until(
+        WebDriverWait(self.browser, timeout=30).until(
             lambda b: b.find_element_by_id(element_id)
         )
 ----
@@ -490,17 +602,11 @@ And if we run the FT, it works!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.LoginTest*]
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
 Creating test database for alias 'default'...
+Not Found: /favicon.ico
 login view
-sending to mozilla {'audience': 'localhost', 'assertion':
 [...]
-/usr/lib/python3.3/http/client.py:1172: DeprecationWarning: the 'strict'
-argument isn't supported anymore; http.client now always assumes HTTP/1.x
-compliant servers.
-  source_address)
-
-got <Response [200]>
 .
  ---------------------------------------------------------------------
 Ran 1 test in 32.222s
@@ -513,15 +619,17 @@ You can even see some of the debug output I left in my spiked view
 implementations.  Now it's time to revert all of our temporary changes,
 and re-introduce them one by one in a test-driven way.
 
-Reverting our temporary changes
+
+Reverting our spiked code
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add functiional_tests* # save our new FT.
+$ *git checkout master* # switch back to master branch
+$ *rm -rf accounts* # remove any trace of spiked code
+$ *git add functional_tests* # save our new FT.
 $ *git commit -m "FT for login with Persona"*
-$ *git add .*  # commit everything else, for reference
-$ *git commit -m "SPIKED Persona implementation"*
-$ *git revert HEAD* # and revert all our spiked stuff
 ----
 
 Now we re-run the FT and let it drive our development:
