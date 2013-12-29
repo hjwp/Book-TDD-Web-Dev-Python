@@ -196,6 +196,7 @@ def _write_to_file(path, new_contents):
         new_lines = new_contents.strip('\n').split('\n')
         # strip callouts
         new_lines = [re.sub(r' +#$', '', l) for l in new_lines]
+        new_lines = [re.sub(r' +//$', '', l) for l in new_lines]
 
         if new_contents.strip() in SPECIAL_CASES:
             to_replace = SPECIAL_CASES[new_contents.strip()]
