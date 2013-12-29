@@ -23,9 +23,9 @@ class Chapter14Test(ChapterTest):
         # hack fast-forward
         skip = True
         if skip:
-            self.pos = 44
+            self.pos = 62
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch14l022')
+                self.sourcetree.get_commit_spec('ch14l033')
             ))
 
         while self.pos < len(self.listings):

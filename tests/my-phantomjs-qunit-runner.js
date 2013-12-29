@@ -17,7 +17,7 @@ page.open('file://' + path, function () {
         var output = page.evaluate( function () {
             var results = '';
 
-            var headline = $('#qunit-testresult').text().split('.')[1];
+            var headline = $('#qunit-testresult').text().split('.')[1] + '.';
             results += headline + '\n';
 
             var testCounter = 0;

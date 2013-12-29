@@ -174,6 +174,7 @@ class SourceTree(object):
 
         listing_lines = listing.contents.split('\n')
         listing_lines = [l.rstrip(' #') for l in listing_lines]
+        listing_lines = [l.rstrip(' //') for l in listing_lines]
 
         stripped_listing_lines = [l.strip() for l in listing_lines]
         for new_line in commit.new_lines:
