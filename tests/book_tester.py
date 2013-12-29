@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from lxml import html
 import os
+import stat
 import re
 import subprocess
 import tempfile
@@ -353,8 +354,9 @@ class ChapterTest(unittest.TestCase):
         self.pos += 2
 
     def run_js_tests(self, tests_path):
+        os.chmod(SLIMERJS_BINARY, os.stat(SLIMERJS_BINARY).st_mode | stat.S_IXUSR)
         return subprocess.check_output(
-            ['xvfb-run', '--auto-servernum', 'bash', SLIMERJS_BINARY, PHANTOMJS_RUNNER, tests_path]
+            ['xvfb-run', '--auto-servernum', SLIMERJS_BINARY, PHANTOMJS_RUNNER, tests_path]
         ).decode()
 
 
