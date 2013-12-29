@@ -135,7 +135,9 @@ class SourceTree(object):
 
     def get_files_from_commit_spec(self, commit_spec):
         return self.run_command(
-            'git diff-tree --no-commit-id --name-only -r %s' % (commit_spec,)
+            'git diff-tree --no-commit-id --name-only --find-renames -r {}'.format(
+                commit_spec
+            )
         ).split()
 
 

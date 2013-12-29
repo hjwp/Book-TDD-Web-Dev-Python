@@ -494,7 +494,7 @@ A common Selenium technique: waiting for
 Here's the basic outline:
 
 [role="sourcecode"]
-.lists/functional_tests/test_login.py
+.functional_tests/test_login.py
 [source,python]
 ----
 from .base import FunctionalTest
@@ -636,7 +636,7 @@ Now we re-run the FT and let it drive our development:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.LoginTest*]
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
 element: {"method":"id","selector":"login"}' ; Stacktrace: 
 [...]
@@ -646,7 +646,7 @@ The first thing it wants us to do is add a login link. Incidentally, I prefer
 prefixing HTML ids with `id_`, so let's tweak the FT first:
 
 [role="sourcecode"]
-.lists/functional_tests/test_login.py
+.functional_tests/test_login.py (ch14l017)
 [source,python]
 ----
     self.browser.find_element_by_id('id_login').click()
@@ -670,9 +670,10 @@ classes for navigation bars, so we'll use them:
     <div class="row">
     [...]
 ----
+//ch14l018
 
 
-After 10 seconds, that gives:
+After 30 seconds, that gives:
 
 ----
 AssertionError: could not find window
@@ -688,7 +689,10 @@ First off, a bit of housekeeping.  We create a site-wide static files
 directory inside 'superlists/superlists', and we move all the 
 bootsrap css, qunit code, and base.css into it
 
+[role="dofirst-ch14l019"]
+[subs="specialcharacters,quotes"]
 ----
+$ *tree superlists -L 3 -I __pycache__*
 superlists
 ├── __init__.py
 ├── settings.py
@@ -696,19 +700,18 @@ superlists
 │   ├── base.css
 │   ├── bootstrap
 │   │   ├── css
-│   │   │   └[...]
 │   │   ├── fonts
-│   │   │   └[...]
 │   │   └── js
-│   │       └[...]
 │   └── tests
 │       ├── qunit.css
 │       └── qunit.js
 ├── urls.py
 └── wsgi.py
+
+6 directories, 7 files
 ----
 
-TODO: move templates/base.html in there too?
+TODO: move base.html into site-wide folder too?
 
 That means adjusting our existing JavaScript unit tests:
 
@@ -721,31 +724,49 @@ That means adjusting our existing JavaScript unit tests:
     <script src="../list.js"></script>
 ----
 
+And we can re-run them to check that worked:
+
+[role="qunit-output"]
+----
+2 assertions of 2 passed, 0 failed
+----
+
 Here's how we tell our settings file about the new static folder:
 
 [role="sourcecode"]
 .superlists/settings.py
 [source,python]
 ----
-# Additional locations of static files
+[...]
+STATIC_ROOT = os.path.join(BASE_DIR, '../static')
 STATICFILES_DIRS = (
-    # Put strings here, like "/home/html/static" or "C:/www/django/static".
-    # Always use forward slashes, even on Windows.
-    # Don't forget to use absolute paths, not relative paths.
-    path.join(PROJECT_ROOT, 'superlists', 'static'),
+    os.path.join(BASE_DIR, 'superlists', 'static'),
 )
 ----
+
+And we can quickly run the layout + styling FT to check the CSS all still works:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_layout_and_styling*]
+[...]
+OK
+----
+
 
 Next, create an app called `accounts` to hold all the code related to
 login.  That will include our Persona javascript stuff:
 
+[subs="specialcharacters,quotes"]
 ----
-$ python3 manage.py startapp accounts
-$ mkdir -p accounts/static/tests
+$ *python3 manage.py startapp accounts*
+$ *mkdir -p accounts/static/tests*
 ----
 
-And now let's take another look at our spiked-in javascript:
+That's the housekeeping done.  Now's a good time for a commit.  Then, let's
+take another look at our spiked-in javascript:
 
+[role="skipme"]
 ----
 var loginLink = document.getElementById('login');
 if (loginLink) {
@@ -763,13 +784,9 @@ Now we don't want to call the 'actual' 3rd party function in our unit tests,
 because we don't need our unit tests popping up persona windows all over the
 shop.  So instead, we are going to do what's called "mocking it out".  I had
 hoped that our first Mock example was going to be in Python, but it looks like
-it's going to be JavaScript instead.  Ah well, needs must.  Thankfully, it's
+it's going to be JavaScript instead.  Ah well, needs must; thankfully, it's
 quite a straightforward one.  Still, you may find you need to read this next
 section a few times before it all makes total sense.
-
-WARNING: I'm worried that this chapter has a much steeper learning
-curve than any other so far.  Please, let me know how you feel about this!
-//TODO: remove me
 
 What we're going to do is replace the real `navigator` object with a 'fake'
 one that we've built ourselves, one that will be able to tell us what happens
@@ -791,6 +808,7 @@ this is one battle we've probably lost]
 function. The code we'll end up with in 'base.html' will look like this:
 
 
+[role="skipme"]
 [source,html]
 .lists/templates/base.html
 ----
@@ -798,11 +816,11 @@ function. The code we'll end up with in 'base.html' will look like this:
 <script src="/static/accounts/accounts.js"></script>
 <script src="/static/list.js"></script>
 <script>
-        $(document).ready(function() {
+    $(document).ready(function() {
 
-Superlists.Accounts.initialize(navigator)
+        Superlists.Accounts.initialize(navigator)
 
-});
+    });
 </script>
 ----
 
@@ -813,18 +831,20 @@ programming model that's tied into a global scope, and this sort of namespacing
 libraries might want to call a function `initialize`, but very few will call
 it `Superlists.Accounts.initialize`!
 
-TODO: look into require.js as an alternative to namespacing?
+//TODO: look into require.js as an alternative to namespacing?
 
-This code is short enough that I'm happy it doesn't need any unit tests.
+This call to `initialize` is simple enough that I'm happy it doesn't need any
+unit tests of its own.
 
 
 
 A simple mock to unit tests our initialize function
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The initialize function itself, we will test though:
+The initialize function itself, we will test though.  Copy the lists
+tests across to get the boilerplate HTML, and then adjust the following:
 
-[role="sourcecode"]
+[role="dofirst-ch14l023 sourcecode"]
 .accounts/static/tests/tests.html
 [source,html]
 ----
@@ -898,6 +918,7 @@ get the hang of it.
 
 Our first error is this:
 
+[role="qunit-output"]
 ----
 Died on test #1
 @file:///workspace/superlists/accounts/static/tests/tests.html:20 : Superlists
@@ -924,15 +945,15 @@ immediate problem: Superlists is not defined.  Now, just as in Python we
 might do `Superlists = None`, we do `window.Superlists = null`.  Using
 `window.` makes sure we get the global object.
 
-TODO: $.extend
-
+[role="qunit-output"]
 ----
 Died on test #1
 @file:///workspace/superlists/accounts/static/tests/tests.html:20 : Superlists
 is null
 ----
 
-OK, next baby step or two:
+OK, next baby step 
+or two:
 
 [role="sourcecode"]
 .accounts/static/accounts.js
@@ -943,8 +964,14 @@ OK, next baby step or two:
     };
 ----
 
-Gives
+Gives footnote:[In the real world, when setting up a namespace like
+this, you'd want to follow a sort of "add-or-create" pattern, so that, if there's
+already a window.Superlists in the scope, we extend it rather than replacing it.
+`window.Superlists = window.Superlists || {}` is one formulation, jQuery's `$.extend` 
+is another possibilty.  But, there's already a lot of content in this chapter, and
+I thought this was probably one too many things to talk about!]
 
+[role="qunit-output"]
 ----
 : Superlists.Accounts.initialize is not a function
 ----
@@ -964,6 +991,7 @@ So let's make it a function:
 
 And now we get a real test failure instead of just errors
 
+[role="qunit-output"]
 ----
 initialize binds sign in button to navigator.id.request (1, 0, 1)
 
@@ -1019,6 +1047,7 @@ That gets the tests to pass, but it's not quite the implementation we
 want.  We're calling `navigator.id.request` always, instead of only
 on click.  We'll need to adjust our tests.
 
+[role="qunit-output"]
 ----
 Tests completed in 51 milliseconds.
 1 assertions of 1 passed, 0 failed.
@@ -1042,6 +1071,7 @@ what's going on.  What happens if we do this:
 
 We get:
 
+[role="qunit-output"]
 ----
 Died on test #1
 @file:///workspace/superlists/accounts/static/tests/tests.html:20 :
@@ -1760,8 +1790,7 @@ And we run the FT...
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.LoginTest*]
-$ python3 manage.py test functional_tests.LoginTest
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
 Creating test database for alias 'default'...
 E
 ======================================================================
