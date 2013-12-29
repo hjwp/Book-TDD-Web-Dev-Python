@@ -376,10 +376,7 @@ class ChapterTest(unittest.TestCase):
                 if '0 failed' in lists_run and '0 failed' in expected_output:
                     print('lists and expected both had 0 failed but didnt match. checking accounts')
                     accounts_run = self.run_js_tests(accounts_tests)
-                    try:
-                        self.assert_console_output_correct(accounts_run, expected_output)
-                    except AssertionError:
-                        raise first_error
+                    self.assert_console_output_correct(accounts_run, expected_output)
                 else:
                     raise first_error
 

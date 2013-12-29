@@ -27,6 +27,9 @@ page.open('file://' + path, function () {
                     testCounter += 1;
                     var resultLine = '';
                     resultLine += testCounter + '. ';
+                    if (li.find('.module-name').length > 0) {
+                        resultLine += li.find('.module-name').text() + ': ';
+                    }
                     resultLine += li.find('.test-name').text();
                     resultLine += ' ' + li.find('.counts').text();
                     resultLine = resultLine.replace('Rerun', '');

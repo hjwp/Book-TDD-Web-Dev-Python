@@ -310,7 +310,7 @@ class ListUser(AbstractBaseUser, PermissionsMixin):
 
     @property
     def is_staff(self):
-        return self.email == 'harry.percival@gmail.com'
+        return self.email == 'harry.percival@example.com'
 
     @property
     def is_active(self):
@@ -643,7 +643,9 @@ element: {"method":"id","selector":"login"}' ; Stacktrace:
 ----
 
 The first thing it wants us to do is add a login link. Incidentally, I prefer
-prefixing HTML ids with `id_`, so let's tweak the FT first:
+prefixing HTML ids with `id_`; it's a convention to make it easy to tell
+the difference between classes and ids in HTML and CSS. So let's tweak the FT
+first:
 
 [role="sourcecode"]
 .functional_tests/test_login.py (ch14l017)
@@ -870,7 +872,7 @@ test("initialize binds sign in button to navigator.id.request", function () {
         }
     };
 
-    Superlists.Accounts.initialize(mockNavigator) //<3>
+    Superlists.Accounts.initialize(mockNavigator); //<3>
 
     $('#id_login').trigger('click'); //<2>
 
@@ -1413,24 +1415,32 @@ the current user, and we have to set up a couple of callbacks for login
 and logout.  Let's start with the user:
 
 [role="sourcecode"]
-.accounts/static/tests/tests.html
+.accounts/static/tests/tests.html (ch14l042)
 [source,html]
 ----
 test("watch sees current user", function () {
     var user = 'current user';
     var token = 'csrf token';
-    var urls = { login: 'login url', logout: 'logout url'};
-    var mockNavigator = { 
-        id: { 
+    var urls = {login: 'login url', logout: 'logout url'};
+    var mockNavigator = {
+        id: {
             watch: sinon.spy()
-        } 
+        }
     };
 
     Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var callArgs = mockNavigator.id.watch.firstCall.args[0];
-    equal(callArgs.loggedInUser, user, 'check user');
+    var watchCallArgs = mockNavigator.id.watch.firstCall.args[0];
+    equal(watchCallArgs.loggedInUser, user, 'check user');
 });
 ----
+//TODO: look into using 
+//    sinon.assert.calledWith(
+//        mockNavigator.id.watch,
+//        sinon.match({loggedInUser: user})
+//    );
+// and
+//  <script src="http://sinonjs.org/releases/sinon-qunit-1.0.0.js"></script>
+// to make assertions register with qunit
 
 We have a very similar setup (which is a code smell incidentally - on
 the next test, we're going to want to do some de-duplication of test
@@ -1440,20 +1450,42 @@ positional arguments). That gives us:
 
 [role="qunit-output"]
 ----
-watch sees current user (1, 0, 1)
-    check user
-    Expected: "current user"
-    Result: undefined 
+3. watch sees current user (1, 0, 1)
+    1. Died on test #1
+@file:///workspace/superlists/accounts/static/tests/tests.html:57
+: watchCallArgs is undefined
 ----
 
-And we fix it thusly:
+Because we're not currently passing any arguments to `watch`.  Step-by-step,
+we can do
 
 [role="sourcecode"]
-.accounts/static/accounts.js
+.accounts/static/accounts.js (ch14l043)
+[source,javascript]
+----
+    navigator.id.watch({});
+----
+
+
+And get a clearer error message:
+
+
+[role="qunit-output"]
+----
+3. watch sees current user (1, 0, 1)
+    1. check user
+        Expected: "current user"
+        Result: undefined 
+----
+
+And fix it thusly:
+
+[role="sourcecode"]
+.accounts/static/accounts.js (ch14l044)
 [source,javascript]
 ----
     navigator.id.watch({
-        loggedInUser: user,
+        loggedInUser: user
     });
 ----
 
@@ -1473,15 +1505,36 @@ practice to make sure we restore it afterwards.  This gives us a good
 excuse to learn about Qunit's `setup` and `teardown` methods -- they
 are used in a function called `module`, which acts a bit like a 
 `unittest.TestCase` class, and groups all the tests that follow it
-together:  
+together.
+
+.Aside on Ajax
+*******************************************************************************
+If you've never used Ajax before, here is a very brief overview.  You may find
+it useful to read up on it elsewhere before proceeding though.
+
+Ajax stands for "Asynchronous Javascript and XML", although the XML part is a bit
+of a misnomer these days, since everyone usually sends text or JSON rather
+than XML.  It's a way of letting your client-side javascript code send +
+receive information via the HTTP protocol (GET and POST requests), but do so
+"asynchronously", ie without blocking and without needing to reload the page.
+
+Here we're going to use Ajax requests to send a POST request to our login
+view, sending it the assertion information from the Persona UI.  We'll use the
+jQuery Ajax convenience functions, which you can find out more about here:
+http://api.jquery.com/jQuery.post/
+*******************************************************************************
+
+
+Let's add this "module" after the first test, before the test for
+`"initialize calls navigator.id.watch"`:
 
 
 [role="sourcecode"]
-.accounts/static/tests/tests.html
+.accounts/static/tests/tests.html (ch14l045)
 [source,html]
 ----
 var user, token, urls, mockNavigator, requests; //<1>
-module("sinon tests of navigator.id.watch", {
+module("navigator.id.watch tests", {
     setup: function() {
         user = 'current user'; //<2>
         token = 'csrf token';
@@ -1497,7 +1550,7 @@ module("sinon tests of navigator.id.watch", {
     },
     teardown: function () {
         mockNavigator.id.watch.reset(); //<5>
-        xhr.restore() //<6>
+        xhr.restore(); //<6>
     }
 });
 
@@ -1506,21 +1559,21 @@ test("initialize calls navigator.id.watch", function () {
 ----
 
 <1> We pull out the variables user, token, urls etc up to a higher scope,
-    so that they'll be available to all of the tests in the file
+    so that they'll be available to all of the tests in the file.
 
 <2> We initialise said variables inside the `setup` function, which, just
     like a `unittest` `setUp` function, will run before each test.  That
-    includes our `mockNavigator`
+    includes our `mockNavigator`.
 
 <3> We also invoke sinon's `useFakeXMLHttpRequest`, which patches out 
-    Ajax
+    the browser's Ajax capabilities.
 
 <4> There's one more bit of boilerplate:  we tell sinon to take any Ajax
     requests and put them into the `requests` array, so that we can inspect
-    them in our tests
+    them in our tests.
 
 <5> Finally we have the cleanup -- we "reset" the spy for the watch function
-    in between each test (otherwise calls from one test would show up in others)
+    in between each test (otherwise calls from one test would show up in others).
 
 <6> And we put the Javascrit XMLHttpRequest back to the way we found it.
 
@@ -1529,7 +1582,7 @@ That lets us rewrite our two tests to be much shorter:
 
 
 [role="sourcecode"]
-.accounts/static/tests/tests.html
+.accounts/static/tests/tests.html (ch14l046)
 [source,html]
 ----
 test("initialize calls navigator.id.watch", function () {
@@ -1540,8 +1593,8 @@ test("initialize calls navigator.id.watch", function () {
 
 test("watch sees current user", function () {
     Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var callArgs = mockNavigator.id.watch.firstCall.args[0];
-    equal(callArgs.loggedInUser, user, 'check user');
+    var watchCallArgs = mockNavigator.id.watch.firstCall.args[0];
+    equal(watchCallArgs.loggedInUser, user, 'check user');
 });
 ----
 
@@ -1550,19 +1603,18 @@ name:
 
 [role="qunit-output"]
 ----
-Tests completed in 45 milliseconds.
 4 assertions of 4 passed, 0 failed.
 
-    initialize binds sign in button to navigator.id.request (0, 2, 2)
-    sinon tests of navigator.id.watch: initialize calls navigator.id.watch (0, 1, 1)
-    sinon tests of navigator.id.watch: watch sees current user (0, 1, 1)
+1. initialize binds sign in button to navigator.id.request (0, 2, 2)
+2. navigator.id.watch tests: initialize calls navigator.id.watch (0, 1, 1)
+3. navigator.id.watch tests: watch sees current user (0, 1, 1)
 ----
 
 And here's how we test the onlogin callback:
 
 
 [role="sourcecode"]
-.accounts/static/tests/tests.html
+.accounts/static/tests/tests.html (ch14l047)
 [source,html]
 ----
 test("onlogin does ajax post to login url", function () {
@@ -1574,7 +1626,7 @@ test("onlogin does ajax post to login url", function () {
     equal(requests[0].url, urls.login, 'check url');
 });
 
-test("onlogin sends assertion with middleware token", function () {
+test("onlogin sends assertion with csrf token", function () {
     Superlists.Accounts.initialize(mockNavigator, user, token, urls);
     var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin;
     var assertion = 'browser-id assertion'
@@ -1603,47 +1655,67 @@ test("onlogin sends assertion with middleware token", function () {
 
 And the two tests fail as expected:
 
-[role="sourcecode"]
-.accounts/static/tests/tests.html
-[source,html]
+[role="qunit-output"]
 ----
-sinon tests of navigator.id.watch: onlogin does ajax post to login url (1, 0, 1)
-    Died on test #1
-    @file:///workspace/superlists/accounts/static/tests/tests.html:72
-    : onloginCallback is not a function
+4. navigator.id.watch tests: onlogin does ajax post to login url (1, 0, 1)
+    1. Died on test #1
+@file:///workspace/superlists/accounts/static/tests/tests.html:71
+: onloginCallback is not a function
 
-sinon tests of navigator.id.watch: onlogin sends assertion with middleware token (1, 0, 1)
-    Died on test #1
-    @file:///workspace/superlists/accounts/static/tests/tests.html:81 :
-    onloginCallback is not a function
+5. navigator.id.watch tests: onlogin sends assertion with csrf token (1, 0, 1)
+    1. Died on test #1
+@file:///workspace/superlists/accounts/static/tests/tests.html:80 
+: onloginCallback is not a function
 ----
 
 Another unit test-code cycle.  Here's the failure messages I went through:
 
+[role="dofirst-ch14l048 qunit-output"]
 ----
-check ajax request
+1. check ajax request
 Expected: 1
+----
+
 ...
-check url
+
+[role="dofirst-ch14l049 qunit-output"]
+----
+3. check url
 Expected: "login url"
+----
+
 ...
+
+[role="dofirst-ch14l050 qunit-output"]
+----
 7 assertions of 8 passed, 1 failed.
-...
-check POST data
-Expected: "assertion=browser-id+assertion&csrfmiddlewaretoken=csrf+token"
+1. check POST data
+Expected: 
+"assertion=browser-id+assertion&csrfmiddlewaretoken=csrf+token"
 Result: null
+----
+
 ...
-check POST data
-Expected: "assertion=browser-id+assertion&csrfmiddlewaretoken=csrf+token"
+
+[role="dofirst-ch14l051 qunit-output"]
+----
+1. check POST data
+Expected: 
+"assertion=browser-id+assertion&csrfmiddlewaretoken=csrf+token"
 Result: "assertion=browser-id+assertion"
+----
+
 ...
+
+[role="dofirst-ch14l052 qunit-output"]
+----
 8 assertions of 8 passed, 0 failed.
 ----
 
 And I ended up with this code:
 
 [role="sourcecode"]
-.accounts/static/accounts.js
+.accounts/static/accounts.js (ch14l052)
 [source,javascript]
 ----
     navigator.id.watch({
@@ -1653,9 +1725,10 @@ And I ended up with this code:
                 urls.login, 
                 { assertion: assertion, csrfmiddlewaretoken: token }
             );
-        },
+        }
     });
 ----
+
 
 Logout
 ++++++
@@ -1666,7 +1739,7 @@ it a do-nothing function, as a placeholder. Here's a minimal test for that:
 
 
 [role="sourcecode"]
-.accounts/static/tests/tests.html
+.accounts/static/tests/tests.html (ch14l053)
 [source,html]
 ----
 test("onlogout is just a placeholder", function () {
@@ -1679,10 +1752,12 @@ test("onlogout is just a placeholder", function () {
 And we get quite a simple logout function:
 
 [role="sourcecode"]
-.accounts/static/accounts.js
+.accounts/static/accounts.js (ch14l054)
 [source,javascript]
 ----
+    },
     onlogout: function () {}
+});
 ----
 
 More nested callbacks!  Testing asynchronous code
@@ -1692,6 +1767,8 @@ This is what JavaScript's all about folks!  Thankfully, sinon.js really does
 help.  We still need to test that our login post methods 'also' set some
 callbacks for things to do 'after' the POST request comes back:
 
+[role="skipme"]
+[source,javascript]
 ----
     .done(function() { window.location.reload(); })
     .fail(function() { navigator.id.logout();});
@@ -1706,6 +1783,9 @@ then put a spy on 'that' to check that it gets set as the ajax .done callback]
 will do a test for the on-fail callback though, just to demonstrate that it is
 possible:
 
+[role="sourcecode"]
+.accounts/static/tests/tests.html (ch14l055)
+[source,html]
 ----
 test("onlogin post failure should do navigator.id.logout ", function () {
     mockNavigator.id.logout = sinon.spy(); //<1>
@@ -1717,7 +1797,7 @@ test("onlogin post failure should do navigator.id.logout ", function () {
     onloginCallback();
     equal(mockNavigator.id.logout.called, false, 'should not logout yet');
 
-    server.respond() //<4>
+    server.respond(); //<4>
     equal(mockNavigator.id.logout.called, true, 'should call logout');
 });
 ----
@@ -1738,45 +1818,50 @@ test("onlogin post failure should do navigator.id.logout ", function () {
 That gets us to this -- a slight change to our spiked code:
 
 [role="sourcecode"]
-.accounts/static/accounts.js
+.accounts/static/accounts.js (ch14l056)
 [source,javascript]
 ----
     onlogin: function (assertion) {
         $.post(
             urls.login,
             { assertion: assertion, csrfmiddlewaretoken: token }
-        ).fail(function () { navigator.id.logout(); } );
+        ).fail(function () { navigator.id.logout(); });
     },
-    onlogout: function (assertion) {
+    onlogout: function () {}
 ----
 
-Finally we add the two window.location.reloads, just to check they don't
-break any unit tests:
+Finally we add our `window.location.reload`, just to check it doesn't break any
+unit tests:
 
 [role="sourcecode"]
-.accounts/static/accounts.js
+.accounts/static/accounts.js (ch14l057)
 [source,javascript]
 ----
-        navigator.id.watch({
-            loggedInUser: user,
-            onlogin: function (assertion) {
-                $.post(
-                    urls.login,
-                    { assertion: assertion, csrfmiddlewaretoken: token }
-                )
-                .done(function () { window.location.reload(); })
-                .fail(function () { navigator.id.logout(); } );
-            },
-            onlogout: function (assertion) {
-                $.post(urls.logout)
-                .always(function () { window.location.reload(); });
-            }
-        });
+    navigator.id.watch({
+        loggedInUser: user,
+        onlogin: function (assertion) {
+            $.post(
+                urls.login,
+                { assertion: assertion, csrfmiddlewaretoken: token }
+            )
+            .done(function () { window.location.reload(); })
+            .fail(function () { navigator.id.logout(); } );
+        },
+        onlogout: function () {}
+    });
+----
+
+Everything's still OK:
+
+[role="qunit-output"]
+----
+11 assertions of 11 passed, 0 failed.
 ----
 
 If those chained `.done` and `.fail` calls are bugging you -- they bug me a
 little -- you can rewrite that as, eg:
 
+[role="skipme"]
 [source,javascript]
 ----
     var deferred = $.post(urls.logout);
@@ -1790,7 +1875,7 @@ can read up on  JavaScript deferreds, aka "promises",
 http://otaqui.com/blog/1637/introducing-javascript-promises-aka-futures-in-google-chrome-canary/[here].
 
 We're approaching the moment of truth:  will our FTs get any further? First,
-let's adjust our initialize call:
+we adjust our initialize call:
 
 [role="sourcecode"]
 .lists/templates/base.html
@@ -1820,15 +1905,15 @@ E
 ERROR: test_login_with_persona (functional_tests.test_login.LoginTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/workspace/superlists/functional_tests/test_login.py", line 56, in
+  File "/workspace/superlists/functional_tests/test_login.py", line 57, in
 test_login_with_persona
     self.wait_for_element_with_id('id_logout')
-  File "/workspace/superlists/functional_tests/test_login.py", line 25, in
+  File "/workspace/superlists/functional_tests/test_login.py", line 26, in
 wait_for_element_with_id
     lambda b: b.find_element_by_id(element_id)
   File
-  "/usr/local/lib/python3.3/dist-packages/selenium/webdriver/support/wait.py",
-  line 71, in until
+"/usr/local/lib/python3.3/dist-packages/selenium/webdriver/support/wait.py",
+line 71, in until
     raise TimeoutException(message)
 selenium.common.exceptions.TimeoutException: Message: '' 
 
@@ -1841,4 +1926,23 @@ Destroying test database for alias 'default'...
 
 Hooray!  I mean, I know it failed, but we saw it popping up the Persona
 dialog and getting through it and everything!  Next chapter: the server-side.
+
+
+.On Spiking and Mocking with JavaScript
+*******************************************************************************
+Spiking::
+    Exploratory coding to find out about a new API, or to explore the feasibility   
+    of a new solution.  Spiking can be done without tests.  It's a good idea to
+    do your spike on a new branch, and go back to master when de-spiking.
+
+Mocking::
+    We use mocking in unit tests when we have an external dependency that we
+    don't want to actually use in our tests.  A mock is used to simulate the 
+    3rd party API.   Whilst it is possible to "roll your own" mocks in JavaScript,
+    a mocking framework like Sinon.js provides a lot of helpful shortcuts.
+
+Unit testing Ajax::
+    Sinon.js is a great help here. Manually mocking Ajax methods is a real pain.
+
+*******************************************************************************
 

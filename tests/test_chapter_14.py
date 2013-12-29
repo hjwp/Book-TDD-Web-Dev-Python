@@ -14,6 +14,7 @@ class Chapter14Test(ChapterTest):
         self.assertEqual(self.listings[0].type, 'code listing with git ref')
         self.assertEqual(self.listings[1].type, 'code listing with git ref')
         self.assertEqual(self.listings[2].type, 'other command')
+        self.assertTrue(self.listings[87].dofirst)
 
         # skips
         self.skip_with_check(22, 'switch back to master') # comment
@@ -23,9 +24,9 @@ class Chapter14Test(ChapterTest):
         # hack fast-forward
         skip = True
         if skip:
-            self.pos = 62
+            self.pos = 84
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch14l033')
+                self.sourcetree.get_commit_spec('ch14l046')
             ))
 
         while self.pos < len(self.listings):

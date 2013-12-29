@@ -116,6 +116,7 @@ def parse_listing(listing):
         contents = listing.cssselect('.content')[0].text_content().replace('\r\n', '\n').strip('\n')
         output = Output(contents)
         output.qunit_output = True
+        output.dofirst = dofirst
         return [output]
 
     else:
