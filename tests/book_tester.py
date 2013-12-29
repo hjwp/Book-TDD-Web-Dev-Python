@@ -22,6 +22,10 @@ PHANTOMJS_RUNNER = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     'my-phantomjs-qunit-runner.js'
 )
+SLIMERJS_BINARY = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    'slimerjs-0.9.0/slimerjs'
+)
 
 
 
@@ -348,14 +352,37 @@ class ChapterTest(unittest.TestCase):
         self.assert_console_output_correct(test_run, self.listings[self.pos + 1])
         self.pos += 2
 
+    def run_js_tests(self, tests_path):
+        return subprocess.check_output(
+            ['xvfb-run', '--auto-servernum', SLIMERJS_BINARY, PHANTOMJS_RUNNER, tests_path]
+        ).decode()
 
-    def check_qunit_output(self, listing):
+
+    def check_qunit_output(self, expected_output):
         lists_tests = os.path.join(
             self.tempdir,
             'superlists/lists/static/tests/tests.html'
         )
-        actual_run = subprocess.check_output(['phantomjs', PHANTOMJS_RUNNER, lists_tests]).decode()
-        self.assert_console_output_correct(actual_run, listing)
+        accounts_tests = lists_tests.replace('/lists/', '/accounts/')
+        lists_run = self.run_js_tests(lists_tests)
+        if '0 failed' in lists_run and not '0 failed' in expected_output:
+            print('lists tests pass, assuming accounts tests')
+            accounts_run = self.run_js_tests(accounts_tests)
+            self.assert_console_output_correct(accounts_run, expected_output)
+        else:
+            try:
+                self.assert_console_output_correct(lists_run, expected_output)
+            except AssertionError as first_error:
+                if '0 failed' in lists_run and '0 failed' in expected_output:
+                    print('lists and expected both had 0 failed but didnt match. checking accounts')
+                    accounts_run = self.run_js_tests(accounts_tests)
+                    try:
+                        self.assert_console_output_correct(accounts_run, expected_output)
+                    except AssertionError:
+                        raise first_error
+                else:
+                    raise first_error
+
 
 
     def check_commit(self, pos):
