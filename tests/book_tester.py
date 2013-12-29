@@ -354,7 +354,7 @@ class ChapterTest(unittest.TestCase):
 
     def run_js_tests(self, tests_path):
         return subprocess.check_output(
-            ['xvfb-run', '--auto-servernum', SLIMERJS_BINARY, PHANTOMJS_RUNNER, tests_path]
+            ['xvfb-run', '--auto-servernum', 'bash', SLIMERJS_BINARY, PHANTOMJS_RUNNER, tests_path]
         ).decode()
 
 
@@ -375,6 +375,7 @@ class ChapterTest(unittest.TestCase):
             except AssertionError as first_error:
                 if '0 failed' in lists_run and '0 failed' in expected_output:
                     print('lists and expected both had 0 failed but didnt match. checking accounts')
+                    print('lists run was', lists_run)
                     accounts_run = self.run_js_tests(accounts_tests)
                     self.assert_console_output_correct(accounts_run, expected_output)
                 else:

@@ -22,7 +22,7 @@ class Chapter14Test(ChapterTest):
         self.skip_with_check(26, 'new FT') # comment
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 84
             self.sourcetree.run_command('git checkout {0}'.format(
