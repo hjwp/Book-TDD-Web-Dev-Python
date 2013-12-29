@@ -355,6 +355,7 @@ class ChapterTest(unittest.TestCase):
 
     def run_js_tests(self, tests_path):
         os.chmod(SLIMERJS_BINARY, os.stat(SLIMERJS_BINARY).st_mode | stat.S_IXUSR)
+        os.environ['SLIMERJSLAUNCHER'] = '/usr/bin/firefox'
         return subprocess.check_output(
             ['xvfb-run', '--auto-servernum', SLIMERJS_BINARY, PHANTOMJS_RUNNER, tests_path]
         ).decode()
