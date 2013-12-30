@@ -400,23 +400,33 @@ class ChapterTest(unittest.TestCase):
             self.tempdir,
             'superlists/lists/static/tests/tests.html'
         )
+        accounts_tests_exist = os.path.exists(os.path.join(
+            self.sourcetree.tempdir,
+            'superlists', 'accounts', 'static', 'tests', 'tests.html'
+        ))
+
         accounts_tests = lists_tests.replace('/lists/', '/accounts/')
         lists_run = self.run_js_tests(lists_tests)
-        if '0 failed' in lists_run and not '0 failed' in expected_output:
-            print('lists tests pass, assuming accounts tests')
-            accounts_run = self.run_js_tests(accounts_tests)
-            self.assert_console_output_correct(accounts_run, expected_output)
+        if not accounts_tests_exist:
+            self.assert_console_output_correct(lists_run, expected_output)
+            return
         else:
-            try:
-                self.assert_console_output_correct(lists_run, expected_output)
-            except AssertionError as first_error:
-                if '0 failed' in lists_run and '0 failed' in expected_output:
-                    print('lists and expected both had 0 failed but didnt match. checking accounts')
-                    print('lists run was', lists_run)
-                    accounts_run = self.run_js_tests(accounts_tests)
-                    self.assert_console_output_correct(accounts_run, expected_output)
-                else:
-                    raise first_error
+            if '0 failed' in lists_run and not '0 failed' in expected_output:
+                print('lists tests pass, assuming accounts tests')
+                accounts_run = self.run_js_tests(accounts_tests)
+                self.assert_console_output_correct(accounts_run, expected_output)
+
+            else:
+                try:
+                    self.assert_console_output_correct(lists_run, expected_output)
+                except AssertionError as first_error:
+                    if '0 failed' in lists_run and '0 failed' in expected_output:
+                        print('lists and expected both had 0 failed but didnt match. checking accounts')
+                        print('lists run was', lists_run)
+                        accounts_run = self.run_js_tests(accounts_tests)
+                        self.assert_console_output_correct(accounts_run, expected_output)
+                    else:
+                        raise first_error
 
 
 

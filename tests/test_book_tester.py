@@ -639,9 +639,13 @@ class CheckQunitOuptutTest(ChapterTest):
     def test_partial_listing_passes(self):
         self.chapter_no = 13
         self.sourcetree.start_with_checkout(14)
-        expected = Output("2 assertions of 2 passed, 0 failed")
+        expected = Output("2 assertions of 2 passed, 0 failed.")
         self.check_qunit_output(expected) # should pass
         assert expected.was_checked
+
+    def test_fails_if_lists_fail_and_no_accounts(self):
+        self.chapter_no = 13
+        self.sourcetree.start_with_checkout(14)
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output('arg'))
 
@@ -657,6 +661,29 @@ class CheckQunitOuptutTest(ChapterTest):
         manual_run = subprocess.check_output(['phantomjs', PHANTOMJS_RUNNER, lists_tests])
         expected = Output(manual_run.strip().decode())
         self.check_qunit_output(expected) # should pass
+
+
+    def DONTtest_runs_against_accounts_if_lists_pass(self):
+        self.chapter_no = 14
+        self.sourcetree.start_with_checkout(15)
+        lists_tests = os.path.abspath(os.path.join(
+            os.path.dirname(__file__),
+            '../source/chapter_13/superlists/lists/static/tests/tests.html'
+        ))
+        accounts_tests = lists_tests.replace('/lists/', '/accounts/')
+        def test_results(path):
+            if path == lists_tests:
+                return '0 failed'
+            if path == accounts_tests:
+                return '2 failed'
+        self.run_js_tests = test_results
+        self.assert_console_output_correct = Mock()
+
+        self.check_qunit_output('expected')
+        assert self.assert_console_output_correct.call_args_list == [
+            call('0 failed', 'expected'),
+            call('2 failed', 'expected'),
+        ]
 
 
 
