@@ -468,6 +468,12 @@ class ChapterTest(unittest.TestCase):
         self.dev_server_running = True
 
 
+    def run_unit_tests(self):
+        if os.path.exists(os.path.join(self.tempdir, 'superlists', 'accounts', 'tests')):
+            return self.run_command(Command("python3 manage.py test lists accounts"))
+        else:
+            return self.run_command(Command("python3 manage.py test lists"))
+
     def run_fts(self):
         if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
             return self.run_command(Command("python3 manage.py test functional_tests"))
@@ -595,7 +601,7 @@ class ChapterTest(unittest.TestCase):
 
         elif listing.type == 'output':
             self._strip_out_any_pycs()
-            test_run = self.run_command(Command("python3 manage.py test lists"))
+            test_run = self.run_unit_tests()
             if 'OK' in  test_run and not 'OK' in listing:
                 print('unit tests pass, must be an FT:\n', test_run)
                 test_run = self.run_fts()

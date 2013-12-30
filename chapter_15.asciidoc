@@ -13,6 +13,7 @@ Mocking in Python
 
 Here's the spiked version of our view:
 
+[role='skipme']
 [source,python]
 ----
 def login(request):
@@ -32,6 +33,8 @@ The popular 'mock' package was added to the standard libary as part of Python
 3. It provides a magical object called a Mock, which is a bit like the sinon
 spy objects we saw in the last chapter, only much cooler.  Check this out:
 
+
+[role='skipme']
 ----
 >>> from unittest.mock import Mock
 >>> m = Mock()
@@ -59,7 +62,7 @@ function, wouldn't it?  Here's how you can do that:
 (I trust you to set up a tests folder with a dunderinit)
 
 
-[role="sourcecode"]
+[role="dofirst-ch15l001 sourcecode"]
 .accounts/tests/test_views.py
 [source,python]
 ----
@@ -91,19 +94,22 @@ class LoginViewTest(TestCase):
     `.return_value` attribute.  Otherwise it would return another mock, and
     that would probably confuse our view.
 
-<4> Mocks can make assertions! in this case, they can check whether they were
+<4> Mocks can make assertions! In this case, they can check whether they were
     called, and what with
     
 
 So what does that give us?
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
 AttributeError: <module 'accounts.views' from
 '/workspace/superlists/accounts/views.py'> does not have the attribute
 'authenticate'
 ----
 
-We tried to patch something that doesn't exist yet!  We need to import 
+We tried to patch something that doesn't exist yet.  We need to import 
 authenticate into our views.py:
 
 
@@ -120,7 +126,7 @@ Now we get:
 AssertionError: Expected 'authenticate' to be called once. Called 0 times.
 ----
 
-Expected failure!  To implement it, we'll have to wire up a URL for our
+That's our expected failure;  to implement, we'll have to wire up a URL for our
 login view:
 
 [role="sourcecode"]
@@ -151,6 +157,8 @@ Will a minimal view do anything?
 .accounts/views.py
 [source,python]
 ----
+from django.contrib.auth import authenticate
+
 def login():
     pass
 ----
@@ -164,7 +172,7 @@ TypeError: login() takes 0 positional arguments but 1 was given
 And so:
 
 [role="sourcecode"]
-.accounts/views.py
+.accounts/views.py (ch15l008)
 [source,python]
 ----
 def login(request):
@@ -178,7 +186,7 @@ ValueError: The view accounts.views.login didn't return an HttpResponse object.
 ----
 
 [role="sourcecode"]
-.accounts/views.py
+.accounts/views.py (ch15l009)
 [source,python]
 ----
 from django.contrib.auth import authenticate
@@ -224,7 +232,9 @@ def login(request):
 ----
 
 
-Fine, but our authenticate view also needs to call the Django auth.login 
+OK so far. One Python function mocked and tested.
+
+But our authenticate view also needs to call the Django auth.login 
 function if authenticate returns a user, and then it needs to return 
 something other than an empty response -- since this is an Ajax view,
 it doesn't need to return HTML, just an "OK" string will do.  We'll need to
@@ -233,7 +243,7 @@ mock out the `auth_login` view as well:
 
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.accounts/tests/test_views.py (ch15l012)
 [source,python]
 ----
 from django.contrib.auth import get_user_model
@@ -244,7 +254,12 @@ from unittest.mock import patch
 User = get_user_model() #<1>
 
 from accounts.views import login
-[...]
+
+
+class LoginViewTest(TestCase):
+    @patch('accounts.views.authenticate')
+    def test_calls_authenticate_with_assertion_from_post(
+        [...]
 
     @patch('accounts.views.authenticate')
     def test_returns_OK_when_user_found(
@@ -289,17 +304,23 @@ Notice that, for these tests, we go back to importing the view function
 directly, and calling it with an `HttpRequest` we build manually.  The Django
 Test Client does a bit too much magic, and for these highly mocky tests, we
 need more control -- we need to check that `auth_login` was passed the same
-`request` object that we called the view with, for example.
+`request` object that we called the view with, for example, and that's not
+possible if you use the Django client.
 
 That gives us:
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
 AttributeError: <module 'accounts.views' from
 '/workspace/superlists/accounts/views.py'> does not have the attribute
 'auth_login'
+[...]
 AttributeError: <module 'accounts.views' from
 '/workspace/superlists/accounts/views.py'> does not have the attribute
 'auth_login'
+[...]
 AssertionError: '' != 'OK'
 + OK
 ----
@@ -310,7 +331,10 @@ Adding the import takes us down to two failures:
 .accounts/views.py
 [source,python]
 ----
+from django.contrib.auth import authenticate
 from django.contrib.auth import login as auth_login
+from django.http import HttpResponse
+[...]
 ----
 
 And we go through another couple of TDD cycles, until:
@@ -326,7 +350,13 @@ def login(request):
         auth_login(request, user)
     return HttpResponse('OK')
 ----
+//ch15l015
 
+...
+
+----
+OK
+----
 
 
 De-spiking our custom authentication back-end: mocking out an internet request
@@ -336,12 +366,10 @@ De-spiking our custom authentication back-end: mocking out an internet request
 Our custom authentication back-end is next!  Here's how it looked in the spike:
 
 
-[source,python]
+[role="skipme"]
 .accounts/authentication.py
+[source,python]
 ----
-import requests
-from accounts.models import ListUser
-
 class PersonaAuthenticationBackend(object):
 
     def authenticate(self, assertion):
@@ -349,7 +377,7 @@ class PersonaAuthenticationBackend(object):
         data = {'assertion': assertion, 'audience': 'localhost'}
         print('sending to mozilla', data, file=sys.stderr)
         resp = requests.post('https://verifier.login.persona.org/verify', data=data)
-        print('got', resp, file=sys.stderr)
+        print('got', resp.content, file=sys.stderr)
 
         # Did the verifier respond?
         if resp.ok:
@@ -390,13 +418,11 @@ start with one:
 .accounts/tests/test_authentication.py
 [source,python]
 ----
-import json
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from django.test import TestCase
 
 from accounts.authentication import (
-    PERSONA_VERIFY_URL, DOMAIN,
-    PersonaAuthenticationBackend, User
+    PERSONA_VERIFY_URL, DOMAIN, PersonaAuthenticationBackend
 )
 
 class AuthenticateTest(TestCase):
@@ -421,24 +447,20 @@ In 'authenticate.py' we'll just have a few placeholders:
 [source,python]
 ----
 import requests
-from django.contrib.auth import get_user_model
 
 PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
 DOMAIN = 'localhost'
-User = get_user_model()
 
 
 class PersonaAuthenticationBackend(object):
 
     def authenticate(self, assertion):
         pass
-
-
-    def get_user(self, email):
-        pass
 ----
 
-TODO: mention need to pip install and add `requests` to 'requirements.txt'
+NOTE: at this point you'll need to `pip install requests` and add it to your
+'requirements.txt'.
+
 
 Let's see how we get on!
 
@@ -446,7 +468,8 @@ Let's see how we get on!
 AssertionError: Expected 'post' to be called once. Called 0 times.
 ----
 
-And we can get that to passing in 3 steps:
+And we can get that to passing in 3 steps (make sure the Goat sees you doing each
+one individually!)
 
 [role="sourcecode"]
 .accounts/authentication.py
@@ -459,11 +482,24 @@ And we can get that to passing in 3 steps:
         )
 ----
 
-Next test:
 
+Grand.
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+
+Ran 5 tests in 0.023s
+
+OK
+----
+
+Next let's check that authenticate should return none if it sees an error from
+the request:
 
 [role="sourcecode"]
-.accounts/tests/test_authentication.py
+.accounts/tests/test_authentication.py (ch15l020)
 [source,python]
 ----
     @patch('accounts.authentication.requests.post')
@@ -487,9 +523,12 @@ rule:
 
 
 [role="sourcecode"]
-.accounts/tests/test_authentication.py
+.accounts/tests/test_authentication.py (ch15l021)
 [source,python]
 ----
+from unittest.mock import Mock, patch
+[...]
+
 mock_post = Mock() #<1>
 @patch('accounts.authentication.requests.post', mock_post) #<1>
 class AuthenticateTest(TestCase):
@@ -501,6 +540,7 @@ class AuthenticateTest(TestCase):
 
     def tearDown(self):
         mock_post.reset_mock() #<2>
+
 
     def test_sends_assertion_to_mozilla_with_domain(self):
         self.backend.authenticate('an assertion')
@@ -539,14 +579,24 @@ class AuthenticateTest(TestCase):
     setting up a load of duplicated boilerplate -- it's more readable.
 
 
-And that's all very well, but everything still passes!  Time for a failing 
-test:
+And that's all very well, but everything still passes!  
+
+----
+OK
+----
+
+Time for test for the positive case where authenticate should return a user object.
+We expect this to fail.
 
 
 [role="sourcecode"]
-.accounts/tests/test_authentication.py
+.accounts/tests/test_authentication.py (ch15l022)
 [source,python]
 ----
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
     def test_finds_existing_user_with_email(self):
         self.mock_response.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
         self.backend.get_user = Mock()
@@ -555,7 +605,7 @@ test:
         self.assertEqual(user, mock_user)
 ----
 
-Hooray!  A fail:
+Indeed, a fail:
 
 ----
 AssertionError: None != <Mock name='mock()' id='139758452629392'>
