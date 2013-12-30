@@ -625,27 +625,38 @@ Let's code:
         return self.get_user()
 ----
 
-That gets our new test passing, but other tests fail:
+That gets our new test passing, but other the other tests fail:
 
 ----
-TypeError: get_user() missing 1 required positional argument: 'email'
+AttributeError: 'PersonaAuthenticationBackend' object has no attribute
+'get_user'
 ----
 
-So we can "cheat":
+To get back to a working state, let's define a temporary placeholder for `get_user`:
 
 [role="sourcecode"]
 .accounts/authentication.py
 [source,python]
 ----
-        return self.get_user('bla')
+class PersonaAuthenticationBackend(object):
+    [...]
+
+    def get_user(self):
+        pass
+----
+
+That works:
+
+----
+OK
 ----
 
 
-And now we need to write a new unit test for the `self.get_user` call:
+And now we can write a new unit test for the `self.get_user` call:
 
 
 [role="sourcecode"]
-.accounts/tests/test_authentication.py
+.accounts/tests/test_authentication.py (ch15l025)
 [source,python]
 ----
     def test_calls_get_user_with_email(self):
@@ -659,7 +670,7 @@ Right:
 
 ----
 AssertionError: Expected call: mock('a@b.com')
-Actual call: mock('bla')
+Actual call: mock()
 ----
 
 And so
@@ -682,6 +693,8 @@ But that breaks a couple of the old tests:
 -----
     email = response.json()['email']
 KeyError: 'email'
+[...]
+FAILED (errors=3)
 ----
 
 We need some more common setup:
@@ -698,64 +711,30 @@ We need some more common setup:
             'status': 'okay', 'email': 'a@b.com'
         }
 
-    [...]
-
-    def test_returns_none_if_status_not_okay(self):
-        self.mock_response.json.return_value = {'status': 'not okay!'}
-        [...]
-
-    def test_calls_get_user_with_email(self):
-        self.backend.get_user = Mock()
-        [...]
-
-
-    def test_finds_existing_user_with_email(self):
-        self.backend.get_user = Mock()
-        [...]
 ----
 
+That changes the errors slightly:
 
-Now we're down to just one error:
 
 ----
-ERROR: test_returns_none_if_status_not_okay (accounts.tests.test_authentication.AuthenticateTest)
-    email = response.json()['email']
+TypeError: get_user() takes 1 positional argument but 2 were given
+TypeError: get_user() takes 1 positional argument but 2 were given
 KeyError: 'email'
 ----
 
-And that one we fix in the code:
+We fix the first couple by changing the signature of our `get_user`:
 
 [role="sourcecode"]
-.accounts/authentication.py
+.accounts/authentication.py (ch15l027)
 [source,python]
 ----
-    if response.json()['status'] == 'okay':
-        email = response.json()['email']
-        return self.get_user(email)
+    def get_user(self, email):
+        pass
 ----
 
-Testing exception handling
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Last test:
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py
-[source,python]
-----
-    def test_creates_new_user_if_required(self):
-        def raise_no_user_error(_):
-            raise User.DoesNotExist()
-        self.backend.get_user = raise_no_user_error
-        user = self.backend.authenticate('an assertion')
-        new_user = User.objects.all()[0]
-        self.assertEqual(user, new_user)
-        self.assertEqual(user.email, 'a@b.com')
-----
-
-
-This is another common mocking technique: patching out a function to raise
-an error. 
+And that takes us down to the one `KeyError` for
+`test_returns_none_if_status_not_okay`.  This is pointing to a "real" problem,
+and justifies a real fix:
 
 [role="sourcecode"]
 .accounts/authentication.py
@@ -768,23 +747,87 @@ an error.
         )
         if response.json()['status'] == 'okay':
             email = response.json()['email']
-            try:
-                return self.get_user(email)
-            except User.DoesNotExist:
-                return User.objects.create(email=email)
+            return self.get_user(email)
 ----
+
+Woot!:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+Ran 9 tests in 0.016s
+OK
+----
+
+
+
+Testing exception handling
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Here's a last test, in which we'll see how to test a case where we expect
+a function to raise an exception.  We can do this by dynamically replacing
+said function with a pre-prepared exception-raiser:
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l029)
+[source,python]
+----
+    def test_creates_new_user_if_required(self):
+        def raise_no_user_error(_):
+            raise User.DoesNotExist()
+        self.backend.get_user = raise_no_user_error
+        user = self.backend.authenticate('an assertion')
+        new_user = User.objects.all()[0]
+        self.assertEqual(user, new_user)
+        self.assertEqual(user.email, 'a@b.com')
+----
+
+If you've not seen it before, I'm using the convention of a variable
+named underscore (`_`) to represent a variable whose value we don't care about.
+
+That gives:
+
+----
+[...]
+    return self.get_user(email)
+  File "/workspace/superlists/accounts/tests/test_authentication.py", line 63,
+in raise_no_user_error
+    raise User.DoesNotExist()
+django.contrib.auth.models.DoesNotExist
+----
+
+Here's how we fix it:
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l030)
+[source,python]
+----
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
+    email = response.json()['email']
+    try:
+        return self.get_user(email)
+    except User.DoesNotExist:
+        return User.objects.create(email=email)
+----
+
+Surely one of these tests should still be failing?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 That leaves one puzzler:  how come our `test_return_none_if_response_errors`
 isn't failing?  It took me a while to figure it out, but it's because 
 `self.get_user`, being currently a placeholder function with a `pass`, is 
 returning None.  It's my own fault for writing even placeholder code without
-tests.  The testing goat is angry!
+tests.  The testing goat is looking at me with a raised eyebrow...
 
-Let's get some tests for `get_user` in asap then:
+Let's get some tests for `get_user` in ASAP then:
 
 
 [role="sourcecode"]
-.accounts/tests/test_authentication.py
+.accounts/tests/test_authentication.py (ch15l031)
 [source,python]
 ----
 class GetUserTest(TestCase):
@@ -803,17 +846,18 @@ That gives
 AssertionError: None != <User: >
 ----
 
-And so:
+And, if we implement it:
 
 [role="sourcecode"]
-.accounts/authentication.py
+.accounts/authentication.py (ch15l032)
 [source,python]
 ----
     def get_user(self, email):
         return User.objects.get(email=email)
 ----
 
-And now our our response error test is failing as it should:
+Our new test passes, but, sure enough, our response error test is failing as it
+should:
 
 ----
 FAIL: test_return_none_if_response_errors
@@ -822,11 +866,12 @@ FAIL: test_return_none_if_response_errors
 AssertionError: <User: > is not None
 ----
 
-There we go! I prefer an early return rather than another nested if:
+
+There we go! And here's our final fix:
 
 
 [role="sourcecode"]
-.accounts/authentication.py
+.accounts/authentication.py (ch15l033)
 [source,python]
 ----
     def authenticate(self, assertion):
@@ -834,17 +879,18 @@ There we go! I prefer an early return rather than another nested if:
             PERSONA_VERIFY_URL,
             data={'assertion': assertion, 'audience': DOMAIN}
         )
-        if not response.ok:
-            return
-        if response.json()['status'] == 'okay':
+        if response.ok and response.json()['status'] == 'okay':
             [...]
 ----
 
-And I 'think' we have ourselves an authentication backend.  It won't work yet
-though, because we need to define our custom user model next.
+And I 'think' we have ourselves an authentication backend.  
 
+----
+OK
+----
 
-//TODO: add to settings.py?
+It won't work yet though, because we need to define our custom user model next.
+
 
 A minimal custom user model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -875,8 +921,9 @@ class UserModelTest(TestCase):
 That gives us an expected failure:
 
 ----
-django.core.exceptions.ValidationError: {'password': ['This field cannot be
-blank.'], 'username': ['This field cannot be blank.']}
+django.core.exceptions.ValidationError: {'username': ['This field cannot be
+blank.'], 'password': ['This field cannot be blank.']}
+
 ----
 
 Password?  Username?  Bah!  How about this?
@@ -892,31 +939,23 @@ class User(models.Model):
     email = models.EmailField()
 ----
 
-And we wire it up inside 'settings.py':
+And we wire it up inside 'settings.py' using a variable called
+`AUTH_USER_MODEL`.  While we're at it, we'll add our new authentication backend
+too:
 
 [role="sourcecode"]
-.superlists/settings.py
+.superlists/settings.py (ch15l036)
 [source,python]
 ----
 AUTH_USER_MODEL = 'accounts.User'
+AUTHENTICATION_BACKENDS = (
+    'accounts.authentication.PersonaAuthenticationBackend',
+)
 ----
 
 Now Django tells us off because it wants a couple of bits of metadata on any
 custom user model:
 
-----
-AttributeError: type object 'User' has no attribute 'USERNAME_FIELD'
-----
-
-So:
-
-----
-class User(models.Model):
-    email = models.EmailField()
-    USERNAME_FIELD = 'email'
-----
-
-And:
 
 ----
 AttributeError: type object 'User' has no attribute 'REQUIRED_FIELDS'
@@ -925,30 +964,65 @@ AttributeError: type object 'User' has no attribute 'REQUIRED_FIELDS'
 Sigh.  Come on, Django, it's only got one field, you should be able to figure
 out the answers to these questions for yourself.  Here you go:
 
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
 ----
 class User(models.Model):
     email = models.EmailField()
-    USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ()
 ----
+
+Next silly footnote:[You might ask, if I think Django is so silly, why don't I
+submit a pull request to fix it?  Should be quite a simple fix.  Well, I
+promise I will, as soon as I've finished writing the book.  For now, snarky
+comments will have to suffice.] 
+question?
+
+----
+AttributeError: type object 'User' has no attribute 'USERNAME_FIELD'
+----
+
+So:
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+class User(models.Model):
+    email = models.EmailField()
+    REQUIRED_FIELDS = ()
+    USERNAME_FIELD = 'email'
+----
+
 
 What now?
 
 ----
-accounts.user: The USERNAME_FIELD must be unique. Add unique=True to the field parameters.
+accounts.user: The USERNAME_FIELD must be unique. Add unique=True to the field
+parameters.
 ----
 
 I'll do one better! Let's make the email field into the primary key, and
-remove the auto-generated `id` column:
+thus implicitly remove the auto-generated `id` column:
 
+[role="sourcecode"]
+.accounts/models.py (ch15l039)
+[source,python]
 ----
-class User(models.Model):
     email = models.EmailField(primary_key=True)
 ----
+
+
+Tests as documentation
+^^^^^^^^^^^^^^^^^^^^^^
 
 That gets our tests running.  We'll write a test for this feature
 anyway, just as a form of documentation:
 
+[role="sourcecode"]
+.accounts/tests/test_models.py (ch15l040)
+[source,python]
 ----
     def test_email_is_primary_key(self):
         user = User()
@@ -964,26 +1038,38 @@ Sometimes, if you forget why you've done something a particular way, going back
 and looking at the tests will give you the answer.  That's why it's important
 to give your tests explicit, verbose method names.
 
-Now we get an unexpected failure:
 
+A slight disappointment
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Meanwhile, we have a weird unexpected failure:
+
+[subs="specialcharacters,macros"]
 ----
-ERROR: test_returns_OK_when_user_found (accounts.tests.test_views.LoginViewTest)
-  File "/worskpace/superlists/accounts/tests/test_views.py", line 29, in test_returns_OK_when_user_found
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+ERROR: test_returns_OK_when_user_found
+(accounts.tests.test_views.LoginViewTest)
+  File "/workspace/superlists/accounts/tests/test_views.py", line 29, in
+test_returns_OK_when_user_found
     response = self.client.post('/accounts/login', {'assertion': 'a'})
 [...]
-  File "/worskpace/superlists/accounts/views.py", line 8, in login
+  File "/workspace/superlists/accounts/views.py", line 8, in login
     auth_login(request, user)
 [...]
-  File "/usr/local/lib/python3.3/dist-packages/django/contrib/auth/models.py", line 31, in update_last_login
     user.save(update_fields=['last_login'])
-  File "/usr/local/lib/python3.3/dist-packages/django/db/models/base.py", line 526, in save
-    % ', '.join(non_model_fields))
-ValueError: The following fields do not exist in this model or are m2m fields: last_login
+[...]
+ValueError: The following fields do not exist in this model or are m2m fields:
+last_login
 ----
 
-Ah.  Looks like Django is going to insist on us having a `last_login` field on
-our User model too.  Oh well.
+It looks like Django is going to insist on us having a `last_login` field on
+our User model too.  Oh well.  My amazing single-field user model is ruined. I
+still love it though.
 
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
 ----
 from django.db import models
 from django.utils import timezone
@@ -997,16 +1083,12 @@ class User(models.Model):
 
 Right!  That works!
 
+[subs="specialcharacters,macros"]
 ----
-$ python3 manage.py test accounts
-Creating test database for alias 'default'...
-...............
- ---------------------------------------------------------------------
-Ran 15 tests in 0.020s
-
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
 OK
 ----
-
 
 
 
@@ -1059,32 +1141,29 @@ So how does our FT get along?
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.LoginTest*]
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
 Creating test database for alias 'default'...
-
-.
- ---------------------------------------------------------------------
+[...]
 Ran 1 test in 26.382s
 
 OK
-Destroying test database for alias 'default'...
 -----
 
 Woohoo!
 
-I've been waiting to do a commit up until this point, just to make sure
+I've been waiting to do a commit up until this moment, just to make sure
 everything works.  At this point, you could make a series of separate 
 commits -- one for the login view, one for the auth backend, one for 
 the user model, one for wiring up the template.  Or you could decide that,
 since they're all inter-related, and none will work without the others,
-you may as well just have one big commit:
+you may as well just have one big commit.
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git status*
 $ *git add .*
 $ *git diff --staged*
-$ *git commit -am "Custom login using Persona"*
+$ *git commit -am "Custom Persona auth backend + custom user model"*
 ----
 
 

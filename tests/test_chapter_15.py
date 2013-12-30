@@ -21,11 +21,11 @@ class Chapter15Test(ChapterTest):
         self.sourcetree.run_command('rm accounts/tests.py')
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
-            self.pos = 46
+            self.pos = 40
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch14l024')
+                self.sourcetree.get_commit_spec('ch15l024')
             ))
 
         while self.pos < len(self.listings):
