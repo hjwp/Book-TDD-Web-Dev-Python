@@ -353,7 +353,27 @@ class ChapterTest(unittest.TestCase):
         self.assert_console_output_correct(test_run, self.listings[self.pos + 1])
         self.pos += 2
 
+
     def run_js_tests(self, tests_path):
+        output = subprocess.check_output(
+            ['phantomjs', PHANTOMJS_RUNNER, tests_path]
+        ).decode()
+        # some fixes to make phantom more like firefox
+        output = output.replace('at file', '@file')
+        output = re.sub(r"Can't find variable: (\w+)", r"\1 is not defined", output)
+        output = re.sub(
+            r"'(\w+)' is not an object \(evaluating '(\w+)\.\w+'\)",
+            r"\2 is \1",
+            output
+        )
+        output = re.sub(
+            r"'undefined' is not a function \(evaluating '(.+)\(.*\)'\)",
+            r"\1 is not a function",
+            output
+        )
+        print('fixed phantomjs output', output)
+        return output
+
         os.chmod(SLIMERJS_BINARY, os.stat(SLIMERJS_BINARY).st_mode | stat.S_IXUSR)
         os.environ['SLIMERJSLAUNCHER'] = '/usr/bin/firefox'
         return subprocess.check_output(
