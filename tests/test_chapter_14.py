@@ -34,6 +34,14 @@ class Chapter14Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
+        # fix incomplete moves from dofirst-ch14l019
+        self.sourcetree.run_command('git rm lists/static/base.css')
+        self.sourcetree.run_command('git rm -r lists/static/bootstrap')
+        self.sourcetree.run_command('git rm lists/static/tests/qunit.css')
+        self.sourcetree.run_command('git rm lists/static/tests/qunit.js')
+
+        # and from the diff-version of settings.py
+        self.sourcetree.run_command('rm superlists/settings.py.orig')
         self.sourcetree.run_command('git add . && git commit -m"final commit"')
         self.check_final_diff(self.chapter_no)
 

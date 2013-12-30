@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from lxml import html
+import io
 import os
 import stat
 import re
@@ -114,7 +115,10 @@ class ChapterTest(unittest.TestCase):
         diff = self.run_command(Command(
             'git diff -b repo/chapter_{0:02d}'.format(chapter)
         ))
-        print('checking final diff', diff)
+        try:
+            print('checking final diff', diff)
+        except io.BlockingIOError:
+            pass
         start_marker = 'diff --git a/\n'
         commit = Commit(start_marker + diff)
         error = AssertionError('Final diff was not empty, was:\n{}'.format(diff))

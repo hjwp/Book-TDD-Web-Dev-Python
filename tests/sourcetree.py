@@ -1,4 +1,5 @@
 import os
+import io
 import signal
 import shutil
 import subprocess
@@ -107,7 +108,10 @@ class SourceTree(object):
             print('process %s return a non-zero code (%s)' % (command, process.returncode))
             print('output:\n', output)
             raise Exception('process %s return a non-zero code (%s)' % (command, process.returncode))
-        print(output)
+        try:
+            print(output)
+        except io.BlockingIOError:
+            pass
         return output
 
 
