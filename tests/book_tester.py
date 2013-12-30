@@ -43,6 +43,14 @@ def fix_test_dashes(output):
     return output.replace(' ' + '-' * 69, '-' * 70)
 
 
+def strip_mock_ids(output):
+    return re.sub(
+        r"Mock name='.+' id='(\d+)'>",
+        r"Mock name='.+' id='XX'>",
+        output,
+    )
+
+
 def strip_git_hashes(output):
     fixed_indexes = re.sub(
         r"index .......\.\........ 100644",
@@ -249,11 +257,13 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = wrap_long_lines(actual)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
+        actual_fixed = strip_mock_ids(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
 
         expected_fixed = fix_test_dashes(expected)
         expected_fixed = strip_test_speed(expected_fixed)
         expected_fixed = strip_git_hashes(expected_fixed)
+        expected_fixed = strip_mock_ids(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
 
         if '\t' in actual_fixed:

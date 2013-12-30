@@ -478,6 +478,22 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             self.assert_console_output_correct(actual, expected)
 
 
+    def test_ignores_mock_ids(self):
+        actual =dedent("""
+                self.assertEqual(user, mock_user)
+            AssertionError: None != <Mock name='mock()' id='46962183546064'>
+            """
+        ).rstrip()
+        expected = Output(dedent("""
+                self.assertEqual(user, mock_user)
+            AssertionError: None != <Mock name='mock()' id='139758452629392'>
+            """).rstrip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_fixes_stdout_stderr_for_creating_db(self):
         actual = dedent("""
             ======================================================================
