@@ -522,6 +522,7 @@ later confusions about the current working directory:
 [source,python]
 ----
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
+import os
 BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 [...]
 
@@ -1362,7 +1363,6 @@ that we've passed in.
 ----
 from fabric.contrib.files import append, exists, sed
 from fabric.api import env, local, run
-from os import path
 import random
 
 REPO_URL = 'https://github.com/hjwp/book-example.git' #<1>
@@ -1370,7 +1370,7 @@ SITES_FOLDER = '/home/harry/sites'
 
 def deploy():
     _create_directory_structure_if_necessary(env.host) #<2>
-    source_folder = path.join(SITES_FOLDER, env.host, 'source')
+    source_folder = '%s/%s/source' % (SITES_FOLDER, env.host)
     _get_latest_source(source_folder)
     _update_settings(source_folder, env.host)
     _update_virtualenv(source_folder)
@@ -1398,10 +1398,8 @@ down if it already exists:
 [source,python]
 ----
 def _create_directory_structure_if_necessary(site_name):
-    base_folder = path.join(SITES_FOLDER, site_name)
-    run('mkdir -p %s' % (base_folder)) #<1><2>
     for subfolder in ('database', 'static', 'virtualenv', 'source'):
-        run('mkdir -p %s/%s' % (base_folder, subfolder))
+        run('mkdir -p %s/%s/%s' % (SITES_FOLDER, site_name, subfolder)) #<1><2>
 ----
 
 <1> `run` is the most common fabric command.  It says "run this shell command
@@ -1412,6 +1410,10 @@ def _create_directory_structure_if_necessary(site_name):
     them if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory
     'bar' but also its parent directory 'foo' if it needs to.  It also won't
     complain if 'bar' already exists.
+footnote:[If you're wondering why we're building up paths manually with `%s` 
+instead of the `os.path.join` command we saw earlier, it's because path.join
+will use backslashes if you run the script from Windows, but we definitely 
+want forward slashes on the server]
 
 
 Next we want to pull down our source code:
@@ -1421,7 +1423,7 @@ Next we want to pull down our source code:
 [source,python]
 ----
 def _get_latest_source(source_folder):
-    if exists(path.join(source_folder, '.git')): #<1>
+    if exists(source_folder + '/.git'): #<1>
         run('cd %s && git fetch' % (source_folder,)) #<2><3>
     else:
         run('git clone %s %s' % (REPO_URL, source_folder)) #<4>
@@ -1469,10 +1471,10 @@ to create a new secret key:
 [source,python]
 ----
 def _update_settings(source_folder, site_name):
-    settings_path = path.join(source_folder, 'superlists/settings.py')
+    settings_path = source_folder + '/superlists/settings.py'
     sed(settings_path, "DEBUG = True", "DEBUG = False") #<1>
     append(settings_path, 'ALLOWED_HOSTS = ["%s"]' % (site_name,)) #<2>
-    secret_key_file = path.join(source_folder, 'superlists/secret_key.py')
+    secret_key_file = source_folder + '/superlists/secret_key.py'
     if not exists(secret_key_file): #<3>
         chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
         key = ''.join(random.SystemRandom().choice(chars) for _ in range(50))
@@ -1507,8 +1509,8 @@ Next we create or update the virtualenv:
 [source,python]
 ----
 def _update_virtualenv(source_folder):
-    virtualenv_folder = path.join(source_folder, '../virtualenv')
-    if not exists(path.join(virtualenv_folder, 'bin', 'pip')): #<1>
+    virtualenv_folder = source_folder + '/../virtualenv'
+    if not exists(virtualenv_folder + '/bin/pip'): #<1>
         run('virtualenv --python=python3.3 %s' % (virtualenv_folder,))
     run('%s/bin/pip install -r %s/requirements.txt' % ( #<2>
             virtualenv_folder, source_folder
