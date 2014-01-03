@@ -172,8 +172,8 @@ class SourceTree(object):
         files = self.get_files_from_commit_spec(commit_spec)
         if files != [listing.filename]:
             raise ApplyCommitException(
-                'wrong files in commit: {0} should have been {1}'.format(
-                    files, listing.filename
+                'wrong files in listing: {0} should have been {1}'.format(
+                    listing.filename, files
             ))
 
         listing_lines = listing.contents.split('\n')
