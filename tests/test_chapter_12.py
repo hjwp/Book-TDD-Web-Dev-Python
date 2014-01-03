@@ -7,18 +7,6 @@ from book_tester import ChapterTest
 class Chapter12Test(ChapterTest):
     chapter_no = 12
 
-    def prep_virtualenv(self):
-        virtualenv_path = os.path.join(self.tempdir, 'virtualenv')
-        if not os.path.exists(virtualenv_path):
-            print('preparing virtualenv')
-            self.sourcetree.run_command(
-                'virtualenv --python=python3 ../virtualenv'
-            )
-            self.sourcetree.run_command(
-                '../virtualenv/bin/pip install -r requirements.txt'
-            )
-
-
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
 

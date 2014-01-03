@@ -222,6 +222,19 @@ class ChapterTest(unittest.TestCase):
         return output
 
 
+    def prep_virtualenv(self):
+        virtualenv_path = os.path.join(self.tempdir, 'virtualenv')
+        if not os.path.exists(virtualenv_path):
+            print('preparing virtualenv')
+            self.sourcetree.run_command(
+                'virtualenv --python=python3 ../virtualenv'
+            )
+            self.sourcetree.run_command(
+                '../virtualenv/bin/pip install -r requirements.txt'
+            )
+
+
+
     def write_file_on_server(self, target, contents):
         with tempfile.NamedTemporaryFile() as tf:
             tf.write(contents.encode('utf8'))

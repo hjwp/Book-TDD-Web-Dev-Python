@@ -9,6 +9,7 @@ class Chapter15Test(ChapterTest):
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
         self.sourcetree.start_with_checkout(self.chapter_no)
+        self.prep_virtualenv()
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'output')
