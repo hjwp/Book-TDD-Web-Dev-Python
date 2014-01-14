@@ -1,737 +1,598 @@
-Continuous Integration (CI)
----------------------------
+Finishing "my lists": an exercise for the reader
+------------------------------------------------
+
+In this chapter, rather than showing you explicitly what to do, I'm 
+going to let you write your tests and code by yourself.  Don't worry,
+you won't be totally on your own!  Here are some hints and tips on what
+to do.
+
+Overview
+~~~~~~~~
+
+To implement this, we'll need:
+
+* A new template 'my_lists.html', and some tweaks to 'base.html'
+* An optional foreign key on the List model -- so that we can save the list's
+  owner as an attribute on lists created by logged-in users.
+* To change the `new_list` view, with optional addition of `list_.owner` from
+  `request.user`. 
+* And/or change `ItemForm.save` to take the `request.user` as an argument
+* A new view + URL entry in 'accounts', `my_lists`.
+
+There aren't really any new Django concepts here, or any new testing concepts,
+so my hope is that you have all the tools to do it on your own.
 
 
-As our site grows, it takes longer and longer to run all of our Functional
-tests.  If this continues, the danger is that we're going to stop bothering.
+Outline of steps to take
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-Rather than let that happen, we can automate the running of functional tests
-by setting up a "Continuous Integration" or CI server.  That way, in day-to-day
-development, we can just run the FT that we're working on at that time, and
-rely on the CI server to run all the test automatically, and let us know if
-we've broken anything accidentally.  The unit tests should stay fast enough
-that we can keep running them every few seconds.
+Here's the broad outline of how thing should play out:
 
-The CI server of choice these days is called Jenkins. It's a bit Java, a bit
-crashy, a bit ugly, but it's what everyone uses, and it has a great plugin
-ecosystem, so let's get it up and running.
+* The FT will fail because there is no "my lists" link on the home page
+  for a logged-in user
+
+* We'll want to adjust 'home.html' to include a link, but we don't
+  have a URL or view to point it to yet.
+
+* So, we write a first unit test for the new URL and view, checking
+  that it uses a new template: 'my_lists.html'.
+
+* We can also start fleshing out this template: it will need access to
+  the user whose lists we want to list (maybe as a variable called `owner`).
+  This will mean a second unit test, and it may also mean some tweaks to
+  'base.html' so that the inheritance hierarchy works. I used a new 
+  `{% block %}`, but you might find other ways...
+
+* By now we can probably get a working page and URL, but it won't yet
+  be able to display lists owned by a user.  For that we'll need to
+  make a change at the model layer - we need to be able to assign an
+  optional owner to a list.  This means a new unit test in
+  `lists/test_models.py`.
+
+* We can then add an extra test to the my lists view tests, to check
+  that, if we set up a user who owns several lists, they are 
+  displayed in the template.  We can also check that unrelated lists
+  are not displayed. You could either pass the lists in as a template
+  variable, or use the Django ORM with `{{ owner.list_set.all }}`.
+
+* Finally, we need to make sure that new lists created by a logged-in
+  user are saved with their `.owner` attribute set to the user.  That's
+  a change to the `new_list` view.
+
+* You could leave this code in the view function, but it might be neater
+  to have it inside the form's save method.  That would mean a tweak to the 
+  forms tests as well.
 
 
-Installing Jenkins
-~~~~~~~~~~~~~~~~~~
+Some tests you might want to write
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There are several hosted-CI services out there that essentially provide you
-with a Jenkins server, ready to go.  I've come across Travis, Circle-CI,
-ShiningPanda, and there are probably lots more.  I'm going to assume we're
-going to install everything on a server we control.
+Here are the new unit tests I had to write -- depending on the specific
+choices you make, yours might be slightly different, but most of them
+should be the same or similar:
 
-NOTE: It's not a good idea to install Jenkins on the same server as our
-staging or production servers.  Apart from anything else, we may want 
-Jenkins to be able to reboot the staging server!
-
-We'll install latest version from official jenkins apt repo, because the 
-Ubuntu default still has a few annoying bugs with locale/unicode support,
-and it also doesn't set itself up to listen on the public internet by default.
-
+[role="sourcecode"]
+.unit test class and method names
+[source,python]
 ----
-user@server:$ wget -q -O - http://pkg.jenkins-ci.org/debian/jenkins-ci.org.key | sudo apt-key add -
-user@server:$ echo deb http://pkg.jenkins-ci.org/debian binary/ | sudo tee \
-    /etc/apt/sources.list.d/jenkins.list
-user@server:$ sudo apt-get update
-user@server:$ sudo apt-get install jenkins
-----
+class MyListsViewTest(TestCase):
+    def test_uses_my_lists_template(self):
+    def test_passes_user_in_context(self):
+    def test_template_displays_lists_using_first_item_text(self):
 
-While we're at we'll install a few other dependencies:
+class ItemFormTest(TestCase):
+    def test_form_save_sets_owner_if_real_user(self):
+    def test_form_save_ignores_anon_user(self):
 
-----
-user@server:$ sudo apt-get install git firefox python3 python-virtualenv xvfb
-----
+class ListModelTest(TestCase):
+    def test_get_absolute_url(self):
+    def test_can_optionally_set_owner(self):
 
-You should then be able to visit it at the URL for your server on port `8080`:
-
-.A butler! How quaint...
-image::images/jenkins_first_page.png["Jenkins' default welcome screen"]
-
-
-Configuring Jenkins security
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The first thing we'll want to do is set up some authentication, so that
-anyone can't just come and mess with our server:
-
-* Manage Jenkins -> Configure Global Security -> Enable security
-* Choose "Jenkins' own user database", "Matrix-based security"
-* Disable all permissions for Anonymous
-* And add a user for yourself
-* The next screen offers you the option to create an account that matches that
-  username, and set a password
-
-.Locking it down...
-image::images/jenkins_security_config.png["Jenkins' default welcome screen"]
-
-
-Adding required plugins
-^^^^^^^^^^^^^^^^^^^^^^^
-
-* Manage Jenkins -> Manage Plugins -> Available
-* We'll want the plugins for:
-    * Git
-    * ShiningPanda
-    * Xvfb
-
-
-.Installing plugins...
-image::images/jenkins_installing_plugins.png["Jenkins installing plugins"]
-
-Restart afterwards - either using the tick-box on that last screen, or
-from the command-line with a `sudo restart jenkins`.
-
-
-Telling jenkins where to find Python 3
-++++++++++++++++++++++++++++++++++++++
-
-* Manage Jenkins -> Configure System
-* Python -> Python installations -> Add Python 
-
-.Where did I leave that Python?
-image::images/jenkins_adding_python3.png["Adding Python 3"]
-
-
-Setting up our project
-~~~~~~~~~~~~~~~~~~~~~~
-
-Now we've got the basic jenkins configured, let's set up our project.
-
-* New Job -> Build a free-style software project 
-* Add the Git repo
-
-.Get it from git
-image::images/jenkins_set_git_repo.png["Setting the git repo"]
-
-* Set it to poll every hour (the help text here is helpful)
-
-.Poll Github for changes
-image::images/jenkins_poll_scm.png["Config polling github"]
-
-* Run the tests inside a Python 3 virtualenv
-* Run the unit tests and functional tests separately
-
-.Virtualenv build steps
-image::images/jenkins_build_in_virtualenv.png["Adding Python 3"]
-
-
-
-First build!
-~~~~~~~~~~~~
-
-Hit "Build Now!", then go and take a look at the "Console Output". You
-should see something like this:
-
-----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision d515acebf7e173f165ce713b30295a4a6ee17c07 (origin/master)
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7260707941304155464.sh
-+ pip install -r requirements.txt
-Requirement already satisfied (use --upgrade to upgrade): Django==1.6 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-(from -r requirements.txt (line 1))
-Downloading/unpacking South==0.8.2 (from -r requirements.txt (line 2))
-  Running setup.py egg_info for package South
-    
-Requirement already satisfied (use --upgrade to upgrade): gunicorn==17.5 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-(from -r requirements.txt (line 3))
-Downloading/unpacking requests==2.0.0 (from -r requirements.txt (line 4))
-  Running setup.py egg_info for package requests
-    
-Installing collected packages: South, requests
-  Running setup.py install for South
-    
-  Running setup.py install for requests
-    
-Successfully installed South requests
-Cleaning up...
-+ python manage.py test lists accounts
-...................................................
- ---------------------------------------------------------------------
-Ran 51 tests in 0.323s
-
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-+ python manage.py test functional_tests
-ImportError: No module named 'selenium'
-Build step 'Virtualenv Builder' marked build as failure
+class NewListTest(TestCase):
+    def test_POST_from_real_user_sets_owner_on_list(self):
 ----
 
-Ah.  We need selenium in our virtualenv.
+Hints and tips
+~~~~~~~~~~~~~~
 
-TIP: Some people like to use a file called 'test-requirements.txt' to specify 
-packages that are needed for the tests, but not the main app.
+Here's a couple more tips:
 
-Let's add a manual installation of selenium to our build steps:
+* You can't really use `self.client.login` in the view tests.  I called the 
+  raw view function instead (like we did a couple of times in the last chapter)
 
-    pip install -r requirements.txt
-    pip install selenium
-    python manage.py test accounts lists
-    python manage.py test functional_tests
+* You'll probably find the `AnonymousUser` class useful for testing what should
+  happen with non-logged-in users. It's in `django.contrib.auth.models`.
 
-Now what?
+The FT should be your guide as to whether everything works OK.  Feel free to
+compare your solution, against my implementation
+https://github.com/hjwp/book-example/tree/chapter_15[on GitHub], and let me
+know how you get on!
 
+NOTE: I really need feedback about this section.  Did you find it too hard?
+Are there any specific extra hints could I have given you that would have kept
+you on the right track?  Did you find yourself doing things differently?  Let
+me know!
+//TODO: remove me
+
+
+
+Deployment and fixing our database migration code
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Assuming you have a passing test suite for the last section, let's see how we
+get on with deploying our code to the server...
+
+[subs="specialcharacters,quotes"]
 ----
-  File
-  "/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages/selenium/webdriver/firefox/firefox_binary.py",
-  line 100, in _wait_until_connectable
-    self._get_firefox_output())
-selenium.common.exceptions.WebDriverException: Message: 'The browser appears to
-have exited before we could connect. The output was: b"\\n(process:19757):
-GLib-CRITICAL **: g_slice_set_config: assertion \'sys_page_size == 0\'
-failed\\nError: no display specified\\n"' 
-----
-
-
-Setting up a virtual display so the FTs can run headless
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-As you can see from the traceback, Firefox is unable to start because the
-server doesn't have a display.
-
-There are two ways to deal with this problem. The first is to switch to using
-a headless browser, like PhantomJS or SlimerJS.  Those tools definitely have
-their place -- they're faster, for one thing -- but they also have
-disadvantages.  The first is that they're not "real" web browsers, so you can't
-be sure you're going to catch all the strange quirks and behaviours of the
-actual browsers your users use.  The second is that they behave quite
-differently inside Selenium, and will require substantial amounts of re-writing
-of FT code.
-
-TIP: I would look into using headless browsers as a "dev-only" tool, to speed
-up the running of FTs on the developer's machine, while the tests on the CI
-server use actual browsers.
-
-The alternative is to set up a virtual display:  we get the server to pretend
-it has a screen attached to it, so Firefox runs happily. There's a few tools
-out there to do this, we'll use one called "Xvfb" (X Virtual Framebuffer) 
-because it's easy to install and use, and because it has a convenient Jenkins
-plug-in
-
-TIP: Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
-as a way of controlling virtual displays from Python.
-
-We go back to our project and hit "Configure" again, then find the section
-called "Build Environment".  Using the virtual display is as simple as
-ticking the box marked "Start Xvfb before the build, and shut it down after.":
-
-.Sometimes config is easy
-image::images/jenkins_start_xvfb.png["Tickbox saying we want Xvfb"]
-
-
-The build does much better now,
-
-----
+$ *fab deploy --host=superlists-staging.ottg.eu*
 [...]
-Xvfb starting$ /usr/bin/Xvfb :2 -screen 0 1024x768x24 -fbdir
-/var/lib/jenkins/2013-11-04_03-27-221510012427739470928xvfb
-[...]
-+ python manage.py test lists accounts
-...................................................
- ---------------------------------------------------------------------
-Ran 51 tests in 0.410s
+----
 
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-Cleaning up...
+And restart gunicorn...
 
-+ python manage.py test functional_tests
-.....F.
+[subs="specialcharacters,quotes"]
+----
+elspeth@server: *sudo restart gunicorn-superlists-staging.ottg.eu*
+----
+
+
+The tests discover a bug!
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here's what happens when we run the functional tests:
+
+----
 ======================================================================
-FAIL: test_logged_in_users_lists_are_saved_as_my_lists
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
 (functional_tests.test_my_lists.MyListsTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/var/lib/jenkins/jobs/Superlists chapter 17/workspace/functional_tests/test_my_lists.py", line 44, in test_logged_in_users_lists_are_saved_as_my_lists
-    self.assertEqual(self.browser.current_url, first_list_url)
-AssertionError: 'http://localhost:8081/accounts/edith@email.com/' != 'http://localhost:8081/lists/1/'
-- http://localhost:8081/accounts/edith@email.com/
-+ http://localhost:8081/lists/1/
+  File "/worskpace/functional_tests/test_my_lists.py", line 39, in
+test_logged_in_users_lists_are_saved_as_my_lists
+[...]
+NoSuchElementException: Message: u'Unable to locate element: {"method":"link
+text","selector":"My lists"}' ; Stacktrace: 
 
+======================================================================
+ERROR: test_login_with_persona (functional_tests.test_login.LoginTest)
  ---------------------------------------------------------------------
-Ran 7 tests in 89.275s
+Traceback (most recent call last):
+  File "/worskpace/functional_tests/test_login.py", line 56, in
+test_login_with_persona
+    self.assert_logged_in()
+[...]
+TimeoutException: Message: '' 
+----
+
+That was unexpected.  It looks like the Personal login system isn't working in
+staging.  It turns out it's because I overlooked an important part of the
+Persona system, which is that authentications are only valid for particular
+domains.  We've left the domain hard-code as "localhost" in
+'accounts/authentication.py':
+
+----
+PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
+DOMAIN = 'localhost'
+User = get_user_model()
+----
+
+I had considered just going back and fixing this in the previous chapter,
+and pretending it never happened, but I think leaving it in teaches a better
+lesson:  first off, I'm not that smart, and second: this is exactly the point
+of running tests against a staging environment.  It would have been pretty 
+embarrassing if we'd deployed this bug straight to our live site.
+
+Here's how we go about fixing it, starting by moving the definition for the
+`DOMAIN` variable into 'settings.py', where we can later use the deploy script
+to override it:
+
+[role="sourcecode"]
+.superlists/settings.py
+[source,python]
+----
+# This setting is changed by the deploy script
+DOMAIN = "localhost"
+
+ALLOWED_HOSTS = [DOMAIN]
+----
+
+We feed that change back through the tests:
+
+[role="sourcecode"]
+.accounts/test_authentication.py
+[source,diff]
+----
+@@ -1,9 +1,9 @@
+ from unittest.mock import Mock, patch
++from django.conf import settings
+ from django.test import TestCase
+ 
+ from accounts.authentication import (
+-    PERSONA_VERIFY_URL, DOMAIN,
++    PERSONA_VERIFY_URL,
+     PersonaAuthenticationBackend, User
+ )
+ 
+@@ -28,7 +28,7 @@ class AuthenticateTest(TestCase):
+         self.backend.authenticate('an assertion')
+         mock_post.assert_called_once_with(
+             PERSONA_VERIFY_URL,
+-            data={'assertion': 'an assertion', 'audience': DOMAIN}
++            data={'assertion': 'an assertion', 'audience': settings.DOMAIN}
+         )
+----
+
+And then we change the implementation:
+
+[role="sourcecode"]
+.accounts/authenticate.py
+[source,diff]
+----
+@@ -1,8 +1,8 @@
+ import requests
+ from django.contrib.auth import get_user_model
++from django.conf import settings
+ 
+ PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
+-DOMAIN = 'localhost'
+ User = get_user_model()
+ 
+ 
+@@ -11,7 +11,7 @@ class PersonaAuthenticationBackend(object):
+     def authenticate(self, assertion):
+         response = requests.post(
+             PERSONA_VERIFY_URL,
+-            data={'assertion': assertion, 'audience': DOMAIN}
++            data={'assertion': assertion, 'audience': settings.DOMAIN}
+         )
+         if not response.ok:
+             return
+----
+
+Re-running the tests just to be sure:
+
+----
+$ python3 manage.py test accounts
+[...]
+Ran 18 tests in 0.053s
+OK
+----
+
+Next we update our fabfile to make it adjust the domain in settings.py:
+
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_settings(source_folder, site_name):
+    settings_path = path.join(source_folder, 'superlists/settings.py')
+    sed(settings_path, "DEBUG = True", "DEBUG = False")
+    sed(settings_path, 'DOMAIN = "localhost"', 'DOMAIN = "%s"' % (site_name,))
+    secret_key_file = path.join(source_folder, 'superlists/secret_key.py')
+    if not exists(secret_key_file):
+        [...]
+----
+
+We re-deploy, and spot the `sed` in the output:
+
+[subs="specialcharacters,quotes"]
+----
+$ *fab deploy --host=superlists-staging.ottg.eu*
+[...]
+[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DOMAIN =
+"localhost"/DOMAIN = "superlists-staging.ottg.eu"/g' "$(echo
+/home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
+[...]
+----
+
+Now we can re-run our FTs, and get to the bug we were fearing might happen: 
+our attempt to create pre-authenticated sessions doesn't work, so the 
+"My lists" test fails:
+
+----
+$ python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu
+
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest)
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"My lists"}' ; Stacktrace: 
+
+Ran 7 tests in 72.742s
 
 FAILED (errors=1)
-Creating test database for alias 'default'...
-[{'secure': False, 'domain': 'localhost', 'name': 'sessionid', 'expiry':
-1920011311, 'path': '/', 'value': 'a8d8bbde33nreq6gihw8a7r1cc8bf02k'}]
-Destroying test database for alias 'default'...
-Build step 'Virtualenv Builder' marked build as failure
-Xvfb stopping
-Finished: FAILURE
 ----
 
-Pretty close!  To debug that failure, we'll need screenshots though.
-
-NOTE: As we'll see, this error is due to a race condition, which means it's
-not always reproducible.  You may see a different error, or none at all. In
-any case, the tools below for taking screenshots and dealing with race
-conditions will come in useful. Read on!
+Let's find out how to manage the database on the server.
 
 
-Taking screenshots
-~~~~~~~~~~~~~~~~~~
 
-To be able to debug unexpected failures that happen on a remote PC, it
-would be good to see a picture of the screen at the moment of the failure,
-and maybe also a dump of the HTML of the page.  We can do that using some
-custom logic in our FT class teardown. We have to do a bit of introspection of
-`unittest` internals, but his will work:
+Creating a Django management command to create sessions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To do things on the server, we'll need to build a self-contained script that
+can be run from the command-line on the server, most probably via Fabric.
+
+When trying to build standalone scripts that work with the Django environment,
+can talk to the database and so on, there are some fiddly issues you need to
+get right, like setting the `DJANGO_SETTINGS_MODULE` environment variable
+correctly, and getting the `sys.path` right.  Instead of messing about with all
+that, Django lets you create your own "management commands" (commands you can
+run with `python manage.py`), which will do all that path mangling for you.
+They live in a folder called 'management/commands' inside your apps.
+
+[subs="specialcharacters,quotes"]
+----
+$ *mkdir -p functional_tests/management/commands*
+$ *touch functional_tests/management/__init__.py*
+$ *touch functional_tests/management/commands/__init__.py*
+----
+
+The boilerplate in a management command is a class that inherits from 
+`django.core.management.BaseCommand`, and that defines a method called
+`handle`:
 
 [role="sourcecode"]
-.functional_tests/base.py
+.functional_tests/management/commands/create_session.py
 [source,python]
 ----
-    def tearDown(self):
-        if not self._outcomeForDoCleanups.success:
-            self.take_screenshot()
-            self.dump_html()
+from django.conf import settings
+from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
+User = get_user_model()
+from django.contrib.sessions.backends.db import SessionStore
+from django.core.management.base import BaseCommand
 
-        self.browser.quit()
-        super().tearDown()
+
+class Command(BaseCommand):
+
+    def handle(self, *_, **__):
+        session_key = create_pre_authenticated_session()
+        self.stdout.write(session_key)
+
+
+def create_pre_authenticated_session():
+    user = User.objects.create(email='edith@email.com')
+    session = SessionStore()
+    session[SESSION_KEY] = user.pk
+    session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
+    session.save()
+    return session.session_key
 ----
 
-Then we use some selenium methods, `get_sreenshot_as_file` and
-`browser.page_source` for our image and HTML dumps:
+We've taken the code for `create_pre_authenticated_session` code from
+'test_my_lists.py'.  The function returns the session key that we'll 
+want to add to our browser cookies, and the management command prints
+it out at the command-line. Try it out:
+
+----
+$ python3 manage.py create_session
+Unknown command: 'create_session'
+----
+
+Ah, one last step: we need to add `functional_tests` to our 'settings.py'
+for it to recognise it as a real app that might have management commands as
+well as tests:
 
 [role="sourcecode"]
-.functional_tests/base.py
+.superlists/settings.py
 [source,python]
 ----
-    def take_screenshot(self):
-        filename = 'seleniumscreenshot-{}.png'.format(self._get_filename())
-        print('screenshotting to', filename)
-        self.browser.get_screenshot_as_file(filename)
-
-
-    def dump_html(self):
-        filename = 'seleniumhtml-{}.html'.format(self._get_filename())
-        print('dumping page HTML to', filename)
-        with open(filename, 'w') as f:
-            f.write(self.browser.page_source)
++++ b/superlists/settings.py
+@@ -42,6 +42,7 @@ INSTALLED_APPS = (
+     'lists',
+     'south',
+     'accounts',
++    'functional_tests',
+ )
 ----
 
-And finally here's a way of generating a filename, which includes the
-name of the test and its class, as well as a timestamp:
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-    def _get_filename(self):
-        timestamp = datetime.now().isoformat().replace(':', '.')
-        return '{}.{}-{}'.format(
-            self.__class__.__name__, self._testMethodName, timestamp
-        )
-----
-
-When we re-run the build on Jenkins, we see this:
+Now it works:
 
 ----
-screenshotting to
-seleniumscreenshot-MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists-2013-11-05T05.02.03.634488.png
-
-dumping page HTML to
-seleniumhtml-MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists-2013-11-05T05.02.03.695734.html
+$ python3 manage.py create_session
+qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
-
-We can go and visit these in the "workspace", which is the folder which jenkins
-uses to store our source code and run the tests in:
-
-.Visiting the project workspace
-image::images/jenkins_workspace_with_screenshots.png["worspace files including screenshot"]
-
-And then we look at the screenshot:
-
-
-.Screenshot looking normal
-image::images/jenkins_screenshot_example.png["Screenshot of site page"]
-
-
-Well, that didn't help much
-
-
-A common Selenium problem: race conditions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Whenever you see an inexplicable failure in a Selenium test, one of the most
-likely explanations is a hidden race condition. Let's look at the line that
-failed:
-
-        # She sees that her list is in there, named according to its
-        # first list item
-        self.browser.find_element_by_link_text('Reticulate splines').click()
-        self.assertEqual(self.browser.current_url, first_list_url)
-
-Immediately after we click the "Reticulate splines" link, we ask selenium
-to check whether the current URL matches the URL for our first list.  But
-it doesn't:
-
-----
-AssertionError: 'http://localhost:8081/accounts/edith@email.com/' !=
-'http://localhost:8081/lists/1/'
-----
-
-It looks like the current URL is still the URL of the "my lists" page.  What's
-going on?
-
-Do you remember that we set an `implicitly_wait` on the browser, way back in
-chapter 2?  Well, that implicitly_wait applies to any calls to any of the 
-Selenium `find_element_` calls, but it doesn't apply to `browser.current_url`.
-Selenium doesn't "wait" when you tell it to click an element, so what's happened
-is that the browser hasn't finished loading the new page yet, so `current_url`
-is still the old page.  We need to use some more wait code, like we did for the
-various Persona pages.
-
-At this point it's time for a "wait for" helper function. To see how this
-is going to work, it helps to see how I expect to use it:
-
+Next we need to adjust `test_my_lists` so that it runs the local function
+when we're on the local server, and make it run the management command
+on the staging server if we're on that:
 
 [role="sourcecode"]
 .functional_tests/test_my_lists.py
 [source,python]
 ----
-    # She sees that her list is in there, named according to its
-    # first list item
-    self.browser.find_element_by_link_text('Reticulate splines').click()
-    self.wait_for(
-        lambda: self.assertEqual(self.browser.current_url, first_list_url)
-    )
+from django.conf import settings
+from .base import FunctionalTest
+from .server_tools import create_session_on_server
+from ..management.commands.create_session import create_pre_authenticated_session
+
+class MyListsTest(FunctionalTest):
+
+    def create_pre_authenticated_session(self):
+        if self.against_staging:
+            session_key = create_session_on_server(self.server_host)
+        else:
+            session_key = create_pre_authenticated_session()
+        ## to set a cookie we need to first visit the domain.
+        ## 404 pages load the quickest!
+        self.browser.get(self.server_url + "/404_no_such_url/")
+        self.browser.add_cookie(dict(
+            name=settings.SESSION_COOKIE_NAME,
+            value=session_key,
+            path='/',
+        ))
+
+    [...]
 ----
 
-We're going to take our `assertEqual` call and turn it into a lambda function,
-then pass it into our `wait_for` helper.
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-from selenium.common.exceptions import WebDriverException
-[...]
-
-    def wait_for(self, function_with_assertion, timeout=DEFAULT_WAIT):
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                return function_with_assertion()
-            except (AssertionError, WebDriverException):
-                pass
-        # one more try, which will raise any errors if they are outstanding
-        return function_with_assertion()
-----
-
-`wait_for` then tries to execute that function, but instead of letting the 
-test fail if the assertion fails, it catches the `AssertionError` that
-`assertEqual` would ordinarily raise, and loops around retrying it, until a
-given timeout.  It also catches any `WebDriverException` that
-might happen if, say, an element hasn't appeared on the page yet.  It tries
-one last time after the timeout has expired, this time without the try/except,
-so that if there really is still an AssertionError, the test will fail
-appropriately.
-
-NOTE: Selenium does provide `WebdriverWait` as a tool for doing waits, but
-it's a little restrictive.  This hand-rolled version lets us pass a function
-that does a unittest assertion, with all the benefits of the readable error
-messages that it gives us.
-
-I've added the timeout there as an optional argument, and I'm basing it on 
-a constant we'll add to 'base.py'.  We'll also use it in our original 
-`implicitly_wait`:
+First let's see how we know whether or not we're working against the 
+staging server. `self.against_staging` gets populated in 'base.py':
 
 
 [role="sourcecode"]
 .functional_tests/base.py
 [source,python]
 ----
-[...]
-import time
-
-DEFAULT_WAIT = 3
-
+from .server_tools import reset_database
 
 class FunctionalTest(LiveServerTestCase):
 
-    [...]
+    @classmethod
+    def setUpClass(cls):
+        for arg in sys.argv:
+            if 'liveserver' in arg:
+                cls.server_host = arg.split('=')[1] #<1>
+                cls.server_url = 'http://' + cls.server_host
+                cls.against_staging = True #<1>
+                return
+        LiveServerTestCase.setUpClass()
+        cls.against_staging = False
+        cls.server_url = cls.live_server_url
+
+    @classmethod
+    def tearDownClass(cls):
+        if not self.against_staging:
+            LiveServerTestCase.tearDownClass()
 
     def setUp(self):
+        if self.against_staging:
+            reset_database(self.server_host) #<2>
         self.browser = webdriver.Firefox()
-        self.browser.implicitly_wait(DEFAULT_WAIT)
+        self.browser.implicitly_wait(3)
 ----
 
+<1> Instead of just storing `cls.server_url`, we also store the `server_host` 
+    and `against_staging` attributes if we detect the `liveserver` command-line
+    argument
 
-Now we can re-run the test to confirm it still works:
+<2> We also need a way of resetting the server database in between each test.
+
+It's time to take a look at 'server_tools':
+
+[role="sourcecode"]
+.functional_tests/server_tools.py
+[source,python]
+----
+from os import path
+import subprocess
+THIS_FOLDER = path.abspath(path.dirname(__file__))
+
+def reset_database(host):
+    subprocess.check_call(
+        ['fab', 'reset_database', '--host={}'.format(host)],
+        cwd=THIS_FOLDER
+    )
+
+
+def create_session_on_server(host):
+    return subprocess.check_output(
+        [
+            'fab',
+            'create_session_on_server',
+            '--host={}'.format(host),
+            '--hide=everything,status', #<1>
+        ],
+        cwd=THIS_FOLDER
+    ).decode().strip() #<1>
+----
+
+Here we use the `subprocess` module to call some fabric functions using the
+`fab` command. We have to use `subprocess` because fabric is currently only
+available in Python 2. Otherwise we could have called fabric functions directly
+within the test process.
+
+<1> Because of all the hopping around via fabric and subprocesses, we're forced
+    to be quite careful about extracting the session key from the output of the
+    command as it gets run on the server.
+
+NOTE: By the time you read this book, Fabric for Python 3 may well be
+available.  You should check, and if it is, use the fabric API instead of
+the hop via `subprocess.check_output`.  Lucky you!
+
+Finally, let's look at the fabfile that defines those two commands we want to
+run server-side, to reset the database or setup the session:
+
+
+[role="sourcecode"]
+.functional_tests/fabfile.py
+[source,python]
+----
+from fabric.api import env, run
+
+
+def _get_base_folder(host):
+    return '~/sites/' + host
+
+def _get_manage_dot_py(host):
+    return '{path}/virtualenv/bin/python {path}/source/manage.py'.format(
+        path=_get_base_folder(host)
+    )
+
+
+def reset_database():
+    run('rm -f {path}/database/database.sqlite'.format(
+        path=_get_base_folder(env.host)
+    ))
+    run('{manage_py} syncdb --migrate --noinput'.format(
+        manage_py=_get_manage_dot_py(env.host)
+    ))
+
+
+def create_session_on_server():
+    session_key = run('{manage_py} create_session'.format(
+        manage_py=_get_manage_dot_py(env.host)
+    ))
+    print(session_key)
+----
+
+Does that make a reasonable amount of sense?  We've got a function that
+can create a session in the database.  If we detect we're running locally,
+we call it directly.  If we're against the server, there's a couple of hops:
+we use `subprocess` to use fabric via `fab`, which lets us run a management
+command that calls that function on the server.
+
+Let's see if it works...
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.MyListsTest*]
+$ pass:quotes[*python3 manage.py test functional_tests.MyListsTest \
+--liveserver=superlists-staging.ottg.eu*]
 Creating test database for alias 'default'...
+[superlists-staging.ottg.eu] Executing task 'reset_database'
+[superlists-staging.ottg.eu] run: rm -f
+~/sites/superlists-staging.ottg.eu/database/database.sqlite
+[superlists-staging.ottg.eu] run:
+~/sites/superlists-staging.ottg.eu/virtualenv/bin/python
+~/sites/superlists-staging.ottg.eu/source/manage.py syncdb --migrate --noinput
+[superlists-staging.ottg.eu] out: Syncing...
+[superlists-staging.ottg.eu] out: Creating tables ...
+[...]
 .
  ---------------------------------------------------------------------
-Ran 1 test in 9.594s
-----
-
-And, just to be sure, we'll deliberately break our test to see it fail
-too:
-
-
-[role="sourcecode"]
-.functional_tests/test_my_lists.py
-[source,python]
-----
-    self.wait_for(
-        lambda: self.assertEqual(self.browser.current_url, 'barf')
-    )
-----
-
-Sure enough, that gives:
-
-----
-AssertionError: 'http://localhost:8081/lists/1/' != 'barf'
-----
-
-And we see it pause on the page for 3 seconds.  Let's revert that last 
-change, and the commit our changes:
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *git status*
-[...]
-#   modified:   functional_tests/base.py
-#   modified:   functional_tests/test_my_lists.py
-$ *git add Functional tests*
-$ *git diff --staged*
-$ *git commit -m"use wait_for function for URL checks in my_lists"*
-$ *git push* # send our changes up to github
-----
-
-Then we can re-run the build on Jenkins using "Build now", and confirm it now
-works:
-
-.The outlook is brighter
-image::images/jenkins_build_starting_to_look_better.png["Build showing a recent pass and sun-peeking-through-clouds logo"]
-
-Jenkins uses blue to indicate passing builds rather than green, which is a bit
-disappointing, but look at the sun peeking through the clouds!  That's cheery!
-It's an indicator of a moving average ratio of passing builds to failing
-builds.  Things are looking up!
-
-
-Running our Qunit JavaScript tests in Jenkins
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-There's a set of tests we almost forgot -- the JavaScript tests. Currently
-our "test runner" is an actual web browser.  To get Jenkins to run them, we
-need a command-line test runner.  Here's a chance to use PhantomJS.
-
-Installing node
-^^^^^^^^^^^^^^^
-
-It's time to stop pretending we're not in the JavaScript game.  We're doing
-web development.  That means we do JavaScript.  That means we're going to end
-up with node.js on our computers.  It's just the way it has to be.
-
-Follow the instructions on the http://nodejs.org/download/[node.js download
-page]. There are installers for Windows and Mac, and repositories for popular
-Linux distros.
-
-Once we have node, we can install phantom:
-
-[subs="specialcharacters,quotes"]
-----
-$ *npm install -g phantomjs*  # the -g means "system-wide". May need sudo.
-----
-
-Next we pull down the Qunit test runner.  You can either download it
-manually from https://github.com/jquery/qunit/tree/master/addons/phantomjs 
-or, if you feel like it:
-
-----
-$ *npm install -g bower*  # bower is a front-end web-dev package manager
-$ *cd /tmp*
-$ *bower install qunit*
-bower qunit#*                   cached git://github.com/jquery/qunit.git#1.12.0
-bower qunit#*                 validate 1.12.0 against git://github.com/jquery/qunit.git#*
-bower qunit#~1.12.0            install qunit#1.12.0
-# bower puts everything into a folder called "bower_components".
-# we dig out our test runner from in there:
-$ *cp bower_components/qunit/addons/phantomjs/runner.js /workspace/superlists/superlists/static/tests/
-----
-
-That's not much simpler, but I just wanted to show you bower.  I won't go into
-it in this book, but it's definitely worth looking into.  Suffice to say I'm
-misusing it horrendously here. In any case, you should end up with this:
-
-[subs="specialcharacters,quotes"]
-----
-$ *tree superlists/static/tests/*
-superlists/static/tests/
-├── qunit.css
-├── qunit.js
-├── runner.js
-└── sinon.js
-----
-
-Now let's try it out:
-
-[subs="specialcharacters,quotes"]
-----
-$ *phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html*
-Took 24ms to run 2 tests. 2 passed, 0 failed.
-$ *phantomjs superlists/static/tests/runner.js accounts/static/tests/tests.html*
-Took 29ms to run 11 tests. 11 passed, 0 failed.
-----
-
-And just to be sure, let's deliberately break something:
-
-[role="sourcecode"]
-.lists/static/list.js
-[source,javascript]
-----
-$('input').on('keypress', function () {
-    //$('.has-error').hide();
-});
-----
-
-Sure enough:
-
-[subs="specialcharacters,quotes"]
-----
-$ *phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html*
-Test failed: undefined: errors should be hidden on keypress
-    Failed assertion: expected: false, but was: true
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:556
-    at file:///worskpace/superlists/lists/static/tests/tests.html:25
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:203
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:361
-    at process (file:///worskpace/superlists/superlists/static/tests/qunit.js:1453)
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:479
-Took 27ms to run 2 tests. 1 passed, 1 failed.
-----
-
-All right!  Let's unbreak that, commit and push the runner, and then add it to
-our Jenkins build:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout lists/static/list.js*
-$ *git add superlists/static/tests/runner.js*
-$ *git commit -m"Add phantomjs test runner for javascript tests"*
-$ *git push* 
-----
-
-.Add a build step for our JavaScript unit tests
-image::images/jenkins_add_phantomjs_build_step.png["Jenkins' default welcome screen"]
-
-You'll also need to install phantomjs on the server.
-
-----
-elspeth@server:$ sudo add-apt-repository -y ppa:chris-lea/node.js
-elspeth@server:$ sudo apt-get update
-elspeth@server:$ sudo apt-get install nodejs
-elspeth@server:$ sudo npm install -g phantomjs
-----
-
-And there we are!  A complete CI build featuring all of our tests!
-
-
-----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists chapter 17/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision 936a484038194b289312ff62f10d24e6a054fb29 (origin/chapter_17)
-Xvfb starting$ /usr/bin/Xvfb :1 -screen 0 1024x768x24 -fbdir /var/lib/jenkins/2013-11-06_11-08-026223733569337356081xvfb
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7092102504259037999.sh
-
-+ pip install -r requirements.txt
-[...]
-
-+ python manage.py test lists
-.................................
- ---------------------------------------------------------------------
-Ran 33 tests in 0.229s
+Ran 1 test in 25.701s
 
 OK
+----
+
+Looking good!  We can re-run all the tests to make sure...
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
 Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-
-+ python manage.py test accounts
-..................
- ---------------------------------------------------------------------
-Ran 18 tests in 0.078s
+[superlists-staging.ottg.eu] Executing task 'reset_database'
+[...]
+Ran 7 tests in 89.494s
 
 OK
-Creating test database for alias 'default'...
 Destroying test database for alias 'default'...
-
-[workspace] $ /bin/sh -xe /tmp/hudson2967478575201471277.sh
-+ phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html
-Took 32ms to run 2 tests. 2 passed, 0 failed.
-+ phantomjs superlists/static/tests/runner.js accounts/static/tests/tests.html
-Took 47ms to run 11 tests. 11 passed, 0 failed.
-
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7526089957247195819.sh
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in /var/lib/jenkins/shiningpanda/jobs/c14c656b/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-
-Cleaning up...
-[workspace] $ /bin/sh -xe /tmp/shiningpanda2420240268202055029.sh
-+ python manage.py test functional_tests
-.......
- ---------------------------------------------------------------------
-Ran 7 tests in 76.804s
-
-OK
 ----
 
-Nice to know that, no matter how lazy I get about running the full test suite
-on my own machine, the CI server will catch me.  Another one of the testing
-goat's agents in cyberspace, watching over us...
+Hooray!
 
+Now we can safely deploy our live site.
 
-.Tips on CI and Selenium best practices
-*******************************************************************************
-Set up CI as soon as possible for your project::
-    As soon as your functional tests take more than a few seconds to run,
-    you'll find yourself avoiding running them all. Give this job to a CI
-    server, to make sure that all your tests are getting run somewhere.
-
-Set up screenshots and HTML dumps for failures::
-    Debugging test failures is easier if you can see what the page looked
-    at when the failure occurs.  This is particularly useful for debugging
-    CI failures, but it's also very useful for tests that you run locally.
-
-Use waits in Selenium tests::
-    Selenium's `implicitly_wait` only applies to uses of its `find_element` 
-    functions, and even that can be unreliable (it can find an element that's
-    still on the old page).  Build a `wait_for` helper function, and alternate
-    between actions on the site, and then some sort of wait to see that they've
-    taken effect.
-*******************************************************************************
-
-
-TODO: Appendix on switching to PhantomJS?  
-
-
-TODO: More discussion of do-something / wait for alternation as best practice?
-
-
-TODO: Something about jUnit XML output using py.test?
+I'll tell you what though, those FTs are taking an annoyingly long time to 
+run though.  I wonder if there's something we can do about that?
 
 
