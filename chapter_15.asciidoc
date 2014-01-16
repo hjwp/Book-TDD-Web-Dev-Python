@@ -518,9 +518,8 @@ the request:
 [source,python]
 ----
     @patch('accounts.authentication.requests.post')
-    def test_return_none_if_response_errors(self, mock_post):
-        mock_response = mock_post.return_value
-        mock_response.ok = False
+    def test_returns_none_if_response_errors(self, mock_post):
+        mock_post.return_value.ok = False
         backend = PersonaAuthenticationBackend()
 
         user = backend.authenticate('an assertion')
@@ -533,7 +532,8 @@ And that passes straight away -- we currently return None in all cases!
 patching at the Class level
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The next test involves a bit of duplication -- let's apply the "3 strikes"
+Next we want to check that the response JSON has status=okay. Adding this
+test would involve a bit of duplication -- let's apply the "3 strikes"
 rule:
 
 
@@ -541,23 +541,14 @@ rule:
 .accounts/tests/test_authentication.py (ch15l021)
 [source,python]
 ----
-from unittest.mock import Mock, patch
-[...]
-
-mock_post = Mock() #<1>
-@patch('accounts.authentication.requests.post', mock_post) #<1>
+@patch('accounts.authentication.requests.post') #<1>
 class AuthenticateTest(TestCase):
 
     def setUp(self):
-        self.backend = PersonaAuthenticationBackend()
-        self.mock_response = mock_post.return_value #<3>
-        self.mock_response.ok = True #<3>
-
-    def tearDown(self):
-        mock_post.reset_mock() #<2>
+        self.backend = PersonaAuthenticationBackend() #<2>
 
 
-    def test_sends_assertion_to_mozilla_with_domain(self):
+    def test_sends_assertion_to_mozilla_with_domain(self, mock_post):
         self.backend.authenticate('an assertion')
         mock_post.assert_called_once_with(
             PERSONA_VERIFY_URL,
@@ -565,32 +556,26 @@ class AuthenticateTest(TestCase):
         )
 
 
-    def test_return_none_if_response_errors(self):
-        self.mock_response.ok = False #<4>
+    def test_returns_none_if_response_errors(self, mock_post):
+        mock_post.return_value.ok = False #<3>
         user = self.backend.authenticate('an assertion')
         self.assertIsNone(user)
 
 
-    def test_returns_none_if_status_not_okay(self):
-        self.mock_response.json.return_value = {'status': 'not okay!'} #<4>
+    def test_returns_none_if_status_not_okay(self, mock_post):
+        mock_post.return_value.json.return_value = {'status': 'not okay!'} #<3>
         user = self.backend.authenticate('an assertion')
         self.assertIsNone(user)
 ----
 
 <1> You can apply a `patch` at the class level as well, and that has the effect
-    that every method in the class will have the patch applied.  You can also
-    see a second usage pattern of the `patch` function, which is that you can
-    pass it a specific mock object to use, rather than have it inject it as
-    an extra argument to the functions it decorates.
+    that every test method in the class will have the patch applied, and the
+    mock injected.
 
-<2> Because we're using the same mock object every time, we call a special
-    method called `reset_mock`, which resets properties like `.called`, so
-    that each test is independent
+<2> We can now use the `setUp` function to prepare any useful variables which
+    we're going to use in all of our tests.  
 
-<3> We can now use the `setUp` function to prepare some useful variables which
-    we're going to use in most of our tests.  
-
-<4> Now each test is only adjusting the setup variables 'it' needs, rather than
+<3> Now each test is only adjusting the setup variables 'it' needs, rather than
     setting up a load of duplicated boilerplate -- it's more readable.
 
 
@@ -608,286 +593,136 @@ object. We expect this to fail.
 .accounts/tests/test_authentication.py (ch15l022)
 [source,python]
 ----
+from unittest.mock import Mock, patch
 from django.contrib.auth import get_user_model
 User = get_user_model()
+from django.test import TestCase
 [...]
 
-    def test_finds_existing_user_with_email(self):
-        self.mock_response.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
-        self.backend.get_user = Mock()
-        mock_user = self.backend.get_user.return_value
-        user = self.backend.authenticate('an assertion')
-        self.assertEqual(user, mock_user)
+    def test_finds_existing_user_with_email(self, mock_post):
+        mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
+        actual_user = User.objects.create(email='a@b.com')
+        found_user = self.backend.authenticate('an assertion')
+        self.assertEqual(found_user, actual_user)
 ----
 
 Indeed, a fail:
 
 ----
-AssertionError: None != <Mock name='mock()' id='139758452629392'>
+AssertionError: None != <User: >
 ----
 
-Let's code:
+Let's code. We'll start with a "cheating" implementation, where we just get
+the first user we find in the database:
 
 [role="sourcecode"]
-.accounts/authentication.py
+.accounts/authentication.py (ch15l023)
 [source,python]
 ----
+import requests
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
     def authenticate(self, assertion):
         requests.post(
             PERSONA_VERIFY_URL,
             data={'assertion': assertion, 'audience': DOMAIN}
         )
-        return self.get_user()
+        return User.objects.all()[0]
 ----
 
 That gets our new test passing, but other the other tests fail:
 
 ----
-AttributeError: 'PersonaAuthenticationBackend' object has no attribute
-'get_user'
+ERROR: test_returns_none_if_response_errors
+IndexError: list index out of range
+[...]
+ERROR: test_returns_none_if_status_not_okay
+IndexError: list index out of range
+[...]
+ERROR: test_sends_assertion_to_mozilla_with_domain
+IndexError: list index out of range
 ----
 
-To get back to a working state, let's define a temporary placeholder for
-`get_user`:
+The positive case passes, we now need to build some of our guards for
+cases where authentication should fail -- if the response errors, or if
+the status is not okay.  Let's start with this:
 
 [role="sourcecode"]
-.accounts/authentication.py
+.accounts/authentication.py (ch15l024)
 [source,python]
 ----
-class PersonaAuthenticationBackend(object):
-    [...]
-
-    def get_user(self):
-        pass
+def authenticate(self, assertion):
+    response = requests.post(
+        PERSONA_VERIFY_URL,
+        data={'assertion': assertion, 'audience': DOMAIN}
+    )
+    if response.json()['status'] == 'okay':
+        return User.objects.all()[0]
 ----
 
-That works:
+That actually fixes all three, slightly surprisingly:
 
 ----
 OK
 ----
 
+But we know we've got a couple of "cheats".  Let's add the to our 
+scratchpad for now.
 
-And now we can write a new unit test for the `self.get_user` call:
+* authenticate is just returning the first user it finds
+* why is the test for response.ok passing?
+
+
+Beware of Mocks in boolean comparisons
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+So how come our `test_returns_none_if_response_errors` isn't failing?  
+
+Because we've mocked out `requests.post`, the `response` is a Mock object,
+which as you remember, returns all attributes and properties as more
+Mocks
+footnote:[Actually, this is only happening because we're using the `patch` 
+decorator, which returns a `MagicMock`, an even mockier version of mock that
+can also behave like a dictionary. More info in the
+http://docs.python.org/dev/library/unittest.mock-magicmethods.html[docs]]
+. So, when we do our 
+
+[role="skipme"]
+[source,python]
+----
+    if response.json()['status'] == 'okay':
+----
+
+What we actually end up doing is comparing a Mock with the string "okay",
+which evaluates to false, and so we return None by default. Let's make our test
+more explicit:
 
 
 [role="sourcecode"]
 .accounts/tests/test_authentication.py (ch15l025)
 [source,python]
 ----
-    def test_calls_get_user_with_email(self):
-        self.mock_response.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
-        self.backend.get_user = Mock()
-        self.backend.authenticate('an assertion')
-        self.backend.get_user.assert_called_once_with('a@b.com')
-----
-
-Right:
-
-----
-AssertionError: Expected call: mock('a@b.com')
-Actual call: mock()
-----
-
-And so
-
-[role="sourcecode"]
-.accounts/authentication.py
-[source,python]
------
-    def authenticate(self, assertion):
-        response = requests.post(
-            PERSONA_VERIFY_URL,
-            data={'assertion': assertion, 'audience': DOMAIN}
-        )
-        email = response.json()['email']
-        return self.get_user(email)
------
-
-But that breaks a couple of the old tests:
-
------
-    email = response.json()['email']
-KeyError: 'email'
-[...]
-FAILED (errors=3)
-----
-
-We need some more common setup:
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py
-[source,python]
-----
-    def setUp(self):
-        self.backend = PersonaAuthenticationBackend()
-        self.mock_response = mock_post.return_value
-        self.mock_response.ok = True
-        self.mock_response.json.return_value = {
-            'status': 'okay', 'email': 'a@b.com'
-        }
-
-----
-
-That changes the errors slightly:
-
-
-----
-TypeError: get_user() takes 1 positional argument but 2 were given
-TypeError: get_user() takes 1 positional argument but 2 were given
-KeyError: 'email'
-----
-
-We fix the first couple by changing the signature of our `get_user`:
-
-[role="sourcecode"]
-.accounts/authentication.py (ch15l027)
-[source,python]
-----
-    def get_user(self, email):
-        pass
-----
-
-And that takes us down to the one `KeyError` for
-`test_returns_none_if_status_not_okay`.  This is pointing to a "real" problem,
-and justifies a real fix:
-
-[role="sourcecode"]
-.accounts/authentication.py
-[source,python]
-----
-    def authenticate(self, assertion):
-        response = requests.post(
-            PERSONA_VERIFY_URL,
-            data={'assertion': assertion, 'audience': DOMAIN}
-        )
-        if response.json()['status'] == 'okay':
-            email = response.json()['email']
-            return self.get_user(email)
-----
-
-Woot!:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-Ran 9 tests in 0.016s
-OK
-----
-
-
-
-Testing exception handling
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Here's a last test, in which we'll see how to test a case where we expect
-a function to raise an exception.  We can do this by dynamically replacing
-said function with a pre-prepared exception-raiser:
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py (ch15l029)
-[source,python]
-----
-    def test_creates_new_user_if_required(self):
-        def raise_no_user_error(_):
-            raise User.DoesNotExist()
-        self.backend.get_user = raise_no_user_error
+    def test_returns_none_if_response_errors(self, mock_post):
+        mock_post.return_value.ok = False
+        mock_post.return_value.json.return_value = {}
         user = self.backend.authenticate('an assertion')
-        new_user = User.objects.all()[0]
-        self.assertEqual(user, new_user)
-        self.assertEqual(user.email, 'a@b.com')
+        self.assertIsNone(user)
 ----
-
-If you've not seen it before, I'm using the convention of a variable
-named underscore (`_`) to represent a variable whose value we don't care about.
 
 That gives:
 
 ----
-[...]
-    return self.get_user(email)
-  File "/workspace/superlists/accounts/tests/test_authentication.py", line 63,
-in raise_no_user_error
-    raise User.DoesNotExist()
-django.contrib.auth.models.DoesNotExist
+    if response.json()['status'] == 'okay':
+KeyError: 'status'
 ----
 
-Here's how we fix it:
-
-[role="sourcecode"]
-.accounts/authentication.py (ch15l030)
-[source,python]
-----
-from django.contrib.auth import get_user_model
-User = get_user_model()
-[...]
-
-    email = response.json()['email']
-    try:
-        return self.get_user(email)
-    except User.DoesNotExist:
-        return User.objects.create(email=email)
-----
-
-Surely one of these tests should still be failing?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-That leaves one puzzler:  how come our `test_return_none_if_response_errors`
-isn't failing?  It took me a while to figure it out, but it's because 
-`self.get_user`, being currently a placeholder function with a `pass`, is 
-returning None.  It's my own fault for writing even placeholder code without
-tests.  The testing goat is looking at me with a raised eyebrow...
-
-Let's get some tests for `get_user` in ASAP then:
+And we can fix it like this:
 
 
 [role="sourcecode"]
-.accounts/tests/test_authentication.py (ch15l031)
-[source,python]
-----
-class GetUserTest(TestCase):
-
-    def test_get_user_gets_user_from_database(self):
-        actual_user = User.objects.create(email='a@b.com')
-        backend = PersonaAuthenticationBackend()
-        found_user = backend.get_user('a@b.com')
-        self.assertEqual(found_user, actual_user)
-
-----
-
-That gives
-
-----
-AssertionError: None != <User: >
-----
-
-And, if we implement it:
-
-[role="sourcecode"]
-.accounts/authentication.py (ch15l032)
-[source,python]
-----
-    def get_user(self, email):
-        return User.objects.get(email=email)
-----
-
-Our new test passes, but, sure enough, our response error test is failing as it
-should:
-
-----
-FAIL: test_return_none_if_response_errors
-(accounts.tests.test_authentication.AuthenticateTest)
-[...]
-AssertionError: <User: > is not None
-----
-
-
-There we go! And here's our final fix:
-
-
-[role="sourcecode"]
-.accounts/authentication.py (ch15l033)
+.accounts/authentication.py (ch15l026)
 [source,python]
 ----
     def authenticate(self, assertion):
@@ -896,16 +731,337 @@ There we go! And here's our final fix:
             data={'assertion': assertion, 'audience': DOMAIN}
         )
         if response.ok and response.json()['status'] == 'okay':
-            [...]
+            return User.objects.all()[0]
 ----
 
-And I 'think' we have ourselves an authentication backend.  
+...
 
 ----
 OK
 ----
 
-It won't work yet though, because we need to define our custom user model next.
+Good.
+
+* authenticate is just returning the first user it finds
+* [strikethrough line-through]#why is the test for response.ok passing?#
+
+Creating a user if necessary
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next we should check that, if our `authenticate` function has
+a valid assertion from Persona, but we don't have a user record for
+that person in our database, we should create one.  Here's the test
+for that:
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l027)
+[source,python]
+----
+    def test_creates_new_user_if_necessary_for_valid_assertion_(self, mock_post):
+        mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
+        found_user = self.backend.authenticate('an assertion')
+        new_user = User.objects.all()[0]
+        self.assertEqual(found_user, new_user)
+        self.assertEqual(found_user.email, 'a@b.com')
+----
+
+That fails as follows:
+
+----
+IndexError: list index out of range
+----
+
+So we add a try/except, returning an "empty" user at first:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l028)
+[source,python]
+----
+    if response.ok and response.json()['status'] == 'okay':
+        try:
+            return User.objects.all()[0]
+        except:
+            return User.objects.create()
+----
+
+And that fails because our new user doesn't have the right email:
+
+
+----
+    self.assertEqual(found_user.email, 'a@b.com')
+AssertionError: '' != 'a@b.com'
+----
+
+And so we fix it by getting the email from the response json:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l029)
+[source,python]
+----
+    if response.ok and response.json()['status'] == 'okay':
+        email = response.json()['email']
+        try:
+            return User.objects.all()[0]
+        except:
+            return User.objects.create(email=email)
+----
+
+That gets us to passing tests:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+Ran 9 tests in 0.019s
+OK
+----
+
+
+
+Tests the get_user method by mocking the Django ORM
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The next thing we have to build is a `get_user` method for our authentication
+backend.  This method's job is to retrieve a user based on their email address,
+or to return None if it can't find one.
+
+The simplest way to test this would be, as in the previous example, but
+creating actual objects in the database, and by letting the method use the
+ORM to find them, or not.
+
+But, since we're learning about mocks, I thought I'd show how to mock out the
+Django ORM.  Although I have no qualms about using the database in my unit tests,
+some people really don't like it: the objection is that "true" unit tests should
+have no external dependencies at all,  and should never touch the database. 
+
+NOTE: You can find out more about the "purist" approach to unit testing in 
+the appendix entitled "The Database is Hot Lava".
+
+So, by way of an educational exercise, here's how to avoid touching the
+database by mocking out the Django ORM. We'll also learn about how to use
+mocks to test exception-handling, which will be useful.
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l030)
+[source,python]
+----
+class GetUserTest(TestCase):
+
+    @patch('accounts.authentication.User.objects.get') #<1>
+    def test_gets_user_from_ORM_using_email(self, mock_User_get):
+        backend = PersonaAuthenticationBackend()
+        found_user = backend.get_user('a@b.com')
+        self.assertEqual(found_user, mock_User_get.return_value) #<2>
+        mock_User_get.assert_called_once_with(email='a@b.com') #<3>
+
+----
+
+<1> We patch out the `User` ORM class, so that we can check on any calls
+    our code will make to it.
+
+<2> We check that `get_user` gives us the return value from our mocked 
+    `User.objects.get`.
+
+<3> We also check that `User.objects.get` was called correctly, passing
+    in the email as an argument.
+
+Here's our first failure:
+
+----
+AttributeError: 'PersonaAuthenticationBackend' object has no attribute
+'get_user'
+----
+
+Let's create a placeholder one then:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l031)
+[source,python]
+----
+class PersonaAuthenticationBackend(object):
+
+    def authenticate(self, assertion):
+        [...]
+
+    def get_user(self):
+        pass
+----
+
+Now we get:
+
+
+----
+TypeError: get_user() takes 1 positional argument but 2 were given
+----
+
+So
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l032)
+[source,python]
+----
+    def get_user(self, email):
+        pass
+----
+
+Next:
+
+----
+    self.assertEqual(found_user, mock_User_get.return_value)
+AssertionError: None != <MagicMock name='get()' id='140631293381136'>
+----
+
+And (step-by-step):
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l033)
+[source,python]
+----
+    def get_user(self, email):
+        return User.objects.get()
+----
+
+That gets us past the first assertion, onto the mock check:
+
+----
+AssertionError: Expected call: get(email='a@b.com')
+Actual call: get()
+----
+
+And so we call `get` with the email as an argument:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l034)
+[source,python]
+----
+    def get_user(self, email):
+        return User.objects.get(email=email)
+----
+
+That gets us to passing tests:
+...
+
+----
+OK
+----
+
+
+Testing exception handling
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The other thing we need to check is that our `get_user` function should return
+`None` if the user doesn't exist (this wasn't well documented at the time of
+writing, but that is the interface we have to comply with. See 
+https://github.com/django/django/blob/1.6c1/django/contrib/auth/backends.py#L66[the source]).
+
+Ordinarily, if you do an ORM lookup and the user doesn't exist, it will 
+raise an Exception.  Since we're mocking out the ORM in these tests, we
+have to simulate that exception.  This is a good chance to learn about how
+to test exception handling with mocks. We do it by setting a special
+Mock attribute called `side_effect`:
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l035)
+[source,python]
+----
+class GetUserTest(TestCase):
+
+    @patch('accounts.authentication.User.objects.get')
+    def test_gets_user_from_ORM_using_email(self, mock_User_get):
+        [...]
+    
+    @patch('accounts.authentication.User.objects.get')
+    def test_returns_none_if_user_does_not_exist(self, mock_User_get):
+        def raise_no_user_error(*_, **__): #<1>
+            raise User.DoesNotExist()
+        mock_User_get.side_effect = raise_no_user_error #<2>
+        backend = PersonaAuthenticationBackend()
+
+        self.assertIsNone(backend.get_user('a@b.com'))
+----
+
+<1> We define a function whose only job is to raise an Exception. If you've not
+    seen it before, I'm using the convention where variables named with
+    underscores signify variables we don't care about -- it's the equivalent of 
+    `(*args, **kwargs)`, but we're just going to ignore what those args and
+    kwargs are.
+
+<2> We then assign that function as the "`side_effect`" of our mocked 
+    User.objects.get function. When our code tries to call it, it will
+    invoke our exception-raising function instead.
+
+You can actually trace the effect of our mocking in the traceback we get:
+
+----
+ERROR: test_returns_none_if_user_does_not_exist
+[...]
+  File "/workspace/superlists/accounts/tests/test_authentication.py", line 70,
+in test_returns_none_if_user_does_not_exist
+    self.assertIsNone(backend.get_user('a@b.com'))<1>
+  File "/workspace/superlists/accounts/authentication.py", line 25, in get_user
+    return User.objects.get(email=email)<2>
+  File "/usr/lib/python3.3/unittest/mock.py", line 846, in __call__
+    return _mock_self._mock_call(*args, **kwargs)<3>
+  File "/usr/lib/python3.3/unittest/mock.py", line 911, in _mock_call
+    ret_val = effect(*args, **kwargs)
+  File "/workspace/superlists/accounts/tests/test_authentication.py", line 66,
+in raise_no_user_error<4>
+    raise User.DoesNotExist()
+django.contrib.auth.models.DoesNotExist
+----
+
+
+<1> We call `get_user`
+
+<2> `get_user` calls `User.objects.get`
+
+<3> Because `User.objects.get` is mocked out, the call is diverted into the
+    mock library's code
+
+<4> Mock calls our pre-prepared exception-raising function.
+
+
+As you can see, mocks are powerful, but they can be pretty mind-bending!
+That's why I always say you should avoid using them if you can.  In
+any case, here's our implementation:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l036)
+[source,python]
+----
+    def get_user(self, email):
+        try:
+            return User.objects.get(email=email)
+        except User.DoesNotExist:
+            pass
+----
+
+
+And we 'almost' have a working authentication backend.  
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+Ran 11 tests in 0.020s
+OK
+----
+
+We still have one item on our scratchpad
+
+* authenticate is just returning the first user it finds
+* [strikethrough line-through]#why is the test for response.ok passing?#
+
+
+Before we can fix that, we'll need to define our custom user model.
 
 
 A minimal custom user model
@@ -933,6 +1089,7 @@ class UserModelTest(TestCase):
         user = User(email='a@b.com')
         user.full_clean() # should not raise
 -----
+//37
 
 That gives us an expected failure:
 
@@ -954,13 +1111,14 @@ from django.db import models
 class User(models.Model):
     email = models.EmailField()
 ----
+//38
 
 And we wire it up inside 'settings.py' using a variable called
 `AUTH_USER_MODEL`.  While we're at it, we'll add our new authentication backend
 too:
 
 [role="sourcecode"]
-.superlists/settings.py (ch15l036)
+.superlists/settings.py (ch15l039)
 [source,python]
 ----
 AUTH_USER_MODEL = 'accounts.User'
@@ -1010,6 +1168,7 @@ class User(models.Model):
     REQUIRED_FIELDS = ()
     USERNAME_FIELD = 'email'
 ----
+//41
 
 
 What now?
@@ -1023,7 +1182,7 @@ I'll do one better! Let's make the email field into the primary key, and
 thus implicitly remove the auto-generated `id` column:
 
 [role="sourcecode"]
-.accounts/models.py (ch15l039)
+.accounts/models.py (ch15l042)
 [source,python]
 ----
     email = models.EmailField(primary_key=True)
@@ -1037,7 +1196,7 @@ That gets our tests running.  We'll write a test for this feature
 anyway, just as a form of documentation:
 
 [role="sourcecode"]
-.accounts/tests/test_models.py (ch15l040)
+.accounts/tests/test_models.py (ch15l043)
 [source,python]
 ----
     def test_email_is_primary_key(self):
@@ -1096,6 +1255,7 @@ class User(models.Model):
     REQUIRED_FIELDS = ()
     USERNAME_FIELD = 'email'
 ----
+//44
 
 Right!  Anyway! That works!
 
@@ -1103,9 +1263,59 @@ Right!  Anyway! That works!
 ----
 $ pass:quotes[*python3 manage.py test accounts*]
 [...]
+Ran 13 tests in 0.021s
 OK
 ----
 
+
+Fixing our cheat
+^^^^^^^^^^^^^^^^
+
+Remember our little "cheat"?  Now that we have a custom user model that 
+only know about email, we can apply a little tweak to our authentication
+unit test, which we couldn't before:
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l045)
+[source,python]
+----
+    def test_finds_existing_user_with_email(self, mock_post):
+        mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
+        User.objects.create(email='someone@else.com')
+        actual_user = User.objects.create(email='a@b.com')
+        found_user = self.backend.authenticate('an assertion')
+        self.assertEqual(found_user, actual_user)
+----
+
+We create the user with the username `someone@else.com`, to make 
+sure our implementation doesn't just grab any old user. Now the test
+fails:
+
+----
+FAIL: test_finds_existing_user_with_email
+[...]
+AssertionError: <User: User object> != <User: User object>
+----
+
+
+And so we can improve on our "cheat" implementation:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l046)
+[source,python]
+----
+def authenticate(self, assertion):
+    [...]
+        email = response.json()['email']
+        try:
+            return User.objects.get(email=email)
+        except:
+            return User.objects.create(email=email)
+----
+
+And we're back to passing tests.
 
 
 The moment of truth:  will the FT pass?
@@ -1130,6 +1340,7 @@ logged-in and non-logged-in users:
     {% endif %}
 </nav>
 ----
+//47
 
 
 Lovely.  Then we wire up our various context variables for the call to
@@ -1151,6 +1362,7 @@ Lovely.  Then we wire up our various context variables for the call to
     });
 </script>
 ----
+//48
 
 So how does our FT get along?
 
@@ -1203,6 +1415,7 @@ I started off writing code a bit like this:
     navbar = self.browser.find_element_by_css_selector('.navbar')
     self.assertIn(TEST_EMAIL, navbar.text)
 ----
+//49
 
 And, after 4 repetitions of very similar code, a helper function suggested
 itself:
@@ -1222,11 +1435,12 @@ itself:
         navbar = self.browser.find_element_by_css_selector('.navbar')
         self.assertNotIn(TEST_EMAIL, navbar.text)
 ----
+//50
 
 And I extended the FT like this:
 
 [role="sourcecode"]
-.functional_tests/test_login.py (ch15l046)
+.functional_tests/test_login.py (ch15l049)
 [source,python]
 ----
         [...]
@@ -1266,6 +1480,7 @@ I also found that improving the failure message in the
             )
         )
 ----
+//52
 
 
 With that, we can see that the test is failing because the logout button doesn't work:
@@ -1320,22 +1535,40 @@ Ran 48 tests in 78.124s
 
 OK
 ----
+//54
 
 
 
+.On Mocking in Python
+*******************************************************************************
 
+The Mock library::
+    Michael Foord (who used to work for the company that spawned
+    PythonAnywhere, just before I joined) wrote the Python excellent "Mock"
+    library that's now been integrated into the standard library of Python 3.
+    It contains most everything you might need for mocking in Python
 
-Wrap-up (under construction)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The patch decorator::
+    `unittest.mock` provides a function called `patch`, which can be used
+    to "mock out" any object from the module you're testing.  It's commonly
+    used as a decorator on a test method, or even at the class level, where
+    it's applied to all the test methods of that class
 
-* Use mock, but use it sparingly
+Mocks are truthy and can mask error::
+    Be aware that mocking things out can cause counter-intuitive behaviour
+    in any `if` statements.  Mocks are truthy, but they also might mask
+    errors, because they have all attributes and methods.
 
-* Dedupe your FTs: every single FT doesn't need to test every single feature.
-  But be aware that FTs are there to catch strange and unpredictable
-  interactions between features.  Try to keep your "cheats" for deduplication
-  reasonably plausible in the real world.
+Mocking the Django ORM::
+    If you want to avoid "touching" the database in your tests, you can
+    use Mock to simulate the Django ORM.  Sometimes, this is more trouble
+    than it's worth. See the "Hot Lava" appendix for more discussion
 
+Too many mocks are a code smell::
+    Overly mocky tests end up very tightly coupled to their implementation.
+    Sometimes, this is just unavoidable.  But, in general, try to find ways
+    of organising your code so that you don't need too many mocks, if you can.
 
-//TODO: test what happens if Persona is down? Show how to test?
+*******************************************************************************
 
 
