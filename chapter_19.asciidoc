@@ -1,737 +1,1044 @@
-Continuous Integration (CI)
----------------------------
+The token social bit: list sharing
+----------------------------------
 
+Are jokes about how "everything has to be social now" slightly old hat?
+Everything has to be all A/B tested big data get-more-clicks lists of 10 Things
+This Inspiring Teacher Said That Will Make You Change Your Mind About Bla Bla
+now. Anyway. Lists, be they Inspirational or otherwise, are often better
+shared. Let's allow our users to collaborate on their lists with other users.
 
-As our site grows, it takes longer and longer to run all of our Functional
-tests.  If this continues, the danger is that we're going to stop bothering.
+Along the way we'll improve our FTs by starting to implement the interact/wait
+Selenium pattern that we learned in the last chapter.  We'll also experiment
+with something called the Page Object pattern.
 
-Rather than let that happen, we can automate the running of functional tests
-by setting up a "Continuous Integration" or CI server.  That way, in day-to-day
-development, we can just run the FT that we're working on at that time, and
-rely on the CI server to run all the test automatically, and let us know if
-we've broken anything accidentally.  The unit tests should stay fast enough
-that we can keep running them every few seconds.
+Once we get to the unit testing phase, we'll talk a bit about the concept
+of "Outside-In" TDD.
 
-The CI server of choice these days is called Jenkins. It's a bit Java, a bit
-crashy, a bit ugly, but it's what everyone uses, and it has a great plugin
-ecosystem, so let's get it up and running.
+WARNING: As always, this last chapter is an early draft, and may not be very
+polished yet.  Your feedback is humbly solicited.
 
 
-Installing Jenkins
-~~~~~~~~~~~~~~~~~~
+An FT with multiple users, and addCleanup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There are several hosted-CI services out there that essentially provide you
-with a Jenkins server, ready to go.  I've come across Travis, Circle-CI,
-ShiningPanda, and there are probably lots more.  I'm going to assume we're
-going to install everything on a server we control.
-
-NOTE: It's not a good idea to install Jenkins on the same server as our
-staging or production servers.  Apart from anything else, we may want 
-Jenkins to be able to reboot the staging server!
-
-We'll install latest version from official jenkins apt repo, because the 
-Ubuntu default still has a few annoying bugs with locale/unicode support,
-and it also doesn't set itself up to listen on the public internet by default.
-
-----
-user@server:$ wget -q -O - http://pkg.jenkins-ci.org/debian/jenkins-ci.org.key | sudo apt-key add -
-user@server:$ echo deb http://pkg.jenkins-ci.org/debian binary/ | sudo tee \
-    /etc/apt/sources.list.d/jenkins.list
-user@server:$ sudo apt-get update
-user@server:$ sudo apt-get install jenkins
-----
-
-While we're at we'll install a few other dependencies:
-
-----
-user@server:$ sudo apt-get install git firefox python3 python-virtualenv xvfb
-----
-
-You should then be able to visit it at the URL for your server on port `8080`:
-
-.A butler! How quaint...
-image::images/jenkins_first_page.png["Jenkins' default welcome screen"]
-
-
-Configuring Jenkins security
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The first thing we'll want to do is set up some authentication, so that
-anyone can't just come and mess with our server:
-
-* Manage Jenkins -> Configure Global Security -> Enable security
-* Choose "Jenkins' own user database", "Matrix-based security"
-* Disable all permissions for Anonymous
-* And add a user for yourself
-* The next screen offers you the option to create an account that matches that
-  username, and set a password
-
-.Locking it down...
-image::images/jenkins_security_config.png["Jenkins' default welcome screen"]
-
-
-Adding required plugins
-^^^^^^^^^^^^^^^^^^^^^^^
-
-* Manage Jenkins -> Manage Plugins -> Available
-* We'll want the plugins for:
-    * Git
-    * ShiningPanda
-    * Xvfb
-
-
-.Installing plugins...
-image::images/jenkins_installing_plugins.png["Jenkins installing plugins"]
-
-Restart afterwards - either using the tick-box on that last screen, or
-from the command-line with a `sudo restart jenkins`.
-
-
-Telling jenkins where to find Python 3
-++++++++++++++++++++++++++++++++++++++
-
-* Manage Jenkins -> Configure System
-* Python -> Python installations -> Add Python 
-
-.Where did I leave that Python?
-image::images/jenkins_adding_python3.png["Adding Python 3"]
-
-
-Setting up our project
-~~~~~~~~~~~~~~~~~~~~~~
-
-Now we've got the basic jenkins configured, let's set up our project.
-
-* New Job -> Build a free-style software project 
-* Add the Git repo
-
-.Get it from git
-image::images/jenkins_set_git_repo.png["Setting the git repo"]
-
-* Set it to poll every hour (the help text here is helpful)
-
-.Poll Github for changes
-image::images/jenkins_poll_scm.png["Config polling github"]
-
-* Run the tests inside a Python 3 virtualenv
-* Run the unit tests and functional tests separately
-
-.Virtualenv build steps
-image::images/jenkins_build_in_virtualenv.png["Adding Python 3"]
-
-
-
-First build!
-~~~~~~~~~~~~
-
-Hit "Build Now!", then go and take a look at the "Console Output". You
-should see something like this:
-
-----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision d515acebf7e173f165ce713b30295a4a6ee17c07 (origin/master)
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7260707941304155464.sh
-+ pip install -r requirements.txt
-Requirement already satisfied (use --upgrade to upgrade): Django==1.6 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-(from -r requirements.txt (line 1))
-Downloading/unpacking South==0.8.2 (from -r requirements.txt (line 2))
-  Running setup.py egg_info for package South
-    
-Requirement already satisfied (use --upgrade to upgrade): gunicorn==17.5 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-(from -r requirements.txt (line 3))
-Downloading/unpacking requests==2.0.0 (from -r requirements.txt (line 4))
-  Running setup.py egg_info for package requests
-    
-Installing collected packages: South, requests
-  Running setup.py install for South
-    
-  Running setup.py install for requests
-    
-Successfully installed South requests
-Cleaning up...
-+ python manage.py test lists accounts
-...................................................
- ---------------------------------------------------------------------
-Ran 51 tests in 0.323s
-
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-+ python manage.py test functional_tests
-ImportError: No module named 'selenium'
-Build step 'Virtualenv Builder' marked build as failure
-----
-
-Ah.  We need selenium in our virtualenv.
-
-TIP: Some people like to use a file called 'test-requirements.txt' to specify 
-packages that are needed for the tests, but not the main app.
-
-Let's add a manual installation of selenium to our build steps:
-
-    pip install -r requirements.txt
-    pip install selenium
-    python manage.py test accounts lists
-    python manage.py test functional_tests
-
-Now what?
-
-----
-  File
-  "/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages/selenium/webdriver/firefox/firefox_binary.py",
-  line 100, in _wait_until_connectable
-    self._get_firefox_output())
-selenium.common.exceptions.WebDriverException: Message: 'The browser appears to
-have exited before we could connect. The output was: b"\\n(process:19757):
-GLib-CRITICAL **: g_slice_set_config: assertion \'sys_page_size == 0\'
-failed\\nError: no display specified\\n"' 
-----
-
-
-Setting up a virtual display so the FTs can run headless
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-As you can see from the traceback, Firefox is unable to start because the
-server doesn't have a display.
-
-There are two ways to deal with this problem. The first is to switch to using
-a headless browser, like PhantomJS or SlimerJS.  Those tools definitely have
-their place -- they're faster, for one thing -- but they also have
-disadvantages.  The first is that they're not "real" web browsers, so you can't
-be sure you're going to catch all the strange quirks and behaviours of the
-actual browsers your users use.  The second is that they behave quite
-differently inside Selenium, and will require substantial amounts of re-writing
-of FT code.
-
-TIP: I would look into using headless browsers as a "dev-only" tool, to speed
-up the running of FTs on the developer's machine, while the tests on the CI
-server use actual browsers.
-
-The alternative is to set up a virtual display:  we get the server to pretend
-it has a screen attached to it, so Firefox runs happily. There's a few tools
-out there to do this, we'll use one called "Xvfb" (X Virtual Framebuffer) 
-because it's easy to install and use, and because it has a convenient Jenkins
-plug-in
-
-TIP: Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
-as a way of controlling virtual displays from Python.
-
-We go back to our project and hit "Configure" again, then find the section
-called "Build Environment".  Using the virtual display is as simple as
-ticking the box marked "Start Xvfb before the build, and shut it down after.":
-
-.Sometimes config is easy
-image::images/jenkins_start_xvfb.png["Tickbox saying we want Xvfb"]
-
-
-The build does much better now,
-
-----
-[...]
-Xvfb starting$ /usr/bin/Xvfb :2 -screen 0 1024x768x24 -fbdir
-/var/lib/jenkins/2013-11-04_03-27-221510012427739470928xvfb
-[...]
-+ python manage.py test lists accounts
-...................................................
- ---------------------------------------------------------------------
-Ran 51 tests in 0.410s
-
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-Cleaning up...
-
-+ python manage.py test functional_tests
-.....F.
-======================================================================
-FAIL: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/var/lib/jenkins/jobs/Superlists chapter 17/workspace/functional_tests/test_my_lists.py", line 44, in test_logged_in_users_lists_are_saved_as_my_lists
-    self.assertEqual(self.browser.current_url, first_list_url)
-AssertionError: 'http://localhost:8081/accounts/edith@email.com/' != 'http://localhost:8081/lists/1/'
-- http://localhost:8081/accounts/edith@email.com/
-+ http://localhost:8081/lists/1/
-
- ---------------------------------------------------------------------
-Ran 7 tests in 89.275s
-
-FAILED (errors=1)
-Creating test database for alias 'default'...
-[{'secure': False, 'domain': 'localhost', 'name': 'sessionid', 'expiry':
-1920011311, 'path': '/', 'value': 'a8d8bbde33nreq6gihw8a7r1cc8bf02k'}]
-Destroying test database for alias 'default'...
-Build step 'Virtualenv Builder' marked build as failure
-Xvfb stopping
-Finished: FAILURE
-----
-
-Pretty close!  To debug that failure, we'll need screenshots though.
-
-NOTE: As we'll see, this error is due to a race condition, which means it's
-not always reproducible.  You may see a different error, or none at all. In
-any case, the tools below for taking screenshots and dealing with race
-conditions will come in useful. Read on!
-
-
-Taking screenshots
-~~~~~~~~~~~~~~~~~~
-
-To be able to debug unexpected failures that happen on a remote PC, it
-would be good to see a picture of the screen at the moment of the failure,
-and maybe also a dump of the HTML of the page.  We can do that using some
-custom logic in our FT class teardown. We have to do a bit of introspection of
-`unittest` internals, but his will work:
+Let's get started -- we'll need two users for this FT:
 
 [role="sourcecode"]
-.functional_tests/base.py
+.functional_tests/test_sharing.py
 [source,python]
 ----
-    def tearDown(self):
-        if not self._outcomeForDoCleanups.success:
-            self.take_screenshot()
-            self.dump_html()
+from selenium import webdriver
+from .base import FunctionalTest
 
-        self.browser.quit()
-        super().tearDown()
-----
-
-Then we use some selenium methods, `get_sreenshot_as_file` and
-`browser.page_source` for our image and HTML dumps:
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-    def take_screenshot(self):
-        filename = 'seleniumscreenshot-{}.png'.format(self._get_filename())
-        print('screenshotting to', filename)
-        self.browser.get_screenshot_as_file(filename)
+def quit_if_possible(browser):
+    try: browser.quit()
+    except: pass
 
 
-    def dump_html(self):
-        filename = 'seleniumhtml-{}.html'.format(self._get_filename())
-        print('dumping page HTML to', filename)
-        with open(filename, 'w') as f:
-            f.write(self.browser.page_source)
-----
+class SharingTest(FunctionalTest):
 
-And finally here's a way of generating a filename, which includes the
-name of the test and its class, as well as a timestamp:
+    def test_logged_in_users_lists_are_saved_as_my_lists(self):
+        # Edith is a logged-in user
+        self.create_pre_authenticated_session('edith@email.com')
+        edith_browser = self.browser
+        self.addCleanup(lambda: quit_if_possible(edith_browser))
 
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-    def _get_filename(self):
-        timestamp = datetime.now().isoformat().replace(':', '.')
-        return '{}.{}-{}'.format(
-            self.__class__.__name__, self._testMethodName, timestamp
+        # Her friend Oniciferous is also hanging out on the lists site
+        oni_browser = webdriver.Firefox()
+        self.addCleanup(lambda: quit_if_possible(oni_browser))
+        self.browser = oni_browser
+        self.create_pre_authenticated_session('oniciferous@email.com')
+
+        # Edith goes to the home page and starts a list
+        self.browser = edith_browser
+        self.browser.get(self.server_url)
+        self.get_item_input_box().send_keys('Get help\n')
+
+        # She notices a "Share this list" option
+        share_box = self.browser.find_element_by_css_selector('input[name=email]')
+        self.assertEqual(
+            share_box.get_attribute('placeholder'),
+            'your@friends-email.com'
         )
 ----
+//TODO: rename Edith to Francis, as per ch. 6?
 
-When we re-run the build on Jenkins, we see this:
+The interesting feature to note about this section is the `addCleanup`
+function, whose documentation you can find 
+http://docs.python.org/3/library/unittest.html#unittest.TestCase.addCleanup[here].
+It can be used as an alternative to the `tearDown` function as a way of
+cleaning up resources used during the test.  It's most useful when the resource
+is only allocated half-way through a test.
 
-----
-screenshotting to
-seleniumscreenshot-MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists-2013-11-05T05.02.03.634488.png
+`addCleanup` is run after `tearDown`, which is why we need that try/except
+formulation for `quit_if_possible` -- whichever of `edith_browser` and 
+`oni_browser` is also assigned to `self.browser` at the point at which the 
+test end will already have been quit by the tearDown function.
 
-dumping page HTML to
-seleniumhtml-MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists-2013-11-05T05.02.03.695734.html
-----
-
-
-We can go and visit these in the "workspace", which is the folder which jenkins
-uses to store our source code and run the tests in:
-
-.Visiting the project workspace
-image::images/jenkins_workspace_with_screenshots.png["worspace files including screenshot"]
-
-And then we look at the screenshot:
-
-
-.Screenshot looking normal
-image::images/jenkins_screenshot_example.png["Screenshot of site page"]
-
-
-Well, that didn't help much
-
-
-A common Selenium problem: race conditions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Whenever you see an inexplicable failure in a Selenium test, one of the most
-likely explanations is a hidden race condition. Let's look at the line that
-failed:
-
-        # She sees that her list is in there, named according to its
-        # first list item
-        self.browser.find_element_by_link_text('Reticulate splines').click()
-        self.assertEqual(self.browser.current_url, first_list_url)
-
-Immediately after we click the "Reticulate splines" link, we ask selenium
-to check whether the current URL matches the URL for our first list.  But
-it doesn't:
-
-----
-AssertionError: 'http://localhost:8081/accounts/edith@email.com/' !=
-'http://localhost:8081/lists/1/'
-----
-
-It looks like the current URL is still the URL of the "my lists" page.  What's
-going on?
-
-Do you remember that we set an `implicitly_wait` on the browser, way back in
-chapter 2?  Well, that implicitly_wait applies to any calls to any of the 
-Selenium `find_element_` calls, but it doesn't apply to `browser.current_url`.
-Selenium doesn't "wait" when you tell it to click an element, so what's happened
-is that the browser hasn't finished loading the new page yet, so `current_url`
-is still the old page.  We need to use some more wait code, like we did for the
-various Persona pages.
-
-At this point it's time for a "wait for" helper function. To see how this
-is going to work, it helps to see how I expect to use it:
-
-
-[role="sourcecode"]
-.functional_tests/test_my_lists.py
-[source,python]
-----
-    # She sees that her list is in there, named according to its
-    # first list item
-    self.browser.find_element_by_link_text('Reticulate splines').click()
-    self.wait_for(
-        lambda: self.assertEqual(self.browser.current_url, first_list_url)
-    )
-----
-
-We're going to take our `assertEqual` call and turn it into a lambda function,
-then pass it into our `wait_for` helper.
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-from selenium.common.exceptions import WebDriverException
-[...]
-
-    def wait_for(self, function_with_assertion, timeout=DEFAULT_WAIT):
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                return function_with_assertion()
-            except (AssertionError, WebDriverException):
-                pass
-        # one more try, which will raise any errors if they are outstanding
-        return function_with_assertion()
-----
-
-`wait_for` then tries to execute that function, but instead of letting the 
-test fail if the assertion fails, it catches the `AssertionError` that
-`assertEqual` would ordinarily raise, and loops around retrying it, until a
-given timeout.  It also catches any `WebDriverException` that
-might happen if, say, an element hasn't appeared on the page yet.  It tries
-one last time after the timeout has expired, this time without the try/except,
-so that if there really is still an AssertionError, the test will fail
-appropriately.
-
-NOTE: Selenium does provide `WebdriverWait` as a tool for doing waits, but
-it's a little restrictive.  This hand-rolled version lets us pass a function
-that does a unittest assertion, with all the benefits of the readable error
-messages that it gives us.
-
-I've added the timeout there as an optional argument, and I'm basing it on 
-a constant we'll add to 'base.py'.  We'll also use it in our original 
-`implicitly_wait`:
+We also need to change the way our pre-authenticated session creator works,
+so that it can take an arbitrary email address for the user to create an
+account and session for.  We start by moving the helper function out of
+`MyListsTest` and into 'base.py', and changing its signature:
 
 
 [role="sourcecode"]
 .functional_tests/base.py
+[source,diff]
+----
+    def create_pre_authenticated_session(self, email):
+        if self.against_staging:
+            session_key = create_session_on_server(self.server_host, email)
+        else:
+            session_key = create_pre_authenticated_session(email)
+        ## to set a cookie we need to first visit the domain.
+        ## 404 pages load the quickest!
+        self.browser.get(self.server_url + "/404_no_such_url/")
+        self.browser.add_cookie(dict(
+            name=settings.SESSION_COOKIE_NAME,
+            value=session_key,
+            path='/',
+        ))
+----
+
+(I'm sure you're capable of deleting the old version of this function from
+'test_my_lists.py' and fixing up all the required imports.)
+
+
+Passing arguments to management commands and fabric commands
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+As you may remember, `create_pre_authenticated_session` is defined in
+our management command file, so that it can be called both locally and
+against the staging server.  Here's how we adjust it to take an
+email as an argument.
+
+ 
+[role="sourcecode"]
+.functional_tests/management/commands/create_session.py 
+[source,diff]
+----
+ class Command(BaseCommand):
++    args = '<email>'
+ 
+-    def handle(self, *_, **__):
+-        session_key = create_pre_authenticated_session()
++    def handle(self, email, **__):
++        session_key = create_pre_authenticated_session(email)
+         self.stdout.write(session_key)
+ 
+ 
+-def create_pre_authenticated_session():
+-    user = User.objects.create(email='edith@email.com')
++def create_pre_authenticated_session(email):
++    user = User.objects.create(email=email)
+     session = SessionStore()
+     session[SESSION_KEY] = user.pk
+     session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
+----
+
+
+And now we change our fabfile and fabfile-caller for the case where we are
+running against the server:
+
+[role="sourcecode"]
+.functional_tests/fabfile.py
 [source,python]
 ----
-[...]
-import time
-
-DEFAULT_WAIT = 3
-
-
-class FunctionalTest(LiveServerTestCase):
-
-    [...]
-
-    def setUp(self):
-        self.browser = webdriver.Firefox()
-        self.browser.implicitly_wait(DEFAULT_WAIT)
+def create_session_on_server(email):
+    session_key = run('{manage_py} create_session {email}'.format(
+        manage_py=_get_manage_dot_py(env.host),
+        email=email
+    ))
+    print(session_key)
 ----
 
+And the function that calls it in 'server_tools.py' also gets a slight tweak
 
-Now we can re-run the test to confirm it still works:
+[role="sourcecode"]
+.functional_tests/server_tools.py
+[source,diff]
+----
+-def create_session_on_server(host):
++def create_session_on_server(host, email):
+     return subprocess.check_output(
+         [
+             'fab',
+-            'create_session_on_server',
++            'create_session_on_server:email={}'.format(email),
+             '--host={}'.format(host),
+             '--hide=everything,status',
+         ],
+----
+
+As you can see, the command-line syntax for arguments to fab functions is
+quite simple, a colon and then a variable=argument syntax.
+
+OK, let's just see if that all works:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.MyListsTest*]
-Creating test database for alias 'default'...
-.
- ---------------------------------------------------------------------
-Ran 1 test in 9.594s
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+[...]
+Traceback (most recent call last):
+  File "/workspace/superlists/functional_tests/test_sharing.py", line 29, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    share_box = self.browser.find_element_by_css_selector('input[name=email]')
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":"input[name=email]"}' ;
 ----
 
-And, just to be sure, we'll deliberately break our test to see it fail
-too:
+Great! It seems to have got through creating the two user sessions, and
+it gets onto an expected failure -- there is no input for an email address
+of a person to share a list with on the page.
 
+Let's do a commit at this point, because we've got at least a placeholder 
+for our FT, we've got a useful modification of the
+`create_pre_authenticated_session` function, and we're about to embark on
+a bit of an FT refactor
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "New FT for sharing, adjust session creation code to take an email"
+----
+
+
+Implementing the Selenium interact/wait pattern
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before we continue, let's take a closer look at our the interactions with the
+site that we have in our FT so far:
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py
+.functional_tests/test_sharing.py
 [source,python]
 ----
-    self.wait_for(
-        lambda: self.assertEqual(self.browser.current_url, 'barf')
+    # Edith goes to the home page and starts a list
+    self.browser = edith_browser
+    self.browser.get(self.server_url)
+    self.get_item_input_box().send_keys('Get help\n') #<1>
+
+    # She notices a "Share this list" option
+    share_box = self.browser.find_element_by_css_selector('input[name=email]') #<2>
+    self.assertEqual(
+        share_box.get_attribute('placeholder'),
+        'your@friends-email.com'
     )
 ----
 
-Sure enough, that gives:
+<1> Interaction with site
 
-----
-AssertionError: 'http://localhost:8081/lists/1/' != 'barf'
-----
+<2> Assumption about updated state of page
 
-And we see it pause on the page for 3 seconds.  Let's revert that last 
-change, and the commit our changes:
+We learned in the last chapter that it's dangerous to assume too much about
+the state of the browser after we do an interaction (like `send_keys`). In
+theory, `implicitly_wait` will make sure that, if the call to
+`find_element_by_css_selector` doesn't find our `input[name=email]` at first,
+it will silently retry a few times.  But it can also go wrong -- imagine if
+there was an input on the previous page, with the same `name=email`, but a
+different placeholder text?  We'd get a strange failure.
 
+So instead, it's always prudent to follow the "wait-for" pattern whenever we
+want to check on the effects of an interaction that we've just triggered.
+Something like this:
 
-[subs="specialcharacters,quotes"]
-----
-$ *git status*
-[...]
-#   modified:   functional_tests/base.py
-#   modified:   functional_tests/test_my_lists.py
-$ *git add Functional tests*
-$ *git diff --staged*
-$ *git commit -m"use wait_for function for URL checks in my_lists"*
-$ *git push* # send our changes up to github
-----
-
-Then we can re-run the build on Jenkins using "Build now", and confirm it now
-works:
-
-.The outlook is brighter
-image::images/jenkins_build_starting_to_look_better.png["Build showing a recent pass and sun-peeking-through-clouds logo"]
-
-Jenkins uses blue to indicate passing builds rather than green, which is a bit
-disappointing, but look at the sun peeking through the clouds!  That's cheery!
-It's an indicator of a moving average ratio of passing builds to failing
-builds.  Things are looking up!
-
-
-Running our Qunit JavaScript tests in Jenkins
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-There's a set of tests we almost forgot -- the JavaScript tests. Currently
-our "test runner" is an actual web browser.  To get Jenkins to run them, we
-need a command-line test runner.  Here's a chance to use PhantomJS.
-
-Installing node
-^^^^^^^^^^^^^^^
-
-It's time to stop pretending we're not in the JavaScript game.  We're doing
-web development.  That means we do JavaScript.  That means we're going to end
-up with node.js on our computers.  It's just the way it has to be.
-
-Follow the instructions on the http://nodejs.org/download/[node.js download
-page]. There are installers for Windows and Mac, and repositories for popular
-Linux distros.
-
-Once we have node, we can install phantom:
-
-[subs="specialcharacters,quotes"]
-----
-$ *npm install -g phantomjs*  # the -g means "system-wide". May need sudo.
-----
-
-Next we pull down the Qunit test runner.  You can either download it
-manually from https://github.com/jquery/qunit/tree/master/addons/phantomjs 
-or, if you feel like it:
-
-----
-$ *npm install -g bower*  # bower is a front-end web-dev package manager
-$ *cd /tmp*
-$ *bower install qunit*
-bower qunit#*                   cached git://github.com/jquery/qunit.git#1.12.0
-bower qunit#*                 validate 1.12.0 against git://github.com/jquery/qunit.git#*
-bower qunit#~1.12.0            install qunit#1.12.0
-# bower puts everything into a folder called "bower_components".
-# we dig out our test runner from in there:
-$ *cp bower_components/qunit/addons/phantomjs/runner.js /workspace/superlists/superlists/static/tests/
-----
-
-That's not much simpler, but I just wanted to show you bower.  I won't go into
-it in this book, but it's definitely worth looking into.  Suffice to say I'm
-misusing it horrendously here. In any case, you should end up with this:
-
-[subs="specialcharacters,quotes"]
-----
-$ *tree superlists/static/tests/*
-superlists/static/tests/
-├── qunit.css
-├── qunit.js
-├── runner.js
-└── sinon.js
-----
-
-Now let's try it out:
-
-[subs="specialcharacters,quotes"]
-----
-$ *phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html*
-Took 24ms to run 2 tests. 2 passed, 0 failed.
-$ *phantomjs superlists/static/tests/runner.js accounts/static/tests/tests.html*
-Took 29ms to run 11 tests. 11 passed, 0 failed.
-----
-
-And just to be sure, let's deliberately break something:
 
 [role="sourcecode"]
-.lists/static/list.js
-[source,javascript]
+.functional_tests/test_sharing.py
+[source,python]
 ----
-$('input').on('keypress', function () {
-    //$('.has-error').hide();
-});
-----
+    self.get_item_input_box().send_keys('Get help\n')
 
-Sure enough:
-
-[subs="specialcharacters,quotes"]
-----
-$ *phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html*
-Test failed: undefined: errors should be hidden on keypress
-    Failed assertion: expected: false, but was: true
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:556
-    at file:///worskpace/superlists/lists/static/tests/tests.html:25
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:203
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:361
-    at process (file:///worskpace/superlists/superlists/static/tests/qunit.js:1453)
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:479
-Took 27ms to run 2 tests. 1 passed, 1 failed.
+    # She notices a "Share this list" option
+    self.wait_for(
+        lambda:  self.assertEqual(
+            self.browser.find_element_by_css_selector(
+                'input[name=email]'
+            ).get_attribute('placeholder'),
+            'your@friends-email.com'
+        )
+    )
 ----
 
-All right!  Let's unbreak that, commit and push the runner, and then add it to
-our Jenkins build:
 
-[subs="specialcharacters,quotes"]
+The page pattern
+~~~~~~~~~~~~~~~~
+
+But do you know what would be even better?  This is an occasion for a "3
+strikes and refactor".  This test, and many others, all begin off with the user
+starting a new list.  What if we had a helper function called "start new list",
+that would do the `wait_for` as well as the list item input?  
+
+We've already seen how to use helper methods on the base `FunctionalTest`
+class, but if we continue using too many of them, it's going to get very
+crowded. I've worked on a base FT class that's was over 1,500 lines long, and
+that got pretty unwieldy.
+
+One accepted pattern for splitting up your FT helper code is called the 
+http://www.seleniumhq.org/docs/06_test_design_considerations.jsp#page-object-design-pattern[Page
+pattern], and it involves having objects to represent the different pages on
+your site, and to be the single place to store information about how to 
+interact with them.
+
+Let's see how we would build a page object for the home page, and one for the
+lists page.  Here's one for the home page
+
+
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
 ----
-$ *git checkout lists/static/list.js*
-$ *git add superlists/static/tests/runner.js*
-$ *git commit -m"Add phantomjs test runner for javascript tests"*
-$ *git push* 
+LIST_ITEM_INPUT_ID = 'id_text'
+
+class HomePage(object):
+
+    def __init__(self, test):
+        self.test = test #<1>
+
+    def go_to_home_page(self): #<2>
+        self.test.browser.get(self.test.server_url)
+        self.test.wait_for(self.get_item_input)
+
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id('id_text')
+
+
+    def start_new_list(self, item_text): #<3>
+        self.go_to_home_page()
+        inputbox = self.get_item_input()
+        inputbox.send_keys(item_text + '\n')
+        list_page = ListPage(self.test) #<4>
+        list_page.wait_for_new_item_in_list(item_text, 1) #<5>
+        return list_page #<6>
+
 ----
 
-.Add a build step for our JavaScript unit tests
-image::images/jenkins_add_phantomjs_build_step.png["Jenkins' default welcome screen"]
+<1> It's initialised with an object that represents the current test.  That
+    gives us the ability to make assertions, access the browser instance via
+    `self.test.browser`, and use the `wait_for` function
 
-You'll also need to install phantomjs on the server.
+<2> Most Page objects have a "go to this page" function.  Notice that it
+    implements the interaction/wait pattern -- first we `get` the page URL,
+    then we wait for an element that we know is on the home page.
+//TODO: consider the fact that the lists page has that too...
 
+<3> Here's our function that starts a new list.  It goes to the home page,
+    finds the input box, and sends the new item text to it, as well as a
+    carriage return.  It also then uses a wait to check that the interaction
+    has completed, but you'll see it actually uses a new Page object:
+
+<4> The `ListPage`, which we'll see the code for shortly. It's initialized just
+    like a `HomePage`.
+
+<5> We use the `ListPage` to `wait_for_new_item_in_list`.  We specify the
+    expected text of the item, and its expected position in the list.
+
+<6> Finally, we return the `list_page` object to the caller, because they
+    will probably find it useful (as we'll see shortly).
+
+
+Here's how `ListPage` looks:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
 ----
-elspeth@server:$ sudo add-apt-repository -y ppa:chris-lea/node.js
-elspeth@server:$ sudo apt-get update
-elspeth@server:$ sudo apt-get install nodejs
-elspeth@server:$ sudo npm install -g phantomjs
-----
-
-And there we are!  A complete CI build featuring all of our tests!
-
-
-----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists chapter 17/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision 936a484038194b289312ff62f10d24e6a054fb29 (origin/chapter_17)
-Xvfb starting$ /usr/bin/Xvfb :1 -screen 0 1024x768x24 -fbdir /var/lib/jenkins/2013-11-06_11-08-026223733569337356081xvfb
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7092102504259037999.sh
-
-+ pip install -r requirements.txt
 [...]
 
-+ python manage.py test lists
-.................................
- ---------------------------------------------------------------------
-Ran 33 tests in 0.229s
+class ListPage(object):
 
+    def __init__(self, test):
+        self.test = test
+
+    def get_list_table_rows(self):
+        return self.test.browser.find_elements_by_css_selector(
+            '#id_list_table tr'
+        )
+
+    def wait_for_new_item_in_list(self, item_text, position):
+        expected_row = '{}: {}'.format(position, item_text)
+        self.test.wait_for(lambda: self.test.assertIn(
+            expected_row,
+            [row.text for row in self.get_list_table_rows()]
+        ))
+----
+
+
+Let's see how to use it in our test:
+
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+        # Edith goes to the home page and starts a list
+        self.browser = edith_browser
+        HomePage(self).start_new_list('Get help')
+----
+
+Let's continue rewriting our test, using the Page object whenever
+we want to access elements from the lists page:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+        # She notices a "Share this list" option
+        share_box = list_page.get_share_box()
+        self.assertEqual(
+            share_box.get_attribute('placeholder'),
+            'your@friends-email.com'
+        )
+
+        # She shares her list.
+        # The page updates to say that it's shared with Oniciferous:
+        list_page.share_list_with('oniciferous@email.com')
+----
+
+We add the following three functions to our ListPage:
+
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+    def get_share_box(self):
+        return self.test.browser.find_element_by_css_selector(
+            'input[name=email]'
+        )
+
+
+    def get_shared_with_list(self):
+        return self.test.browser.find_elements_by_css_selector(
+            '.list-sharee'
+        )
+
+
+    def share_list_with(self, email):
+        self.get_share_box().send_keys(email + '\n')
+        self.test.wait_for(lambda: self.test.assertIn(
+            email,
+            [item.text for item in self.get_shared_with_list()]
+        )
+----
+
+The idea behind the Page pattern is that it should capture all the information
+about a particular page in your site, so that if, later, you want to go and
+make changes to that page -- even just simple tweaks to its HTML layout for
+example -- you have a single place to go and look for to adjust your functional
+tests, rather than having to dig through dozens of FTs.
+
+So the next step would be to pursue the refactor through our other tests. I'm
+not going to show that here, but I'd recommend you spend a bit of time doing 
+that now, to start getting a feel for how these things work. You can then
+compare your results to the way I did it at 
+TODO: insert github link.
+Pull requests are always encouraged!
+
+
+Extend the FT to a second user, and the My Lists page
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Next let's spec out just a little more detail of what we want our sharing user
+story to be.  Edith has seen on her list page that the list is now "shared
+with" Oniciferous, and then we can have Oni log in and see the list on his "My
+Lists" page, maybe in a section called "lists shared with me".
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+    [...]
+    list_page.share_list_with('oniciferous@email.com')
+
+    # Oniciferous now goes to the lists page with his browser
+    self.browser = oni_browser
+    home_page = HomePage(self).go_to_home_page()
+    home_page.go_to_my_lists_page()
+
+    # He sees Edith's list in there!
+    self.browser.find_element_by_link_text('Get help').click()
+----
+
+That means another function in our `HomePage` class:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+class HomePage(object):
+
+    [...]
+
+    def go_to_my_lists_page(self):
+        self.test.browser.find_element_by_link_text('My lists').click()
+        self.test.wait_for(lambda: self.test.assertEqual(
+            self.test.browser.find_element_by_tag_name('h1').text,
+            'My lists'
+        ))
+----
+
+Once again, this is a function which it would be good to carry across into
+'test_my_lists.py', along with maybe a `MyListsPage` object. Exercise
+for the reader!
+
+        # On the list page, Oniciferous can see says that it's Edith's list
+        self.wait_for(lambda: self.assertEqual(
+            list_page.get_list_owner(),
+            'edith@email.com'
+        ))
+
+
+Finally, Oniciferous can also add things to the list:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+    # On the list page, Oniciferous can see says that it's Edith's list
+    self.wait_for(lambda: self.assertEqual(
+        list_page.get_list_owner(),
+        'edith@email.com'
+    ))
+
+    # He adds an item to the list
+    list_page.add_new_item('Hi Edith!')
+
+    # When Edith refreshes the page, she sees Oniciferous's addition
+    self.browser = edith_browser
+    self.browser.refresh()
+    list_page.wait_for_new_item_in_list('Hi Edith!', 2)
+----
+
+That's a couple more additions to our page object:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+ITEM_INPUT_ID = 'id_text'
+[...]
+
+class ListPage(object):
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
+
+    [...]
+
+    def add_new_item(self, item_text):
+        current_pos = len(self.get_list_table_rows())
+        self.get_item_input().send_keys(item_text + '\n')
+        self.wait_for_new_item_in_list(item_text, current_pos + 1)
+
+
+    def get_list_owner(self):
+        return self.test.browser.find_element_by_id('id_list_owner').text
+----
+
+At this point we might run the FT to check all of this works!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+
+    share_box = list_page.get_share_box()
+    [...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":"input[name=email]"}' ;
+----
+
+And then do a commit
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "Create Page objects for Home and List pages, use in sharing FT"
+----
+
+
+Outside-in TDD
+~~~~~~~~~~~~~~
+
+Let's proceed using a technique called "outside-in" TDD.  It's pretty much what
+we've been doing all along, but now we'll make it explicit, and talk about some
+of the common issues involved.
+
+Our "double-loop" TDD process, in which we write the functional test first and
+then the unit tests, is already a manifestation of outside-in TDD - we design
+the system from the outside, and build up our code in layers. I'll point out
+how we start with the most outward-facing (presentation layer), through to the
+view functions (or "controllers"), and lastly the innermost layers, which in
+this case will be model code.
+
+The outside layer: presentation & templates
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+The test is currently failing saying that it can't find a field to input
+the sharee email.  We can address that at the presentation layer, in
+the 'list.html' template:
+
+[role="sourcecode"]
+.lists/templates/list.html
+[source,html]
+----
+{% block more_content %}
+<div class="row">
+    <h3>Share this list:</h3>
+    <form class="form-inline">
+        <label for="email">Share this list:</label>
+        <input name="email" placeholder="your@friends-email.com" />
+    </form>
+</div>
+{% endblock %}
+----
+
+That gets the FT one step further:
+
+----
+AssertionError: 'oniciferous@email.com' not found in []
+----
+
+Let's add a "Shared with" section:
+
+[role="sourcecode"]
+.lists/templates/list.html
+[source,html]
+----
+{% block more_content %}
+<div class="row">
+
+    <div class="col-md-6 col-md-offset-2">
+        <h3>Shared with</h3>
+        <ul>
+            {% for sharee in list.shared_with.all %}
+                <li class="list-sharee">{{ sharee.email }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="col-md-3">
+        <h3>Share this list:</h3>
+        <form class="form-inline">
+            <input name="email" placeholder="your@friends-email.com" />
+        </form>
+    </div>
+
+</div>
+{% endblock %}
+----
+
+You can see that we're starting to do some outside-in design.  We've specified
+that we want to be able to retrieve a list of people that a list is shared with
+using an attribute on the list class called `shared_with`, and it's going to 
+be a Django Queryset, so we'll use its `.all` method to retrieve all the shared
+users.
+
+Let's let our FT point us to the next thing we need to build:
+
+[subs="specialcharacters,macros"]
+----
+AssertionError: 'oniciferous@email.com' not found in []
+----
+
+So the server isn't currently saving the addition of Oniciferous to the sharee
+list.  To get it to do that, we'd need a view for the form to submit to. Once
+again, we can start work in the template, and see where it guides us:
+
+
+[role="sourcecode"]
+.lists/templates/list.html
+[source,html]
+----
+<form class="form-inline" method="POST" action="{% url 'share_list' list.id %}" >
+----
+
+That will cause a server error until we define the URL:
+
+----
+AssertionError: '1: Get help' not found in []
+----
+
+(If you take a look with the dev server, is actually an error a bit like this:
+
+    django.core.urlresolvers.NoReverseMatch: Reverse for 'share_list' with
+    arguments '(1,)' and keyword arguments '{}' not found. 0 pattern(s) tried: []
+
+
+
+The middle layer: controller views, and urls
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+So we gradually move inwards in our TDD-MVC onion:
+
+[role="sourcecode"]
+.lists/urls.py
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^(\d+)/share$', 'lists.views.share_list', name='share_list'),
+)
+----
+
+And the unit tests will tell us we need to define at least a placeholder view:
+
+----
+django.core.exceptions.ViewDoesNotExist: Could not import
+lists.views.share_list. View does not exist in module lists.views.
+----
+
+Something like this:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def share_list(request, list_id):
+    pass
+----
+
+That'll get our unit tests happy again.
+
+----
 OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
+----
 
-+ python manage.py test accounts
-..................
- ---------------------------------------------------------------------
-Ran 18 tests in 0.078s
+Next we should start writing a new unit test for our list sharing view
 
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
+[role="sourcecode"]
+.lists/tests/test_views.py
+[source,python]
+----
+class ShareListTest(TestCase):
 
-[workspace] $ /bin/sh -xe /tmp/hudson2967478575201471277.sh
-+ phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html
-Took 32ms to run 2 tests. 2 passed, 0 failed.
-+ phantomjs superlists/static/tests/runner.js accounts/static/tests/tests.html
-Took 47ms to run 11 tests. 11 passed, 0 failed.
+    def test_sharing_a_list_via_post(self):
+        sharee = User.objects.create(email='share.with@me.com')
+        list_ = List.objects.create()
+        self.client.post(
+            '/lists/%d/share' % (list_.id),
+            {'email': 'share.with@me.com'}
+        )
+        self.assertIn(list_.shared_with.all(), sharee)
+-----
 
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7526089957247195819.sh
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in /var/lib/jenkins/shiningpanda/jobs/c14c656b/virtualenvs/d41d8cd9/lib/python3.3/site-packages
+Gives
 
-Cleaning up...
-[workspace] $ /bin/sh -xe /tmp/shiningpanda2420240268202055029.sh
-+ python manage.py test functional_tests
-.......
- ---------------------------------------------------------------------
-Ran 7 tests in 76.804s
+-----
+ValueError: The view lists.views.share_list didn't return an HttpResponse object.
+-----
+
+.A more purist approach involving mocks
+*******************************************************************************
+
+Is this "pure" outside-in TDD? No.  A purist approach to outside-in TDD would
+want you to use a mock at this point, and have unit tests that are more 
+isolated from one level to another.  Something like this:
+
+    @patch('lists.views.List')
+    def test_post_leads_to_adding_to_shared_with(self, mockList):
+        self.client.post('/lists/12/share', {'email': 'an email'})
+        mock_list = mockList.objects.get.return_value
+        mock_list.shared_with.add.assert_called_once_with('an email')
+
+I'm don't like that sort of approach though.  Perfectly isolated tests are
+best for an environment with no boundaries, and for a simple app like ours,
+the database and the Django ORM are too prevalent in our code.  If we started
+building an abstraction layer around the database, then it might make sense,
+but with a simple database-driven site like ours, I don't think adding the 
+extra layer of indirection is worth it.
+
+TODO: demo this instead? Spell out the two options side-by-side, showing 
+difference in unit tests, implementation?
+
+We can still get the main benefits of outside-in TDD from this more pragmatic
+approach. Going outside-in still forces us to think about the code from the
+point of view of the code that's going to use it, rather than trying to 
+guess things from the ground up.
+
+*******************************************************************************
+
+
+That test failure suggests another test:
+
+
+[role="sourcecode"]
+.lists/tests/test_views.py
+[source,python]
+----
+    def test_redirects_after_POST(self):
+        sharee = User.objects.create(email='share.with@me.com')
+        list_ = List.objects.create()
+        self.client.post(
+            '/lists/%d/share' % (list_.id),
+            {'email': 'share.with@me.com'}
+        )
+        self.assertRedirects(response, list_.get_absolute_url())
+----
+
+
+So we can start with a couple of boilerplate lines to do the redirect:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def share_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    return redirect(list_)
+----
+
+
+And we get:
+
+----
+AttributeError: 'List' object has no attribute 'shared_with'
+----
+
+//TODO -- this might be a good place to jump off and talk about triangulation, test permissions
+
+
+The inside layer: models
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+And now we step down one more level to the model layer. 
+
+[role="sourcecode"]
+.lists/tests/test_models.py
+[source,python]
+----
+class ListModelTest(TestCase):
+
+    def test_get_absolute_url(self):
+        [...]
+
+
+    def test_can_optionally_set_owner(self):
+        [...]
+
+
+    def test_can_share_with_another_user(self):
+        list_ = List.objects.create()
+        user = User.objects.create(email='a@b.com')
+        list_.shared_with.add('a@b.com')
+        list_in_db = List.objects.get(id=list_.id)
+        self.assertIn(user, list_in_db.shared_with.all())
+----
+
+Gives
+
+----
+AttributeError: 'List' object has no attribute 'shared_with'
+AttributeError: 'List' object has no attribute 'shared_with'
+----
+
+We start fixing in models
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+    shared_with = models.ManyToManyField(settings.AUTH_USER_MODEL)
+----
+
+That won't quite work:
+
+
+----
+CommandError: One or more models did not validate:
+lists.list: Accessor for field 'owner' clashes with related m2m field
+'User.list_set'. Add a related_name argument to the definition for 'owner'.
+lists.list: Accessor for m2m field 'shared_with' clashes with related field
+'User.list_set'. Add a related_name argument to the definition for
+'shared_with'.
+----
+
+This is a particularity of the Django ORM - you can look related objects from
+either side of a relation. If you're looking at a List object, you can inspect
+its `.owner`, but you can also go backwards from a User object and inspect
+its `list_set` (the name is derived from the lowercased name of the model).
+But in our case, List has two different relationsips
+with User -- the "owner" relationship and the "shared with" relationship.  We
+need to give the new reverse relation a name that disambiguates it:
+
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+    shared_with = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, related_name='shared_lists'
+    )
+----
+
+Now `user.list_set.all()` will give all the lists that the user is the 
+owner of, and `user.shared_lists.all()` will give the lists that have
+been shared with her.
+
+Next, some database errors:
+
+----
+django.db.utils.OperationalError: no such table: lists_list_shared_with
+----
+
+Now that we have South, any change to the models requires a new schema
+migration:
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+python3 manage.py schemamigration --auto lists
+----
+
+Now we're down to just the one failure in our view tests:
+
+----
+FAIL: test_sharing_a_list_via_post (lists.tests.test_views.ShareListTest)
+[...]
+AssertionError: <User: User object> not found in []
+
+Ran 36 tests in 0.156s
+
+FAILED (failures=1)
+----
+
+So we can start to work back outwards in from our outside-in TDD process:
+
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+def share_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    list_.shared_with.add(request.POST['email'])
+    return redirect(list_)
+----
+
+Are we there?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+AssertionError: 'oniciferous@email.com' not found in []
+----
+//TODO: use a 'wait for body text' sos we can see the csrf failure??
+
+
+Ah, not quite.  You probably spotted the CSRF error on the way.
+Let's fix that:
+
+
+[role="sourcecode"]
+.lists/templates/list.html
+[source,html]
+----
+        <form class="form-inline" method="POST" action="{% url 'share_list' list.id %}" >
+            {% csrf_token %}
+            <input name="email" placeholder="your@friends-email.com" />
+        </form>
+----
+
+Next is a minor oversight of mine:
+
+----
+    home_page.go_to_my_lists_page()
+AttributeError: 'NoneType' object has no attribute 'go_to_my_lists_page'
+----
+
+It's because I intuitively used the following code:
+
+        home_page = HomePage(self).go_to_home_page()
+
+But it won't work until we make that method return self:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+    def go_to_home_page(self):
+        self.test.browser.get(self.test.server_url)
+        self.test.wait_for(self.get_item_input)
+        return self
+----
+
+(This is called https://en.wikipedia.org/wiki/Method_chaining[method chaining])
+
+
+Now the Ft gets further, up to Oni trying to see the list:
+
+----
+    self.browser.find_element_by_link_text('Get help').click()
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"Get help"}' ; Stacktrace: 
+----
+
+
+We fix that in my_lists.html
+
+[role="sourcecode"]
+.lists/templates/my_lists.html
+[source,html]
+----
+    <h2>Lists shared by other users</h2>
+    <ul>
+    {% for list in owner.shared_lists.all %}
+        <li><a href="{{ list.get_absolute_url }}">{{ list.item_set.all.0.text }}</a></li>
+    {% endfor %}
+    </ul>
+----
+
+And one final thing:
+
+----
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"id","selector":"id_list_owner"}' ; Stacktrace: 
+----
+
+Identify list owners:
+
+[role="sourcecode"]
+.lists/templates/list.html
+[source,html]
+----
+{% block table %}
+    <table id="id_list_table">
+        {% for item in list.item_set.all %}
+            <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+        {% endfor %}
+    </table>
+    <p>List owner: <span id="id_list_owner">{{ list.owner.email }}</span></p>
+{% endblock %}
+----
+
+And we get to a pass!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+
+Ran 1 test in 21.886s
 
 OK
 ----
 
-Nice to know that, no matter how lazy I get about running the full test suite
-on my own machine, the CI server will catch me.  Another one of the testing
-goat's agents in cyberspace, watching over us...
 
 
-.Tips on CI and Selenium best practices
-*******************************************************************************
-Set up CI as soon as possible for your project::
-    As soon as your functional tests take more than a few seconds to run,
-    you'll find yourself avoiding running them all. Give this job to a CI
-    server, to make sure that all your tests are getting run somewhere.
+Possible things to include:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Set up screenshots and HTML dumps for failures::
-    Debugging test failures is easier if you can see what the page looked
-    at when the failure occurs.  This is particularly useful for debugging
-    CI failures, but it's also very useful for tests that you run locally.
-
-Use waits in Selenium tests::
-    Selenium's `implicitly_wait` only applies to uses of its `find_element` 
-    functions, and even that can be unreliable (it can find an element that's
-    still on the old page).  Build a `wait_for` helper function, and alternate
-    between actions on the site, and then some sort of wait to see that they've
-    taken effect.
-*******************************************************************************
-
-
-TODO: Appendix on switching to PhantomJS?  
-
-
-TODO: More discussion of do-something / wait for alternation as best practice?
-
-
-TODO: Something about jUnit XML output using py.test?
+* Admin site?
+* django notifications?
+* email notifications?
+* talk about security/perms testing -- checking negatives.
+* error-handling, what if user doesn't exist
 
 
