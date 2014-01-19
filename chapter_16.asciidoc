@@ -166,7 +166,7 @@ our pre-authenticated session creator really does work:
 [source,python]
 ----
     def test_logged_in_users_lists_are_saved_as_my_lists(self):
-        email='edith@email.com'
+        email = 'edith@email.com'
 
         self.browser.get(self.server_url)
         self.wait_to_be_logged_out(email)
@@ -354,7 +354,8 @@ def _update_settings(source_folder, site_name):
     settings_path = path.join(source_folder, 'superlists/settings.py')
     sed(settings_path, "DEBUG = True", "DEBUG = False")
     sed(settings_path, 'DOMAIN = "localhost"', 'DOMAIN = "%s"' % (site_name,))
-    secret_key_file = path.join(source_folder, 'superlists/secret_key.py')
+    append(settings_path, 'ALLOWED_HOSTS = ["%s"]' % (site_name,))
+    secret_key_file = source_folder + '/superlists/secret_key.py'
     if not exists(secret_key_file):
         [...]
 ----
@@ -371,6 +372,8 @@ $ *fab deploy --host=superlists-staging.ottg.eu*
 [...]
 ----
 
+Managing the test database on staging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Now we can re-run our FTs, and get to the next failure: our attempt to create
 pre-authenticated sessions doesn't work, so the "My lists" test fails:
@@ -393,8 +396,8 @@ It's because our `create_pre_authenticated_session` function only acts on the
 local database. Let's find out how to manage the database on the server.
 
 
-Creating a Django management command to create sessions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A Django management command to create sessions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To do things on the server, we'll need to build a self-contained script that
 can be run from the command-line on the server, most probably via Fabric.
@@ -431,13 +434,13 @@ from django.core.management.base import BaseCommand
 
 class Command(BaseCommand):
 
-    def handle(self, *_, **__):
-        session_key = create_pre_authenticated_session()
+    def handle(self, email, *_, **__):
+        session_key = create_pre_authenticated_session(email)
         self.stdout.write(session_key)
 
 
-def create_pre_authenticated_session():
-    user = User.objects.create(email='edith@email.com')
+def create_pre_authenticated_session(email):
+    user = User.objects.create(email=email)
     session = SessionStore()
     session[SESSION_KEY] = user.pk
     session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
@@ -446,16 +449,17 @@ def create_pre_authenticated_session():
 ----
 
 We've taken the code for `create_pre_authenticated_session` code from
-'test_my_lists.py'.  The function returns the session key that we'll 
-want to add to our browser cookies, and the management command prints
-it out at the command-line. Try it out:
+'test_my_lists.py'.  `handle` will pick up an email address as the first
+command-line argument, and then return the session key that we'll want to add
+to our browser cookies, and the management command prints it out at the
+command-line. Try it out:
 
 ----
-$ python3 manage.py create_session
+$ python3 manage.py create_session a@b.com
 Unknown command: 'create_session'
 ----
 
-Ah, one last step: we need to add `functional_tests` to our 'settings.py'
+Ah, one more step: we need to add `functional_tests` to our 'settings.py'
 for it to recognise it as a real app that might have management commands as
 well as tests:
 
@@ -475,7 +479,7 @@ well as tests:
 Now it works:
 
 ----
-$ python3 manage.py create_session
+$ python3 manage.py create_session a@b.com
 qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
@@ -494,11 +498,11 @@ from ..management.commands.create_session import create_pre_authenticated_sessio
 
 class MyListsTest(FunctionalTest):
 
-    def create_pre_authenticated_session(self):
+    def create_pre_authenticated_session(self, email):
         if self.against_staging:
-            session_key = create_session_on_server(self.server_host)
+            session_key = create_session_on_server(self.server_host, email)
         else:
-            session_key = create_pre_authenticated_session()
+            session_key = create_pre_authenticated_session(email)
         ## to set a cookie we need to first visit the domain.
         ## 404 pages load the quickest!
         self.browser.get(self.server_url + "/404_no_such_url/")
@@ -553,7 +557,14 @@ class FunctionalTest(LiveServerTestCase):
 
 <2> We also need a way of resetting the server database in between each test.
 
-It's time to take a look at 'server_tools':
+
+An additional hop via `subprocess`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In Python 2, you can call fabric functions directly from Python code.  Because
+we're working with Python 3, we have to do an extra hop and call the `fab`
+command, like we do from the command-line when we do server deploys.  Here's
+how that looks, in a module called 'server_tools':
 
 [role="sourcecode"]
 .functional_tests/server_tools.py
@@ -570,13 +581,13 @@ def reset_database(host):
     )
 
 
-def create_session_on_server(host):
+def create_session_on_server(host, email):
     return subprocess.check_output(
         [
             'fab',
-            'create_session_on_server',
+            'create_session_on_server:email={}'.format(email), #<1>
             '--host={}'.format(host),
-            '--hide=everything,status', #<1>
+            '--hide=everything,status', #<2>
         ],
         cwd=THIS_FOLDER
     ).decode().strip() #<1>
@@ -587,7 +598,10 @@ Here we use the `subprocess` module to call some fabric functions using the
 available in Python 2. Otherwise we could have called fabric functions directly
 within the test process.
 
-<1> Because of all the hopping around via fabric and subprocesses, we're forced
+<1> As you can see, the command-line syntax for arguments to fab functions is
+    quite simple, a colon and then a variable=argument syntax.
+
+<2> Because of all the hopping around via fabric and subprocesses, we're forced
     to be quite careful about extracting the session key from the output of the
     command as it gets run on the server.
 
@@ -616,17 +630,15 @@ def _get_manage_dot_py(host):
 
 
 def reset_database():
-    run('rm -f {path}/database/database.sqlite'.format(
-        path=_get_base_folder(env.host)
-    ))
-    run('{manage_py} syncdb --migrate --noinput'.format(
+    run('{manage_py} flush --noinput'.format(
         manage_py=_get_manage_dot_py(env.host)
     ))
 
 
-def create_session_on_server():
-    session_key = run('{manage_py} create_session'.format(
-        manage_py=_get_manage_dot_py(env.host)
+def create_session_on_server(email):
+    session_key = run('{manage_py} create_session {email}'.format(
+        manage_py=_get_manage_dot_py(env.host),
+        email=email,
     ))
     print(session_key)
 ----
@@ -645,11 +657,7 @@ $ pass:quotes[*python3 manage.py test functional_tests.MyListsTest \
 --liveserver=superlists-staging.ottg.eu*]
 Creating test database for alias 'default'...
 [superlists-staging.ottg.eu] Executing task 'reset_database'
-[superlists-staging.ottg.eu] run: rm -f
-~/sites/superlists-staging.ottg.eu/database/database.sqlite
-[superlists-staging.ottg.eu] run:
-~/sites/superlists-staging.ottg.eu/virtualenv/bin/python
-~/sites/superlists-staging.ottg.eu/source/manage.py syncdb --migrate --noinput
+~/sites/superlists-staging.ottg.eu/source/manage.py flush --noinput
 [superlists-staging.ottg.eu] out: Syncing...
 [superlists-staging.ottg.eu] out: Creating tables ...
 [...]
@@ -674,7 +682,41 @@ OK
 Destroying test database for alias 'default'...
 ----
 
-Hooray!
+Hooray!  But before we can deploy our actual live site, we'd better actually
+give the users what they wanted -- the ability to save their lists.
 
-Now we can safely deploy our live site.
 
+.Fixtures, locally and on the server
+*******************************************************************************
+
+De-duplicate your FTs, with caution::
+    Every single FT doesn't need to test every single part of your application.
+    In our case, we wanted to avoid going through the full log-in process for
+    every FT that needs an authenticated user, so we used a test fixture to 
+    "cheat" and skip that part. You might find other things you want to skip 
+    in your FTs.  A word of caution however: functional tests are there to 
+    catch unpredictable interactions between different parts of your
+    application, so be wary of pushing de-duplication to the extreme.
+    
+Test fixtures::
+    Test fixtures refers to test data that needs to be set up as a precondition
+    before a test is run -- often this means populating the database with some
+    information, but as we've seen (with browser cookies), it can involve other
+    types of preconditions.  Dealing with test fixtures is an important part of
+    testing
+
+Avoid JSON fixtures::
+    Django makes it easy to save and restore data from the database in JSON
+    format (and others) using the `dumpdata` and `loaddata` management
+    commands.  Most people recommend against using these for test fixtures,
+    as they are painful to manage when your database schema changes
+
+Fixtures also have to work remotely::
+    `LiveServerTestCase` makes it easy to interact with the test database 
+    using the Django ORM for tests running locally.  Interacting with the 
+    database on the staging server is not so straightforward -- one solution
+    is Django management commands, as I've shown, but you should explore what
+    works for you.
+
+*******************************************************************************
+    
