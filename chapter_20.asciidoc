@@ -1,0 +1,172 @@
+Fast tests, slow tests: is the database Hot Lava?
+-------------------------------------------------
+
+It's time to let you in on a little secret -- I've hinted at it a couple of
+times, but some of the ways I've written tests are frowned on by testing
+purists.  "Unit tests should never touch the database", they say.  
+The Database is Hot Lava!
+//TODO:add link to Casey's talk
+
+I've tended to find that a pragmatic approach works for me, but I'm just one
+guy.  I might have written this book, but I've no right to call myself an 
+expert -- I've worked on a sum total of 4 real Python web development projects
+in my life.
+
+So this is my attempt to outline some of the issues involved in thinking about
+test speed, the database, and the "purist" approach to unit testing.
+
+I'm going to follow a Hegelian dialectical structure: 
+
+* The thesis: the case for "purist" unit tests that are fast
+* The antithesis: my worries about the pitfalls of "pure" unit tests
+* The synthesis: "Functional core, imperative shell", if it works for you.
+
+
+Thesis: Unit tests should be pure and fast
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Other things being equal, the faster your unit tests run, the better.  To a 
+lesser extent, the faster 'all' your tests run, the better.
+
+
+Faster tests mean faster development
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+I've outlined the TDD test/code cycle in this book.  You've started to get a 
+feel for the TDD workflow, the way you flick between writing tiny amounts of
+code, and running your tests.  You end up running your unit tests several times
+a minute, and your functional tests several times a day. So, naturally, the
+longer they take, the more time you spend waiting for your tests, and that 
+will slow down your development.
+
+
+Slow tests don't get run as often, which causes bad code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The follow-up argument is that, if your test suite is slow, then running it
+becomes annoying.  As a developer, the danger is that you'll start to avoid
+running your tests, which may lead to bugs getting through, or it may lead
+to programmers being shy of refactoring the code, since they know that any
+refactor will mean having to wait ages while all the tests run. In either
+case, bad code can be the result.
+
+
+Don't take it from me
+^^^^^^^^^^^^^^^^^^^^^
+
+Gary Bernhardt, a man with far more experience of testing than me, put these
+points eloquently in a talk called
+https://www.youtube.com/watch?v=RAxiiRPHS9k[Fast Tests, Slow test]. I encourage
+you to watch it.  
+
+You should also check out his follow-up talk, 
+https://www.youtube.com/watch?v=eOYal8elnZk[Boundaries], in which he expands on
+the concepts of test isolation, and how it fits with trying to adopt
+a more functional paradigm in the core business logic of your application.
+
+
+The problems with "pure" unit tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+That all sounds convincing, right?  The problem, in my view, comes when, in
+striving for pure, fast unit tests, you end up using a lot of mocks.
+
+Here's an illustration. Imagine our site does a bit of setup for each
+user: it makes a temp folder for them, and then sets a flag on their user
+profile:
+
+Imagine this:
+
+[source,python]
+----
+def setup_temp_storage(user):
+    os.makedirs('/tmp/' + user.username)
+
+def setup_user_environment(user):
+    setup_temp_storage(user)
+    profile = user.get_profile()
+    profile.environment_setup = True
+    profile.save()
+----
+
+Here's the kind of test I'm inclined to write:
+
+[source,python]
+----
+def test_sets_up_temp_storage_and_sets_flag_on_profile(self):
+    user = User.objects.create(username='jim')
+    setup_user_environment(user)
+    self.assertTrue(os.path.exists('/tmp/jim')
+    self.assertTrue(user.get_profile().environment_setup)
+----
+
+Clearly breaking all the rules of "pure" unit tests there -- my test touches
+not just the database, but the filesytem as well. Oh no!
+
+But consider what happens when you try and right a "pure" unit tests, with
+mocks:
+
+
+[source,python]
+----
+def test_calls_setup_temp_storage_and_sets_flag_on_profile(self):
+    mock_user = Mock()
+    with patch('myapp.setup_temp_storage') as mock_setup_temp_storage:
+        setup_user_environment(mock_user)
+    mock_setup_temp_storage.assert_called_once_with(mock_user)
+    mock_profile = mock_user.get_profile.return_value
+    self.assertEqual(mock_profile.environment_setup, True)
+----
+
+Well, I would argue that, firstly, you have a much less readable test there,
+and it's also a test that's very closely coupled to the implementation.  It
+discourages refactoring, because something as simple as changing the name of
+the helper method `setup_temp_storage` involves changing the test code in 4
+places -- three of which (eg `mock_setup_temp_storage`) won't be found by
+automated refactoring tools.
+
+The problem of the "disconnected" mocky test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Imagine I change `setup_temp_storage` to take a username instead of a user.
+I go and find its unit tests and change them, then change its implementation.
+What will happen next is that my "impure" unit test for
+`setup_user_environment` would break, because it uses the real function, and so
+that's my reminder to change the place it gets used. 
+
+In contrast, in the "fast" test, `setup_user_environment` is mocked, so 'that
+test will still pass', even though my code is broken.
+
+
+Synthesis: Functional core, imperative shell, if it works for you
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you've watched Gary's second talk, called "boundaries", you'll start to
+see a potential way out of our thesis/antithesis dilemma.
+
+The problem of choosing between "mocky" tests and "integrationey" tests 
+only really occurs at "boundaries" -- points of interaction between our
+code and external systems, like a database or a filesystem.
+
+Gary's solution is to try and create an architecture where the boundaries
+are kept as separate as possible from the core of our application.  We 
+can judiciously use a combination of mocks and integration tests, maybe
+even functional tests, to test our code at the boundaries, but keep the
+"core" of our application -- the business logic -- free of direct interactions
+with the database or the filesystem.
+
+In that perfect world, we can start to build tests that don't need any
+mocks, especially if we follow functional programming principles -- the
+less state there is in our code, the easier it is to test.
+
+All I can say is -- that sounds great, in theory.  In my own experience
+(and remember, it's a very limited experience), I've fond that the 
+projects I've worked on don't have a "core" that's worth separating from
+any boundaries.  Simple Django apps are basically wrappers around a CRUD system
+for a database.  For those, trying to hide away the Django ORM feels like too 
+much pain.
+
+But I want to stress that this is a balance that you have to find for yourself.
+
+
+
