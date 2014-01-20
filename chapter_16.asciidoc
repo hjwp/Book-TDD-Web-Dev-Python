@@ -1,5 +1,5 @@
-De-duplication in FTs: test fixtures, locally and on the server
----------------------------------------------------------------
+Using test fixtures to avoid duplication in FTs, and debugging on the server
+----------------------------------------------------------------------------
 
 Now that we have a functional authentication system, we want to use it to
 identify users, and be able to show them all the lists they have created.
@@ -86,6 +86,7 @@ changes.  Instead, if you can, load data directly using the Django ORM, or look
 into a tool like https://factoryboy.readthedocs.org/en/latest/[factory_boy]
 *******************************************************************************
 
+
 Checking it works
 ^^^^^^^^^^^^^^^^^
 
@@ -95,8 +96,8 @@ to pull it up into `FunctionalTest`, as well as a couple of other methods. We'll
 also tweak them slightly so that they can take an arbitrary email address as a 
 parameter:
 
-[role="sourcecode"]
-.functional_tests/base.py (ch16l002)
+[role="sourcecode dofirst=ch16l002-1"]
+.functional_tests/base.py (ch16l002-2)
 [source,python]
 ----
 from selenium.webdriver.support.ui import WebDriverWait
@@ -192,10 +193,8 @@ That's a good place for a commit:
 [subs="specialcharacters,quotes"]
 ----
 $ *git add functional_tests*
-$ *git commit -m"placeholder test_my_lists and move login checkers into base"
+$ *git commit -m"placeholder test_my_lists and move login checkers into base"*
 ----
-
-
 
 
 
@@ -220,46 +219,43 @@ And restart gunicorn...
 elspeth@server: *sudo restart gunicorn-superlists-staging.ottg.eu*
 ----
 
+Staging finds an unexpected bug (that's what it's for!)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Here's what happens when we run the functional tests:
 
+[subs="specialcharacters,macros"]
 ----
-======================================================================
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/worskpace/functional_tests/test_my_lists.py", line 39, in
-test_logged_in_users_lists_are_saved_as_my_lists
-    self.wait_to_be_logged_in()
-[...]
-TimeoutException: Message: '' 
+$ pass:quotes[*python3 manage.py test functional_tests --liverserver=superlists-staging.ottg.eu*]
 
 ======================================================================
 ERROR: test_login_with_persona (functional_tests.test_login.LoginTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/worskpace/functional_tests/test_login.py", line 56, in
+  File "/worskpace/functional_tests/test_login.py", line 50, in
 test_login_with_persona
-    self.wait_to_be_logged_in()
 [...]
-TimeoutException: Message: '' 
+    self.wait_for_element_with_id('id_logout')
+[...]
+selenium.common.exceptions.TimeoutException: Message: 'Could not find element
+with id id_logout. Page text was Superlists\nSign in\nStart a new To-Do list' 
+
+======================================================================
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/worskpace/functional_tests/test_my_lists.py", line 34, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    self.wait_to_be_logged_in(email)
+[...]
+selenium.common.exceptions.TimeoutException: Message: 'Could not find element
+with id id_logout. Page text was Superlists\nSign in\nStart a new To-Do list' 
+
 ----
 
-
-Staging finds an unexpected bug (that's what it's for!)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The second failure was unexpected:  it looks like the Personal login system
-isn't working in staging.  It turns out it's because I overlooked an important
-part of the Persona system, which is that authentications are only valid for
-particular domains.  We've left the domain hard-code as "localhost" in
-'accounts/authentication.py':
-
-----
-PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
-DOMAIN = 'localhost'
-User = get_user_model()
-----
+We can't log in -- either with the real Persona or with our pre-authenticated
+session.
 
 I had considered just going back and fixing this in the previous chapter,
 and pretending it never happened, but I think leaving it in teaches a better
@@ -267,9 +263,90 @@ lesson:  first off, I'm not that smart, and second: this is exactly the point
 of running tests against a staging environment.  It would have been pretty 
 embarrassing if we'd deployed this bug straight to our live site.
 
-Here's how we go about fixing it, starting by moving the definition for the
-`DOMAIN` variable into 'settings.py', where we can later use the deploy script
-to override it:
+Aside from that, we'll get to practice a bit of server-side debugging.
+
+
+Setting up logging
+^^^^^^^^^^^^^^^^^^
+
+
+In order to track this bug down, we have to set up gunicorn to do some
+logging.  Adjust the gunicorn config on the server:
+
+
+./etc/init/gunicorn-superlists-staging.ottg.eu.conf
+----
+[...]
+exec ../virtualenv/bin/gunicorn \
+    --bind unix:/tmp/SITENAME.socket \
+    --access-logfile ../access.log \
+    --error-logfile ../error.log \
+    superlists.wsgi:application
+----
+
+That will put an access log and error log into the '~/sites/$SITENAME' folder.
+Then we add some debug calls in our `authenticate` function (again, we can do
+this directly on the server)
+
+[role="sourcecode"]
+.accounts/authentication.py
+[source,python]
+----
+    def authenticate(self, assertion):
+        logging.warning('entering authenticate function')
+        response = requests.post(
+            PERSONA_VERIFY_URL,
+            data={'assertion': assertion, 'audience': settings.DOMAIN}
+        )
+        logging.warning('got response from persona')
+        logging.warning(response.content.decode())
+        [...]
+----
+
+//TODO: figure out if I can get Django logging to work at a lower level than
+// warning
+
+We restart gunicorn again, and then either re-run the FT, or just try
+to log in manually.  While that happens, we can watch the logs on
+the server with a
+
+[subs="specialcharacters,quotes"]
+----
+elspeth@server: $ *tail -f error.log*  # assumes we are in ~/sites/$SITENAME folder
+[...]
+WARNING:root:b'{"status":"failure","reason":"audience mismatch: domain mismatch"}'
+----
+
+It turns out it's because I overlooked an important part of the
+Persona system, which is that authentications are only valid for particular
+domains.  We've left the domain hard-coded as "localhost" in
+'accounts/authentication.py':
+
+[role="skipme"]
+[source,python]
+----
+PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
+DOMAIN = 'localhost'
+User = get_user_model()
+----
+
+We can try and hack in a fix on the server:
+
+[role="skipme"]
+[source,python]
+----
+DOMAIN = 'superlists-staging.ottg.eu'
+----
+
+And check whether it works by doing a manual login. It does.
+
+
+Fixing the Persona bug
+^^^^^^^^^^^^^^^^^^^^^^
+
+Here's how we go about baking in a fix, switching back to coding on our local
+PC. We start by moving the definition for the `DOMAIN` variable into
+'settings.py', where we can later use the deploy script to override it:
 
 [role="sourcecode"]
 .superlists/settings.py
@@ -354,7 +431,6 @@ def _update_settings(source_folder, site_name):
     settings_path = path.join(source_folder, 'superlists/settings.py')
     sed(settings_path, "DEBUG = True", "DEBUG = False")
     sed(settings_path, 'DOMAIN = "localhost"', 'DOMAIN = "%s"' % (site_name,))
-    append(settings_path, 'ALLOWED_HOSTS = ["%s"]' % (site_name,))
     secret_key_file = source_folder + '/superlists/secret_key.py'
     if not exists(secret_key_file):
         [...]
@@ -372,6 +448,7 @@ $ *fab deploy --host=superlists-staging.ottg.eu*
 [...]
 ----
 
+
 Managing the test database on staging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -383,8 +460,9 @@ $ python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.e
 
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
 (functional_tests.test_my_lists.MyListsTest)
-selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
-element: {"method":"link text","selector":"My lists"}' ; Stacktrace: 
+[...]
+selenium.common.exceptions.TimeoutException: Message: 'Could not find element
+with id id_logout. Page text was Superlists\nSign in\nStart a new To-Do list' 
 
 Ran 7 tests in 72.742s
 
@@ -394,6 +472,7 @@ FAILED (errors=1)
 
 It's because our `create_pre_authenticated_session` function only acts on the 
 local database. Let's find out how to manage the database on the server.
+
 
 
 A Django management command to create sessions
@@ -555,7 +634,9 @@ class FunctionalTest(LiveServerTestCase):
     and `against_staging` attributes if we detect the `liveserver` command-line
     argument
 
-<2> We also need a way of resetting the server database in between each test.
+<2> We also need a way of resetting the server database in between each test. 
+    I'll explain the logic of the session-creation code, which should also 
+    explain how this works.
 
 
 An additional hop via `subprocess`
@@ -574,13 +655,6 @@ from os import path
 import subprocess
 THIS_FOLDER = path.abspath(path.dirname(__file__))
 
-def reset_database(host):
-    subprocess.check_call(
-        ['fab', 'reset_database', '--host={}'.format(host)],
-        cwd=THIS_FOLDER
-    )
-
-
 def create_session_on_server(host, email):
     return subprocess.check_output(
         [
@@ -591,12 +665,17 @@ def create_session_on_server(host, email):
         ],
         cwd=THIS_FOLDER
     ).decode().strip() #<1>
+
+
+def reset_database(host):
+    subprocess.check_call(
+        ['fab', 'reset_database', '--host={}'.format(host)],
+        cwd=THIS_FOLDER
+    )
 ----
 
 Here we use the `subprocess` module to call some fabric functions using the
-`fab` command. We have to use `subprocess` because fabric is currently only
-available in Python 2. Otherwise we could have called fabric functions directly
-within the test process.
+`fab` command. 
 
 <1> As you can see, the command-line syntax for arguments to fab functions is
     quite simple, a colon and then a variable=argument syntax.
@@ -605,9 +684,9 @@ within the test process.
     to be quite careful about extracting the session key from the output of the
     command as it gets run on the server.
 
-NOTE: By the time you read this book, Fabric for Python 3 may well be
-available.  You should check, and if it is, use the fabric API instead of
-the hop via `subprocess.check_output`.  Lucky you!
+NOTE: By the time you read this book, Fabric may well have been fully ported to
+Python 3. If so, investigate using the fabric context managers to call fabric
+functions directly inline with your code.
 
 Finally, let's look at the fabfile that defines those two commands we want to
 run server-side, to reset the database or setup the session:
@@ -646,10 +725,40 @@ def create_session_on_server(email):
 Does that make a reasonable amount of sense?  We've got a function that
 can create a session in the database.  If we detect we're running locally,
 we call it directly.  If we're against the server, there's a couple of hops:
-we use `subprocess` to use fabric via `fab`, which lets us run a management
-command that calls that function on the server.
+we use `subprocess` to get to fabric via `fab`, which lets us run a management
+command that calls that same function, on the server.
 
-Let's see if it works...
+
+How about an ASCII-art illustration?
+
+----
+Locally:
+========
+
+MyListsTest.create_pre_authenticated_session --> .management.commands.create_session
+                                                 .create_pre_authenticated_session
+
+
+Against staging:
+================
+
+MyListsTest.create_pre_authenticated_session     .management.commands.create_session
+                                                 .create_pre_authenticated_session
+     |
+     |                                                        /|\
+    \|/                                                        |
+
+server_tools.create_session_on_server              run manage.py create_session
+
+     |                                                        /|\
+    \|/                                                        |
+
+subprocess.check_output      -->     fab     -->    fabfile.create_session_on_server                    
+
+----
+
+I'm quite proud of that one.  Anyway, let's see if it works...
+
 
 [subs="specialcharacters,macros"]
 ----
@@ -684,6 +793,24 @@ Destroying test database for alias 'default'...
 
 Hooray!  But before we can deploy our actual live site, we'd better actually
 give the users what they wanted -- the ability to save their lists.
+
+NOTE: I've shown one way of managing the test database, but you could experiment
+with others -- for example, if you were using MySQL or Postgres, you could open
+up an SSH tunnel to the server, and use port forwarding to talk to the database
+directly.  You could then amend `settings.DATABASES` during FTs to talk to the
+tunnelled port.
+
+WARNING: We're into dangerous territory, now that we have code that can directly
+affect the database on the server.  You want to be very, very careful that you 
+don't accidentally blow away your production database by running FTs against the
+wrong host.  You might consider putting some safeguards in place at this point. 
+For example, you could put staging and production on different servers, and make it
+so they used different keypairs for authentication, with different passphrases.
+
+
+TODO: save logging code
+
+TODO: bake in logging.warning if persona fails, using unit test.
 
 
 .Fixtures, locally and on the server
