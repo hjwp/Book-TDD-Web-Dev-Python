@@ -1,19 +1,18 @@
-Finishing "my lists": an exercise for the reader
-------------------------------------------------
+Finishing "my lists", Outside-In TDD
+------------------------------------
 
-In this chapter, rather than showing you explicitly what to do, I'm 
-going to let you write your tests and code by yourself.  Don't worry,
-you won't be totally on your own!  I'll start by fleshing out an FT for you
-to work against, and then give an outline of the steps to take, as well
-as some hints and tips.
+In this chapter I'd like to talk about a technique called "outside-in" TDD.
+It's pretty much what we've been doing all along, but now I'll make it
+explicit, and talk about some of the common issues involved.
 
 
-TODO: consider changing this into the "outside-in TDD" chapter, and then
-making the sharing chapter into the exercise for the reader...
 
 
 The FT for "My Lists"
 ~~~~~~~~~~~~~~~~~~~~~
+
+We know our `create_pre_authenticated_session` code works now, so we can just
+write our FT to look for a "My Lists" page:
 
 
 [role="sourcecode"]
@@ -64,117 +63,517 @@ element: {"method":"link text","selector":"My lists"}' ; Stacktrace:
 ----
 
 
-Overview
-~~~~~~~~
-
-To implement this, we'll need:
-
-* A new template 'my_lists.html', and some tweaks to 'base.html'
-* An optional foreign key on the List model -- so that we can save the list's
-  owner as an attribute on lists created by logged-in users.
-* To change the `new_list` view, with optional addition of `list_.owner` from
-  `request.user`. 
-* And/or change `ItemForm.save` to take the `request.user` as an argument
-* A new view + URL entry in 'accounts', `my_lists`.
-
-There aren't really any new Django concepts here, or any new testing concepts,
-so my hope is that you have all the tools to do it on your own.
-
-
-Outline of steps to take
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Here's the broad outline of how thing should play out:
-
-* The FT is failing because there is no "my lists" link on the home page
-  for a logged-in user
-
-* We'll want to adjust 'home.html' to include a link, but we don't
-  have a URL or view to point it to yet.
-
-* So, we write a first unit test for the new URL and view, checking
-  that it uses a new template: 'my_lists.html'.
-
-* We can also start fleshing out this template: it will need access to
-  the user whose lists we want to list (maybe as a variable called `owner`).
-  This will mean a second unit test, and it may also mean some tweaks to
-  'base.html' so that the inheritance hierarchy works. I used a new 
-  `{% block %}`, but you might find other ways...
-
-* By now we can probably get a working page and URL, but it won't yet
-  be able to display lists owned by a user.  For that we'll need to
-  make a change at the model layer - we need to be able to assign an
-  optional owner to a list.  This means a new unit test in
-  `lists/test_models.py`.
-
-* We can then add an extra test to the my lists view tests, to check
-  that, if we set up a user who owns several lists, they are 
-  displayed in the template.  We can also check that unrelated lists
-  are not displayed. You could either pass the lists in as a template
-  variable, or use the Django ORM with `{{ owner.list_set.all }}`.
-
-* Finally, we need to make sure that new lists created by a logged-in
-  user are saved with their `.owner` attribute set to the user.  That's
-  a change to the `new_list` view.
-
-* You could leave this code in the view function, but it might be neater
-  to have it inside the form's save method.  That would mean a tweak to the 
-  forms tests as well.
-
-
-Some tests you might want to write
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Here are the new unit tests I had to write -- depending on the specific
-choices you make, yours might be slightly different, but most of them
-should be the same or similar:
-
-[role="sourcecode"]
-.unit test class and method names
-[source,python]
-----
-class MyListsViewTest(TestCase):
-    def test_uses_my_lists_template(self):
-    def test_passes_user_in_context(self):
-    def test_template_displays_lists_using_first_item_text(self):
-
-class ItemFormTest(TestCase):
-    def test_form_save_sets_owner_if_real_user(self):
-    def test_form_save_ignores_anon_user(self):
-
-class ListModelTest(TestCase):
-    def test_get_absolute_url(self):
-    def test_can_optionally_set_owner(self):
-
-class NewListTest(TestCase):
-    def test_POST_from_real_user_sets_owner_on_list(self):
-----
-
-Hints and tips
+Outside-in TDD
 ~~~~~~~~~~~~~~
 
-Here's a couple more tips:
-
-* You can't really use `self.client.login` in the view tests.  I called the 
-  raw view function instead (like we did a couple of times in the last chapter)
-
-* You'll probably find the `AnonymousUser` class useful for testing what should
-  happen with non-logged-in users. It's in `django.contrib.auth.models`.
-
-The FT should be your guide as to whether everything works OK.  Feel free to
-compare your solution, against my implementation
-https://github.com/hjwp/book-example/tree/chapter_15[on GitHub], and let me
-know how you get on!
-
-NOTE: I really need feedback about this section.  Did you find it too hard?
-Are there any specific extra hints could I have given you that would have kept
-you on the right track?  Did you find yourself doing things differently?  Let
-me know!
-//TODO: remove me
+Our "double-loop" TDD process, in which we write the functional test first and
+then the unit tests, is already a manifestation of outside-in TDD - we design
+the system from the outside, and build up our code in layers. I'll point out
+how we start with the most outward-facing (presentation layer), through to the
+view functions (or "controllers"), and lastly the innermost layers, which in
+this case will be model code.
 
 
+The outside layer: presentation & templates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The test is currently failing saying that it can't find a link saying "My
+Lists". We can address that at the presentation layer, in 'home.html', in
+our navigation bar. Here's the minimal code change:
+
+[role="sourcecode"]
+.lists/templates/home.html (ch17002-1)
+[source,html]
+----
+{% if user.email %}
+    <ul class="nav navbar-nav">
+        <li><a href="#">My lists</a></li>
+    </ul>
+    <a class="btn navbar-btn navbar-right" id="id_logout" href="{% url 'logout' %}">Log out</a>
+[...]
+----
+
+Of course, that link doesn't actually go anywhere, but it does get us along to
+the next failure:
+
+----
+    self.browser.find_element_by_link_text('Reticulate splines').click()
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"Reticulate splines"}' ; Stacktrace: 
+----
+
+Which is telling us we're going to have to build a page that lists all of a
+user's lists by title.  Let's start with the basics -- a URL and a placeholder
+template for it.
+
+Again, we can go outside-in, starting at the presentation layer with just the 
+URL and nothing else:
+
+
+[role="sourcecode"]
+.lists/templates/home.html (ch17002-2)
+[source,html]
+----
+        <li><a href="{% url 'my_lists' user.email %}">My lists</a></li>
+----
+
+
+Moving down one layer to view functions (the controller)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+That will cause a template error, so we can move in one step, from the
+presentation layer down to the controller layer, Django's view functions.
+
+As always, we start with a test:
+
+[role="sourcecode"]
+.lists/test_views.py (ch17l003)
+[source,python]
+----
+class MyListsTest(TestCase):
+
+    def test_my_lists_url_renders_my_lists_template(self):
+        response = self.client.get('/lists/users/a@b.com/')
+        self.assertTemplateUsed(response, 'my_lists.html')
+----
+
+That gives:
+
+----
+AssertionError: False is not true : Template 'my_lists.html' was not a template
+used to render the response. Actual template(s) used: <Unknown Template>
+----
+
+And we fix it, still at the views level, in 'urls.py', 'views.py', and by
+creating 'my_lists.html':
+
+
+[role="sourcecode"]
+.lists/urls.py
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^new$', 'lists.views.new_list', name='new_list'),
+    url(r'^users/(.+)/$', 'lists.views.my_lists', name='my_lists'),
+)
+----
+//004
+
+
+Here's a minimal view:
+
+[role="sourcecode"]
+.lists/views.py (ch17l005)
+[source,python]
+----
+def my_lists(request, email):
+    return render(request, 'my_lists.html')
+----
+
+And, a minimal template:
+
+[role="sourcecode"]
+.lists/templates/my_lists.html
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block header_text %}My Lists{% endblock %}
+----
+
+That gets our unit tests passing, but our FT is still at the same point,
+saying that the "My Lists" page doesn't yet show any lists.  It wants
+them to be clickable links named after the first item:
+
+----
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate element: {"method":"link text","selector":"Reticulate splines"}' ; Stacktrace: 
+----
+
+Another pass, outside-in
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+At each stage, we still let the FT drive what development we do.
+
+Starting again at the outside layer, in the template, we can start to
+write the template code we'd like to use to get the my lists page to
+work the  way we want it to. It forces us to think about the API we
+want our code to have, from the point of view of the things that use it, 
+rather than trying to work bottom-up.
+
+A quick re-structure of the template inheritance hierarchy
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Currently there's no place in our base template for us to put any new
+content.  Also, the my lists page doesn't need the new item form, so
+we'll put that into a block too, making it optional:
+
+[role="sourcecode"]
+.lists/templates/base.html (ch17l007)
+[source,html]
+----
+    <div class="text-center">
+        <h1>{% block header_text %}{% endblock %}</h1>
+
+        {% block list_form %}
+        <form method="POST" action="{% block form_action %}{% endblock %}">
+            {{ form.text }}
+            {% csrf_token %}
+            {% if form.errors %}
+                <div class="form-group has-error">
+                    <div class="help-block">{{ form.text.errors }}</div>
+                </div>
+            {% endif %}
+        </form>
+        {% endblock %}
+
+        {% block extra_content %}
+        {% endblock %}
+
+    </div>
+----
+
+We haven't seen this feature of the Django template language yet: 'list.html'
+and 'home.html' now need to explicitly pull down the `list_form` block content
+using `{{ block.super }}` 
+
+[role="sourcecode"]
+.lists/templates/home.html
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block list_form %}{{ block.super }}{% endblock %}
+
+{% block header_text %}Start a new To-Do list{% endblock %}
+
+{% block form_action %}{% url 'new_list' %}{% endblock %}
+----
+
+
+[role="sourcecode"]
+.lists/templates/home.html
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block list_form %}{{ block.super }}{% endblock %}
+
+{% block header_text %}Your To-Do list{% endblock %}
+
+{% block form_action %}{% url 'view_list' list.id %}{% endblock %}
+
+{% block table %}
+    <table id="id_list_table">
+    [...]
+----
+
+Designing our API using the template
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
+
+[role="sourcecode"]
+.lists/templates/my_lists.html
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block header_text %}My Lists{% endblock %}
+
+{% block extra_content %}
+    <h2>{{ owner.email }}'s lists</h2>
+    <ul>
+        {% for list in owner.list_set.all %}
+            <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
+        {% endfor %}
+    </ul>
+{% endblock %}
+----
+
+We've made several design decisions in this template which are going
+to filter their way down through the code:
+
+* We want a variable called `owner` to represent the user in our template.
+
+* We want to be able to iterate through the lists created by the user using
+  `owner.list_set.all` (I happen to know we get this for free from the Django
+  ORM)
+
+* We want to use `list.name` to print out the "name" of the list, which is
+  currently specified as the text of its first element.
+
+We can re-run our FTs, to check we didn't break anything, and to see whether
+we've got any further:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests*]
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"Reticulate splines"}' ; Stacktrace: 
+
+ ---------------------------------------------------------------------
+Ran 7 tests in 77.613s
+
+FAILED (errors=1)
+----
+
+
+Moving down to the next layer: what the view passes to the template
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch17l011)
+[source,python]
+----
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
+    def test_passes_owner_to_template(self):
+        user = User.objects.create(email='a@b.com')
+        response = self.client.get('/lists/users/a@b.com/')
+        self.assertEqual(response.context['owner'], user)
+----
+
+Gives
+
+----
+KeyError: 'owner'
+----
+
+so
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
+def my_lists(request, email):
+    owner = User.objects.get(email=email)
+    return render(request, 'my_lists.html', {'owner': owner})
+----
+
+We'll then get an error which will require adding a user
+to our other unit test
+
+
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch17l013)
+[source,python]
+----
+    def test_my_lists_url_renders_my_lists_template(self):
+        User.objects.create(email='a@b.com')
+        [...]
+----
+
+And we get to an OK
+
+----
+OK
+----
+
+Moving down again: to the model layer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next we move down to the model layer, to get the owner.list_set.all API
+working:
+ 
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch17l014)
+[source,python]
+----
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
+    def test_list_can_have_owners(self):
+        user = User.objects.create(email='a@b.com')
+        list_ = List.objects.create(owner=user)
+        self.assertIn(list_, user.list_set.all())
+----
+
+The naive implementation would be this:
+
+[role="skip"]
+[source,python]
+----
+class List(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL)
+----
+
+But we want to make sure the list owner is optional.  Explicit
+is better than implicit, and tests are documentation, so let's have a test for
+that too:
+
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch17l016)
+[source,python]
+----
+    def test_list_owner_is_optional(self):
+        List.objects.create()  # should not raise
+----
+
+The correct implementation is this:
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+from django.conf import settings
+[...]
+
+class List(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
+
+    def get_absolute_url(self):
+        return resolve_url('view_list', self.id)
+----
+
+Now running the tests gives a database error
+
+    return Database.Cursor.execute(self, query, params)
+django.db.utils.OperationalError: table lists_list has no column named owner_id
+
+
+Because we need to do a schema migration
+
+    $ python3 manage.py schemamigration lists --auto
+
+And commit that too
+
+//018
+
+
+
+List owner should be assigned on list creation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+[role="sourcecode"]
+.lists/tests.py (ch17l019)
+[source,python]
+----
+from django.http import HttpRequest
+[...]
+from lists.views import new_list
+[...]
+
+class NewListTest(TestCase):
+    [...]
+
+    def test_list_owner_is_saved(self):
+        request = HttpRequest()
+        request.user = User.objects.create(email='a@b.com')
+        request.POST['text'] = 'new list item'
+        new_list(request)
+        list_ = List.objects.all()[0]
+        self.assertEqual(list_.owner, request.user)
+----
+
+We use the raw view function because our custom authentication 
+makes it hard to use the Django Test Client.
+
+
+    self.assertEqual(list_.owner, request.user)
+AssertionError: None != <User: User object>
+
+Here's a naive implementation:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def new_list(request):
+    form = ItemForm(data=request.POST)
+    if form.is_valid():
+        list_ = List.objects.create()
+        list_.owner = request.user
+        list_.save()
+        form.save(for_list=list_)
+        [...]
+----
+
+But that gives errors in other tests:
+
+----
+ValueError: Cannot assign "<SimpleLazyObject:
+<django.contrib.auth.models.AnonymousUser object at 0x7f3fcc855690>>":
+"List.owner" must be a "User" instance
+----
+
+So we check that our user is a "real" user first:
+
+[role="sourcecode"]
+.lists/views.py (ch17l021)
+[source,python]
+----
+from django.contrib.auth.models import AnonymousUser
+[...]
+
+    if form.is_valid():
+        list_ = List.objects.create()
+        if not isinstance(request.user, AnonymousUser):
+            list_.owner = request.user
+            list_.save()
+        form.save(for_list=list_)
+        return redirect(list_)
+    else:
+----
+
+
+Final step: feeding through the .name API from the template
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch17l022)
+[source,python]
+----
+    def test_list_name_is_first_item_text(self):
+        list_ = List.objects.create()
+        Item.objects.create(list=list_, text='first item')
+        Item.objects.create(list=list_, text='second item')
+        self.assertEqual(list_.name, 'first item')
+----
+
+
+[role="sourcecode"]
+.lists/models.py (ch17l023)
+[source,python]
+----
+    @property
+    def name(self):
+        return self.item_set.all()[0].text
+----
+
+
+And that, believe it or not, actually gets us a passing test, 
+and a working "My Lists" page!
+
+.My Lists
+image::images/my_lists_screenshot.png[Screenshot of new My Lists page]
+
+
+----
+$ python3 manage.py test functional_tests
+Creating test database for alias 'default'...
+.......
+ ---------------------------------------------------------------------
+Ran 7 tests in 93.819s
+
+OK
+----
 
 I'll tell you what though, those FTs are taking an annoyingly long time to 
 run though.  I wonder if there's something we can do about that?
 
+
+TODO: outside-in TDD wrap-up
 
