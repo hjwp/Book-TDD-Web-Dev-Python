@@ -11,12 +11,15 @@ Along the way we'll improve our FTs by starting to implement the interact/wait
 Selenium pattern that we learned in the last chapter.  We'll also experiment
 with something called the Page Object pattern.
 
-Once we get to the unit testing phase, we'll talk a bit about the concept
-of "Outside-In" TDD.
+Then, rather than showing you explicitly what to do, I'm going to let you write
+your unit tests and application code by yourself.  Don't worry, you won't be
+totally on your own!  I'll give an outline of the steps to take, as well as
+some hints and tips.
 
-WARNING: As always, this last chapter is an early draft, and may not be very
-polished yet.  Your feedback is humbly solicited.
-
+NOTE: I would appreciate feedback about this chapter.  Did you find it too hard?
+Are there any specific extra hints could I have given you that would have kept
+you on the right track?  Did you find yourself doing things differently?  Let
+me know!
 
 An FT with multiple users, and addCleanup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -202,6 +205,7 @@ class HomePage(object):
     def go_to_home_page(self): #<2>
         self.test.browser.get(self.test.server_url)
         self.test.wait_for(self.get_item_input)
+        return self
 
 
     def get_item_input(self):
@@ -240,6 +244,9 @@ class HomePage(object):
 
 <6> Finally, we return the `list_page` object to the caller, because they
     will probably find it useful (as we'll see shortly).
+
+
+(This is called https://en.wikipedia.org/wiki/Method_chaining[method chaining])
 
 
 Here's how `ListPage` looks:
@@ -463,178 +470,22 @@ $ *git commit -m "Create Page objects for Home and List pages, use in sharing FT
 ----
 
 
-Outside-in TDD
-~~~~~~~~~~~~~~
+Overview
+~~~~~~~~
 
-Let's proceed using a technique called "outside-in" TDD.  It's pretty much what
-we've been doing all along, but now we'll make it explicit, and talk about some
-of the common issues involved.
+To implement this, we'll need:
 
-Our "double-loop" TDD process, in which we write the functional test first and
-then the unit tests, is already a manifestation of outside-in TDD - we design
-the system from the outside, and build up our code in layers. I'll point out
-how we start with the most outward-facing (presentation layer), through to the
-view functions (or "controllers"), and lastly the innermost layers, which in
-this case will be model code.
+* A new section in 'list.html', with, to start with, an email input box
+  and form.
 
-The outside layer: presentation & templates
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+* Next, we'll need a view for the form to submit to. Start by defining the
+  URL in the template, maybe something like 'lists/<list_id>/share', with
+  just a placeholder view function
 
+* we can then write a unit test for the view which creates a user, 
+  does a POST with their email address, and checks the user is added to
+  a `list_.shared_with.all()` (a similar ORM usage to "my lists")
 
-The test is currently failing saying that it can't find a field to input
-the sharee email.  We can address that at the presentation layer, in
-the 'list.html' template:
-
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
-----
-{% block more_content %}
-<div class="row">
-    <h3>Share this list:</h3>
-    <form class="form-inline">
-        <label for="email">Share this list:</label>
-        <input name="email" placeholder="your@friends-email.com" />
-    </form>
-</div>
-{% endblock %}
-----
-
-That gets the FT one step further:
-
-----
-AssertionError: 'oniciferous@email.com' not found in []
-----
-
-Let's add a "Shared with" section:
-
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
-----
-{% block more_content %}
-<div class="row">
-
-    <div class="col-md-6 col-md-offset-2">
-        <h3>Shared with</h3>
-        <ul>
-            {% for sharee in list.shared_with.all %}
-                <li class="list-sharee">{{ sharee.email }}</li>
-            {% endfor %}
-        </ul>
-    </div>
-
-    <div class="col-md-3">
-        <h3>Share this list:</h3>
-        <form class="form-inline">
-            <input name="email" placeholder="your@friends-email.com" />
-        </form>
-    </div>
-
-</div>
-{% endblock %}
-----
-
-You can see that we're starting to do some outside-in design.  We've specified
-that we want to be able to retrieve a list of people that a list is shared with
-using an attribute on the list class called `shared_with`, and it's going to 
-be a Django Queryset, so we'll use its `.all` method to retrieve all the shared
-users.
-
-Let's let our FT point us to the next thing we need to build:
-
-[subs="specialcharacters,macros"]
-----
-AssertionError: 'oniciferous@email.com' not found in []
-----
-
-So the server isn't currently saving the addition of Oniciferous to the sharee
-list.  To get it to do that, we'd need a view for the form to submit to. Once
-again, we can start work in the template, and see where it guides us:
-
-
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
-----
-<form class="form-inline" method="POST" action="{% url 'share_list' list.id %}" >
-----
-
-That will cause a server error until we define the URL:
-
-----
-AssertionError: '1: Get help' not found in []
-----
-
-(If you take a look with the dev server, is actually an error a bit like this:
-
-    django.core.urlresolvers.NoReverseMatch: Reverse for 'share_list' with
-    arguments '(1,)' and keyword arguments '{}' not found. 0 pattern(s) tried: []
-
-
-
-The middle layer: controller views, and urls
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-So we gradually move inwards in our TDD-MVC onion:
-
-[role="sourcecode"]
-.lists/urls.py
-[source,python]
-----
-urlpatterns = patterns('',
-    url(r'^new$', 'lists.views.new_list', name='new_list'),
-    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
-    url(r'^(\d+)/share$', 'lists.views.share_list', name='share_list'),
-)
-----
-
-And the unit tests will tell us we need to define at least a placeholder view:
-
-----
-django.core.exceptions.ViewDoesNotExist: Could not import
-lists.views.share_list. View does not exist in module lists.views.
-----
-
-Something like this:
-
-[role="sourcecode"]
-.lists/views.py
-[source,python]
-----
-def share_list(request, list_id):
-    pass
-----
-
-That'll get our unit tests happy again.
-
-----
-OK
-----
-
-Next we should start writing a new unit test for our list sharing view
-
-[role="sourcecode"]
-.lists/tests/test_views.py
-[source,python]
-----
-class ShareListTest(TestCase):
-
-    def test_sharing_a_list_via_post(self):
-        sharee = User.objects.create(email='share.with@me.com')
-        list_ = List.objects.create()
-        self.client.post(
-            '/lists/%d/share' % (list_.id),
-            {'email': 'share.with@me.com'}
-        )
-        self.assertIn(list_.shared_with.all(), sharee)
------
-
-Gives
-
------
-ValueError: The view lists.views.share_list didn't return an HttpResponse object.
------
 
 .A more purist approach involving mocks
 *******************************************************************************
@@ -655,75 +506,12 @@ the database and the Django ORM are too prevalent in our code.  If we started
 building an abstraction layer around the database, then it might make sense,
 but with a simple database-driven site like ours, I don't think adding the 
 extra layer of indirection is worth it.
-
-TODO: demo this instead? Spell out the two options side-by-side, showing 
-difference in unit tests, implementation?
-
-We can still get the main benefits of outside-in TDD from this more pragmatic
-approach. Going outside-in still forces us to think about the code from the
-point of view of the code that's going to use it, rather than trying to 
-guess things from the ground up.
-
 *******************************************************************************
 
+* a check that the view redirects after the POST is also a good idea.
 
-That test failure suggests another test:
-
-
-[role="sourcecode"]
-.lists/tests/test_views.py
-[source,python]
-----
-    def test_redirects_after_POST(self):
-        sharee = User.objects.create(email='share.with@me.com')
-        list_ = List.objects.create()
-        self.client.post(
-            '/lists/%d/share' % (list_.id),
-            {'email': 'share.with@me.com'}
-        )
-        self.assertRedirects(response, list_.get_absolute_url())
-----
-
-
-So we can start with a couple of boilerplate lines to do the redirect:
-
-[role="sourcecode"]
-.lists/views.py
-[source,python]
-----
-def share_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    return redirect(list_)
-----
-
-
-And we get:
-
-----
-AttributeError: 'List' object has no attribute 'shared_with'
-----
-
-//TODO -- this might be a good place to jump off and talk about triangulation, test permissions
-
-
-The inside layer: models
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-And now we step down one more level to the model layer. 
-
-[role="sourcecode"]
-.lists/tests/test_models.py
-[source,python]
-----
-class ListModelTest(TestCase):
-
-    def test_get_absolute_url(self):
-        [...]
-
-
-    def test_can_optionally_set_owner(self):
-        [...]
-
+* Before we can get this test to pass, we have to move down one layer,
+  to the models layer.  Something like this:
 
     def test_can_share_with_another_user(self):
         list_ = List.objects.create()
@@ -731,216 +519,18 @@ class ListModelTest(TestCase):
         list_.shared_with.add('a@b.com')
         list_in_db = List.objects.get(id=list_.id)
         self.assertIn(user, list_in_db.shared_with.all())
-----
 
-Gives
+* You'll then need a ManyToManyField.  You'll see an error message about
+clashing related_names, which you'll find a solution to if you look around
+the Django docs.
 
-----
-AttributeError: 'List' object has no attribute 'shared_with'
-AttributeError: 'List' object has no attribute 'shared_with'
-----
+* Another database migration
 
-We start fixing in models
+* That should get the model tests passing. Pop back up to fix the view test.
 
-[role="sourcecode"]
-.lists/models.py
-[source,python]
-----
-    shared_with = models.ManyToManyField(settings.AUTH_USER_MODEL)
-----
+* Add a csrf token to the form if you haven't already
 
-That won't quite work:
-
-
-----
-CommandError: One or more models did not validate:
-lists.list: Accessor for field 'owner' clashes with related m2m field
-'User.list_set'. Add a related_name argument to the definition for 'owner'.
-lists.list: Accessor for m2m field 'shared_with' clashes with related field
-'User.list_set'. Add a related_name argument to the definition for
-'shared_with'.
-----
-
-This is a particularity of the Django ORM - you can look related objects from
-either side of a relation. If you're looking at a List object, you can inspect
-its `.owner`, but you can also go backwards from a User object and inspect
-its `list_set` (the name is derived from the lowercased name of the model).
-But in our case, List has two different relationsips
-with User -- the "owner" relationship and the "shared with" relationship.  We
-need to give the new reverse relation a name that disambiguates it:
-
-
-[role="sourcecode"]
-.lists/models.py
-[source,python]
-----
-    shared_with = models.ManyToManyField(
-        settings.AUTH_USER_MODEL, related_name='shared_lists'
-    )
-----
-
-Now `user.list_set.all()` will give all the lists that the user is the 
-owner of, and `user.shared_lists.all()` will give the lists that have
-been shared with her.
-
-Next, some database errors:
-
-----
-django.db.utils.OperationalError: no such table: lists_list_shared_with
-----
-
-Now that we have South, any change to the models requires a new schema
-migration:
-
-[role="sourcecode"]
-.lists/tests.py
-[source,python]
-----
-python3 manage.py schemamigration --auto lists
-----
-
-Now we're down to just the one failure in our view tests:
-
-----
-FAIL: test_sharing_a_list_via_post (lists.tests.test_views.ShareListTest)
-[...]
-AssertionError: <User: User object> not found in []
-
-Ran 36 tests in 0.156s
-
-FAILED (failures=1)
-----
-
-So we can start to work back outwards in from our outside-in TDD process:
-
-
-[role="sourcecode"]
-.lists/models.py
-[source,python]
-----
-def share_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    list_.shared_with.add(request.POST['email'])
-    return redirect(list_)
-----
-
-Are we there?
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
-AssertionError: 'oniciferous@email.com' not found in []
-----
-//TODO: use a 'wait for body text' sos we can see the csrf failure??
-
-
-Ah, not quite.  You probably spotted the CSRF error on the way.
-Let's fix that:
-
-
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
-----
-        <form class="form-inline" method="POST" action="{% url 'share_list' list.id %}" >
-            {% csrf_token %}
-            <input name="email" placeholder="your@friends-email.com" />
-        </form>
-----
-
-Next is a minor oversight of mine:
-
-----
-    home_page.go_to_my_lists_page()
-AttributeError: 'NoneType' object has no attribute 'go_to_my_lists_page'
-----
-
-It's because I intuitively used the following code:
-
-        home_page = HomePage(self).go_to_home_page()
-
-But it won't work until we make that method return self:
-
-[role="sourcecode"]
-.functional_tests/home_and_list_pages.py
-[source,python]
-----
-    def go_to_home_page(self):
-        self.test.browser.get(self.test.server_url)
-        self.test.wait_for(self.get_item_input)
-        return self
-----
-
-(This is called https://en.wikipedia.org/wiki/Method_chaining[method chaining])
-
-
-Now the Ft gets further, up to Oni trying to see the list:
-
-----
-    self.browser.find_element_by_link_text('Get help').click()
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
-element: {"method":"link text","selector":"Get help"}' ; Stacktrace: 
-----
-
-
-We fix that in my_lists.html
-
-[role="sourcecode"]
-.lists/templates/my_lists.html
-[source,html]
-----
-    <h2>Lists shared by other users</h2>
-    <ul>
-    {% for list in owner.shared_lists.all %}
-        <li><a href="{{ list.get_absolute_url }}">{{ list.item_set.all.0.text }}</a></li>
-    {% endfor %}
-    </ul>
-----
-
-And one final thing:
-
-----
-selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
-element: {"method":"id","selector":"id_list_owner"}' ; Stacktrace: 
-----
-
-Identify list owners:
-
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
-----
-{% block table %}
-    <table id="id_list_table">
-        {% for item in list.item_set.all %}
-            <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
-        {% endfor %}
-    </table>
-    <p>List owner: <span id="id_list_owner">{{ list.owner.email }}</span></p>
-{% endblock %}
-----
-
-And we get to a pass!
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
-
-Ran 1 test in 21.886s
-
-OK
-----
-
-
-
-Possible things to include:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-* Admin site?
-* django notifications?
-* email notifications?
-* talk about security/perms testing -- checking negatives.
-* error-handling, what if user doesn't exist
+* then back up to the template level, put a for loop of the lists shared with, 
+  and mention the list owner on a lists page
 
 
