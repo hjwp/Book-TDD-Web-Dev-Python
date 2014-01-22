@@ -103,17 +103,20 @@ Setting up our project
 Now we've got the basic jenkins configured, let's set up our project.
 
 * New Job -> Build a free-style software project 
+
 * Add the Git repo
 
 .Get it from git
 image::images/jenkins_set_git_repo.png["Setting the git repo"]
 
-* Set it to poll every hour (the help text here is helpful)
+* Set it to poll every hour (check out the help text here --
+there are many other options for ways of triggering builds).
 
 .Poll Github for changes
 image::images/jenkins_poll_scm.png["Config polling github"]
 
 * Run the tests inside a Python 3 virtualenv
+
 * Run the unit tests and functional tests separately
 
 .Virtualenv build steps
@@ -290,63 +293,79 @@ To be able to debug unexpected failures that happen on a remote PC, it
 would be good to see a picture of the screen at the moment of the failure,
 and maybe also a dump of the HTML of the page.  We can do that using some
 custom logic in our FT class teardown. We have to do a bit of introspection of
-`unittest` internals, but his will work:
+`unittest` internals, a private attribute called `_outcomeForDoCleanups`, but
+his will work:
 
 [role="sourcecode"]
 .functional_tests/base.py
 [source,python]
 ----
+import os
+SCREEN_DUMP_LOCATION = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), 'screendumps')
+)
+[...]
+
     def tearDown(self):
         if not self._outcomeForDoCleanups.success:
-            self.take_screenshot()
-            self.dump_html()
-
+            if not os.path.exists(SCREEN_DUMP_LOCATION):
+                os.makedirs(SCREEN_DUMP_LOCATION)
+            for ix, handle in enumerate(self.browser.window_handles):
+                self._windowid = ix
+                self.take_screenshot()
+                self.dump_html()
         self.browser.quit()
         super().tearDown()
 ----
 
-Then we use some selenium methods, `get_sreenshot_as_file` and
-`browser.page_source` for our image and HTML dumps:
+We first create a directory for our screenshots if necessary. Then we 
+iterate through all the open browser tabs and pages, and use some selenium
+methods, `get_screenshot_as_file` and `browser.page_source` for our image and
+HTML dumps:
 
 [role="sourcecode"]
 .functional_tests/base.py
 [source,python]
 ----
     def take_screenshot(self):
-        filename = 'seleniumscreenshot-{}.png'.format(self._get_filename())
+        filename = self._get_filename() + '.png'
         print('screenshotting to', filename)
         self.browser.get_screenshot_as_file(filename)
 
 
     def dump_html(self):
-        filename = 'seleniumhtml-{}.html'.format(self._get_filename())
+        filename = self._get_filename() + '.html'
         print('dumping page HTML to', filename)
         with open(filename, 'w') as f:
             f.write(self.browser.page_source)
 ----
 
-And finally here's a way of generating a filename, which includes the
-name of the test and its class, as well as a timestamp:
+And finally here's a way of generating a unique filename identifier, which
+includes the name of the test and its class, as well as a timestamp:
 
 [role="sourcecode"]
 .functional_tests/base.py
 [source,python]
 ----
     def _get_filename(self):
-        timestamp = datetime.now().isoformat().replace(':', '.')
-        return '{}.{}-{}'.format(
-            self.__class__.__name__, self._testMethodName, timestamp
+        timestamp = datetime.now().isoformat().replace(':', '.')[:19]
+        return '{folder}/{classname}.{method}-window{windowid}-{timestamp}'.format(
+            folder=SCREEN_DUMP_LOCATION,
+            classname=self.__class__.__name__,
+            method=self._testMethodName,
+            windowid=self._windowid,
+            timestamp=timestamp
         )
 ----
 
-When we re-run the build on Jenkins, we see this:
+You can test this first by deliberately breaking one of the tests. Then,
+commit, push, and when we re-run the build on Jenkins, we see this:
 
 ----
-screenshotting to
-seleniumscreenshot-MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists-2013-11-05T05.02.03.634488.png
-
-dumping page HTML to
-seleniumhtml-MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists-2013-11-05T05.02.03.695734.html
+screenshotting to /var/lib/jenkins/jobs/Superlists chapter 18
+(CI)/workspace/functional_tests/screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.png
+dumping page HTML to /var/lib/jenkins/jobs/Superlists chapter 18
+(CI)/workspace/functional_tests/screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.html
 ----
 
 
@@ -373,10 +392,13 @@ Whenever you see an inexplicable failure in a Selenium test, one of the most
 likely explanations is a hidden race condition. Let's look at the line that
 failed:
 
-        # She sees that her list is in there, named according to its
-        # first list item
-        self.browser.find_element_by_link_text('Reticulate splines').click()
-        self.assertEqual(self.browser.current_url, first_list_url)
+[source,python]
+----
+    # She sees that her list is in there, named according to its
+    # first list item
+    self.browser.find_element_by_link_text('Reticulate splines').click()
+    self.assertEqual(self.browser.current_url, first_list_url)
+----
 
 Immediately after we click the "Reticulate splines" link, we ask selenium
 to check whether the current URL matches the URL for our first list.  But
@@ -559,7 +581,8 @@ $ *npm install -g phantomjs*  # the -g means "system-wide". May need sudo.
 
 Next we pull down the Qunit test runner.  You can either download it
 manually from https://github.com/jquery/qunit/tree/master/addons/phantomjs 
-or, if you feel like it:
+or, if you feel like it, you can use another package manager called
+"Bower":
 
 ----
 $ *npm install -g bower*  # bower is a front-end web-dev package manager
@@ -573,10 +596,12 @@ bower qunit#~1.12.0            install qunit#1.12.0
 $ *cp bower_components/qunit/addons/phantomjs/runner.js /workspace/superlists/superlists/static/tests/
 ----
 
-That's not much simpler, but I just wanted to show you bower.  I won't go into
-it in this book, but it's definitely worth looking into - it's one of the 
-solutions for client-side package management.  Although I'm just using it
-as a glorified download tool!  In any case, you should end up with this:
+I won't explain bower any further, but you should look into it if you find
+yourself using more than one or two front-end packages (like Bootstrap). In
+this case we just used it as a glorified download tool, but it can be much
+more.
+
+In any case, you should end up with this:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -641,11 +666,12 @@ image::images/jenkins_add_phantomjs_build_step.png["Jenkins' default welcome scr
 
 You'll also need to install phantomjs on the server.
 
+[subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ sudo add-apt-repository -y ppa:chris-lea/node.js
-elspeth@server:$ sudo apt-get update
-elspeth@server:$ sudo apt-get install nodejs
-elspeth@server:$ sudo npm install -g phantomjs
+elspeth@server:$ *sudo add-apt-repository -y ppa:chris-lea/node.js*
+elspeth@server:$ *sudo apt-get update*
+elspeth@server:$ *sudo apt-get install nodejs*
+elspeth@server:$ *sudo npm install -g phantomjs*
 ----
 
 And there we are!  A complete CI build featuring all of our tests!
@@ -727,12 +753,9 @@ Use waits in Selenium tests::
 *******************************************************************************
 
 
-TODO: Appendix on switching to PhantomJS?  
-
-
-TODO: More discussion of do-something / wait for alternation as best practice?
-
-
 TODO: Something about jUnit XML output using py.test?
 
+
+TODO: discuss the fact that Persona sometimes gets stuck on Captchas.  Switch
+to mockmyid or similar?
 
