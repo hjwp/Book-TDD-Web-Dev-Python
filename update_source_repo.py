@@ -16,6 +16,20 @@ import getpass
 
 THIS_FOLDER = os.path.abspath(os.path.dirname(__file__))
 
+def fetch_if_possible(target_dir):
+    fetch = subprocess.Popen(
+        ['git', 'fetch'], cwd=target_dir,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    stdout, stderr = fetch.communicate()
+    print(stdout.decode(), stderr.decode())
+    if fetch.returncode:
+        if 'Name or service not known' in stderr.decode():
+            # no internet
+            return
+        raise Exception("Error running git fetch")
+
+
 
 def update_sources_for_chapter(chapter_no):
     target = os.path.join(
@@ -29,7 +43,7 @@ def update_sources_for_chapter(chapter_no):
         ['git', 'log', '-n 1', '--format=%H'], cwd=target
     ).decode().strip()
     print('current commit', commit_specified_by_submodule)
-    subprocess.check_output(['git', 'fetch'], cwd=target)
+    fetch_if_possible(target)
     if chapter_no > 1:
         subprocess.check_output(['git', 'checkout', chapter_before], cwd=target)
         subprocess.check_output(['git', 'reset', '--hard', 'origin/{}'.format(chapter_before)], cwd=target)
