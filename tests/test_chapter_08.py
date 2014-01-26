@@ -15,8 +15,8 @@ class Chapter8Test(ChapterTest):
             self.oldhosts = f.read()
         shutil.copy('/etc/hosts', '/tmp/hosts.bak')
         with open('/etc/hosts', 'a') as f:
-            f.write('\n192.168.56.101  superlists-staging.ottg.eu')
-            f.write('\n192.168.56.101  superlists.ottg.eu')
+            f.write('\n192.168.56.102  superlists-staging.ottg.eu')
+            f.write('\n192.168.56.102  superlists.ottg.eu')
         self.run_server_command('rm -rf ~/sites')
         self.run_server_command('sudo rm -f /etc/nginx/sites-available/*ottg*')
         self.run_server_command('sudo rm -f /etc/nginx/sites-enabled/*ottg*')
