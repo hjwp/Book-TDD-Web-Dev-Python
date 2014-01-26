@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import shutil
 import unittest
 import time
 
@@ -10,6 +11,12 @@ class Chapter8Test(ChapterTest):
 
     def setUp(self):
         super().setUp()
+        with open('/etc/hosts', 'r') as f:
+            self.oldhosts = f.read()
+        shutil.copy('/etc/hosts', '/tmp/hosts.bak')
+        with open('/etc/hosts', 'a') as f:
+            f.write('\n192.168.56.101  superlists-staging.ottg.eu')
+            f.write('\n192.168.56.101  superlists.ottg.eu')
         self.run_server_command('rm -rf ~/sites')
         self.run_server_command('sudo rm -f /etc/nginx/sites-available/*ottg*')
         self.run_server_command('sudo rm -f /etc/nginx/sites-enabled/*ottg*')
@@ -18,6 +25,8 @@ class Chapter8Test(ChapterTest):
         self._cleanup_runserver()
 
     def tearDown(self):
+        with open('/etc/hosts', 'w') as f:
+            f.write(self.oldhosts)
         #self.run_server_command('rm -rf ~/sites')
         super().tearDown()
 
@@ -38,25 +47,25 @@ class Chapter8Test(ChapterTest):
         self.skip_with_check(4, 'manage.py test functional_tests')
         self.skip_with_check(5, '123-reg')
 
-        self.skip_with_check(32, 'replace the URL in the next line with')
+        self.skip_with_check(41, 'replace the URL in the next line with')
         # TODO: - test this, ignore errors and check stderr
-        self.skip_with_check(35, 'python3 manage.py runserver')
-        self.skip_with_check(36, 'ImportError')
+        self.skip_with_check(44, 'python3 manage.py runserver')
+        self.skip_with_check(45, 'ImportError')
 
-        self.skip_with_check(37, 'pip-3.3 install virtualenv') # TODO: - test this
+        self.skip_with_check(46, 'pip-3.3 install virtualenv') # TODO: - test this
 
-        self.skip_with_check(56, 'git push')
-        self.skip_with_check(61, 'installed Django') #TODO test this
-        self.skip_with_check(63, '0 errors found') #TODO test this
+        self.skip_with_check(65, 'git push')
+        self.skip_with_check(70, 'installed Django') #TODO test this
+        self.skip_with_check(72, '0 errors found') #TODO test this
 
-        reboot_pos = 67
+        reboot_pos = 76
         assert self.listings[reboot_pos] == 'sudo reboot'
         assert self.listings[reboot_pos + 1] == 'sudo service nginx reload'
 
         # find two runservers, the first one of which should be killed
         # before we syncdb and restart it, and the second one should be
         # killed before we switch to gunicorn
-        syncdb_pos = 73
+        syncdb_pos = 82
         assert 'syncdb' in self.listings[syncdb_pos], 'wrong pos in listings\n{}'.format(
             '\n'.join('{} {}'.format(ix, l) for ix, l in enumerate(self.listings))
         )
@@ -65,7 +74,7 @@ class Chapter8Test(ChapterTest):
         self.skip_with_check(syncdb_pos + 3, 'db.sqlite3')
         assert 'Creating tables' in self.listings[syncdb_pos + 1]
         assert 'runserver' in self.listings[syncdb_pos - 3]
-        gunicorn_pos = 83
+        gunicorn_pos = 92
         assert 'gunicorn superlists.wsgi:application' in self.listings[gunicorn_pos]
         assert 'runserver' in self.listings[gunicorn_pos - 6]
 
