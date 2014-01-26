@@ -412,6 +412,8 @@ elspeth@server:$ *sudo apt-get install nginx*
 elspeth@server:$ *sudo service nginx start*
 ----
 
+(You may need to do an `apt-get update` and/or an `apt-get upgrade` first.)
+
 .Nginx - It works!
 image::images/nginx_it_worked.png[The default "Welcome to nginx!" page]
 
@@ -640,7 +642,7 @@ bin  include  lib
 NOTE: this folder structure will be slightly different on Windows, eg
 bin=Scripts. Let me know if it's impossible to follow the instructions
 as a result.
-//TODO: remove the "let me know"
+//TODO: run thru on windows, remove the "let me know"
 
 That will create a folder at '../virtualenv' which will contain its own
 copy of Python and `pip`, as well as a location to install Python packages
@@ -1066,6 +1068,11 @@ ALLOWED_HOSTS = ['superlists-staging.ottg.eu']
 
 And, once again, we restart Gunicorn and run the FT to check things still work.
 
+NOTE: Don't commit these changes on the server. At the moment this is just a 
+hack to get things working, not a change we want to keep in our repo. In
+general, to keep things simple, I'm only going to do git commits from the local
+PC, using `git push` and `git pull` when I need to sync them up to the server.
+
 
 
 Using upstart to make sure gunicorn starts on boot
@@ -1093,6 +1100,8 @@ exec ../virtualenv/bin/gunicorn \
 ----
 
 //TODO: setuid to something.
+
+// TODO: log files? straight away?
 
 Upstart is joyously simple to configure (especially if you've ever had the
 pleasure of writing an `init.d` script), and is fairly self-explanatory.
@@ -1138,7 +1147,6 @@ support is
 http://stackoverflow.com/questions/11087682/does-gunicorn-run-on-windows[being
 discussed]...
 
-// TODO: log files
 
 
 Automating:
@@ -1480,19 +1488,22 @@ to create a new secret key:
 def _update_settings(source_folder, site_name):
     settings_path = source_folder + '/superlists/settings.py'
     sed(settings_path, "DEBUG = True", "DEBUG = False") #<1>
-    append(settings_path, 'ALLOWED_HOSTS = ["%s"]' % (site_name,)) #<2>
+    sed(settings_path,
+        'ALLOWED_HOSTS =.+$',
+        'ALLOWED_HOSTS = ["%s"]' % (site_name,) #<2>
+    )
     secret_key_file = source_folder + '/superlists/secret_key.py'
     if not exists(secret_key_file): #<3>
         chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
         key = ''.join(random.SystemRandom().choice(chars) for _ in range(50))
         append(secret_key_file, "SECRET_KEY = '%s'" % (key,))
-    append(settings_path, 'from .secret_key import SECRET_KEY')
+    append(settings_path, '\nfrom .secret_key import SECRET_KEY') #<4>
 ----
 
 <1> The fabric `sed` command does a string substitution in a file, here it's
     changing DEBUG from True to False.  
 
-<2> `append` just adds a line to the end of a file (it's clever enough not to
+<2> And here it is adjust `ALLOWED_HOSTS`, using a regex to match 
     bother if the line is already there).
 
 <3> Django uses `SECRET_KEY` for some if its crypto -- cookies and CSRF
@@ -1502,9 +1513,16 @@ def _update_settings(source_folder, site_name):
     there already (once you have a secret key, it should stay the same between
     deploys).  More info in the
     https://docs.djangoproject.com/en/1.6/topics/signing/[Django docs]
+
+<4> `append` just adds a line to the end of a file (it's clever enough not to
+    bother if the line is already there, but not clever enough to automatically
+    add a newline if the file doesn't end in one.  hence the back-n).
     
 NOTE: Other people suggest using environment variables to set things like 
-secret keys, you should use whatever is most secure in your environment.
+    secret keys; you should use whatever you feel is most secure in your
+    environment.
+
+//TODO: check sed regex syntax
 
 //TODO: this is a first use of a relative import, which I only explain in 
 // next chapter
@@ -1718,7 +1736,7 @@ Disconnecting from superlists.ottg.eu... done.
 
 'Brrp brrp brpp'. You can see the script follows a slightly different path,
 doing a `git clone` to bring down a brand new repo instead of the `git pull`.
-It also needs to set up a new virtuaelnv from scratch, including a fresh
+It also needs to set up a new virtualenv from scratch, including a fresh
 install of pip and Django. The `collectstatic` actually creates new files this
 time, and the `syncdb` seems to have worked too.
 
@@ -1866,8 +1884,8 @@ Todos
 ~~~~~~
 
 There's no such thing as the One True Way in deployment, and as I say I'm no 
-expert.  I hope that this chapter will change and improve over the coming
-months, especially thanks to the feedback of beloved readers!
+kind of expert.  I hope that this chapter will change and improve over the
+coming months, especially thanks to the feedback of beloved readers!
 
 Here's a few things I'm thinking of changing or adding.  Let me know what you
 think, and what else should be on the list! obeythetestinggoat@gmail.com
@@ -1886,4 +1904,6 @@ Possible changes:
 - setuid in upstart script
 - using /home/username to make it "like shared hosting" -- is that totally
   outdated?  Should I just put everything in /var/www?
+
+//TODO: recap on what local state and server state should be.
 
