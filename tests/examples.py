@@ -39,7 +39,7 @@ COMMAND_LISTING_WITH_CAPTION = """<div class="listingblock">
 <pre><code>user@server:$ <strong>sudo apt-get install git</strong>
 user@server:$ <strong>sudo apt-get install python3</strong>
 user@server:$ <strong>sudo apt-get install python3-pip</strong>
-user@server:$ <strong>sudo pip-3.3 install virtualenv</strong></code></pre>
+user@server:$ <strong>sudo pip3 install virtualenv</strong></code></pre>
 </div></div>"""
 
 
