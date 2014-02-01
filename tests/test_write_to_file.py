@@ -37,7 +37,7 @@ class ClassFinderTest(unittest.TestCase):
         lineno = _find_last_line_for_class(source, 'ClassA')
         self.assertEqual(lineno, 9)
         # sanity-check
-        self.assertEqual(source.split('\n')[lineno -1].strip(), 'pass')
+        self.assertEqual(source.split('\n')[lineno - 1].strip(), 'pass')
 
         lineno = _find_last_line_for_class(source, 'ClassB')
         self.assertEqual(lineno, 13)
@@ -109,21 +109,21 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_strips_python_line_callouts(self):
-        contents= 'hello\nbla #'
+        contents = 'hello\nbla #'
         self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
-        contents= 'hello\nbla  #'
+        contents = 'hello\nbla  #'
         self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
 
+
     def test_strips_js_line_callouts(self):
-        contents= 'hello\nbla //'
+        contents = 'hello\nbla //'
         self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
-        contents= 'hello\nbla  //'
+        contents = 'hello\nbla  //'
         self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
 
 
     def test_doesnt_mess_with_multiple_newlines(self):
-        #done
-        contents= 'hello\n\n\nbla'
+        contents = 'hello\n\n\nbla'
         self.assert_write_to_file_gives('', contents, 'hello\n\n\nbla\n')
 
 
