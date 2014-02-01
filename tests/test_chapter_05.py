@@ -27,7 +27,7 @@ class Chapter5Test(ChapterTest):
         self.assertEqual(type(self.listings[0]), CodeListing)
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
-        syncdb_pos = 63
+        syncdb_pos = 66
         assert 'syncdb' in self.listings[syncdb_pos]
         assert self.listings[syncdb_pos].type == 'interactive manage.py'
 
@@ -35,7 +35,7 @@ class Chapter5Test(ChapterTest):
         self.start_dev_server()
 
         # skips
-        self.skip_with_check(70, "3: Buy peacock feathers")
+        self.skip_with_check(73, "3: Buy peacock feathers")
 
         dev_server_restarted = False
         while self.pos < len(self.listings):
