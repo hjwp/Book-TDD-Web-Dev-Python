@@ -7,12 +7,13 @@ import subprocess
 import tempfile
 
 def strip_comments(line):
-    match_python = re.match(r"(.+) +#$", line)
+    match_python = re.match(r"^(.+\S) +#$", line)
     if match_python:
-        return match_python.group(0)
-    match_js = re.match(r"(.+) +//$", line)
+        print('match python')
+        return match_python.group(1)
+    match_js = re.match(r"^(.+\S) +//$", line)
     if match_js:
-        return match_js.group(0)
+        return match_js.group(1)
     return line
 
 

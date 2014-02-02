@@ -8,7 +8,8 @@ from book_parser import CodeListing
 from sourcetree import (
     BOOTSTRAP_WGET,
     ApplyCommitException,
-    Commit, SourceTree
+    Commit, SourceTree,
+    strip_comments,
 )
 
 
@@ -20,6 +21,26 @@ class GetFileTest(unittest.TestCase):
         with open(sourcetree.tempdir + '/superlists/foo.txt', 'w') as f:
             f.write('bla bla')
         assert sourcetree.get_contents('foo.txt') == 'bla bla'
+
+
+class StripCommentTest(unittest.TestCase):
+
+    def test_strips_python_comments(self):
+        assert strip_comments('foo #') == 'foo'
+        assert strip_comments('foo  #') == 'foo'
+
+    def test_strips_js_comments(self):
+        assert strip_comments('foo //') == 'foo'
+        assert strip_comments('foo  //') == 'foo'
+
+
+    def test_doesnt_break_comment_lines(self):
+        assert strip_comments('# normal comment') == '# normal comment'
+
+
+    def test_doesnt_break_trailing_slashes(self):
+        assert strip_comments('a_url/') == 'a_url/'
+
 
 
 class StartWithCheckoutTest(unittest.TestCase):

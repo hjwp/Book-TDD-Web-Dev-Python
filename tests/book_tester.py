@@ -180,7 +180,8 @@ class ChapterTest(unittest.TestCase):
 
 
     def run_command(self, command, cwd=None, user_input=None):
-        self.assertEqual(type(command), Command,
+        self.assertEqual(
+            type(command), Command,
             "passed a non-Command to run-command:\n%s" % (command,)
         )
         print('running command', command)
@@ -192,9 +193,11 @@ class ChapterTest(unittest.TestCase):
     def _cleanup_runserver(self):
             self.run_server_command('pkill -f runserver', ignore_errors=True)
 
+
     RUN_SERVER_PATH = os.path.abspath(
         os.path.join(os.path.dirname(__file__), 'run_server_command.py')
     )
+
     def run_server_command(self, command, ignore_errors=False):
         cd_finder = re.compile(r'cd (.+)$')
         if cd_finder.match(command):
@@ -568,7 +571,8 @@ class ChapterTest(unittest.TestCase):
             self.pos += 1
             next_listing = self.listings[self.pos]
             if next_listing.type == 'output' and not next_listing.skip:
-                assert all(l.strip() in server_output for l in next_listing.split('\n'))
+                for line in next_listing.split('\n'):
+                    assert line.strip() in server_output
                 next_listing.was_checked = True
                 self.pos += 1
 
