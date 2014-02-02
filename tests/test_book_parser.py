@@ -303,28 +303,26 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(type(parsed_listings[1]), Output)
 
 
-    def DONTtest_handles_multiline_commands(self):
+    def test_handles_multiline_commands(self):
         listing = html.fromstring(dedent(
                 """
                 <div class="listingblock">
                 <div class="content">
-                <pre><code>$ <strong>python3 manage.py test \\
-                functional_tests.ItemValidationTest.test_error_messages_are_cleared_on_input</strong>
-
-                .
-                 ---------------------------------------------------------------------
-                Ran 1 test in 3.023s
-
-                OK</code></pre>
+                <pre><code>$ <strong>do something\\
+                that continues on this line</strong>
+                OK
+                </code></pre>
                 </div></div>
                 """
         ))
         commands = get_commands(listing)
         assert len(commands) == 1
-        assert commands[0] == 'python3 manage.py test \\\nfunctional_tests.ItemValidationTest.test_error_messages_are_cleared_on_input'
+        #assert commands[0] == 'do something\\\nthat continues on this line'
+        assert commands[0] == 'do somethingthat continues on this line'
 
         # too hard for now
         parsed_listings = parse_listing(listing)
+        print(parsed_listings)
         self.assertEqual(type(parsed_listings[0]), Command)
         self.assertEqual(parsed_listings[0], commands[0])
 

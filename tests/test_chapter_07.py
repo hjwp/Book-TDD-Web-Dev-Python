@@ -21,17 +21,16 @@ class Chapter7Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        self.skip_with_check(24, 'the -b means ignore whitespace')
-        self.skip_with_check(27, 'leave static, for now')
-        self.skip_with_check(47, 'will now show all the bootstrap')
-        self.skip_with_check(49, 'projects') # tree showing where static goes
+        self.skip_with_check(25, 'the -b means ignore whitespace')
+        self.skip_with_check(28, 'leave static, for now')
+        self.skip_with_check(49, 'will now show all the bootstrap')
 
         # hack fast-forward
         skip = False
         if skip:
             self.pos = 51
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch07l018')
+                self.sourcetree.get_commit_spec('ch07l016')
             ))
 
         while self.pos < len(self.listings):

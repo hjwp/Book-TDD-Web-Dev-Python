@@ -127,7 +127,8 @@ def parse_listing(listing):
         if caption and caption[0].text_content().startswith('server command'):
             is_server_commands = True
             listing = listing.cssselect('div.content')[0]
-        lines = listing.text_content().strip().replace('\r\n', '\n').split('\n')
+        lines = listing.text_content().strip(
+        ).replace('\r\n', '\n').replace('\\\n', '').split('\n')
 
         outputs = []
         output_after_command = ''
@@ -160,7 +161,7 @@ def parse_listing(listing):
 
 def get_commands(node):
     return [
-        el.text_content()
+        el.text_content().replace('\\\n', '')
         for el in node.cssselect('pre code strong')
     ]
 

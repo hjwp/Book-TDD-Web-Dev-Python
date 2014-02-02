@@ -129,3 +129,15 @@ OUTPUT_QUNIT = """
 <pre><code>2 assertions of 2 passed, 0 failed.
 1. smoke test (0, 2, 2)</code></pre>
 </div></div>"""
+
+OUTPUT_WITH_CONTINUATION = """
+<div class="listingblock">
+<div class="content">
+<pre><code>$ <strong>wget -O bootstrap.zip https://github.com/twbs/bootstrap/releases/download/\
+v3.1.0/bootstrap-3.1.0-dist.zip</strong>
+$ <strong>unzip bootstrap.zip</strong>
+$ <strong>mkdir lists/static</strong>
+$ <strong>mv dist lists/static/bootstrap</strong>
+$ <strong>rm bootstrap.zip</strong></code></pre>
+</div></div>
+"""

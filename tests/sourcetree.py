@@ -1,9 +1,20 @@
 import os
 import io
+import re
 import signal
 import shutil
 import subprocess
 import tempfile
+
+def strip_comments(line):
+    match_python = re.match(r"(.+) +#$", line)
+    if match_python:
+        return match_python.group(0)
+    match_js = re.match(r"(.+) +//$", line)
+    if match_js:
+        return match_js.group(0)
+    return line
+
 
 BOOTSTRAP_WGET = 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip'
 
@@ -174,15 +185,16 @@ class SourceTree(object):
             raise ApplyCommitException(
                 'wrong files in listing: {0} should have been {1}'.format(
                     listing.filename, files
-            ))
+                )
+            )
 
         listing_lines = listing.contents.split('\n')
-        listing_lines = [l.rstrip(' #') for l in listing_lines]
-        listing_lines = [l.rstrip(' //') for l in listing_lines]
+        listing_lines = [strip_comments(l) for l in listing_lines]
 
         stripped_listing_lines = [l.strip() for l in listing_lines]
         for new_line in commit.new_lines:
             if new_line.strip() not in stripped_listing_lines:
+                print('stripped_listing_lines', stripped_listing_lines)
                 raise ApplyCommitException(
                     'could not find commit new line {0} in listing:\n{1}'.format(
                         new_line, listing.contents

@@ -290,7 +290,7 @@ class ChapterTest(unittest.TestCase):
             if line.startswith('[...'):
                 continue
             if line.endswith('[...]'):
-                line = line.rstrip('[...]').rstrip()
+                line = line.rsplit('[...]')[0]
                 self.assertLineIn(line, [l[:len(line)] for l in actual_lines])
             elif line.startswith(' '):
                 self.assertLineIn(line, actual_lines)
