@@ -1,179 +1,226 @@
-What to do next
----------------
+Fast tests, slow tests: is the database Hot Lava?
+-------------------------------------------------
 
-Here follow a few suggestions for things to investigate next, to develop your 
-testing skills, and to apply them to some of cool new technologies in web
-development (at the time of writing!).
+I've tried to distil what I've learned about testing in the past 4 years
+into this book.  It's meant to be a reflection, not just of my own
+experience, but of the collective wisdom of my colleagues, and the way of
+testing they built up over the last 10 years, building Resolver One and 
+PythonAnywhere. 
 
-NOTE: chapter under construction.  Am thinking about the best ways to 
-encourage people to share their attempted solutions to all these. 
-Suggestions welcomed.
+But it's still just one perspective. It's time to let you in on a little secret
+-- I've hinted at it a couple of times, but some of the ways I've written tests
+are frowned on by testing purists.  "Unit tests should never touch the
+database", they say.  https://www.youtube.com/watch?v=bsmFVb8guMU[The Database
+is Hot Lava!], in Casey Kinsey's memorable phrase.
 
-I hope to turn each one of these into at least some sort of blog post,
-if not a future appendix to the book. I hope to also produce code examples for
-all of them, as time goes by. So do check out
-http://www.obeythetestinggoat.com, and see if there are any updates.
+I've found that a pragmatic approach works for me, but that doesn't necessarily
+mean it's right for everyone. This chapter is my attempt to outline some of the
+issues of test speed, databases and other dependencies, and the "purist"
+approach to unit testing. 
 
-I'm very happy to answer questions and provide tips and guidance on all
-these topics, so if you find yourself attempting one and getting stuck,
-please don't hesitate to get in touch!  obeythetestinggoat@gmail.com
+If you'll forgive me the pretentious philosophical terminology, I'm going to
+follow a Hegelian dialectical structure: 
 
+* The thesis: the case for "purist" unit tests that are fast
 
+* The antithesis: my worries about the pitfalls of "pure" unit tests
 
-Notifications -- both on the site and by email
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-It would be nice if users were notified when someone shares a list with 
-them.
-
-You can use django-notifications to show a message to the user the next
-time the refresh the screen. You'll need two browsers in your FT for this.
-
-And/or, you could send notifications by email.  Investigate Django's
-email test capabilities.  Then, decide this is so critical that you need
-real tests with real emails.  Use the IMAPClient library to fetch actual
-emails from a test webmail account.
+* The synthesis: how to figure out what works for you, whether it's
+  "Functional Core, Imperative Shell" or a pragmatic approach.
 
 
 
-Switch to Postgres on the server
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Thesis: Unit tests should be pure and fast
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Experiment with keeping dev on sqlite.  Compare unit test speed.
-
-
-
-Run you tests against different browsers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-* Including PhantomJS
-* Will probably need interaction/wait pattern a lot more
+Other things being equal, the faster your unit tests run, the better.  To a 
+lesser extent, the faster 'all' your tests run, the better.
 
 
+Faster tests mean faster development
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-404 and 500 tests
-~~~~~~~~~~~~~~~~~
-
-A professional site needs good looking error pages.  Testing a 404 page is
-easy, but you'll probably need a custom "raise an exception on purpose" view
-to test the 500 page.
-
-
-
-The Django admin site
-~~~~~~~~~~~~~~~~~~~~~
-
-Imagine a story where a user emails you wanting to "claim" an anonymous
-list.  Let's say we implement a manual solution to this, involving the site
-administrator manually changing the record using the Django admin site.
-
-Find out how to switch on the admin site, and have a play with it. Write an FT
-that shows a normal, non-logged-in user creating a list, then have an admin
-user log in, go to the admin site, and assign the list to the user.  The user
-can then see it in their "my lists" page.
+I've outlined the TDD test/code cycle in this book.  You've started to get a 
+feel for the TDD workflow, the way you flick between writing tiny amounts of
+code, and running your tests.  You end up running your unit tests several times
+a minute, and your functional tests several times a day. So, naturally, the
+longer they take, the more time you spend waiting for your tests, and that 
+will slow down your development.
 
 
+Slow tests don't get run as often, which causes bad code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Investigate a BDD tool
-~~~~~~~~~~~~~~~~~~~~~~
-
-BDD stands for Behaviour-Driven-Development.  It's a way of writing tests 
-that should make them more human-readable, by implementing a sort of Domain-
-Specific Language (DSL) for your FT code.  Check out Lettuce (a Python BDD
-framework) and use it to re-write an existing FT, or write a new one.
-
+The follow-up argument is that, if your test suite is slow, then running it
+becomes annoying.  As a developer, the danger is that you'll start to avoid
+running your tests, which may lead to bugs getting through, or it may lead
+to programmers being shy of refactoring the code, since they know that any
+refactor will mean having to wait ages while all the tests run. In either
+case, bad code can be the result.
 
 
-Write some security tests
+Good unit tests should be isolated
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The idealised unit test test exactly one thing -- this is why we strive to
+have a single assertion per test.  If your unit test actually has several
+dependencies, if the function under test calls other functions, and we end
+up relying on their effects, our unit tests are no longer isolated.
+
+Another way of thinking of it is: in the idealised unit test setup, introducing
+a bug should cause exactly one unit test to fail, and that unit test should 
+tell you exactly where the problem is.  If introducing a bug in a function
+causes several other unit tests to fail, because they rely on that function 
+indirectly, then it's harder to debug the problem.
+
+
+Don't take it from me
+^^^^^^^^^^^^^^^^^^^^^
+
+Gary Bernhardt, a man with far more experience of testing than me, put these
+points eloquently in a talk called
+https://www.youtube.com/watch?v=RAxiiRPHS9k[Fast Tests, Slow test]. I encourage
+you to watch it.  
+
+You should also check out his follow-up talk, 
+https://www.youtube.com/watch?v=eOYal8elnZk[Boundaries], in which he expands on
+the concepts of test isolation, and how it fits with trying to adopt
+a more functional paradigm in the core business logic of your application.
+
+
+The problems with "pure" unit tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+That all sounds convincing, right?  The problem, in my view, comes when
+striving for pure, fast unit tests leads to using a lot of mocks.
+
+Here's an illustration. Imagine our site does a bit of setup for each
+user: it makes a temp folder for them, and then sets a flag on their user
+profile:
+
+Imagine this:
+
+[source,python]
+----
+def _setup_temp_storage(user):
+    os.makedirs('/tmp/' + user.username)
+
+def setup_user_environment(user):
+    _setup_temp_storage(user)
+    profile = user.get_profile()
+    profile.environment_setup = True
+    profile.save()
+----
+
+Here's the kind of test I'm inclined to write:
+
+[source,python]
+----
+def test_sets_up_temp_storage_and_sets_flag_on_profile(self):
+    user = User.objects.create(username='jim')
+    setup_user_environment(user)
+    self.assertTrue(os.path.exists('/tmp/jim')
+    self.assertTrue(user.get_profile().environment_setup)
+----
+
+Clearly breaking all the rules of "pure" unit tests there -- my test touches
+not just the database, but the filesytem as well. Oh no!
+
+
+Mocky tests are harder to work with
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+But consider what happens when you try and right a "pure" unit tests, with
+mocks:
+
+
+[source,python]
+----
+def test_calls_setup_temp_storage_and_sets_flag_on_profile(self):
+    mock_user = Mock()
+    with patch('myapp._setup_temp_storage') as mock_setup_temp_storage:
+        setup_user_environment(mock_user)
+    mock_setup_temp_storage.assert_called_once_with(mock_user)
+    mock_profile = mock_user.get_profile.return_value
+    self.assertEqual(mock_profile.environment_setup, True)
+----
+
+Well, I would argue that, firstly, you have a much less readable test there,
+and it's also a test that's very closely coupled to the implementation.  It
+discourages refactoring, because something as simple as changing the name of
+the helper method `_setup_temp_storage` involves changing the test code in 4
+places -- three of which (eg `mock_setup_temp_storage`) won't be found by
+automated refactoring tools.
+
+
+The problem of the "disconnected" mocky test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+But, secondly: imagine I change `_setup_temp_storage` to take a username instead
+of a user. I go and find its unit tests and change them, then change its
+implementation. What will happen next is that my "impure" unit test for
+`setup_user_environment` would break, because it uses the real function, and so
+that's my reminder to change the place it gets used. 
+
+In contrast, in the "fast" test, `setup_user_environment` is mocked, so 'that
+test will still pass', even though my code is broken.
+
+
+Synthesis: Functional core, imperative shell... if it works for you
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you've watched Gary's second talk, called 
+"https://www.youtube.com/watch?v=eOYal8elnZk[Boundaries]",  you'll start to
+see a potential way out of our thesis/antithesis dilemma.
+
+The problem of choosing between "mocky" tests and "integrationey" tests 
+only really occurs at "boundaries" -- points of interaction between our
+code and external systems, like a database or a filesystem.
+
+The "Functional Core, Imperative Shell" solution is to try and create an
+architecture where the boundaries are kept as separate as possible from the
+core of our application.  We can judiciously use a combination of mocks and
+integration tests, maybe even functional tests, to test our code at the
+boundaries, but keep the "core" of our application -- the business logic --
+free of direct interactions with the database or the filesystem.
+
+Hexagonal architecture:
+
+http://blog.8thlight.com/uncle-bob/2012/08/13/the-clean-architecture.html
+
+http://alistair.cockburn.us/Hexagonal+architecture
+
+
+In that perfect world, we can start to build tests that don't need any
+mocks, especially if we follow functional programming principles -- the
+less state there is in our code, the easier it is to test.
+
+The end result should be an application that's 80% core and 20% shell,
+80% unit tests and 20% integration/functional tests.
+
+All I can say is -- that sounds great, in theory.  In my own experience
+(and remember, it's a limited experience), I've found that the 
+projects I've worked on don't have a "core" that's big enough to be worth
+separating from any boundaries.  Simple Django apps are basically wrappers
+around a CRUD system for a database.  For those, trying to hide away the Django
+ORM feels like too much pain, to me.
+
+But I want to stress that this is a balance that you have to find for yourself.
+
+TODO: more discussion of how to make decisions about approach to take. look
+at level of boundaries.  discuss importance of CI, processes
+
+
+Starting your own journey
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Expand on the login, my lists and sharing tests -- what do you need to write to
-assure yourself that users can only do what they're authorized to?
+* CI, CI, CI
+* google "speeding up django tests".  Find out which ones really need the 
+django test runner, database, django test client etc.
+* Do you need to FT everything?  
 
 
-
-Test for graceful degradation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-What would happen if Persona went down?  Can we at least show an apologetic
-error message to our users?
-
-* tip: one way of simulating Persona being down is to hack your hosts file (
-at '/etc/hosts' or 'c:\Windows\Sytem32\drivers\etc'). Remember to revert it in
-the test `tearDown`!
-* think about the server-side as well as the client side.
-
-
-
-Caching and performance testing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Find out how to install and configure `memcached`.  Find out how to use
-Apache's `ab` to run a performance test.  How does it perform with and without
-caching? Can you write an automated test that will fail if caching is not
-enabled? What about the dreaded problem of cache invalidation?  Can tests
-help you to make sure your cache invalidation logic is solid?
-
-
-
-JavaScript MVC frameworks
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-JavaScript libraries that let you  implement a model-view-controller 
-pattern on the client side are all the rage these days.  To-Do lists are
-one of the favourite demo applications for them, so it should be pretty easy
-to convert the site to being a single-page site, where all list additions 
-happen in JavaScript.
-
-Pick a framework -- perhaps Backbone.js or Angular.js -- and spike in an
-implementation.  Each framework has its own preferences for how to write
-unit tests, so learn the one that goes along with it, and see how you like
-it.
-
-
-
-Async and websockets
-~~~~~~~~~~~~~~~~~~~~
-
-Supposing two users are working on the same list at the same time. Wouldn't
-it be nice to see real-time updates, so if the other person adds an item to
-the list, you see it immediately?  A persistent connection between client and
-server using websockets is the way to get this to work.
-
-Check out one of the Python async web servers -- Tornado, gevent, Twisted --
-and see if you can use it to implement dynamic notifications.
-
-To test it, you'll need two browser instances (like we used for the list
-sharing tests), and check that notifications of the actions from one 
-appear in the other, without needing to refresh the page...
-
-
-
-Switch to using py.test
-~~~~~~~~~~~~~~~~~~~~~~~
-
-py.test lets you write unit tests with less boilerplate.  Try converting some
-of your unit tests to using py.test.  You may need to use a plugin to get it
-to play nicely with Django.
-
-
-
-Client-side encryption
-~~~~~~~~~~~~~~~~~~~~~~
-
-Here's a fun one: What if our users are paranoid about the NSA, and decide they
-no longer want to trust their lists to The Cloud?  Can you build a JavaScript
-encryption system, where the user can enter a password to encypher their list
-item text before it gets sent to the server?  
-
-One way of testing it might be to have an "administrator" user that goes to 
-the Django Admin view to inspect users' lists, and checks that they are stored
-encrypted in the database.
-
-
-
-Your suggestion here
-~~~~~~~~~~~~~~~~~~~~
-
-What do you think I should put here?  Suggestions please!
+TODO: wrap up - back to the testing goat.  it's still hard, even after 4 years.
+discipline.  get green builds.  really test things.  seen code without tests,
+gets worse over time.
 

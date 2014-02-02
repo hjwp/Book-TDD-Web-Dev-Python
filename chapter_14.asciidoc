@@ -1,1969 +1,552 @@
-User authentication, integrating 3rd party plugins, and Mocking with JavaScript
--------------------------------------------------------------------------------
+Dipping our toes, very tentatively, into JavaScript
+---------------------------------------------------
 
-So our beautiful lists site has been live for a few days, and our users are
-starting to come back to us with feedback.  "We love the site", they say, "but
-we keep losing our lists.  Manually remembering URLs is hard. It'd be great if
-it could remember what lists we'd started"
+[quote, 'John Calvin (as portrayed in http://onemillionpoints.blogspot.co.uk/2008/08/calvin-and-chipmunks.html[Calvin and the Chipmunks])']
+______________________________________________________________
+If the Good Lord had wanted us to enjoy ourselves, he wouldn't have granted us
+his precious gift of relentless misery.
+______________________________________________________________
 
-Remember Henry Ford and faster horses. Whenever you hear a user requirement,
-it's important to dig a little deeper and think -- what is the real requirement
-here?  And how can I make it involve a cool new technology I've been wanting
-to try out?
+Our new validation logic is good, but wouldn't it be nice if the error messages
+disappeared once the user started fixing the problem? For that we'd need a
+teeny-tiny bit of JavaScript.
 
-Clearly the requirement here is that people want to have some kind of user
-account on the site.  So, without further ado, let's dive into authentication.
+We are utterly spoiled by programming every day in such a joyful language as
+Python.  JavaScript is our punishment. So let's dip our toes in, very gingerly.
 
-Naturally we're not going to mess about with remembering passwords ourselves
--- besides being 'so' 90s, secure storage of user passwords is a security
-nightmare we'd rather leave to someone else.  We'll use federated
-authentication system instead.
-
-(If you 'insist' on storing your own passwords, Django's default auth
-module ready and waiting for you. It's nice and straightforward, and I'll leave
-it to you to discover on your own.)
-
-In this chapter, we're going to get pretty deep into a testing
-technique called "mocking". Personally, I know it took me a few weeks to
-really get my head around mocking, so don't worry if it's confusing at first.
-In this chapter we do a lot of mocking in JavaScript.  In the next chapter
-we'll do some mocking with Python, which you might find a little easier to 
-grasp.  I would recommend reading both of them through together, and just
-letting the whole concept wash over you, and then come back and do them again,
-and see if you understand all of the steps a little better on the second round.
-//TODO: brief overview of what mocking is?
-
-NOTE: Do let me know via obeythetestinggoat@gmail.com if you feel there's
-any particular sections where I don't explain things well, or where I'm 
-going too fast.
+WARNING: I'm going to assume you know the basics of JavaScript syntax. If you
+haven't read <<jsgoodparts,JavaScript: The Good Parts>>, go and get yourself
+a copy right away!  It's not a very long book.
 
 
-Mozilla Persona (BrowserID)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Starting with an FT
+~~~~~~~~~~~~~~~~~~~
 
-But which federated authentication system?  Oauth?  Openid?  "Login with
-Facebook"?   Ugh.  In my book those all have unacceptable creepy overtones,
-why should Google or Facebook know what sites you're logging into and when?
-Thankfully there are still some techno-hippy-idealists out there, and the
-lovely people at Mozilla have cooked up a privacy-friendly auth mechanism
-they call "Persona", or sometimes "BrowserID".  
-
-The theory goes that your web browser acts as a third party between the
-website that wants to check your ID, and the website that you will use
-as a guarantor of your ID.  This latter may be Google or Facebook or whomever,
-but a clever protocol means that they never need know which website you were
-logging into or when.
-
-Ultimately, Persona may never take off as an authentication platform, but
-the main lessons from the next couple of chapters should be relevant no matter
-what 3rd party auth system you want to integrate:
-
-* Don't test other people's code or APIs
-* But, test that you've integrated them correctly into your own code
-* Check everything works from the point of view of the user
-* Test that your system degrades gracefully if the third party is down
-
-
-Exploratory coding, aka "spiking"
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Before I wrote this chapter all I'd seen of Persona was a talk at PyCon by Dan
-Callahan, in which he promised it could be implemented in 30 lines of code, and
-magic'd his way through a demo -- in other words, I knew it not at all.
-
-In chapters 10 & 11 we saw that you can use a unit test as a way of exploring a
-new API, but sometimes you just want to hack something together without any
-tests at all, just to see if it works, to learn it or get a feel for it.
-That's absolutely fine.  When learning a new tool or exploring a new possible
-solution, it's often appropriate to leave the rigorous TDD process to one side,
-and build a little prototype without tests, or perhaps with very few tests.
-The goat doesn't mind looking the other way for a bit.
-
-This kind of prototyping activity is often called a "spike", for 
-http://stackoverflow.com/questions/249969/why-are-tdd-spikes-called-spikes[reasons
-best known].
-
-The first thing I did was take a look at an existing  django-persona
-integration called
-https://github.com/mozilla/django-browserid[Django-BrowserID], but
-unfortunately it didn't really support Python 3.  I'm sure it will by the time
-you read this, but I was quietly relieved since I was rather looking forward to
-writing my own code for this! 
-
-It took me about 3 hours of hacking about, using a combination of code stolen
-from Dan's talk and the example code on the
-https://developer.mozilla.org/en-US/docs/Mozilla/Persona[Persona site], but by
-the end I had something which just about works.  I'll take you on a tour,
-and then we'll go through and "de-spike" the implementation.  Feel free to
-add this code to your own site too, and then you can have a play with it too!
-
-Let's start with the front-end.  I was able to cut & paste code from the
-Persona site and Dan's slides with minimal modification:
-
+Let's add a new functional test to the `ItemValidationTest` class:
 
 [role="sourcecode"]
-.lists/templates/base.html (ch14l001)
+.functional_tests/test_list_item_validation.py
+[source,python]
+----
+def test_error_messages_are_cleared_on_input(self):
+    # Edith starts a new list in a way that causes a validation error:
+    self.browser.get(self.server_url)
+    self.get_item_input_box().send_keys('\n')
+    error = self.browser.find_element_by_css_selector('.has-error')
+    self.assertTrue(error.is_displayed()) #<1>
+
+    # She starts typing in the input box to clear the error
+    self.get_item_input_box().send_keys('a')
+
+    # She is pleased to see that the error message disappears
+    error = self.browser.find_element_by_css_selector('.has-error')
+    self.assertFalse(error.is_displayed()) #<1>
+----
+
+<1> `is_displayed()` tells you whether an element is visible or not. We
+can't just rely on checking whether the element is present in the DOM,
+because now we're starting to hide elements.
+
+That fails appropriately, but before we move on:  three strikes and refactor! 
+We've got several places where we find the error element using CSS. Let's 
+move it to a helper function:
+
+[role="sourcecode"]
+.functional_tests/test_list_item_validation.py (ch13l002)
+[source,python]
+----
+    def get_error_element(self):
+        return self.browser.find_element_by_css_selector('.has-error')
+----
+
+//TODO: why is the helper function in here not in base? Explain
+
+And we then make 5 replacements in 'test_list_item_validation', like this one
+for example:
+
+[role="sourcecode"]
+.functional_tests/test_list_item_validation.py (ch13l003)
+[source,python]
+----
+    # She is pleased to see that the error message disappears
+    error = self.get_error_element()
+    self.assertFalse(error.is_displayed())
+----
+
+We have an expected failure:
+
+[role="dofirst-ch13l003"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_list_item_validation*]
+[...]
+    self.assertFalse(error.is_displayed())
+AssertionError: True is not false
+----
+
+And we can commit this as the first cut of our FT. (I trust you to do this
+without needing me to show you how any more!)
+
+
+Setting up a basic JavaScript test runner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Choosing your testing tools in the Python and Django world is fairly
+straightforward.  The standard library `unittest` module is perfectly
+adequate, and the Django test runner also makes a good default choice. 
+There are some alternatives out there --
+http://nose.readthedocs.org/en/latest/[nose] is popular, and I've personally
+found http://pytest.org/[py.test] to be very impressive.  But there is
+a clear default option, and it's just fine.
+footnote:[Admittedly once you start looking for Python BDD tools, things are a
+little more confusing.]
+
+Not so in the JavaScript world!  We use YUI at work, but I thought I'd go out
+and see whether there were any new tools out there.  I was overwhelmed with
+options -- jsUnit, Qunit, Mocha, Chutzpah, Karma, Testacular, Jasmine, and many
+more.  And it doesn't end there either: as I had settled on one of them Mocha
+footnote:[purely because it features the
+http://visionmedia.github.io/mocha/#nyan-reporter[NyanCat]]
+you find out that you now need to choose an 'assertion framework' and a
+'reporter', and maybe a 'mocking library', and it never ends!
+
+In the end I decided we should use http://qunitjs.com/[qunit] because it's
+simple, and it works well with jQuery.  
+
+NOTE: I was dead keen to use Mocha, because of the Nyan cat test runner.  If
+someone can show me a simple mocha setup that lets the user test, in the
+browser and from the command-line as well, using the "tdd" ui and the "assert"
+assertion library... Well, I'll be eternally grateful.
+
+
+Make a directory called 'tests' inside 'lists/static', and download the qunit
+javascript and css files into it, stripping out version numbers if necessary (I
+got version 1.12).  We'll also put a file called 'tests.html' in there:
+
+[role="dofirst-ch13l004"]
+[subs="specialcharacters,quotes"]
+----
+$ *tree lists/static/tests/*
+lists/static/tests/
+├── qunit.css
+├── qunit.js
+└── tests.html
+----
+
+The boilerplate for a qunit html file looks like this, including a smoke test:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
 [source,html]
 ----
-        <script src="http://code.jquery.com/jquery.min.js"></script>
-        <script src="/static/list.js"></script>
-        <script src="https://login.persona.org/include.js"></script>
-        <script>
-            $(document).ready(function() {
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Javascript tests</title>
+    <link rel="stylesheet" href="qunit.css">
+</head>
 
-var loginLink = document.getElementById('login');
-if (loginLink) {
-  loginLink.onclick = function() { navigator.id.request(); };
-}
+<body>
+    <div id="qunit"></div>
+    <div id="qunit-fixture"></div>
+    <script src="qunit.js"></script>
+    <script>
+/*global $, test, equal */
 
-var logoutLink = document.getElementById('logout');
-if (logoutLink) {
-  logoutLink.onclick = function() { navigator.id.logout(); };
-}
-
-var currentUser = '{{ user.email }}' || null;
-var csrf_token = '{{ csrf_token }}';
-console.log(currentUser);
-
-navigator.id.watch({
-  loggedInUser: currentUser,
-  onlogin: function(assertion) {
-    $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token})
-    .done(function() { window.location.reload(); })
-    .fail(function() { navigator.id.logout();});
-  },
-  onlogout: function() {
-    $.post('/accounts/logout')
-    .always(function() { window.location.reload(); });
-  }
+test("smoke test", function () {
+    equal(1, 1, "Maths works!");
 });
 
-            });
-        </script>
+    </script>
+
+</body>
+</html>
 ----
 
-The Persona JavaScript library gives us a special `navigator.id` object.
-We bind its `request` method to our a link called "login" (which I've put
-in any old where at the top of the page), and similarly a "logout" link 
-gets bound to a `logout` function.
+Dissecting that, the important things to pick up are the fact that we pull
+in 'qunit.js' using the first `<script>` tag, and then use the second one
+to write the main body of tests.
+
+NOTE: Are you wondering about the `/*global` comment? I'm using a tool called
+`jslint`, which is a syntax-checker for Javascript that's integrated into my
+editor. The comment tells it what global variables are expected - it's not
+important to the code, so don't worry about it, but I would recommend taking 
+a look at Javascript linters like jslint or jshint when you get a moment.
+They can be very useful for avoiding JavaScript "gotchas".
+
+If you open up the file using your web browser (no need to run the dev
+server, just find the file on disk) you should see something like this:
+
+.Basic Qunit screen
+image::images/qunit_smoke_test.png["Qunit screen showing 1 passing test"]
+
+Looking at the test itself, we'll find many similarities with the Python
+tests we've been writing so far:
+
+[role="skipme"]
+[source,javascript]
+----
+test("smoke test", function () { // <1>
+    equal(1, 1, "Maths works!"); // <2>
+});
+----
+
+<1> The `test` function defines a test case, a bit like 
+    `def test_something(self)` did in Python. Its first argument is a name for
+    the test, and the second is a function for the body of the test.
+
+<2> The `equal` function is an assertion; very much like `assertEqual`, it
+    compares two arguments. Unlike in Python, though, the message is displayed
+    both for failures and for passes, so it should be phrased as a positive
+    rather than a negative.
+
+Why not try changing those arguments to see a deliberate failure?
+
+//TODO: discuss where JS unit tests fit in the TDD cycle
+
+Using jquery and the fixtures div
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's get a bit more comfortable with what our testing framework can do,
+and start using a bit of jQuery
+
+NOTE: If you've never seen jQuery before, I'm going to try and explain it as we
+go, just enough so that you won't be totally lost; but this isn't a jQuery
+tutorial.  You may find it helpful to spend an hour or two investigating jQuery
+at some point during this chapter.
+
+Let's add jQuery to our scripts, and a few elements to use in our tests:
 
 [role="sourcecode"]
-.lists/templates/base.html (ch14l002)
+.lists/static/tests/tests.html
 [source,html]
 ----
-<body>
-    <div class="navbar">
-        {% if user.email %}
-            <p>Logged in as {{ user.email}}</p>
-            <p><a id="logout" href="{% url 'logout' %}">Sign out</a></p>
-        {% else %}
-            <a href="#" id="login">Sign in</a>
-        {% endif %}
-        <p>User: {{user}}</p>
-    </div>
-    <div class="container">
-    [...]
-----
-
-
-Persona will now pop up its authentication dialog box if users
-click the log in link. What happens next is the clever part of the Persona
-protocol:  the user enters an email address, and the browser takes care
-of validating that email address, by taking the user to the email provider
-(Google, Yahoo or whoever), and validating it with them. 
-
-Let's say it's Google: Google asks the user to confirm their username and
-password, and maybe even does some two-factor auth wizardry, and is then
-prepared to confirm to your browser that you are who you say you are.  Google
-then passes a certificate back to the browser, which is cryptographically
-signed to prove it's from Google, and which contains the user's email address.
-
-At this point the browser can trust that you do own that email address, and
-it can incidentally re-use that certificate for any other websites that use
-Persona.
-
-Now it combines the certificate with the domain name of the website
-you want to log into into a blob called an "assertion", and sends them on
-to our site for validation.
-
-This is the point between the `navigator.id.request` and the
-`navigator.id.watch` callback for `onlogin` - we send the assertion via
-POST to the login URL on our site, which I've put at 'accounts/login'.
-
-On the server, we now have the job of verifying the assertion: is it really
-proof that the user owns that email address?  Our server can check, because
-Google has signed part of the assertion with its public key.  We can either
-write code to do the crypto for this step ourselves, or we can use a public
-service from Mozilla to do it for us?
-
-NOTE: yes, letting Mozilla do it for us totally defeats the whole privacy
-point, but it's the 'principle'. We could do it ourselves if we wanted to.
-It's left as an exercise for the reader!  There's more details on the 
-https://developer.mozilla.org/en-US/docs/Mozilla/Persona/Protocol_Overview[Mozilla
-site], including all the clever public key crypto that keeps Google from 
-knowing what site you want to log into, but also stops replay attacks and
-so on. Smart.
-
-Before starting on a spike, it's a good idea to start a new branch:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout -b persona-auth-spike*
-----
-
-Next we prep an app for our accounts stuff:
-
-[subs="specialcharacters,quotes"]
-----
-$ *python3 manage.py startapp accounts*
-----
-
-Here's the view that handles the POST to 'accounts/login':
-
-[role="sourcecode"]
-.accounts/views.py
-[source,python]
-----
-import sys
-from django.contrib.auth import authenticate
-from django.contrib.auth import login as auth_login
-from django.shortcuts import redirect
-
-def login(request):
-    print('login view', file=sys.stderr)
-    # user = PersonaAuthenticationBackend().authenticate(request.POST['assertion'])
-    user = authenticate(assertion=request.POST['assertion'])
-    if user is not None:
-        auth_login(request, user)
-    return redirect('/')
-----
-
-You can see that's definitely "spike" code, from things like that commented-out
-line as evidence of an early experiment that failed.  We'll definitely put
-something tidier into production.
-
-
-Here's the `authenticate` function, which is implemented as a custom
-Django "authentication backend" (we could have done it inline in the view,
-but using a backend is the Django recommended way.  It would let us re-use the
-authentication system in the admin site, for example).
-
-//TODO: check, is this actually true?
-
-[role="sourcecode"]
-.accounts/authentication.py
-[source,python]
-----
-import requests
-import sys
-from accounts.models import ListUser
-
-class PersonaAuthenticationBackend(object):
-
-    def authenticate(self, assertion):
-        # Send the assertion to Mozilla's verifier service.
-        data = {'assertion': assertion, 'audience': 'localhost'}
-        print('sending to mozilla', data, file=sys.stderr)
-        resp = requests.post('https://verifier.login.persona.org/verify', data=data)
-        print('got', resp.content, file=sys.stderr)
-
-        # Did the verifier respond?
-        if resp.ok:
-            # Parse the response
-            verification_data = resp.json()
-
-            # Check if the assertion was valid
-            if verification_data['status'] == 'okay':
-                email = verification_data['email']
-                try:
-                    return self.get_user(email)
-                except ListUser.DoesNotExist:
-                    return ListUser.objects.create(email=email)
-
-
-    def get_user(self, email):
-        return ListUser.objects.get(email=email)
-----
-
-This code is copy-pasted directly from the Mozilla site, as you can see from
-the explanatory comments.  
-
-You'll need to `pip install requests`.  If you've never used it before, 
-http://docs.python-requests.org/en/latest/[requests] is a great alternative
-to the Python standard library tools for HTTP requests.
-
-To finish off the job of customising authentication in Django, we just need a
-custom user model:
-
-[role="sourcecode"]
-.accounts/models.py
-[source,python]
-----
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
-from django.db import models
-
-class ListUser(AbstractBaseUser, PermissionsMixin):
-    email = models.EmailField(primary_key=True)
-    USERNAME_FIELD = 'email'
-    #REQUIRED_FIELDS = ['email', 'height']
-
-    objects = ListUserManager()
-
-    @property
-    def is_staff(self):
-        return self.email == 'harry.percival@example.com'
-
-    @property
-    def is_active(self):
-        return True
-----
-
-That's what I call a minimal user model!  One field, none of this
-firstname/lastname/username nonsense, and, pointedly, no password! 
-Somebody else's problem!   But, again, you can see that this code isn't ready
-for production, from the commented-out lines to the hard-coded harry
-email address.
-
-NOTE: At this point I'd recommend a little browse through the 
-https://docs.djangoproject.com/en/1.6/topics/auth/customizing/[Django 
-auth documentation]
-
-Aside from that, you need a model manager for the user:
-
-[role="sourcecode"]
-.accounts/models.py (ch14l006)
-[source,python]
-----
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-
-class ListUserManager(BaseUserManager):
-
-    def create_user(self, email):
-        ListUser.objects.create(email=email)
-
-    def create_superuser(self, email, password):
-        self.create_user(email)
-----
-
-A logout view:
-
-
-[role="sourcecode"]
-.accounts/views.py (ch14l007)
-[source,python]
-----
-from django.contrib.auth import login as auth_login, logout as auth_logout
-[...]
-
-def logout(request):
-    auth_logout(request)
-    return redirect('/')
-----
-
-Some urls for our two views:
-
-[role="sourcecode"]
-.superlists/urls.py (ch14l008)
-[source,python]
-----
-urlpatterns = patterns('',
-    url(r'^$', 'lists.views.home_page', name='home'),
-    url(r'^lists/', include('lists.urls')),
-    url(r'^accounts/', include('accounts.urls')),
-    # url(r'^admin/', include(admin.site.urls)),
-)
-----
-
-and
-
-[role="sourcecode"]
-.accounts/urls.py
-[source,python]
-----
-from django.conf.urls import patterns, url
-
-urlpatterns = patterns('',
-    url(r'^login$', 'accounts.views.login', name='login'),
-    url(r'^logout$', 'accounts.views.logout', name='logout'),
-)
-----
-
-
-And finally, switch on the auth backend and our new accounts app in
-'settings.py':
-
-[role="sourcecode"]
-.superlists/settings.py
-[source,python]
-----
-INSTALLED_APPS = (
-    #'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'lists',
-    'south',
-    'accounts',
-)
-
-AUTH_USER_MODEL = 'accounts.ListUser'
-AUTHENTICATION_BACKENDS = (
-    'accounts.authentication.PersonaAuthenticationBackend',
-)
-
-MIDDLEWARE_CLASSES = (
-[...]
-----
-
-Why not spin up a dev server with `runserver` and see how it all looks?
-
-.It works! It works! mwahahahaha.
-image::images/mozilla_persona_signin.png["The Persona login screen"]
-
-NB - you will need to run a `syncdb` to get the accounts tables all
-set up.
-
-That's pretty much it! Along the way, I had to fight pretty hard, including
-debugging ajax requests by hand in the Firefox console, catching infinite
-page-refresh loops, stumbling over several missing attributes on my custom user
-model (because I didn't read the docs properly), and finally discovering that
-we have to upgrade to the dev version of Django to actually get it to work in
-the admin site.
-footnote:[http://stackoverflow.com/questions/16983547/django-problems-with-id-in-custom-usermodel/18458659#18458659]
-
-TIP: If it's not working when you try it manually, and you see "audience
-mismatch" errors in the console, make sure you're visiting the site
-via 'http://localhost:8000', and not '127.0.0.1'.
-
-
-.Aside: Logging to stderr
-*******************************************************************************
-While spiking, it's pretty critical to be able to see exceptions that are being
-generated by your code. Annoyingly, Django doesn't send all exceptions to the 
-terminal by default, but you can make it do so with a variable called `LOGGING`
-in 'settings.py':
-
-[role="sourcecode"]
-.superlists/settings.py (ch14l011)
-[source,python]
-----
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console':{
-            'level':'DEBUG',
-            'class':'logging.StreamHandler',
-        },
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-        },
-    },
-    'root': {'level': 'DEBUG' if DEBUG else 'INFO'},
-}
-----
-
-Django uses the rather "enterprisey" logging module from the Python standard
-library, which, although very fully-featured, does suffer from a fairly steep
-learning curve. More info in the
-https://docs.djangoproject.com/en/1.6/topics/logging/[docs].
-*******************************************************************************
-
-But we now have a working solution!  Let's commit it on our spike branch:
-
-//TODO screenshot ajax debug
-
-[subs="specialcharacters,quotes"]
-----
-$ *git status*
-$ *git add accounts*
-$ *git commit -am"spiked in custom auth backend with persona"*
-----
-
-Time to de-spike!
-
-
-De-Spiking
-~~~~~~~~~~
-
-De-Spiking means re-writing your prototype code using TDD.  We now have enough
-information to "do it properly".  So what's the first step?  An FT of course!
-
-We'll stay on the spike branch for now, to see our FT pass against our spiked
-code.  Then we'll go back to master, and commit just the FT.
-
-A common Selenium technique: waiting for 
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Here's the basic outline:
-
-[role="sourcecode"]
-.functional_tests/test_login.py
-[source,python]
-----
-from .base import FunctionalTest
-
-class LoginTest(FunctionalTest):
-
-    def test_login_with_persona(self):
-        # Edith goes to the awesome superlists site
-        # and notices a "Sign in" link for the first time.
-        self.browser.get(self.server_url)
-        self.browser.find_element_by_id('login').click()
-
-        # A Persona login box appears
-        self.switch_to_new_window('Mozilla Persona')
-        self.browser.find_element_by_id(
-            'authentication_email'
-        ).send_keys(TEST_EMAIL)
-        self.browser.find_element_by_tag_name('button').click()
-
-        # We get redirected to the Yahoo page
-        self.wait_for_element_with_id('username')
-        self.browser.find_element_by_id(
-            'username'
-        ).send_keys(TEST_EMAIL)
-        self.browser.find_element_by_id(
-            'passwd'
-        ).send_keys(TEST_PASSWORD)
-        self.browser.find_element_by_id('.save').click()
-
-        # The Persona window closes
-        self.switch_to_new_window('To-Do')
-
-        # She can see that she is logged in
-        self.wait_for_element_with_id('logout')
-        navbar = self.browser.find_element_by_css_selector('.navbar')
-        self.assertIn(TEST_EMAIL, navbar.text)
-----
-
-Where did I get TEST_EMAIL and TEST_PASSWORD from?  I just set up a 
-free webmail account especially for this... You could do the same, or check
-out http://www.mockmyid.com and http://wwww.personatestuser.org.
-
-TODO: demo of how to run thru process manually with firefox debug 
-toolbar to find correct locators in case not same as the ones I came across
-
-TODO: wider discussion of benefits of mocked service vs real thing
-
-The FT needs two helper functions, both of which do something that's very
-common in Selenium testing:  they wait for something to happen.  Here's
-the first:
-
-
-[role="dofirst-ch14l013 sourcecode"]
-.functional_tests/test_login.py (ch14l014)
-[source,python]
-----
-import time
-[...]
-
-    def switch_to_new_window(self, text_in_title):
-        retries = 60
-        while retries > 0:
-            for handle in self.browser.window_handles:
-                self.browser.switch_to_window(handle)
-                if text_in_title in self.browser.title:
-                    return
-            retries -= 1
-            time.sleep(0.5)
-        self.fail('could not find window')
-----
-
-In this one we've "rolled our own" wait -- we iterate through all the
-current browser windows, looking for one with a particular title. If
-we can't find it, we do a short wait, and try again, decrementing a retry
-counter.
-
-This is such a common pattern in Selenium tests that the team created an API
-for waiting -- it doesn't quite handle all use cases though, so that's why we 
-had to roll our own the first time around.  When doing something simpler like
-waiting for an element with a given ID to appear on the page, we can use the
-`WebDriverWait` class:
-
-
-[role="sourcecode"]
-.functional_tests/test_login.py (ch14l015)
-[source,python]
-----
-from selenium.webdriver.support.ui import WebDriverWait
-[...]
-
-    def wait_for_element_with_id(self, element_id):
-        WebDriverWait(self.browser, timeout=30).until(
-            lambda b: b.find_element_by_id(element_id)
-        )
-----
-
-This is what Selenium calls an "explicit wait".  If you remember, we
-already defined an "implicit wait" in the `FunctionalTest.setUp`.  We set that
-to just 3 seconds though, which is fine in most cases, but when we're waiting
-for an external service like Persona, we sometimes need to bump that default
-timeout.
-
-There are more examples in the 
-http://docs.seleniumhq.org/docs/04_webdriver_advanced.jsp[Selenium docs], but I
-actually found reading the 
-http://code.google.com/p/selenium/source/browse/py/selenium/webdriver/support/wait.py[source
-code] more instructive -- there are good docstrings!
-
-And if we run the FT, it works!
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
-Creating test database for alias 'default'...
-Not Found: /favicon.ico
-login view
-[...]
-.
- ---------------------------------------------------------------------
-Ran 1 test in 32.222s
-
-OK
-Destroying test database for alias 'default'...
-----
-
-You can even see some of the debug output I left in my spiked view
-implementations.  Now it's time to revert all of our temporary changes,
-and re-introduce them one by one in a test-driven way.
-
-
-Reverting our spiked code
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout master* # switch back to master branch
-$ *rm -rf accounts* # remove any trace of spiked code
-$ *git add functional_tests* # save our new FT.
-$ *git commit -m "FT for login with Persona"*
-----
-
-Now we re-run the FT and let it drive our development:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
-selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
-element: {"method":"id","selector":"login"}' ; Stacktrace: 
-[...]
-----
-
-The first thing it wants us to do is add a login link. Incidentally, I prefer
-prefixing HTML ids with `id_`; it's a convention to make it easy to tell
-the difference between classes and ids in HTML and CSS. So let's tweak the FT
-first:
-
-[role="sourcecode"]
-.functional_tests/test_login.py (ch14l017)
-[source,python]
-----
-    self.browser.find_element_by_id('id_login').click()
-    [...]
-    self.wait_for_element_with_id('id_logout')
-----
-
-
-OK -- so let's add a do-nothing log in link.  Bootstrap has some built-in
-classes for navigation bars, so we'll use them:
-
-[role="sourcecode"]
-.lists/templates/base.html
-[source,html]
-----
-<div class="container">
-    <nav class="navbar navbar-default" role="navigation">
-        <a class="navbar-brand" href="/">Superlists</a>
-        <a class="btn navbar-btn navbar-right" id="id_login" href="#">Sign in</a>
-    </nav>
-    <div class="row">
-    [...]
-----
-//ch14l018
-
-
-After 30 seconds, that gives:
-
-----
-AssertionError: could not find window
-----
-
-License to move on!  Next thing: more javascript!
-
-
-Javascript unit tests involving external components.  Our first Mocks!
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-First off, a bit of housekeeping.  We create a site-wide static files 
-directory inside 'superlists/superlists', and we move all the 
-bootsrap css, qunit code, and base.css into it
-
-[role="dofirst-ch14l019"]
-[subs="specialcharacters,quotes"]
-----
-$ *tree superlists -L 3 -I __pycache__*
-superlists
-├── __init__.py
-├── settings.py
-├── static
-│   ├── base.css
-│   ├── bootstrap
-│   │   ├── css
-│   │   ├── fonts
-│   │   └── js
-│   └── tests
-│       ├── qunit.css
-│       └── qunit.js
-├── urls.py
-└── wsgi.py
-
-6 directories, 7 files
-----
-
-TODO: move base.html into site-wide folder too?
-
-That means adjusting our existing JavaScript unit tests:
-
-[role="sourcecode"]
-.lists/static/tests/tests.html (ch14l020)
-[source,html]
-----
-    <link rel="stylesheet" href="../../../superlists/static/tests/qunit.css">
-
-    [...]
+    <div id="qunit-fixture"></div>
+
+    <form> <1>
+        <input name="text" />
+        <div class="has-error">Error text</div>
+    </form>
 
     <script src="http://code.jquery.com/jquery.min.js"></script>
-    <script src="../../../superlists/static/tests/qunit.js"></script>
-    <script src="../list.js"></script>
+    <script src="qunit.js"></script>
+    <script>
+/*global $, test, equal */
+
+test("smoke test", function () {
+    equal($('.has-error').is(':visible'), true); //<2><3>
+    $('.has-error').hide(); //<4>
+    equal($('.has-error').is(':visible'), false); //<5>
+});
+
+    </script>
 ----
+//ch13l006
 
-And we can re-run them to check that worked:
+<1> The `<form>` and its contents are there to represent what will be
+    on the real list page.
 
+<2> jQuery magic starts here!  `$` is the jQuery swiss army knife. It's
+    used to find bits of the DOM.  Its first argument is a CSS selector; here,
+    we're telling it to find all elements that have the class "error".  It
+    returns an object that represents one or more DOM elements. That, in turn,
+    has various useful methods that allow us to manipulate or find out about
+    those elements. 
+
+<3> Here we use `.is`, which can tell us whether an element matches a
+    particular CSS property. Here we use `:visible` to check whether the
+    element is displayed or hidden.
+
+<4> We then use jQuery's `.hide()` method to hide the div.  Behind the
+    scenes, it dynamically sets a `style="display: none"` on the element. 
+
+<5> And finally we check that it's worked, with a second `equal` assertion.
+
+
+If you refresh the browser, you should see that all passes:
+
+.Expected results from Qunit in browser
 [role="qunit-output"]
 ----
 2 assertions of 2 passed, 0 failed.
+1. smoke test (0, 2, 2)
 ----
 
-Here's how we tell our settings file about the new static folder:
+Time to see how fixtures work.  If we just dupe up this test:
+
 
 [role="sourcecode"]
-.superlists/settings.py
-[source,python]
-----
-[...]
-STATIC_ROOT = os.path.join(BASE_DIR, '../static')
-STATICFILES_DIRS = (
-    os.path.join(BASE_DIR, 'superlists', 'static'),
-)
-----
-
-NOTE: You might want to re-introduce the LOGGING setting from earlier at this 
-point.  There's no need for an explicit test for this, and our current test
-suite will let us know in the unlikely event that it breaks anything.
-
-And we can quickly run the layout + styling FT to check the CSS all still works:
-
-[role="dofirst-ch14l021-1"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests.test_layout_and_styling*]
-[...]
-OK
-----
-
-
-Next, create an app called `accounts` to hold all the code related to
-login.  That will include our Persona javascript stuff:
-
-[subs="specialcharacters,quotes"]
-----
-$ *python3 manage.py startapp accounts*
-$ *mkdir -p accounts/static/tests*
-----
-
-That's the housekeeping done.  Now's a good time for a commit.  Then, let's
-take another look at our spiked-in javascript:
-
-[role="skipme"]
-----
-var loginLink = document.getElementById('login');
-if (loginLink) {
-  loginLink.onclick = function() { navigator.id.request(); };
-}
-----
-
-Why Mock?
-^^^^^^^^^
-//TODO: expand this.  "what is mocking?"
-
-We want our login link's on-click to be bound to a function provided by
-the Persona library, `navigator.id.request`.
-
-Now we don't want to call the 'actual' 3rd party function in our unit tests,
-because we don't need our unit tests popping up persona windows all over the
-shop.  So instead, we are going to do what's called "mocking it out".  I had
-hoped that our first Mock example was going to be in Python, but it looks like
-it's going to be JavaScript instead.  Ah well, needs must; thankfully, it's
-quite a straightforward one.  Still, you may find you need to read this next
-section a few times before it all makes total sense.
-
-What we're going to do is replace the real `navigator` object with a 'fake'
-one that we've built ourselves, one that will be able to tell us what happens
-to it.
-
-Namespacing
-^^^^^^^^^^^
-
-In the context of 'base.html', `navigator` is just an object in the global
-scope, as provided by the 'include.js' `<script>` tag that we get from 
-Mozilla.  Testing global variables is a pain though, so we can turn it 
-into a local variable by passing it into an "initialize"
-footnote:[UK-English speakers may bristle at that incorrect spelling of the
-word "initialise". I know, it grates with me too. But it's an increasingly
-accepted convention to use American spelling in code. It makes it easier to
-search, for example, and just to work together more generally,  if we all agree
-on how words are spelt.  We have to accept that we're in the minority here, and
-this is one battle we've probably lost]
-function. The code we'll end up with in 'base.html' will look like this:
-
-
-[role="skipme"]
-[source,html]
-.lists/templates/base.html
-----
-<script src="https://login.persona.org/include.js"></script>
-<script src="/static/accounts/accounts.js"></script>
-<script src="/static/list.js"></script>
-<script>
-    $(document).ready(function() {
-
-        Superlists.Accounts.initialize(navigator)
-
-    });
-</script>
-----
-
-I've specified that our `initialize` function will be 'namespaced' inside
-some nested objects, `Superlists.Accounts`.  JavaScript suffers from a
-programming model that's tied into a global scope, and this sort of namespacing
-/ naming convention helps to keep things under control.  Lots of JavaScript 
-libraries might want to call a function `initialize`, but very few will call
-it `Superlists.Accounts.initialize`!
-
-//TODO: look into require.js as an alternative to namespacing?
-
-This call to `initialize` is simple enough that I'm happy it doesn't need any
-unit tests of its own.
-
-
-
-A simple mock to unit tests our initialize function
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The initialize function itself, we will test though.  Copy the lists
-tests across to get the boilerplate HTML, and then adjust the following:
-
-[role="dofirst-ch14l023 sourcecode"]
-.accounts/static/tests/tests.html
+.lists/static/tests/tests.html
 [source,html]
 ----
+    <script>
+/*global $, test, equal */
+
+test("smoke test", function () {
+    equal($('.has-error').is(':visible'), true);
+    $('.has-error').hide();
+    equal($('.has-error').is(':visible'), false);
+});
+test("smoke test 2", function () {
+    equal($('.has-error').is(':visible'), true);
+    $('.has-error').hide();
+    equal($('.has-error').is(':visible'), false);
+});
+
+    </script>
+----
+
+Slightly unexpectedly, we find one of them fails:
+
+.One of the two tests is failing
+image::images/qunit_first_test_failure.png["Qunit screen showing only 1 passing test"]
+
+What's happening here is that the first test hides the error div, so when 
+the second test runs, it starts out invisible. 
+
+NOTE: Qunit test do not run in a predictable order, so you can't rely on the
+first test running before the second one.
+
+We need some way of tidying up between tests, a bit like `setUp` and
+`tearDown`, or like the Django test runner would reset the database between
+each test.  Thankfully, and you can probably see this coming, but the
+`qunit-fixture` div is exactly what we're looking for.  Move the form in there:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+    <div id="qunit"></div>
     <div id="qunit-fixture">
-        <a id="id_login">Sign in</a>
+        <form>
+            <input name="text" />
+            <div class="has-error">Error text</div>
+        </form>
     </div>
 
     <script src="http://code.jquery.com/jquery.min.js"></script>
-    <script src="../../../superlists/static/tests/qunit.js"></script>
-    <script src="../accounts.js"></script>
-    <script>
-/*global $, test, equal, sinon, Superlists */
-
-test("initialize binds sign in button to navigator.id.request", function () {
-    var requestWasCalled = false; //<6>
-    var mockRequestFunction = function () { requestWasCalled = true; }; //<5>
-    var mockNavigator = { //<4>
-        id: {
-            request: mockRequestFunction
-        }
-    };
-
-    Superlists.Accounts.initialize(mockNavigator); //<3>
-
-    $('#id_login').trigger('click'); //<2>
-
-    equal(requestWasCalled, true); //<1>
-});
-
-    </script>
-----
-//ch14l024
-
-One of the best ways to understand this test, or indeed any test, is to work 
-backwards.  The first thing we see is the assertion:
-
-<1> We are asserting that a variable called `requestWasCalled` is true. We're
-    checking that, one way or another, the `request` function, as in
-    `navigator.id.request`, was called
-
-<2> Called when?  When a click event happens to the `id_login` element
-
-<3> Before we trigger that click event, we call our 
-    `Superlists.Accounts.Initialize` function, just like we will on the real
-    page. The only difference is, instead of passing it the real global
-    `navigator` object from Persona, we pass in a fake one called
-    `mockNavigator`
-
-<4> That's defined as a generic JavaScript object, with an attribute called
-    `id` which in turn has an attribute called `request`, which we're assigning
-    to a variable called `mockRequestFunction`
-
-<5> `mockRequestFunction` we define as a very simple function which, if called
-    will simply set the value of the `requestWasCalled` variable to `true`.
-
-<6> And finally (firstly?) we make sure that `requestWasCalled` starts out
-    as `false`.
-
-The upshot of all this is:  the only way this test will pass is if our
-`initialize` function binds the `click` event on `id_login` to the method
-`.id.request` of the object we pass it.
-
-NOTE: I've called this object a "mock", but it's probably more correctly
-called a "spy".  For more on the general class of tools called "Test Doubles",
-including the difference between stubs, mocks, fakes and spies, see
-https://leanpub.com/mocks-fakes-stubs[Mocks, Fakes and Stubs] by Emily Bache.
-
-
-Does that make sense?  Let's play around with the test and see if we can 
-get the hang of it.
-
-
-
-Our first error is this:
-
-[role="qunit-output"]
-----
-1. Died on test #1
-@file:///workspace/superlists/accounts/static/tests/tests.html:34:
-Superlists is not defined
-----
-
-That's the equivalent of an `ImportError` in Python.  Let's start work
-on 'accounts/static/accounts.js':
-
-
-[role="sourcecode"]
-.accounts/static/accounts.js
-[source,javascript]
-----
-/*global $ */
-window.Superlists = null;
-----
-
-We start with the usual on-document-ready boilerplate, and then address our
-immediate problem: Superlists is not defined.  Now, just as in Python we
-might do `Superlists = None`, we do `window.Superlists = null`.  Using
-`window.` makes sure we get the global object.
-
-[role="qunit-output"]
-----
-1. Died on test #1
-@file:///workspace/superlists/accounts/static/tests/tests.html:34:
-Superlists is null
-----
-
-OK, next baby step 
-or two:
-
-[role="sourcecode"]
-.accounts/static/accounts.js
-[source,javascript]
-----
-    window.Superlists = {
-        Accounts: {}
-    };
-----
-
-Gives footnote:[In the real world, when setting up a namespace like
-this, you'd want to follow a sort of "add-or-create" pattern, so that, if there's
-already a window.Superlists in the scope, we extend it rather than replacing it.
-`window.Superlists = window.Superlists || {}` is one formulation, jQuery's `$.extend` 
-is another possibilty.  But, there's already a lot of content in this chapter, and
-I thought this was probably one too many things to talk about!]
-
-[role="qunit-output"]
-----
-Superlists.Accounts.initialize is not a function
-----
-
-So let's make it a function:
-
-[role="sourcecode"]
-.accounts/static/accounts.js
-[source,javascript]
-----
-    window.Superlists = {
-        Accounts: {
-            initialize: function () {}
-        }
-    };
-----
-
-And now we get a real test failure instead of just errors
-
-[role="qunit-output"]
-----
-1. initialize binds sign in button to navigator.id.request (1, 0, 1)
-
-    1. failed
-        Expected: true
-        Result: false
-----
-
-Next -- let's separate defining our initialize function from the part where we
-export it into the Superlists namespace.  We'll also do a `console.log`, which
-is the JavaScript equivalent of a debug-print, to take a look at what the
-initialize function is being called with:
-
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l028)
-[source,javascript]
-----
-var initialize = function (navigator) {
-    console.log(navigator);
-};
-
-window.Superlists = {
-    Accounts: {
-        initialize: initialize
-    }
-};
-----
-
-.Debugging in the JavaScript console
-image::images/console_dot_log.png["The JavaScript console in our qunit run, showing the console.log"]
-
-In Firefox and I believe Chrome also, you can use the shortcut `Ctrl-Shift-I` 
-to bring up the JavaScript console, and see the [object Object] that was
-logged.  If you click on it, you can see it has the properties we defined in
-our test: an `id`, and inside that, a function called `request`.
-
-So let's now just pile in and get the test to pass:
-
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l029)
-[source,javascript]
-----
-var initialize = function (navigator) {
-    navigator.id.request();
-};
-----
-
-That gets the tests to pass, but it's not quite the implementation we
-want.  We're calling `navigator.id.request` always, instead of only
-on click.  We'll need to adjust our tests.
-
-[role="qunit-output"]
-----
-1 assertions of 1 passed, 0 failed.
-1. initialize binds sign in button to navigator.id.request (0, 1, 1)
-----
-
-Before we do, let's just have a play around to see if we really understand
-what's going on.  What happens if we do this:
-
-
-[role="sourcecode"]
-.accounts/static/accounts.js
-[source,javascript]
-----
-var initialize = function (navigator) {
-    navigator.id.request();
-    navigator.id.doSomethingElse();
-};
-----
-
-We get:
-
-[role="qunit-output"]
-----
-1. Died on test #1
-@file:///workspace/superlists/accounts/static/tests/tests.html:34:
-navigator.id.doSomethingElse is not a function
-----
-
-You see, the mock navigator object that we pass in is entirely under our
-control. It has only the attributes and methods we give it.  You can
-play around with it now if you like:
-
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html
-[source,html]
-----
-    var mockNavigator = {
-        id: {
-            request: mockRequestFunction,
-            doSomethingElse: function () { console.log("called me!");}
-        }
-    };
-----
-
-That will give you a pass, and if you open up the debug window, you'll see:
-
-[role="skipme"]
-----
-[01:22:27.456] "called me!"
-----
-//TODO get phantomjs runner to capture console.logs
-
-Does that help to see what's going on?  Let's revert those last two changes,
-and tweak our unit test so that it checks the `request` function is only
-called 'after' we fire off the click event.  We also add some error messages
-to help see which of the two `equal` assertions is failing:
-
-
-[role="dofirst-ch14l029 sourcecode"]
-.accounts/static/tests/tests.html (ch14l032)
-[source,html]
-----
-    var mockNavigator = {
-        id: {
-            request: mockRequestFunction
-        }
-    };
-
-    Superlists.Accounts.initialize(mockNavigator);
-    equal(requestWasCalled, false, 'check request not called before click'); 
-
-    $('#id_login').trigger('click');
-    equal(requestWasCalled, true, 'check request called after click'); 
-----
-
-NOTE: assertion messages (the third argument to `equal`), in Qunit, are
-actually "success" messages. Rather than only being displayed if the test
-fails, they are also displayed when the test passes.  That's why they have
-the positive phrasing.
-
-Now we get a neater failure:
-
-[role="qunit-output"]
-----
-1 assertions of 2 passed, 1 failed.
-1. initialize binds sign in button to navigator.id.request (1, 1, 2)
-    1. check request not called before click
-        Expected: false
-        Result: true
-----
-
-So let's make it so that the call to `navigator.id.request` only happens
-if our `id_login` is clicked:
-
-[role="sourcecode"]
-.accounts/static/accounts.js
-[source,javascript]
-----
-var initialize = function (navigator) {
-    $('#id_login').on('click', function () {
-        navigator.id.request();
-    });
-};
-----
-//ch14l033
-
-That passes. A good start!  Let's try pulling it into our template:
-
-[role="sourcecode"]
-.lists/templates/base.html
-[source,html]
-----
-    <script src="http://code.jquery.com/jquery.min.js"></script>
-    <script src="https://login.persona.org/include.js"></script>
-    <script src="/static/accounts.js"></script>
-    <script src="/static/list.js"></script>
-    <script>
-        $(document).ready( function () {
-            Superlists.Accounts.initialize(navigator);
-        });
-    </script>
-</body>
-----
-
-We also need to add the `accounts` app to 'settings.py', otherwise
-it won't be serving the static file at 'accounts/static/accounts.js':
-
-[role="sourcecode"]
-.superlists/settings.py
-[source,diff]
-----
-+++ b/superlists/settings.py
-@@ -130,6 +130,7 @@ INSTALLED_APPS = (
-     'lists',
-     'south',
-+    'accounts',
- )
-----
-//TODO; pop south above lists.
-
-A quick check on the FT ... Doesn't get any further unfortunately.  To see
-why, we can open up the site manually, and check the JavaScript debug console:
-
-[role="skipme"]
-----
-[01:36:54.572] Error: navigator.id.watch must be called before
-navigator.id.request @ https://login.persona.org/include.js:8
-----
-//TODO: test this somehow?
-
-
-More advanced mocking
-^^^^^^^^^^^^^^^^^^^^^
-
-We now need to call Mozilla's `navigator.id.watch` correctly. Taking another
-look at our spike, it should be something like this:
-
-
-[role="skipme"]
-[source,javascript]
-----
-var currentUser = '{{ user.email }}' || null;
-var csrf_token = '{{ csrf_token }}';
-console.log(currentUser);
-
-navigator.id.watch({
-  loggedInUser: currentUser, //<1>
-  onlogin: function(assertion) {
-    $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token}) //<2>
-    .done(function() { window.location.reload(); })
-    .fail(function() { navigator.id.logout();});
-  },
-  onlogout: function() {
-    $.post('/accounts/logout')
-    .always(function() { window.location.reload(); });
-  }
-});
-----
-
-Decoding that, the watch function needs to know a couple of things from 
-the global scope:  
-
-<1> the current user's email, to be passed in as the `loggedInUser` parameter
-    to watch
-
-<2> the current CSRF token, to pass in the Ajax POST request to the login
-    view
-
-We've also got two hard-coded URLs in there, which it would be better to
-get from Django, something like this:
-
-[role="skipme"]
-[source,javascript]
-----
-var urls = {
-    login: "{% url 'login' %}",
-    logout: "{% url 'logout' %}",
-};
-----
-
-So that would be a third parameter to pass in from the global scope.  We've
-already got an initialize function, so let's imagine using it like this:
-
-[role="skipme"]
-[source,javascript]
------
-Superlists.Accounts.initialize(navigator, user, token, urls);
------
-
-
-Using a spy to check we call the API correctly
-++++++++++++++++++++++++++++++++++++++++++++++
-
-"Rolling your own" mocks is possible as we've seen, and JavaScript actually
-makes it relatively easy, but using a mocking library can save us a lot of
-heavy lifting.  The most popular one in the JavaScript world is called
-'sinon.js' Let's download it (from http://sinonjs.org) and put it in our
-site-wide static tests folder:
-
-[role="dofirst-ch14l036"]
-[subs="specialcharacters,quotes"]
-----
-$ *tree superlists/static/tests/*
-superlists/static/tests/
-├── qunit.css
-├── qunit.js
-└── sinon.js
-----
-
-Next we include it in our accounts tests:
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html
-[source,html]
-----
-    <script src="http://code.jquery.com/jquery.min.js"></script>
-    <script src="../../../superlists/static/tests/qunit.js"></script>
-    <script src="../../../superlists/static/tests/sinon.js"></script>
-    <script src="../accounts.js"></script>
-----
-
-And now we can write a test that uses sinon's so-called "spy" object:
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html (ch14l038)
-[source,javascript]
-----
-test("initialize calls navigator.id.watch", function () {
-    var user = 'current user';
-    var token = 'csrf token';
-    var urls = {login: 'login url', logout: 'logout url'};
-    var mockNavigator = { 
-        id: { 
-            watch: sinon.spy() //<1>
-        } 
-    };
-
-    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-
-    equal(
-        mockNavigator.id.watch.calledOnce, //<2>
-        true,
-        'check watch function called'
-    );
-});
-----
-
-<1> We create a mock navigator object as before, but now instead of
-    hand-crafting a function to mock out the function we're interested in, we
-    use a `sinon.spy()` object.
-
-<2> This object then records what happens to it inside special properties like
-    `calledOnce`, which we can make assertions against.
-
-There's more info in the Sinon docs -- the http://sinonjs.org/[front page] 
-actually has quite a good overview.
-
-Here's our expected test failure:
-
-[role="qunit-output"]
-----
-2 assertions of 3 passed, 1 failed.
-
-1. initialize binds sign in button to navigator.id.request (0, 2, 2)
-2. initialize calls navigator.id.watch (1, 0, 1)
-    1. check watch function called
-        Expected: true
-        Result: false
-----
-
-We add in the call to watch...
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l039)
-[source,javascript]
-----
-var initialize = function (navigator, user, token, urls) {
-    $('#id_login').on('click', function () {
-        navigator.id.request();
-    });
-
-    navigator.id.watch();
-});
-----
-
-But that breaks the other test!
-
-[role="qunit-output skipme"]
-----
-1 assertions of 2 passed, 1 failed.
-
-1. initialize binds sign in button to navigator.id.request (1, 0, 1)
-    1. Died on test #1
-@file:///workspace/superlists/accounts/static/tests/tests.html:35:
-missing argument 1 when calling function navigator.id.watch
-
-2. initialize calls navigator.id.watch (0, 1, 1)
-----
-//TODO go back to testing this if slimerjs ever works again
-
-That was a puzzler -- that "missing argument 1 when calling function
-navigator.id.watch" took me a while to figure out.
-https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/watch[Turns
-out that], in Firefox, `.watch` is a function on every object.  We'll need to
-mock it out in the previous test too:
-
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html
-[source,html]
-----
-test("initialize binds sign in button to navigator.id.request", function () {
-    var requestWasCalled = false;
-    var mockRequestFunction = function() { requestWasCalled = true; };
-    var mockNavigator = {
-        id: {
-            request: mockRequestFunction,
-            watch: function () {}
-        }
-    };
-----
-
-
-And we're back to passing tests.
-
-[role="qunit-output"]
-----
-3 assertions of 3 passed, 0 failed.
-
-1. initialize binds sign in button to navigator.id.request (0, 2, 2)
-2. initialize calls navigator.id.watch (0, 1, 1)
-----
-
-
-Checking call arguments
-^^^^^^^^^^^^^^^^^^^^^^^
-
-We're not calling the `watch` function correctly yet -- it needs to know
-the current user, and we have to set up a couple of callbacks for login
-and logout.  Let's start with the user:
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html (ch14l042)
-[source,html]
-----
-test("watch sees current user", function () {
-    var user = 'current user';
-    var token = 'csrf token';
-    var urls = {login: 'login url', logout: 'logout url'};
-    var mockNavigator = {
-        id: {
-            watch: sinon.spy()
-        }
-    };
-
-    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var watchCallArgs = mockNavigator.id.watch.firstCall.args[0];
-    equal(watchCallArgs.loggedInUser, user, 'check user');
-});
-----
-//TODO: look into using 
-//    sinon.assert.calledWith(
-//        mockNavigator.id.watch,
-//        sinon.match({loggedInUser: user})
-//    );
-// and
-//  <script src="http://sinonjs.org/releases/sinon-qunit-1.0.0.js"></script>
-// to make assertions register with qunit
-
-We have a very similar setup (which is a code smell incidentally - on
-the next test, we're going to want to do some de-duplication of test
-code).  Then we use the `.firstCall.args[0]` property on the spy to check
-on the parameter we passed to the `watch` function (`args` being a list of 
-positional arguments). That gives us:
-
-[role="qunit-output"]
-----
-3. watch sees current user (1, 0, 1)
-    1. Died on test #1
-@file:///workspace/superlists/accounts/static/tests/tests.html:71:
-watchCallArgs is undefined
-----
-
-Because we're not currently passing any arguments to `watch`.  Step-by-step,
-we can do
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l043)
-[source,javascript]
-----
-    navigator.id.watch({});
-----
-
-
-And get a clearer error message:
-
-
-[role="qunit-output"]
-----
-3. watch sees current user (1, 0, 1)
-    1. check user
-        Expected: "current user"
-        Result: undefined 
-----
-
-And fix it thusly:
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l044)
-[source,javascript]
-----
-    navigator.id.watch({
-        loggedInUser: user
-    });
-----
-
-
-
-Qunit setup and teardown, testing Ajax
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Next we need to check the `onlogin` callback, which is called when Persona
-has some user authentication information, and we need to send it up to our
-server for validation.  That involves an Ajax call (`$.post`), and they're
-normally quite hard to test, but sinon.js has a helper called
-http://sinonjs.org/docs/#server[fake XMLHttpRequest].
-
-This patches out the native JavaScript XMLHttpRequest class, so it's good
-practice to make sure we restore it afterwards.  This gives us a good
-excuse to learn about Qunit's `setup` and `teardown` methods -- they
-are used in a function called `module`, which acts a bit like a 
-`unittest.TestCase` class, and groups all the tests that follow it
-together.
-
-.Aside on Ajax
-*******************************************************************************
-If you've never used Ajax before, here is a very brief overview.  You may find
-it useful to read up on it elsewhere before proceeding though.
-
-Ajax stands for "Asynchronous Javascript and XML", although the XML part is a bit
-of a misnomer these days, since everyone usually sends text or JSON rather
-than XML.  It's a way of letting your client-side javascript code send +
-receive information via the HTTP protocol (GET and POST requests), but do so
-"asynchronously", ie without blocking and without needing to reload the page.
-
-Here we're going to use Ajax requests to send a POST request to our login
-view, sending it the assertion information from the Persona UI.  We'll use the
-jQuery Ajax convenience functions, which you can find out more about here:
-http://api.jquery.com/jQuery.post/
-*******************************************************************************
-
-
-Let's add this "module" after the first test, before the test for
-`"initialize calls navigator.id.watch"`:
-
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html (ch14l045)
-[source,html]
-----
-var user, token, urls, mockNavigator, requests, xhr; //<1>
-module("navigator.id.watch tests", {
-    setup: function () {
-        user = 'current user'; //<2>
-        token = 'csrf token';
-        urls = { login: 'login url', logout: 'logout url' };
-        mockNavigator = { 
-            id: { 
-                watch: sinon.spy()
-            }
-        };
-        xhr = sinon.useFakeXMLHttpRequest(); //<3>
-        requests = []; //<4>
-        xhr.onCreate = function (request) { requests.push(request); }; //<4>
-    },
-    teardown: function () {
-        mockNavigator.id.watch.reset(); //<5>
-        xhr.restore(); //<6>
-    }
-});
-
-test("initialize calls navigator.id.watch", function () {
-    [...]
-----
-
-<1> We pull out the variables user, token, urls etc up to a higher scope,
-    so that they'll be available to all of the tests in the file.
-
-<2> We initialise said variables inside the `setup` function, which, just
-    like a `unittest` `setUp` function, will run before each test.  That
-    includes our `mockNavigator`.
-
-<3> We also invoke sinon's `useFakeXMLHttpRequest`, which patches out 
-    the browser's Ajax capabilities.
-
-<4> There's one more bit of boilerplate:  we tell sinon to take any Ajax
-    requests and put them into the `requests` array, so that we can inspect
-    them in our tests.
-
-<5> Finally we have the cleanup -- we "reset" the spy for the watch function
-    in between each test (otherwise calls from one test would show up in others).
-
-<6> And we put the Javascrit XMLHttpRequest back to the way we found it.
-
-
-That lets us rewrite our two tests to be much shorter:
-
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html (ch14l046)
-[source,html]
-----
-test("initialize calls navigator.id.watch", function () {
-    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    equal(mockNavigator.id.watch.calledOnce, true, 'check watch function called');
-});
-
-
-test("watch sees current user", function () {
-    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var watchCallArgs = mockNavigator.id.watch.firstCall.args[0];
-    equal(watchCallArgs.loggedInUser, user, 'check user');
-});
 ----
 
-And they still pass, but their name is neatly prefixed with our module
-name:
+And that gets us back to 2 neatly passing tests.
 
 [role="qunit-output"]
 ----
 4 assertions of 4 passed, 0 failed.
-
-1. initialize binds sign in button to navigator.id.request (0, 2, 2)
-2. navigator.id.watch tests: initialize calls navigator.id.watch (0, 1, 1)
-3. navigator.id.watch tests: watch sees current user (0, 1, 1)
+1. smoke test (0, 2, 2)
+2. smoke test 2 (0, 2, 2)
 ----
 
-And here's how we test the onlogin callback:
+Building a JavaScript unit test for our desired functionality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Switch back to just one test:
 
 [role="sourcecode"]
-.accounts/static/tests/tests.html (ch14l047)
-[source,html]
-----
-test("onlogin does ajax post to login url", function () {
-    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin; //<1>
-    onloginCallback(); //<2>
-    equal(requests.length, 1, 'check ajax request'); //<3>
-    equal(requests[0].method, 'POST');
-    equal(requests[0].url, urls.login, 'check url');
-});
-
-test("onlogin sends assertion with csrf token", function () {
-    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin;
-    var assertion = 'browser-id assertion';
-    onloginCallback(assertion);
-    equal(
-        requests[0].requestBody,
-        $.param({ assertion: assertion, csrfmiddlewaretoken: token }), //<4>
-        'check POST data'
-    );
-});
-----
-
-<1> The spy we set on the mock navigator's watch function lets us extract the
-    callback function we set as "onlogin"
-
-<2> We can then actually call that function in order to test it
-
-<3> Sinon's fakeXMLHttpRequest server will catch any Ajax requests we make,
-    and put them into the `requests` array.  We can then check on things
-    like, whether it was a POST, what URL it was sent to
-
-<4> The actual POST parameters are held in `.requestBody`, but they are
-    URL-encoded (using the &key=val syntax).  jQuery `$.param` function
-    does URL-encoding, so we use that to do our comparison.
-    
-
-And the two tests fail as expected:
-
-[role="qunit-output"]
-----
-4. navigator.id.watch tests: onlogin does ajax post to login url (1, 0, 1)
-    1. Died on test #1
-@file:///workspace/superlists/accounts/static/tests/tests.html:78:
-onloginCallback is not a function
-
-5. navigator.id.watch tests: onlogin sends assertion with csrf token (1, 0, 1)
-    1. Died on test #1
-@file:///workspace/superlists/accounts/static/tests/tests.html:90:
-onloginCallback is not a function
-----
-
-Another unit test-code cycle.  Here's the failure messages I went through:
-
-[role="dofirst-ch14l048 qunit-output"]
-----
-1. check ajax request
-Expected: 1
-----
-
-...
-
-[role="dofirst-ch14l049 qunit-output"]
-----
-3. check url
-Expected: "login url"
-----
-
-...
-
-[role="dofirst-ch14l050 qunit-output"]
-----
-7 assertions of 8 passed, 1 failed.
-1. check POST data
-Expected: 
-"assertion=browser-id+assertion&csrfmiddlewaretoken=csrf+token"
-Result: null
-----
-
-...
-
-[role="dofirst-ch14l051 qunit-output"]
-----
-1. check POST data
-Expected: 
-"assertion=browser-id+assertion&csrfmiddlewaretoken=csrf+token"
-Result: "assertion=browser-id+assertion"
-----
-
-...
-
-[role="dofirst-ch14l052 qunit-output"]
-----
-8 assertions of 8 passed, 0 failed.
-----
-
-And I ended up with this code:
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l052)
-[source,javascript]
-----
-    navigator.id.watch({
-        loggedInUser: user,
-        onlogin: function (assertion) {
-            $.post(
-                urls.login, 
-                { assertion: assertion, csrfmiddlewaretoken: token }
-            );
-        }
-    });
-----
-
-
-Logout
-++++++
-
-At the time of writing, the "onlogout" part of the watch API's status was
-uncertain.  It works, but it's not necessary for our purposes.  We'll just make
-it a do-nothing function, as a placeholder. Here's a minimal test for that:
-
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html (ch14l053)
-[source,html]
-----
-test("onlogout is just a placeholder", function () {
-    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var onlogoutCallback = mockNavigator.id.watch.firstCall.args[0].onlogout;
-    equal(typeof onlogoutCallback, "function", "onlogout should be a function");
-});
-----
-
-And we get quite a simple logout function:
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l054)
-[source,javascript]
-----
-    },
-    onlogout: function () {}
-});
-----
-
-More nested callbacks!  Testing asynchronous code
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-This is what JavaScript's all about folks!  Thankfully, sinon.js really does
-help.  We still need to test that our login post methods 'also' set some
-callbacks for things to do 'after' the POST request comes back:
-
-[role="skipme"]
-[source,javascript]
-----
-    .done(function() { window.location.reload(); })
-    .fail(function() { navigator.id.logout();});
-----
-
-I'm going to skip testing the `window.location.reload`, because it's a bit
-unnecessarily complicated
-footnote:[you can't mock out window.location.reload, so instead you have to 
-define an (untested) function called eg Superlists.Accounts.refreshPage, and
-then put a spy on 'that' to check that it gets set as the ajax .done callback]
-, and I think we can allow that this will be tested by our Selenium test.  We
-will do a test for the on-fail callback though, just to demonstrate that it is
-possible:
-
-[role="sourcecode"]
-.accounts/static/tests/tests.html (ch14l055)
-[source,html]
-----
-test("onlogin post failure should do navigator.id.logout ", function () {
-    mockNavigator.id.logout = sinon.spy(); //<1>
-    Superlists.Accounts.initialize(mockNavigator, user, token, urls);
-    var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin;
-    var server = sinon.fakeServer.create(); //<2>
-    server.respondWith([403, {}, "permission denied"]); //<3>
-
-    onloginCallback();
-    equal(mockNavigator.id.logout.called, false, 'should not logout yet');
-
-    server.respond(); //<4>
-    equal(mockNavigator.id.logout.called, true, 'should call logout');
-});
-----
-
-<1> We put a spy on the `navigator.id.logout` function which we're interested
-    in.
-
-<2> We use sinon's fakeServer, which is an abstraction on top of the 
-    fakeXMLHttpRequest to simulate ajax server responses
-
-<3> We set up our fake server to respond with a 403: permission denied
-    response, to simulate what will happen for unauthorized users
-
-<4> We then explicitly tell the fake server to send that response. Only
-    then should we see the logout call
-
-
-That gets us to this -- a slight change to our spiked code:
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l056)
-[source,javascript]
-----
-    onlogin: function (assertion) {
-        $.post(
-            urls.login,
-            { assertion: assertion, csrfmiddlewaretoken: token }
-        ).fail(function () { navigator.id.logout(); });
-    },
-    onlogout: function () {}
-----
-
-Finally we add our `window.location.reload`, just to check it doesn't break any
-unit tests:
-
-[role="sourcecode"]
-.accounts/static/accounts.js (ch14l057)
-[source,javascript]
-----
-    navigator.id.watch({
-        loggedInUser: user,
-        onlogin: function (assertion) {
-            $.post(
-                urls.login,
-                { assertion: assertion, csrfmiddlewaretoken: token }
-            )
-                .done(function () { window.location.reload(); })
-                .fail(function () { navigator.id.logout(); } );
-        },
-        onlogout: function () {}
-    });
-----
-
-Everything's still OK:
-
-[role="qunit-output"]
-----
-11 assertions of 11 passed, 0 failed.
-----
-
-If those chained `.done` and `.fail` calls are bugging you -- they bug me a
-little -- you can rewrite that as, eg:
-
-[role="skipme"]
-[source,javascript]
-----
-    var deferred = $.post(urls.logout);
-    deferred.always(function () { window.location.reload(); });
-----
-
-But async code is always a bit mind-bending.  I find it just about readable
-as it is:  "do a post to urls.login with the assertion and csrf token, when
-it's done, do a window reload, or if it fails, do a navigator.id.logout". You
-can read up on  JavaScript deferreds, aka "promises",
-http://otaqui.com/blog/1637/introducing-javascript-promises-aka-futures-in-google-chrome-canary/[here].
-
-We're approaching the moment of truth:  will our FTs get any further? First,
-we adjust our initialize call:
-
-[role="sourcecode"]
-.lists/templates/base.html
+.lists/static/tests/tests.html
 [source,html]
 ----
     <script>
-        $(document).ready( function () {
-            var user = "{{ user.email }}" || null;
-            var token = "{{ csrf_token }}";
-            var urls = {
-                login: "TODO",
-                logout: "TODO",
-            };
-            Superlists.Accounts.initialize(navigator, user, token, urls);
-        });
+/*global $, test, equal */
+
+test("errors should be hidden on keypress", function () {
+    $('input').trigger('keypress'); // <1>
+    equal($('.has-error').is(':visible'), false); 
+});
+
     </script>
 ----
 
-And we run the FT...
+<1> The jQuery `.trigger` method is mainly used for testing.  It says "fire off
+a JavScript DOM event on the element(s)".  Here we use the 'keypress' event,
+which is fired off by the browser behind the scenes whenever a user types
+something into a particular input element. 
 
-[subs="specialcharacters,macros"]
+NOTE: jQuery is hiding a lot of complexity behind the scenes here.  Just check
+out http://www.quirksmode.org/dom/events/index.html[Quirksmode.org] for a view
+on the hideous nest of differences between the different browsers'
+interpretation of events.  The reason that jQuery is so popular is that it just
+makes all this stuff go away.
+
+//TODO: also do onclick, to handle paste. show how to FT this too
+
+And that gives us:
+
+[role="qunit-output"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
-Creating test database for alias 'default'...
-Not Found: /favicon.ico
-Not Found: /TODO
-E
-======================================================================
-ERROR: test_login_with_persona (functional_tests.test_login.LoginTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/workspace/superlists/functional_tests/test_login.py", line 57, in
-test_login_with_persona
-    self.wait_for_element_with_id('id_logout')
-  File "/workspace/superlists/functional_tests/test_login.py", line 26, in
-wait_for_element_with_id
-    lambda b: b.find_element_by_id(element_id)
+0 assertions of 1 passed, 1 failed.
+1. errors should be hidden on keypress (1, 0, 1)
+    1. failed
+        Expected: false
+        Result: true
+----
+
+Let's say we want to keep our code in a standalone JavaScript file called
+'list.js'
+
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+    <script src="qunit.js"></script>
+    <script src="../list.js"></script>
+    <script>
+----
+
+Here's the minimal code to get that test to pass:
+
+[role="sourcecode"]
+.lists/static/list.js
+[source,javascript]
+----
+$('.has-error').hide();
+----
+
+It has an obvious problem. We'd better add another test:
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+test("errors should be hidden on keypress", function () {
+    $('input').trigger('keypress');
+    equal($('.has-error').is(':visible'), false); 
+});
+
+test("errors not be hidden unless there is a keypress", function () {
+    equal($('.has-error').is(':visible'), true);
+});
+----
+
+Now we get an expected failure:
+
+[role="qunit-output"]
+----
+1 assertions of 2 passed, 1 failed.
+1. errors should be hidden on keypress (0, 1, 1)
+2. errors not be hidden unless there is a keypress (1, 0, 1)
+    1. failed
+        Expected: true
+        Result: false
+        Diff: true false 
 [...]
-selenium.common.exceptions.TimeoutException: Message: '' 
-
- ---------------------------------------------------------------------
-Ran 1 test in 28.779s
-
-FAILED (errors=1)
-Destroying test database for alias 'default'...
 ----
 
-Hooray!  I mean, I know it failed, but we saw it popping up the Persona
-dialog and getting through it and everything!  Next chapter: the server-side.
+And we can make a more realistic implementation:
+
+[role="sourcecode"]
+.lists/static/list.js
+[source,javascript]
+----
+$('input').on('keypress', function () {
+    $('.has-error').hide();
+});
+----
+
+That gets our unit tests to pass! 
+
+Grand, so let's pull in our script, and jquery, on all our pages:
+
+[role="sourcecode"]
+.lists/templates/base.html (ch13l014)
+[source,html]
+----
+        </div>
+
+        <script src="http://code.jquery.com/jquery.min.js"></script>
+        <script src="/static/list.js"></script>
+    </body>
+</html>
+----
+
+NOTE: It's good practice to put your script-loads at the end of your
+body HTML, as it means the user doesn't have to wait for all your
+JavaScript to load before they can see something on the page.  It also
+helps to make sure most of the DOM has loaded before any scripts run.
+
+//TODO: note re: judgement call.  may need to test js works on all pages.
+
+Aaaand we run our FT:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python3 manage.py test functional_tests.test_list_item_validation.ItemValidationTest.test_error_messages_are_cleared_on_input*
+[...]
+
+Ran 1 test in 3.023s
+
+OK
+----
+
+Hooray!  That's a commit!
+
+Columbo says: onload boilerplate and namespacing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Oh, and one last thing.  Whenever you have some JavaScript that interacts
+with the DOM, it's always good to wrap it in some "onload" boilerplate code
+to make sure that the page has fully loaded before it tries to do anything.
+Currently it works anyway, because we've placed the `<script>` tag right at
+the bottom of the page, but we shouldn't rely on that.  
+
+The jQuery `onload` boilerplate is quite minimal:
 
 
-.On Spiking and Mocking with JavaScript
+[role="sourcecode"]
+.lists/static/list.js
+[source,javascript]
+----
+$(document).ready(function () {
+    $('input').on('keypress', function () {
+        $('.has-error').hide();
+    });
+});
+----
+
+In addition, we're using the magic `$` function from jQuery, but sometimes
+other JavaScript libraries try and use that too.  It's just an alias for the
+less contested name `jQuery` though, so here's the standard way of getting
+more fine-grained control over the namespacing:
+
+
+[role="sourcecode"]
+.lists/static/list.js
+[source,javascript]
+----
+jQuery(document).ready(function ($) {
+    $('input').on('keypress', function () {
+        $('.has-error').hide();
+    });
+});
+----
+
+Read more in the http://api.jquery.com/ready/[jQuery .ready() docs].
+
+I leave it to you to re-run the javascript tests, and then maybe a full FT
+run, just to reassure yourself that nothing is broken.  And then, it's
+onto user authentication!
+
+
+
+.JavaScript testing notes
 *******************************************************************************
-Spiking::
-    Exploratory coding to find out about a new API, or to explore the
-    feasibility   of a new solution.  Spiking can be done without tests.  It's
-    a good idea to do your spike on a new branch, and go back to master when
-    de-spiking.
 
-Mocking::
-    We use mocking in unit tests when we have an external dependency that we
-    don't want to actually use in our tests.  A mock is used to simulate the 
-    3rd party API.   Whilst it is possible to "roll your own" mocks in
-    JavaScript, a mocking framework like Sinon.js provides a lot of helpful
-    shortcuts which will make it easier to write (and more importantly, read)
-    your tests.
+* One of the great advantages of Selenium is that it allows you to test that
+  your JavaScript really works, just as it tests your Python code.
 
-Unit testing Ajax::
-    Sinon.js is a great help here. Manually mocking Ajax methods is a real
-    pain.
+* There are many JavaScript test running libraries out there.  Qunit is closely
+  tied to jQuery, which is the main reason I chose it.  
+
+* Qunit mainly expects you to "run" your tests using an actual web browser.
+  This has the advantage that it's easy to create some HTML fixtures that 
+  match the kind of HTML your site actually contains, for tests to run against.
+
+* I don't really mean it when I say that JavaScript is awful. It can actually
+  be quite fun.  But I'll say it again: make sure you've read
+  <<jsgoodparts,JavaScript: The Good Parts>>.
 
 *******************************************************************************
+
+TODO: take the opportunity to use {% static %} tag in templates?
 

@@ -1,155 +1,1531 @@
-Test fixtures and server-side debugging
----------------------------------------
+Server-side authentication and mocking in Python
+------------------------------------------------
 
-Now that we have a functional authentication system, we want to use it to
-identify users, and be able to show them all the lists they have created.
+Let's crack on with the server side of our new auth system.
 
-To do that, we're going to have to write FTs that have a logged-in user. Rather
-than making each test go through the (time-consuming) Persona dialog, it would
-be good to be able to skip that part.
-
-This is about separation of concerns.  Functional tests aren't like unit tests,
-in that they don't usually have a single assertion. But, conceptually, they
-should be testing a single thing.  There's no need for every single FT to test
-the login/logout mechanisms. If we can figure out a way to "cheat" and skip
-that part, we'll spend less time waiting for duplicated test paths.
-
-TIP: Don't overdo de-duplication in FTs.  One of the benefits of an FT is that
-it can catch strange and unpredictable interactions between different parts of
-your application.
+NOTE: as with all new chapters, I'd really appreciate feedback.  How is 
+the pace?  What do you think of the "left as an exercise for the reader"
+bit at the end?
 
 
-Skipping the login process by pre-creating a session
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Mocking in Python
+~~~~~~~~~~~~~~~~~
 
-It's quite common for a user to return to a site and still have a cookie that
-means they are "pre-authenticated", so this isn't an unrealistic cheat at all.
-Here's how you can set it up:
+Here's the spiked version of our view:
+
+[role='skipme']
+[source,python]
+----
+def login(request):
+    print('login view', file=sys.stderr)
+    #user = PersonaAuthenticationBackend().authenticate(request.POST['assertion'])
+    user = authenticate(assertion=request.POST['assertion'])
+    if user is not None:
+        auth_login(request, user)
+    return redirect('/')
+----
+
+Our authenticate function is going to make calls out, over the internet, to
+Mozilla's servers.  We don't want that to happen in our unit test, so we'll
+want to mock out `authenticate`.
+
+//TODO: explain auth_login
+
+The popular 'mock' package was added to the standard libary as part of Python
+3. It provides a magical object called a Mock, which is a bit like the sinon
+spy objects we saw in the last chapter, only much cooler.  Check this out:
+
+
+[role='skipme']
+----
+>>> from unittest.mock import Mock
+>>> m = Mock()
+>>> m.any_attribute
+<Mock name='mock.any_attribute' id='140716305179152'>
+>>> m.foo
+<Mock name='mock.foo' id='140716297764112'>
+>>> m.any_method()
+<Mock name='mock.any_method()' id='140716331211856'>
+>>> m.foo()
+<Mock name='mock.foo()' id='140716331251600'>
+>>> m.called
+False
+>>> m.foo.called
+True
+>>> m.bar.return_value = 1
+>>> m.bar()
+1
+----
+
+
+A mock object would be a pretty neat thing to use to mock out the authenticate
+function, wouldn't it?  Here's how you can do that:
+
+(I trust you to set up a tests folder with a dunderinit. Don't forget to delete
+the default 'tests.py', as well.)
+
+
+[role="dofirst-ch15l001 sourcecode"]
+.accounts/tests/test_views.py
+[source,python]
+----
+from django.test import TestCase
+from unittest.mock import patch
+
+
+class LoginViewTest(TestCase):
+
+    @patch('accounts.views.authenticate') #<1>
+    def test_calls_authenticate_with_assertion_from_post(
+        self, mock_authenticate #<2>
+    ):
+        mock_authenticate.return_value = None #<3>
+        self.client.post('/accounts/login', {'assertion': 'assert this'})
+        mock_authenticate.assert_called_once_with(assertion='assert this') #<4>
+----
+
+<1> The decorator called `patch` is a bit like the sinon `spy` function we 
+    saw in the last chapter.  It lets you specify an object you want to "mock
+    out". In this case we're mocking out the authenticate function, which we
+    expect to be using in 'accounts/views.py'. 
+
+<2> The decorator adds the mock object as an additional argument to the
+    function it's applied to.
+
+<3> We can then configure the mock so that it has certain behaviours. Having
+    authenticate return None is the simplest, so we set the special
+    `.return_value` attribute.  Otherwise it would return another mock, and
+    that would probably confuse our view.
+
+<4> Mocks can make assertions! In this case, they can check whether they were
+    called, and what with
+    
+
+So what does that give us?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+AttributeError: <module 'accounts.views' from
+'/workspace/superlists/accounts/views.py'> does not have the attribute
+'authenticate'
+----
+
+We tried to patch something that doesn't exist yet.  We need to import 
+authenticate into our views.py:
+
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py
+.accounts/views.py
 [source,python]
 ----
-from django.conf import settings
-from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
-User = get_user_model()
-from django.contrib.sessions.backends.db import SessionStore
-
-from .base import FunctionalTest
-
-
-class MyListsTest(FunctionalTest):
-
-    def create_pre_authenticated_session(self, email):
-        user = User.objects.create(email=email)
-        session = SessionStore()
-        session[SESSION_KEY] = user.pk #<1>
-        session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
-        session.save()
-        ## to set a cookie we need to first visit the domain.
-        ## 404 pages load the quickest!
-        self.browser.get(self.server_url + "/404_no_such_url/")
-        self.browser.add_cookie(dict(
-            name=settings.SESSION_COOKIE_NAME,
-            value=session.session_key, #<2>
-            path='/',
-        ))
+from django.contrib.auth import authenticate
 ----
 
-<1> We create a session object in the database.  The session key is the
-    primary key of the user object (which is actually their email address).
+Now we get:
 
-<2> We then add a cookie to the browser that matches the session on the
-    server -- on our next visit to the site, the server should recognise
-    us as a logged-in user.
+----
+AssertionError: Expected 'authenticate' to be called once. Called 0 times.
+----
 
-Note that, as it is, this will only work because we're using
-`LiveServerTestCase`, so the User and Session objects we create will end up in
-the same database as the test server.  Later we'll need to modify it so that it
-works against the database on the staging server too.
+That's our expected failure;  to implement, we'll have to wire up a URL for our
+login view:
 
-
-.JSON test fixtures considered harmful
-*******************************************************************************
-When we pre-populate the database with test data, as we've done here with the
-User object and its associated Session object, what we're doing is setting up
-a "test fixture".
-
-Django comes with built-in support for saving database objects as JSON (using
-the `manage.py dumpdata`), and automatically loading them in your test runs 
-using the `fixtures` class attribute on `TestCase`.
-
-More and more people are starting 
-http://blog.muhuk.com/2012/04/09/carl-meyers-testing-talk-at-pycon-2012.html[to
-say]: don't use JSON fixtures.  They're a nightmare to maintain when your model
-changes.  Instead, if you can, load data directly using the Django ORM, or look
-into a tool like https://factoryboy.readthedocs.org/en/latest/[factory_boy]
-*******************************************************************************
-
-
-Checking it works
-^^^^^^^^^^^^^^^^^
-
-To check it works, it would be good to use the `wait_to_be_logged_in` function
-we defined in our last test.  To access it from a different test, we'll need
-to pull it up into `FunctionalTest`, as well as a couple of other methods. We'll
-also tweak them slightly so that they can take an arbitrary email address as a 
-parameter:
-
-[role="sourcecode dofirst=ch16l002-1"]
-.functional_tests/base.py (ch16l002-2)
+[role="sourcecode"]
+.superlists/urls.py
 [source,python]
 ----
-from selenium.webdriver.support.ui import WebDriverWait
+urlpatterns = patterns('',
+    url(r'^$', 'lists.views.home_page', name='home'),
+    url(r'^lists/', include('lists.urls')),
+    url(r'^accounts/', include('accounts.urls')),
+    # url(r'^admin/', include(admin.site.urls)),
+)
+----
+
+
+[role="sourcecode"]
+.accounts/urls.py
+[source,python]
+----
+from django.conf.urls import patterns, url
+
+urlpatterns = patterns('',
+    url(r'^login$', 'accounts.views.login', name='login'),
+)
+----
+
+Will a minimal view do anything?
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+from django.contrib.auth import authenticate
+
+def login():
+    pass
+----
+
+Yep:
+
+----
+TypeError: login() takes 0 positional arguments but 1 was given
+----
+
+And so:
+
+[role="sourcecode"]
+.accounts/views.py (ch15l008)
+[source,python]
+----
+def login(request):
+    pass
+----
+
+Then
+
+----
+ValueError: The view accounts.views.login didn't return an HttpResponse object.
+----
+
+[role="sourcecode"]
+.accounts/views.py (ch15l009)
+[source,python]
+----
+from django.contrib.auth import authenticate
+from django.http import HttpResponse
+
+def login(request):
+    return HttpResponse()
+----
+
+And we're back to:
+
+----
+AssertionError: Expected 'authenticate' to be called once. Called 0 times.
+----
+
+We try:
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    authenticate()
+    return HttpResponse()
+----
+
+And sure enough, we get:
+
+----
+AssertionError: Expected call: authenticate(assertion='assert this')
+Actual call: authenticate()
+----
+
+And then we can fix that too:
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    authenticate(assertion=request.POST['assertion'])
+    return HttpResponse()
+----
+
+
+OK so far. One Python function mocked and tested.
+
+But our authenticate view also needs to call the Django auth.login 
+function if authenticate returns a user, and then it needs to return 
+something other than an empty response -- since this is an Ajax view,
+it doesn't need to return HTML, just an "OK" string will do.  We'll need to
+mock out the `auth_login` view as well:
+
+
+
+[role="sourcecode"]
+.accounts/tests/test_views.py (ch15l012)
+[source,python]
+----
+from django.contrib.auth import get_user_model
+from django.http import HttpRequest
+from django.test import TestCase
+from unittest.mock import patch
+
+User = get_user_model() #<1>
+
+from accounts.views import login
+
+
+class LoginViewTest(TestCase):
+    @patch('accounts.views.authenticate')
+    def test_calls_authenticate_with_assertion_from_post(
+        [...]
+
+    @patch('accounts.views.authenticate')
+    def test_returns_OK_when_user_found(
+        self, mock_authenticate
+    ):
+        user = User.objects.create(email='a@b.com')
+        user.backend = '' # required for auth_login to work
+        mock_authenticate.return_value = user
+        response = self.client.post('/accounts/login', {'assertion': 'a'})
+        self.assertEqual(response.content.decode(), 'OK')
+
+
+    @patch('accounts.views.auth_login')
+    @patch('accounts.views.authenticate')
+    def test_calls_auth_login_if_authenticate_returns_a_user(
+        self, mock_authenticate, mock_auth_login
+    ):
+        request = HttpRequest()
+        request.POST['assertion'] = 'asserted'
+        mock_user = mock_authenticate.return_value
+        login(request)
+        mock_auth_login.assert_called_once_with(request, mock_user)
+
+
+    @patch('accounts.views.auth_login')
+    @patch('accounts.views.authenticate')
+    def test_does_not_call_auth_login_if_authenticate_returns_None(
+        self, mock_authenticate, mock_auth_login
+    ):
+        request = HttpRequest()
+        request.POST['assertion'] = 'asserted'
+        mock_authenticate.return_value = None
+        login(request)
+        self.assertFalse(mock_auth_login.called)
+----
+
+<1> I should explain this use of `get_user_model` from `django.contrib.auth`.
+    Its job is to find the project's User model, and it works whether you're
+    using the standard User model or a custom one (like we will be)
+
+Notice that, for these tests, we go back to importing the view function
+directly, and calling it with an `HttpRequest` we build manually.  The Django
+Test Client does a bit too much magic, and for these highly mocky tests, we
+need more control -- we need to check that `auth_login` was passed the same
+`request` object that we called the view with, for example, and that's not
+possible if you use the Django client.
+
+That gives us:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+AttributeError: <module 'accounts.views' from
+'/workspace/superlists/accounts/views.py'> does not have the attribute
+'auth_login'
+[...]
+AttributeError: <module 'accounts.views' from
+'/workspace/superlists/accounts/views.py'> does not have the attribute
+'auth_login'
+[...]
+AssertionError: '' != 'OK'
++ OK
+----
+
+Adding the import takes us down to two failures:
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+from django.contrib.auth import authenticate
+from django.contrib.auth import login as auth_login
+from django.http import HttpResponse
+[...]
+----
+
+And we go through another couple of TDD cycles, until:
+
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    user = authenticate(assertion=request.POST['assertion'])
+    if user:
+        auth_login(request, user)
+    return HttpResponse('OK')
+----
+//ch15l015
+
+...
+
+----
+OK
+----
+
+
+De-spiking our custom authentication back-end: mocking out an internet request
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Our custom authentication back-end is next!  Here's how it looked in the spike:
+
+
+[role="skipme"]
+.accounts/authentication.py
+[source,python]
+----
+class PersonaAuthenticationBackend(object):
+
+    def authenticate(self, assertion):
+        # Send the assertion to Mozilla's verifier service.
+        data = {'assertion': assertion, 'audience': 'localhost'}
+        print('sending to mozilla', data, file=sys.stderr)
+        resp = requests.post('https://verifier.login.persona.org/verify', data=data)
+        print('got', resp.content, file=sys.stderr)
+
+        # Did the verifier respond?
+        if resp.ok:
+            # Parse the response
+            verification_data = resp.json()
+
+            # Check if the assertion was valid
+            if verification_data['status'] == 'okay':
+                email = verification_data['email']
+                try:
+                    return self.get_user(email)
+                except ListUser.DoesNotExist:
+                    return ListUser.objects.create(email=email)
+
+
+    def get_user(self, email):
+        return ListUser.objects.get(email=email)
+
+----
+
+Decoding this:
+
+* We take an assertion and send it off to Mozilla using `requests.post`.
+* We check its response code (`resp.ok`), and then check for a `status=okay` in
+  the response JSON.
+* We then extract an email address, and either find an existing user with that 
+  address, or create a new one.
+
+1 if = 1 more test
+^^^^^^^^^^^^^^^^^^
+
+A rule of thumb for these sorts of tests:  any `if` means an extra test, and
+any `try/except` means an extra test, so this should be about 4 tests.  Let's
+start with one:
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py
+[source,python]
+----
+from unittest.mock import patch
+from django.test import TestCase
+
+from accounts.authentication import (
+    PERSONA_VERIFY_URL, DOMAIN, PersonaAuthenticationBackend
+)
+
+class AuthenticateTest(TestCase):
+
+    @patch('accounts.authentication.requests.post')
+    def test_sends_assertion_to_mozilla_with_domain(self, mock_post):
+        backend = PersonaAuthenticationBackend()
+        backend.authenticate('an assertion')
+        mock_post.assert_called_once_with(
+            PERSONA_VERIFY_URL,
+            data={'assertion': 'an assertion', 'audience': DOMAIN}
+        )
+----
+
+//TODO: change "audience" to "http://localhost" instead of just "localhost". 
+// According to persona dev list, this is best practice...
+
+In 'authenticate.py' we'll just have a few placeholders:
+ 
+[role="sourcecode"]
+.accounts/authentication.py
+[source,python]
+----
+import requests
+
+PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
+DOMAIN = 'localhost'
+
+
+class PersonaAuthenticationBackend(object):
+
+    def authenticate(self, assertion):
+        pass
+----
+
+At this point we'll need to
+
+[role="dofirst-ch15l018"]
+[subs="specialcharacters,quotes"]
+----
+(virtualenv)$ *pip install requests*
+----
+
+
+NOTE: don't forget to add `requests` to 'requirements.txt' too, or the 
+next deploy won't work...
+
+//TODO - consider making all tetsts (virtualenv) ones?
+
+Then let's see how the tests get on!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+AssertionError: Expected 'post' to be called once. Called 0 times.
+----
+
+And we can get that to passing in 3 steps (make sure the Goat sees you doing each
+one individually!)
+
+[role="sourcecode"]
+.accounts/authentication.py
+[source,python]
+----
+    def authenticate(self, assertion):
+        requests.post(
+            PERSONA_VERIFY_URL,
+            data={'assertion': assertion, 'audience': DOMAIN}
+        )
+----
+
+
+Grand.
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
 [...]
 
-class FunctionalTest(LiveServerTestCase):
-    [...]
+Ran 5 tests in 0.023s
 
-    def wait_for_element_with_id(self, element_id):
-        [...]
-
-
-    def wait_to_be_logged_in(self, email):
-        self.wait_for_element_with_id('id_logout')
-        navbar = self.browser.find_element_by_css_selector('.navbar')
-        self.assertIn(email, navbar.text)
-
-
-    def wait_to_be_logged_out(self, email):
-        self.wait_for_element_with_id('id_login')
-        navbar = self.browser.find_element_by_css_selector('.navbar')
-        self.assertNotIn(email, navbar.text)
+OK
 ----
 
-That means a small tweak in 'test_login.py':
+Next let's check that authenticate should return none if it sees an error from
+the request:
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l020)
+[source,python]
+----
+    @patch('accounts.authentication.requests.post')
+    def test_returns_none_if_response_errors(self, mock_post):
+        mock_post.return_value.ok = False
+        backend = PersonaAuthenticationBackend()
+
+        user = backend.authenticate('an assertion')
+        self.assertIsNone(user)
+----
+
+And that passes straight away -- we currently return None in all cases! 
+
+
+patching at the Class level
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next we want to check that the response JSON has status=okay. Adding this
+test would involve a bit of duplication -- let's apply the "3 strikes"
+rule:
 
 
 [role="sourcecode"]
-.functional_tests/test_login.py (ch16l003)
+.accounts/tests/test_authentication.py (ch15l021)
 [source,python]
 ----
-    def test_login_with_persona(self):
+@patch('accounts.authentication.requests.post') #<1>
+class AuthenticateTest(TestCase):
+
+    def setUp(self):
+        self.backend = PersonaAuthenticationBackend() #<2>
+
+
+    def test_sends_assertion_to_mozilla_with_domain(self, mock_post):
+        self.backend.authenticate('an assertion')
+        mock_post.assert_called_once_with(
+            PERSONA_VERIFY_URL,
+            data={'assertion': 'an assertion', 'audience': DOMAIN}
+        )
+
+
+    def test_returns_none_if_response_errors(self, mock_post):
+        mock_post.return_value.ok = False #<3>
+        user = self.backend.authenticate('an assertion')
+        self.assertIsNone(user)
+
+
+    def test_returns_none_if_status_not_okay(self, mock_post):
+        mock_post.return_value.json.return_value = {'status': 'not okay!'} #<3>
+        user = self.backend.authenticate('an assertion')
+        self.assertIsNone(user)
+----
+
+<1> You can apply a `patch` at the class level as well, and that has the effect
+    that every test method in the class will have the patch applied, and the
+    mock injected.
+
+<2> We can now use the `setUp` function to prepare any useful variables which
+    we're going to use in all of our tests.  
+
+<3> Now each test is only adjusting the setup variables 'it' needs, rather than
+    setting up a load of duplicated boilerplate -- it's more readable.
+
+
+And that's all very well, but everything still passes!  
+
+----
+OK
+----
+
+Time for test for the positive case where authenticate should return a user
+object. We expect this to fail.
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l022)
+[source,python]
+----
+from unittest.mock import Mock, patch
+from django.contrib.auth import get_user_model
+User = get_user_model()
+from django.test import TestCase
+[...]
+
+    def test_finds_existing_user_with_email(self, mock_post):
+        mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
+        actual_user = User.objects.create(email='a@b.com')
+        found_user = self.backend.authenticate('an assertion')
+        self.assertEqual(found_user, actual_user)
+----
+
+Indeed, a fail:
+
+----
+AssertionError: None != <User: >
+----
+
+Let's code. We'll start with a "cheating" implementation, where we just get
+the first user we find in the database:
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l023)
+[source,python]
+----
+import requests
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
+    def authenticate(self, assertion):
+        requests.post(
+            PERSONA_VERIFY_URL,
+            data={'assertion': assertion, 'audience': DOMAIN}
+        )
+        return User.objects.all()[0]
+----
+
+That gets our new test passing, but other the other tests fail:
+
+----
+ERROR: test_returns_none_if_response_errors
+IndexError: list index out of range
+[...]
+ERROR: test_returns_none_if_status_not_okay
+IndexError: list index out of range
+[...]
+ERROR: test_sends_assertion_to_mozilla_with_domain
+IndexError: list index out of range
+----
+
+The positive case passes, we now need to build some of our guards for
+cases where authentication should fail -- if the response errors, or if
+the status is not okay.  Let's start with this:
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l024)
+[source,python]
+----
+def authenticate(self, assertion):
+    response = requests.post(
+        PERSONA_VERIFY_URL,
+        data={'assertion': assertion, 'audience': DOMAIN}
+    )
+    if response.json()['status'] == 'okay':
+        return User.objects.all()[0]
+----
+
+That actually fixes all three, slightly surprisingly:
+
+----
+OK
+----
+
+But we know we've got a couple of "cheats".  Let's add the to our 
+scratchpad for now.
+
+* authenticate is just returning the first user it finds
+* why is the test for response.ok passing?
+
+
+Beware of Mocks in boolean comparisons
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+So how come our `test_returns_none_if_response_errors` isn't failing?  
+
+Because we've mocked out `requests.post`, the `response` is a Mock object,
+which as you remember, returns all attributes and properties as more
+Mocks
+footnote:[Actually, this is only happening because we're using the `patch` 
+decorator, which returns a `MagicMock`, an even mockier version of mock that
+can also behave like a dictionary. More info in the
+http://docs.python.org/dev/library/unittest.mock-magicmethods.html[docs]]
+. So, when we do our 
+
+[role="skipme"]
+[source,python]
+----
+    if response.json()['status'] == 'okay':
+----
+
+What we actually end up doing is comparing a Mock with the string "okay",
+which evaluates to false, and so we return None by default. Let's make our test
+more explicit:
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l025)
+[source,python]
+----
+    def test_returns_none_if_response_errors(self, mock_post):
+        mock_post.return_value.ok = False
+        mock_post.return_value.json.return_value = {}
+        user = self.backend.authenticate('an assertion')
+        self.assertIsNone(user)
+----
+
+That gives:
+
+----
+    if response.json()['status'] == 'okay':
+KeyError: 'status'
+----
+
+And we can fix it like this:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l026)
+[source,python]
+----
+    def authenticate(self, assertion):
+        response = requests.post(
+            PERSONA_VERIFY_URL,
+            data={'assertion': assertion, 'audience': DOMAIN}
+        )
+        if response.ok and response.json()['status'] == 'okay':
+            return User.objects.all()[0]
+----
+
+...
+
+----
+OK
+----
+
+Good.
+
+* authenticate is just returning the first user it finds
+* [strikethrough line-through]#why is the test for response.ok passing?#
+
+Creating a user if necessary
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next we should check that, if our `authenticate` function has
+a valid assertion from Persona, but we don't have a user record for
+that person in our database, we should create one.  Here's the test
+for that:
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l027)
+[source,python]
+----
+    def test_creates_new_user_if_necessary_for_valid_assertion_(self, mock_post):
+        mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
+        found_user = self.backend.authenticate('an assertion')
+        new_user = User.objects.all()[0]
+        self.assertEqual(found_user, new_user)
+        self.assertEqual(found_user.email, 'a@b.com')
+----
+
+That fails as follows:
+
+----
+IndexError: list index out of range
+----
+
+So we add a try/except, returning an "empty" user at first:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l028)
+[source,python]
+----
+    if response.ok and response.json()['status'] == 'okay':
+        try:
+            return User.objects.all()[0]
+        except:
+            return User.objects.create()
+----
+
+And that fails because our new user doesn't have the right email:
+
+
+----
+    self.assertEqual(found_user.email, 'a@b.com')
+AssertionError: '' != 'a@b.com'
+----
+
+And so we fix it by getting the email from the response json:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l029)
+[source,python]
+----
+    if response.ok and response.json()['status'] == 'okay':
+        email = response.json()['email']
+        try:
+            return User.objects.all()[0]
+        except:
+            return User.objects.create(email=email)
+----
+
+That gets us to passing tests:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+Ran 9 tests in 0.019s
+OK
+----
+
+
+
+Tests the get_user method by mocking the Django ORM
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The next thing we have to build is a `get_user` method for our authentication
+backend.  This method's job is to retrieve a user based on their email address,
+or to return None if it can't find one.
+
+The simplest way to test this would be, as in the previous example, but
+creating actual objects in the database, and by letting the method use the
+ORM to find them, or not.
+
+But, since we're learning about mocks, I thought I'd show how to mock out the
+Django ORM.  Although I have no qualms about using the database in my unit tests,
+some people really don't like it: the objection is that "true" unit tests should
+have no external dependencies at all,  and should never touch the database. 
+
+NOTE: You can find out more about the "purist" approach to unit testing in 
+the appendix entitled "The Database is Hot Lava".
+
+So, by way of an educational exercise, here's how to avoid touching the
+database by mocking out the Django ORM. We'll also learn about how to use
+mocks to test exception-handling, which will be useful.
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l030)
+[source,python]
+----
+class GetUserTest(TestCase):
+
+    @patch('accounts.authentication.User.objects.get') #<1>
+    def test_gets_user_from_ORM_using_email(self, mock_User_get):
+        backend = PersonaAuthenticationBackend()
+        found_user = backend.get_user('a@b.com')
+        self.assertEqual(found_user, mock_User_get.return_value) #<2>
+        mock_User_get.assert_called_once_with(email='a@b.com') #<3>
+
+----
+
+<1> We patch out the `User` ORM class, so that we can check on any calls
+    our code will make to it.
+
+<2> We check that `get_user` gives us the return value from our mocked 
+    `User.objects.get`.
+
+<3> We also check that `User.objects.get` was called correctly, passing
+    in the email as an argument.
+
+Here's our first failure:
+
+----
+AttributeError: 'PersonaAuthenticationBackend' object has no attribute
+'get_user'
+----
+
+Let's create a placeholder one then:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l031)
+[source,python]
+----
+class PersonaAuthenticationBackend(object):
+
+    def authenticate(self, assertion):
         [...]
 
+    def get_user(self):
+        pass
+----
+
+Now we get:
+
+
+----
+TypeError: get_user() takes 1 positional argument but 2 were given
+----
+
+So
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l032)
+[source,python]
+----
+    def get_user(self, email):
+        pass
+----
+
+Next:
+
+----
+    self.assertEqual(found_user, mock_User_get.return_value)
+AssertionError: None != <MagicMock name='get()' id='140631293381136'>
+----
+
+And (step-by-step):
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l033)
+[source,python]
+----
+    def get_user(self, email):
+        return User.objects.get()
+----
+
+That gets us past the first assertion, onto the mock check:
+
+----
+AssertionError: Expected call: get(email='a@b.com')
+Actual call: get()
+----
+
+And so we call `get` with the email as an argument:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l034)
+[source,python]
+----
+    def get_user(self, email):
+        return User.objects.get(email=email)
+----
+
+That gets us to passing tests:
+...
+
+----
+OK
+----
+
+
+Testing exception handling
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The other thing we need to check is that our `get_user` function should return
+`None` if the user doesn't exist (this wasn't well documented at the time of
+writing, but that is the interface we have to comply with. See 
+https://github.com/django/django/blob/1.6c1/django/contrib/auth/backends.py#L66[the source]).
+
+Ordinarily, if you do an ORM lookup and the user doesn't exist, it will 
+raise an Exception.  Since we're mocking out the ORM in these tests, we
+have to simulate that exception.  This is a good chance to learn about how
+to test exception handling with mocks. We do it by setting a special
+Mock attribute called `side_effect`:
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l035)
+[source,python]
+----
+class GetUserTest(TestCase):
+
+    @patch('accounts.authentication.User.objects.get')
+    def test_gets_user_from_ORM_using_email(self, mock_User_get):
+        [...]
+    
+    @patch('accounts.authentication.User.objects.get')
+    def test_returns_none_if_user_does_not_exist(self, mock_User_get):
+        def raise_no_user_error(*_, **__): #<1>
+            raise User.DoesNotExist()
+        mock_User_get.side_effect = raise_no_user_error #<2>
+        backend = PersonaAuthenticationBackend()
+
+        self.assertIsNone(backend.get_user('a@b.com'))
+----
+
+<1> We define a function whose only job is to raise an Exception. If you've not
+    seen it before, I'm using the convention where variables named with
+    underscores signify variables we don't care about -- it's the equivalent of 
+    `(*args, **kwargs)`, but we're just going to ignore what those args and
+    kwargs are.
+
+<2> We then assign that function as the "`side_effect`" of our mocked 
+    User.objects.get function. When our code tries to call it, it will
+    invoke our exception-raising function instead.
+
+You can actually trace the effect of our mocking in the traceback we get:
+
+----
+ERROR: test_returns_none_if_user_does_not_exist
+[...]
+  File "/workspace/superlists/accounts/tests/test_authentication.py", line 70,
+in test_returns_none_if_user_does_not_exist
+    self.assertIsNone(backend.get_user('a@b.com'))<1>
+  File "/workspace/superlists/accounts/authentication.py", line 25, in get_user
+    return User.objects.get(email=email)<2>
+  File "/usr/lib/python3.3/unittest/mock.py", line 846, in __call__
+    return _mock_self._mock_call(*args, **kwargs)<3>
+  File "/usr/lib/python3.3/unittest/mock.py", line 911, in _mock_call
+    ret_val = effect(*args, **kwargs)
+  File "/workspace/superlists/accounts/tests/test_authentication.py", line 66,
+in raise_no_user_error<4>
+    raise User.DoesNotExist()
+django.contrib.auth.models.DoesNotExist
+----
+
+
+<1> We call `get_user`
+
+<2> `get_user` calls `User.objects.get`
+
+<3> Because `User.objects.get` is mocked out, the call is diverted into the
+    mock library's code
+
+<4> Mock calls our pre-prepared exception-raising function.
+
+
+As you can see, mocks are powerful, but they can be pretty mind-bending!
+That's why I always say you should avoid using them if you can.  In
+any case, here's our implementation:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l036)
+[source,python]
+----
+    def get_user(self, email):
+        try:
+            return User.objects.get(email=email)
+        except User.DoesNotExist:
+            pass
+----
+
+
+And we 'almost' have a working authentication backend.  
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+Ran 11 tests in 0.020s
+OK
+----
+
+We still have one item on our scratchpad
+
+* authenticate is just returning the first user it finds
+* [strikethrough line-through]#why is the test for response.ok passing?#
+
+
+Before we can fix that, we'll need to define our custom user model.
+
+
+A minimal custom user model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Django's built-in user model makes all sorts of assumptions about what
+information you want to track about users, from explicitly recording
+first name and last name, to forcing you to use a username.   I'm a great
+believer in not storing information about users unless you absolutely must,
+so a User model that records an email address and nothing else sounds good to
+me!
+
+[role="sourcecode"]
+.accounts/tests/test_models.py
+[source,python]
+----
+from django.test import TestCase
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class UserModelTest(TestCase):
+
+    def test_user_is_valid_with_email_only(self):
+        user = User(email='a@b.com')
+        user.full_clean() # should not raise
+-----
+//37
+
+That gives us an expected failure:
+
+----
+django.core.exceptions.ValidationError: {'username': ['This field cannot be
+blank.'], 'password': ['This field cannot be blank.']}
+
+----
+
+Password?  Username?  Bah!  How about this?
+
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+from django.db import models
+
+class User(models.Model):
+    email = models.EmailField()
+----
+//38
+
+And we wire it up inside 'settings.py' using a variable called
+`AUTH_USER_MODEL`.  While we're at it, we'll add our new authentication backend
+too:
+
+[role="sourcecode"]
+.superlists/settings.py (ch15l039)
+[source,python]
+----
+AUTH_USER_MODEL = 'accounts.User'
+AUTHENTICATION_BACKENDS = (
+    'accounts.authentication.PersonaAuthenticationBackend',
+)
+----
+
+Now Django tells us off because it wants a couple of bits of metadata on any
+custom user model:
+
+
+----
+AttributeError: type object 'User' has no attribute 'REQUIRED_FIELDS'
+----
+
+Sigh.  Come on, Django, it's only got one field, you should be able to figure
+out the answers to these questions for yourself.  Here you go:
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+class User(models.Model):
+    email = models.EmailField()
+    REQUIRED_FIELDS = ()
+----
+
+Next silly footnote:[You might ask, if I think Django is so silly, why don't I
+submit a pull request to fix it?  Should be quite a simple fix.  Well, I
+promise I will, as soon as I've finished writing the book.  For now, snarky
+comments will have to suffice.] 
+question?
+
+----
+AttributeError: type object 'User' has no attribute 'USERNAME_FIELD'
+----
+
+So:
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+class User(models.Model):
+    email = models.EmailField()
+    REQUIRED_FIELDS = ()
+    USERNAME_FIELD = 'email'
+----
+//41
+
+
+What now?
+
+----
+accounts.user: The USERNAME_FIELD must be unique. Add unique=True to the field
+parameters.
+----
+
+I'll do one better! Let's make the email field into the primary key, and
+thus implicitly remove the auto-generated `id` column:
+
+[role="sourcecode"]
+.accounts/models.py (ch15l042)
+[source,python]
+----
+    email = models.EmailField(primary_key=True)
+----
+
+
+Tests as documentation
+^^^^^^^^^^^^^^^^^^^^^^
+
+That gets our tests running.  We'll write a test for this feature
+anyway, just as a form of documentation:
+
+[role="sourcecode"]
+.accounts/tests/test_models.py (ch15l043)
+[source,python]
+----
+    def test_email_is_primary_key(self):
+        user = User()
+        self.assertFalse(hasattr(user, 'id'))
+----
+
+And just to double-check, we can temporarily switch back the `EmailField` to
+using `unique=True` instead of `primary_key=True`, just to see the test fail
+
+NOTE: People sometimes say that your tests are a form of documentation for your
+code -- they express what your requirements are of a particular class.
+Sometimes, if you forget why you've done something a particular way, going back
+and looking at the tests will give you the answer.  That's why it's important
+to give your tests explicit, verbose method names.
+
+
+A slight disappointment
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Meanwhile, we have a weird unexpected failure:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+ERROR: test_returns_OK_when_user_found
+(accounts.tests.test_views.LoginViewTest)
+  File "/workspace/superlists/accounts/tests/test_views.py", line 29, in
+test_returns_OK_when_user_found
+    response = self.client.post('/accounts/login', {'assertion': 'a'})
+[...]
+  File "/workspace/superlists/accounts/views.py", line 8, in login
+    auth_login(request, user)
+[...]
+    user.save(update_fields=['last_login'])
+[...]
+ValueError: The following fields do not exist in this model or are m2m fields:
+last_login
+----
+
+It looks like Django is going to insist on us having a `last_login` field on
+our User model too.  Oh well.  My pristine, single-field user model is
+despoiled. I still love it though.
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+from django.db import models
+from django.utils import timezone
+
+class User(models.Model):
+    email = models.EmailField(primary_key=True)
+    last_login = models.DateTimeField(default=timezone.now)
+    REQUIRED_FIELDS = ()
+    USERNAME_FIELD = 'email'
+----
+//44
+
+Right!  Anyway! That works!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+Ran 13 tests in 0.021s
+OK
+----
+
+
+Fixing our cheat
+^^^^^^^^^^^^^^^^
+
+Remember our little "cheat"?  Now that we have a custom user model that 
+only know about email, we can apply a little tweak to our authentication
+unit test, which we couldn't before:
+
+
+[role="sourcecode"]
+.accounts/tests/test_authentication.py (ch15l045)
+[source,python]
+----
+    def test_finds_existing_user_with_email(self, mock_post):
+        mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
+        User.objects.create(email='someone@else.com')
+        actual_user = User.objects.create(email='a@b.com')
+        found_user = self.backend.authenticate('an assertion')
+        self.assertEqual(found_user, actual_user)
+----
+
+We create the user with the username `someone@else.com`, to make 
+sure our implementation doesn't just grab any old user. Now the test
+fails:
+
+----
+FAIL: test_finds_existing_user_with_email
+[...]
+AssertionError: <User: User object> != <User: User object>
+----
+
+
+And so we can improve on our "cheat" implementation:
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch15l046)
+[source,python]
+----
+def authenticate(self, assertion):
+    [...]
+        email = response.json()['email']
+        try:
+            return User.objects.get(email=email)
+        except:
+            return User.objects.create(email=email)
+----
+//TODO: except User.DoesNotExist?
+
+And we're back to passing tests.
+
+
+The moment of truth:  will the FT pass?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+I think we're just about ready to try our functional test!  Let's just wire 
+up our base template.  Firstly, it needs to show a different message for
+logged-in and non-logged-in users:
+
+[role="sourcecode"]
+.lists/templates/base.html
+[source,html]
+----
+<nav class="navbar navbar-default" role="navigation">
+    <a class="navbar-brand" href="/">Superlists</a>
+    {% if user.email %}
+        <a class="btn navbar-btn navbar-right" id="id_logout" href="#">Log out</a>
+        <span class="navbar-text navbar-right">Logged in as {{ user.email }}</span>
+    {% else %}
+        <a class="btn navbar-btn navbar-right" id="id_login" href="#">Sign in</a>
+    {% endif %}
+</nav>
+----
+//47
+
+
+Lovely.  Then we wire up our various context variables for the call to
+`initialize`:
+
+[role="sourcecode"]
+.lists/templates/base.html
+[source,html]
+----
+<script>
+    $(document).ready( function () {
+        var user = "{{ user.email }}" || null;
+        var token = "{{ csrf_token }}";
+        var urls = {
+            login: "{% url 'login' %}",
+            logout: "TODO",
+        };
+        Superlists.Accounts.initialize(navigator, user, token, urls);
+    });
+</script>
+----
+//48
+
+So how does our FT get along?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+Creating test database for alias 'default'...
+[...]
+Ran 1 test in 26.382s
+
+OK
+-----
+
+Woohoo!
+
+I've been waiting to do a commit up until this moment, just to make sure
+everything works.  At this point, you could make a series of separate 
+commits -- one for the login view, one for the auth backend, one for 
+the user model, one for wiring up the template.  Or you could decide that,
+since they're all inter-related, and none will work without the others,
+you may as well just have one big commit.
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status*
+$ *git add .*
+$ *git diff --staged*
+$ *git commit -am "Custom Persona auth backend + custom user model"*
+----
+
+
+Finishing off our FT, testing logout
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We'll extend our FT to check that the logged-in status persists, ie it's 
+not just something we set in JavaScript on the client side, but the server
+knows about it too and will maintain the logged-in state if she refreshes
+the page. We'll also test that she can log out.
+
+I started off writing code a bit like this:
+
+[role="sourcecode skipme"]
+.functional_tests/test_login.py
+[source,python]
+----
+    # Refreshing the page, she sees it's a real session login,
+    # not just a one-off for that page
+    self.browser.refresh()
+    self.wait_for_element_with_id('id_logout')
+    navbar = self.browser.find_element_by_css_selector('.navbar')
+    self.assertIn(TEST_EMAIL, navbar.text)
+----
+//49
+
+And, after 4 repetitions of very similar code, a helper function suggested
+itself:
+
+
+[role="sourcecode"]
+.functional_tests/test_login.py
+[source,python]
+----
+    def wait_to_be_logged_in(self):
+        self.wait_for_element_with_id('id_logout')
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertIn(TEST_EMAIL, navbar.text)
+
+    def wait_to_be_logged_out(self):
+        self.wait_for_element_with_id('id_login')
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertNotIn(TEST_EMAIL, navbar.text)
+----
+//50
+
+And I extended the FT like this:
+
+[role="sourcecode"]
+.functional_tests/test_login.py (ch15l049)
+[source,python]
+----
+        [...]
+        # The Persona window closes
+        self.switch_to_new_window('To-Do')
+
         # She can see that she is logged in
-        self.wait_to_be_logged_in(email=TEST_EMAIL)
+        self.wait_to_be_logged_in()
 
         # Refreshing the page, she sees it's a real session login,
         # not just a one-off for that page
         self.browser.refresh()
-        self.wait_to_be_logged_in(email=TEST_EMAIL)
+        self.wait_to_be_logged_in()
 
         # Terrified of this new feature, she reflexively clicks "logout"
         self.browser.find_element_by_id('id_logout').click()
-        self.wait_to_be_logged_out(email=TEST_EMAIL)
+        self.wait_to_be_logged_out()
 
         # The "logged out" status also persists after a refresh
         self.browser.refresh()
-        self.wait_to_be_logged_out(email=TEST_EMAIL)
+        self.wait_to_be_logged_out()
 ----
 
-Just to check we haven't broken anything, we re-run the login test:
+I also found that improving the failure message in the
+`wait_for_element_with_id` function helped to see what was going on:
+
+
+[role="sourcecode"]
+.functional_tests/test_login.py
+[source,python]
+----
+    def wait_for_element_with_id(self, element_id):
+        WebDriverWait(self.browser, timeout=30).until(
+            lambda b: b.find_element_by_id(element_id),
+            'Could not find element with id %s. Page text was %s' % (
+                element_id, self.browser.find_element_by_tag_name('body').text
+            )
+        )
+----
+//52
+
+
+With that, we can see that the test is failing because the logout button doesn't work:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+  File "/workspace/superlists/functional_tests/test_login.py", line 39, in
+wait_to_be_logged_out
+[...]
+selenium.common.exceptions.TimeoutException: Message: 'Could not find element
+with id id_login. Page text was Superlists\nLog out\nLogged in as
+testinggoat@yahoo.com\nStart a new To-Do list' 
+----
+
+Implementing a logout button is actually very simple:  we can use Django's 
+https://docs.djangoproject.com/en/1.6/topics/auth/default/#module-django.contrib.auth.views[built-in
+logout view], which clears down the user's session and redirects them
+to a page of our choice:
+
+[role="sourcecode"]
+.accounts/urls.py
+[source,python]
+----
+urlpatterns = patterns('',
+    url(r'^login$', 'accounts.views.login', name='login'),
+    url(r'^logout$', 'django.contrib.auth.views.logout', {'next_page': '/'}, name='logout'),
+)
+----
+
+And in base.html, we just make the logout into a normal URL link:
+
+[role="sourcecode"]
+.lists/templates/base.html
+[source,python]
+----
+<a class="btn navbar-btn navbar-right" id="id_logout" href="{% url 'logout' %}">Log out</a>
+----
+
+
+And that gets us a fully passing FT -- indeed, a fully passing test suite:
 
 
 [subs="specialcharacters,macros"]
@@ -157,696 +1533,46 @@ Just to check we haven't broken anything, we re-run the login test:
 $ pass:quotes[*python3 manage.py test functional_tests.test_login*]
 [...]
 OK
-----
-
-And now we can write a placeholder for the "My Lists" test, to see if
-our pre-authenticated session creator really does work:
-
-[role="sourcecode"]
-.functional_tests/test_my_lists.py (ch16l004)
-[source,python]
-----
-    def test_logged_in_users_lists_are_saved_as_my_lists(self):
-        email = 'edith@email.com'
-
-        self.browser.get(self.server_url)
-        self.wait_to_be_logged_out(email)
-
-        # Edith is a logged-in user
-        self.create_pre_authenticated_session(email)
-
-        self.browser.get(self.server_url)
-        self.wait_to_be_logged_in(email)
-----
-
-That gets us:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+$ pass:quotes[*python3 manage.py test*]
 [...]
-OK
-----
-
-That's a good place for a commit:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add functional_tests*
-$ *git commit -m"placeholder test_my_lists and move login checkers into base"*
-----
-
-
-
-The proof is in the pudding: using staging to catch final bugs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-That's all very well for running the FTs locally, but how would it work against
-the staging server?  Let's try and deploy our site.  Along the way we'll catch
-an unexpected bug, and then we'll have to figure out a way of managing the
-database on the test server.
-
-[subs="specialcharacters,quotes"]
-----
-$ *fab deploy --host=superlists-staging.ottg.eu*
-[...]
-----
-
-And restart gunicorn...
-
-[subs="specialcharacters,quotes"]
-----
-elspeth@server: *sudo restart gunicorn-superlists-staging.ottg.eu*
-----
-
-Staging finds an unexpected bug (that's what it's for!)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Here's what happens when we run the functional tests:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests --liverserver=superlists-staging.ottg.eu*]
-
-======================================================================
-ERROR: test_login_with_persona (functional_tests.test_login.LoginTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/worskpace/functional_tests/test_login.py", line 50, in
-test_login_with_persona
-[...]
-    self.wait_for_element_with_id('id_logout')
-[...]
-selenium.common.exceptions.TimeoutException: Message: 'Could not find element
-with id id_logout. Page text was Superlists\nSign in\nStart a new To-Do list' 
-
-======================================================================
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/worskpace/functional_tests/test_my_lists.py", line 34, in
-test_logged_in_users_lists_are_saved_as_my_lists
-    self.wait_to_be_logged_in(email)
-[...]
-selenium.common.exceptions.TimeoutException: Message: 'Could not find element
-with id id_logout. Page text was Superlists\nSign in\nStart a new To-Do list' 
-
-----
-
-We can't log in -- either with the real Persona or with our pre-authenticated
-session.
-
-I had considered just going back and fixing this in the previous chapter,
-and pretending it never happened, but I think leaving it in teaches a better
-lesson:  first off, I'm not that smart, and second: this is exactly the point
-of running tests against a staging environment.  It would have been pretty 
-embarrassing if we'd deployed this bug straight to our live site.
-
-Aside from that, we'll get to practice a bit of server-side debugging.
-
-
-Setting up logging
-^^^^^^^^^^^^^^^^^^
-
-
-In order to track this bug down, we have to set up gunicorn to do some
-logging.  Adjust the gunicorn config on the server:
-
-
-./etc/init/gunicorn-superlists-staging.ottg.eu.conf
-----
-[...]
-exec ../virtualenv/bin/gunicorn \
-    --bind unix:/tmp/SITENAME.socket \
-    --access-logfile ../access.log \
-    --error-logfile ../error.log \
-    superlists.wsgi:application
-----
-
-That will put an access log and error log into the '~/sites/$SITENAME' folder.
-Then we add some debug calls in our `authenticate` function (again, we can do
-this directly on the server)
-
-[role="sourcecode"]
-.accounts/authentication.py
-[source,python]
-----
-    def authenticate(self, assertion):
-        logging.warning('entering authenticate function')
-        response = requests.post(
-            PERSONA_VERIFY_URL,
-            data={'assertion': assertion, 'audience': settings.DOMAIN}
-        )
-        logging.warning('got response from persona')
-        logging.warning(response.content.decode())
-        [...]
-----
-
-//TODO: figure out if I can get Django logging to work at a lower level than
-// warning
-
-We restart gunicorn again, and then either re-run the FT, or just try
-to log in manually.  While that happens, we can watch the logs on
-the server with a
-
-[subs="specialcharacters,quotes"]
-----
-elspeth@server: $ *tail -f error.log*  # assumes we are in ~/sites/$SITENAME folder
-[...]
-WARNING:root:b'{"status":"failure","reason":"audience mismatch: domain mismatch"}'
-----
-
-It turns out it's because I overlooked an important part of the
-Persona system, which is that authentications are only valid for particular
-domains.  We've left the domain hard-coded as "localhost" in
-'accounts/authentication.py':
-
-[role="skipme"]
-[source,python]
-----
-PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
-DOMAIN = 'localhost'
-User = get_user_model()
-----
-
-We can try and hack in a fix on the server:
-
-[role="skipme"]
-[source,python]
-----
-DOMAIN = 'superlists-staging.ottg.eu'
-----
-
-And check whether it works by doing a manual login. It does.
-
-
-Fixing the Persona bug
-^^^^^^^^^^^^^^^^^^^^^^
-
-Here's how we go about baking in a fix, switching back to coding on our local
-PC. We start by moving the definition for the `DOMAIN` variable into
-'settings.py', where we can later use the deploy script to override it:
-
-[role="sourcecode"]
-.superlists/settings.py
-[source,python]
-----
-# This setting is changed by the deploy script
-DOMAIN = "localhost"
-
-ALLOWED_HOSTS = [DOMAIN]
-----
-
-We feed that change back through the tests:
-
-[role="sourcecode"]
-.accounts/test_authentication.py
-[source,diff]
-----
-@@ -1,9 +1,9 @@
- from unittest.mock import Mock, patch
-+from django.conf import settings
- from django.test import TestCase
- 
- from accounts.authentication import (
--    PERSONA_VERIFY_URL, DOMAIN,
-+    PERSONA_VERIFY_URL,
-     PersonaAuthenticationBackend, User
- )
- 
-@@ -28,7 +28,7 @@ class AuthenticateTest(TestCase):
-         self.backend.authenticate('an assertion')
-         mock_post.assert_called_once_with(
-             PERSONA_VERIFY_URL,
--            data={'assertion': 'an assertion', 'audience': DOMAIN}
-+            data={'assertion': 'an assertion', 'audience': settings.DOMAIN}
-         )
-----
-
-And then we change the implementation:
-
-[role="sourcecode"]
-.accounts/authenticate.py
-[source,diff]
-----
-@@ -1,8 +1,8 @@
- import requests
- from django.contrib.auth import get_user_model
-+from django.conf import settings
- 
- PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
--DOMAIN = 'localhost'
- User = get_user_model()
- 
- 
-@@ -11,7 +11,7 @@ class PersonaAuthenticationBackend(object):
-     def authenticate(self, assertion):
-         response = requests.post(
-             PERSONA_VERIFY_URL,
--            data={'assertion': assertion, 'audience': DOMAIN}
-+            data={'assertion': assertion, 'audience': settings.DOMAIN}
-         )
-         if not response.ok:
-             return
-----
-
-Re-running the tests just to be sure:
-
-----
-$ python3 manage.py test accounts
-[...]
-Ran 18 tests in 0.053s
-OK
-----
-
-Next we update our fabfile to make it adjust the domain in settings.py, 
-removing the cumbersome 2-line `sed` on `ALLOWED_HOSTS`:
-
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _update_settings(source_folder, site_name):
-    settings_path = path.join(source_folder, 'superlists/settings.py')
-    sed(settings_path, "DEBUG = True", "DEBUG = False")
-    sed(settings_path, 'DOMAIN = "localhost"', 'DOMAIN = "%s"' % (site_name,))
-    secret_key_file = source_folder + '/superlists/secret_key.py'
-    if not exists(secret_key_file):
-        [...]
-----
-
-We re-deploy, and spot the `sed` in the output:
-
-[subs="specialcharacters,quotes"]
-----
-$ *fab deploy --host=superlists-staging.ottg.eu*
-[...]
-[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DOMAIN =
-"localhost"/DOMAIN = "superlists-staging.ottg.eu"/g' "$(echo
-/home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
-[...]
-----
-
-
-Managing the test database on staging
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Now we can re-run our FTs, and get to the next failure: our attempt to create
-pre-authenticated sessions doesn't work, so the "My lists" test fails:
-
-----
-$ python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu
-
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
-[...]
-selenium.common.exceptions.TimeoutException: Message: 'Could not find element
-with id id_logout. Page text was Superlists\nSign in\nStart a new To-Do list' 
-
-Ran 7 tests in 72.742s
-
-FAILED (errors=1)
-----
-
-
-It's because our `create_pre_authenticated_session` function only acts on the 
-local database. Let's find out how to manage the database on the server.
-
-
-
-A Django management command to create sessions
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-To do things on the server, we'll need to build a self-contained script that
-can be run from the command-line on the server, most probably via Fabric.
-
-When trying to build standalone scripts that work with the Django environment,
-can talk to the database and so on, there are some fiddly issues you need to
-get right, like setting the `DJANGO_SETTINGS_MODULE` environment variable
-correctly, and getting the `sys.path` right.  Instead of messing about with all
-that, Django lets you create your own "management commands" (commands you can
-run with `python manage.py`), which will do all that path mangling for you.
-They live in a folder called 'management/commands' inside your apps.
-
-[subs="specialcharacters,quotes"]
-----
-$ *mkdir -p functional_tests/management/commands*
-$ *touch functional_tests/management/__init__.py*
-$ *touch functional_tests/management/commands/__init__.py*
-----
-
-The boilerplate in a management command is a class that inherits from 
-`django.core.management.BaseCommand`, and that defines a method called
-`handle`:
-
-[role="sourcecode"]
-.functional_tests/management/commands/create_session.py
-[source,python]
-----
-from django.conf import settings
-from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
-User = get_user_model()
-from django.contrib.sessions.backends.db import SessionStore
-from django.core.management.base import BaseCommand
-
-
-class Command(BaseCommand):
-
-    def handle(self, email, *_, **__):
-        session_key = create_pre_authenticated_session(email)
-        self.stdout.write(session_key)
-
-
-def create_pre_authenticated_session(email):
-    user = User.objects.create(email=email)
-    session = SessionStore()
-    session[SESSION_KEY] = user.pk
-    session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
-    session.save()
-    return session.session_key
-----
-
-We've taken the code for `create_pre_authenticated_session` code from
-'test_my_lists.py'.  `handle` will pick up an email address as the first
-command-line argument, and then return the session key that we'll want to add
-to our browser cookies, and the management command prints it out at the
-command-line. Try it out:
-
-----
-$ python3 manage.py create_session a@b.com
-Unknown command: 'create_session'
-----
-
-Ah, one more step: we need to add `functional_tests` to our 'settings.py'
-for it to recognise it as a real app that might have management commands as
-well as tests:
-
-[role="sourcecode"]
-.superlists/settings.py
-[source,python]
-----
-+++ b/superlists/settings.py
-@@ -42,6 +42,7 @@ INSTALLED_APPS = (
-     'lists',
-     'south',
-     'accounts',
-+    'functional_tests',
- )
-----
-
-Now it works:
-
-----
-$ python3 manage.py create_session a@b.com
-qnslckvp2aga7tm6xuivyb0ob1akzzwl
-----
-
-Next we need to adjust `test_my_lists` so that it runs the local function
-when we're on the local server, and make it run the management command
-on the staging server if we're on that:
-
-[role="sourcecode"]
-.functional_tests/test_my_lists.py
-[source,python]
-----
-from django.conf import settings
-from .base import FunctionalTest
-from .server_tools import create_session_on_server
-from ..management.commands.create_session import create_pre_authenticated_session
-
-class MyListsTest(FunctionalTest):
-
-    def create_pre_authenticated_session(self, email):
-        if self.against_staging:
-            session_key = create_session_on_server(self.server_host, email)
-        else:
-            session_key = create_pre_authenticated_session(email)
-        ## to set a cookie we need to first visit the domain.
-        ## 404 pages load the quickest!
-        self.browser.get(self.server_url + "/404_no_such_url/")
-        self.browser.add_cookie(dict(
-            name=settings.SESSION_COOKIE_NAME,
-            value=session_key,
-            path='/',
-        ))
-
-    [...]
-----
-
-First let's see how we know whether or not we're working against the 
-staging server. `self.against_staging` gets populated in 'base.py':
-
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-from .server_tools import reset_database
-
-class FunctionalTest(LiveServerTestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        for arg in sys.argv:
-            if 'liveserver' in arg:
-                cls.server_host = arg.split('=')[1] #<1>
-                cls.server_url = 'http://' + cls.server_host
-                cls.against_staging = True #<1>
-                return
-        LiveServerTestCase.setUpClass()
-        cls.against_staging = False
-        cls.server_url = cls.live_server_url
-
-    @classmethod
-    def tearDownClass(cls):
-        if not self.against_staging:
-            LiveServerTestCase.tearDownClass()
-
-    def setUp(self):
-        if self.against_staging:
-            reset_database(self.server_host) #<2>
-        self.browser = webdriver.Firefox()
-        self.browser.implicitly_wait(3)
-----
-
-<1> Instead of just storing `cls.server_url`, we also store the `server_host` 
-    and `against_staging` attributes if we detect the `liveserver` command-line
-    argument
-
-<2> We also need a way of resetting the server database in between each test. 
-    I'll explain the logic of the session-creation code, which should also 
-    explain how this works.
-
-
-An additional hop via `subprocess`
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-In Python 2, you can call fabric functions directly from Python code.  Because
-we're working with Python 3, we have to do an extra hop and call the `fab`
-command, like we do from the command-line when we do server deploys.  Here's
-how that looks, in a module called 'server_tools':
-
-[role="sourcecode"]
-.functional_tests/server_tools.py
-[source,python]
-----
-from os import path
-import subprocess
-THIS_FOLDER = path.abspath(path.dirname(__file__))
-
-def create_session_on_server(host, email):
-    return subprocess.check_output(
-        [
-            'fab',
-            'create_session_on_server:email={}'.format(email), #<1>
-            '--host={}'.format(host),
-            '--hide=everything,status', #<2>
-        ],
-        cwd=THIS_FOLDER
-    ).decode().strip() #<1>
-
-
-def reset_database(host):
-    subprocess.check_call(
-        ['fab', 'reset_database', '--host={}'.format(host)],
-        cwd=THIS_FOLDER
-    )
-----
-
-Here we use the `subprocess` module to call some fabric functions using the
-`fab` command. 
-
-<1> As you can see, the command-line syntax for arguments to fab functions is
-    quite simple, a colon and then a variable=argument syntax.
-
-<2> Because of all the hopping around via fabric and subprocesses, we're forced
-    to be quite careful about extracting the session key from the output of the
-    command as it gets run on the server.
-
-NOTE: By the time you read this book, Fabric may well have been fully ported to
-Python 3. If so, investigate using the fabric context managers to call fabric
-functions directly inline with your code.
-
-Finally, let's look at the fabfile that defines those two commands we want to
-run server-side, to reset the database or setup the session:
-
-
-[role="sourcecode"]
-.functional_tests/fabfile.py
-[source,python]
-----
-from fabric.api import env, run
-
-
-def _get_base_folder(host):
-    return '~/sites/' + host
-
-def _get_manage_dot_py(host):
-    return '{path}/virtualenv/bin/python {path}/source/manage.py'.format(
-        path=_get_base_folder(host)
-    )
-
-
-def reset_database():
-    run('{manage_py} flush --noinput'.format(
-        manage_py=_get_manage_dot_py(env.host)
-    ))
-
-
-def create_session_on_server(email):
-    session_key = run('{manage_py} create_session {email}'.format(
-        manage_py=_get_manage_dot_py(env.host),
-        email=email,
-    ))
-    print(session_key)
-----
-
-Does that make a reasonable amount of sense?  We've got a function that
-can create a session in the database.  If we detect we're running locally,
-we call it directly.  If we're against the server, there's a couple of hops:
-we use `subprocess` to get to fabric via `fab`, which lets us run a management
-command that calls that same function, on the server.
-
-
-How about an ASCII-art illustration?
-
-----
-Locally:
-========
-
-MyListsTest
-.create_pre_authenticated_session --> .management.commands.create_session
-                                      .create_pre_authenticated_session
-
-
-Against staging:
-================
-
-MyListsTest
-.create_pre_authenticated_session     .management.commands.create_session
-                                      .create_pre_authenticated_session
-     |
-     |                                              /|\
-    \|/                                              |
-
-server_tools                             run manage.py create_session
-.create_session_on_server              
-
-     |                                              /|\
-    \|/                                              |
-
-subprocess.check_output  -->   fab  -->  fabfile.create_session_on_server
-----
-
-I'm quite proud of that one.  Anyway, let's see if it works...
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests.MyListsTest \
---liveserver=superlists-staging.ottg.eu*]
-Creating test database for alias 'default'...
-[superlists-staging.ottg.eu] Executing task 'reset_database'
-~/sites/superlists-staging.ottg.eu/source/manage.py flush --noinput
-[superlists-staging.ottg.eu] out: Syncing...
-[superlists-staging.ottg.eu] out: Creating tables ...
-[...]
-.
- ---------------------------------------------------------------------
-Ran 1 test in 25.701s
+Ran 48 tests in 78.124s
 
 OK
 ----
-
-Looking good!  We can re-run all the tests to make sure...
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
-Creating test database for alias 'default'...
-[superlists-staging.ottg.eu] Executing task 'reset_database'
-[...]
-Ran 7 tests in 89.494s
-
-OK
-Destroying test database for alias 'default'...
-----
-
-Hooray!  But before we can deploy our actual live site, we'd better actually
-give the users what they wanted -- the ability to save their lists.
-
-NOTE: I've shown one way of managing the test database, but you could experiment
-with others -- for example, if you were using MySQL or Postgres, you could open
-up an SSH tunnel to the server, and use port forwarding to talk to the database
-directly.  You could then amend `settings.DATABASES` during FTs to talk to the
-tunnelled port.
-
-WARNING: We're into dangerous territory, now that we have code that can directly
-affect the database on the server.  You want to be very, very careful that you 
-don't accidentally blow away your production database by running FTs against the
-wrong host.  You might consider putting some safeguards in place at this point. 
-For example, you could put staging and production on different servers, and make it
-so they used different keypairs for authentication, with different passphrases.
+//54
 
 
-TODO: save logging code
 
-TODO: bake in logging.warning if persona fails, using unit test.
-
-
-.Fixtures, locally and on the server
+.On Mocking in Python
 *******************************************************************************
 
-De-duplicate your FTs, with caution::
-    Every single FT doesn't need to test every single part of your application.
-    In our case, we wanted to avoid going through the full log-in process for
-    every FT that needs an authenticated user, so we used a test fixture to 
-    "cheat" and skip that part. You might find other things you want to skip 
-    in your FTs.  A word of caution however: functional tests are there to 
-    catch unpredictable interactions between different parts of your
-    application, so be wary of pushing de-duplication to the extreme.
-    
-Test fixtures::
-    Test fixtures refers to test data that needs to be set up as a precondition
-    before a test is run -- often this means populating the database with some
-    information, but as we've seen (with browser cookies), it can involve other
-    types of preconditions.  Dealing with test fixtures is an important part of
-    testing
+The Mock library::
+    Michael Foord (who used to work for the company that spawned
+    PythonAnywhere, just before I joined) wrote the excellent "Mock"
+    library that's now been integrated into the standard library of Python 3.
+    It contains most everything you might need for mocking in Python
 
-Avoid JSON fixtures::
-    Django makes it easy to save and restore data from the database in JSON
-    format (and others) using the `dumpdata` and `loaddata` management
-    commands.  Most people recommend against using these for test fixtures,
-    as they are painful to manage when your database schema changes
+The patch decorator::
+    `unittest.mock` provides a function called `patch`, which can be used
+    to "mock out" any object from the module you're testing.  It's commonly
+    used as a decorator on a test method, or even at the class level, where
+    it's applied to all the test methods of that class
 
-Fixtures also have to work remotely::
-    `LiveServerTestCase` makes it easy to interact with the test database 
-    using the Django ORM for tests running locally.  Interacting with the 
-    database on the staging server is not so straightforward -- one solution
-    is Django management commands, as I've shown, but you should explore what
-    works for you.
+Mocks are truthy and can mask error::
+    Be aware that mocking things out can cause counter-intuitive behaviour
+    in `if` statements.  Mocks are truthy, and they can also mask errors,
+    because they have all attributes and methods.
+
+Mocking the Django ORM::
+    If you want to avoid "touching" the database in your tests, you can
+    use Mock to simulate the Django ORM.  Sometimes, this is more trouble
+    than it's worth. See the "Hot Lava" appendix for more discussion.
+
+Too many mocks are a code smell::
+    Overly mocky tests end up very tightly coupled to their implementation.
+    Sometimes this is unavoidable.  But, in general, try to find ways
+    of organising your code so that you don't need too many mocks, if you can.
 
 *******************************************************************************
-    
+
+

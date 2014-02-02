@@ -1,504 +1,829 @@
-Database migrations
+More advanced Forms 
 -------------------
 
-We've made a change to our database -- we've added some constraints to some
-of the columns in the list table.  In order to apply these to our live site,
-we'll need to alter the tables in the existing database. This is a
-'database migration'.
+Now let's look at some more advanced forms usage.  We've helped our users
+to avoid blank list items, let's help them avoid duplicate items.
+
+NOTE: If any chapter is going to get the chop, this is a likely one. So,
+please do let me know what you think:  is it valuable?  Which are your
+favourite and least favourite bits?  What would you try and preserve
+from it, if it were to disappear?
 
 
-South vs Django migrations
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Another FT for duplicate items
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The current established tool for database migrations with Django is called 
-http://south.readthedocs.org/en/latest/index.html[South].  
-
-NOTE: At the time of writing, Andrew Godwin, South's talented creator, had just
-finished a
-http://www.kickstarter.com/projects/andrewgodwin/schema-migrations-for-django[project]
-to integrate South into the Django core, in the shape of a new feature called
-https://docs.djangoproject.com/en/dev/topics/migrations/[Migrations]. I plan to
-upgrade to this as soon as it gets released in Django 1.7...  The basic
-concepts and steps involved aren't going to change much though.
-
-
-We start by installing South:
-
-[subs="specialcharacters,quotes"]
-----
-$ *../virtualenv/bin/pip install south*
-[...]
-Successfully installed south
-----
-
-We add it to `INSTALLED_APPS`:
+We add a second test method to `ItemValidationTest`:
 
 [role="sourcecode"]
-.superlists/settings.py (ch12l001)
+.functional_tests/test_list_item_validation.py (ch11l001)
 [source,python]
 ----
-INSTALLED_APPS = (
-    [...]
-    'lists',
-   'south',
-)
+def test_cannot_add_duplicate_items(self):
+    # Edith goes to the home page and starts a new list
+    self.browser.get(self.server_url)
+    self.get_item_input_box().send_keys('Buy wellies\n')
+    self.check_for_row_in_list_table('1: Buy wellies')
+
+    # She accidentally tries to enter a duplicate item
+    self.get_item_input_box().send_keys('Buy wellies\n')
+
+    # She sees a helpful error message
+    self.check_for_row_in_list_table('1: Buy wellies')
+    error = self.browser.find_element_by_css_selector('.has-error')
+    self.assertEqual(error.text, "You've already got this in your list")
 ----
 
+Why have two test methods rather than extending one, or having a new file
+and class?  It's a judgement call.  These two feel closely related, they're
+both about validation on the same input field, so it feels right to
+keep them in the same file.  On the other hand, they're logically separate
+enough that it's practical to keep them in different methods.
 
-And to 'requirements.txt':
-
-[role="sourcecode"]
-.requirements.txt
-[source,text]
-----
-Django==1.6
-gunicorn==18.0
-South==0.8.3
-----
-
-We can commit that to version control:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "Add South"*
-----
-
-Creating an initial migration to match the current live state
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-For migrations to work, they need to know what we're migrating from and to.
-The place this really matters is on the live server, so we want to be able
-to migrate from the database state as it currently is on live, to the state
-that's in the latest version of the code.
-
-Here's where version control comes in useful. You remember in chapter 8
-we tagged the current release?  That makes it easy for us to get an old
-version of our code that matches what's deployed.
-
-.If you didn't tag the release back in chapter 8
-******************************************************************************
-If you were working from a previous version of the book, you might not have
-tagged the release.  You know, because I just only decided to add that bit.
-Instead, you can use `git log` to look back for a commit that we made during
-chapter 8, or maybe right at the beginning of chapter 9.
-
-[role="skipme"]
-[subs="specialcharacters,quotes"]
-----
-$ *git log --oneline*
-[...]
-18480bd Create base FT class and a class for each test.
-87e99b5 Moved functional tests into a folder.
-7fa00f1 New ft for item validation.
-8ca488b Add a fabfile for automated deploys    # <---  this looks like it!
-d28e6ea Notes and template config files for provisioning
-6b0d814 Add gunicorn to virtualenv requirements
-6a6c91e Add requirements.txt for virtualenv
-----
-
-Note down that commit number and then use it to retrospectively add the tag:
-
-[role="skipme"]
-[subs="specialcharacters,quotes"]
-----
-$ *git tag LIVE 8ca488b*  # substitute in your own commit number!
-----
-
-Then you should be able to follow on with the instructions.
-******************************************************************************
-
-
-To revert our models to the state they were in at that point: 
-
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout LIVE -- lists/models.py*
-----
-
-Now we can create our initial migration.  This tells south what the "starting"
-state of the database should be:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*../virtualenv/bin/python3 manage.py schemamigration lists --initial*]
-Creating migrations directory at '/workspace/superlists/lists/migrations'...
+$ pass:quotes[*python3 manage.py test functional_tests.test_list_item_validation*] 
 [...]
- + Added model lists.List
- + Added model lists.Item
-Created 0001_initial.py. You can now apply this migration with: ./manage.py
-migrate lists
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":".has-error"}' ; Stacktrace: 
+
+Ran 2 tests in 9.613s
 ----
 
-The migration is stored in a directory called 'migrations' inside the
-lists app:
-
-[subs="specialcharacters,quotes"]
-----
-$ *tree lists/migrations/*
-lists/migrations/
-├── 0001_initial.py
-├── __init__.py
-└── __pycache__
-----
-
-We go back to the latest code version:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout HEAD -- lists/models.py* 
-----
-
-And we add the initial migration to version control:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add lists/migrations/*
-$ *git status*  # should show 2 new files
-$ *git commit -m"initial migration to match live"*
-----
-
-Next we create the "real" migration that we want to apply.  This time
-we use `--auto`:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*../virtualenv/bin/python3 manage.py schemamigration --auto lists*]
- + Added unique constraint for ['list', 'text'] on lists.Item
-Created 0002_auto__add_unique_item_list_text.py. You can now apply this
-migration with: ./manage.py migrate lists
-----
-
-Sure enough, it spots the new constraint.  Let's add that to VCS too:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add lists/migrations/0002_auto__add_unique_item_list_text.py*
-$ *git commit -m"Add new migration for list item uniqueness constraint"*
-----
-
-Migrations: like a VCS for your database
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The way migrations work is that they store a series of pictures of what your
-database looks like as your code evolves.  In order to apply a migration, the
-migrations tool also needs to have a view of what the database 'currently'
-looks like.  
-
-But, because we only started using migrations half-way through our development
-(and this is quite a common occurrence), the migrations tool doesn't know
-where it currently is.  In order to tell it, we do what's called a "fake" 
-migration, to tell it that the current database state is at the 0001 migration
-that we stored earlier, and that the one we want to go to is 0002.
-
-If that hasn't melted your brain enough, how about this: so South needs to
-store information about what it thinks the current state of the database is,
-right?  And where do you think it stores it?  You can see this coming, can't 
-you?  It stores it in the database.  South has its own set of tables.  Please
-don't ask me whether south stores information in those tables about the tables
-themselves.
-
-Let's test this out locally and try and get used to it.  First, we go and make
-a database that has the old state, ie one that looks like live:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout LIVE*
-$ *rm ../database/db.sqlite3*
-$ *python3 manage.py syncdb --noinput*
-$ *git checkout master*
-----
-
-Now, if you try doing a migration, you'll see that South explodes violently:
-
-[subs="specialcharacters,quotes"]
-----
-$ *../virtualenv/bin/python3 manage.py syncdb --migrate*
-Syncing...
-Creating tables ...
-Creating table south_migrationhistory
-[...]
-Migrating...
-Running migrations for lists:
- - Migrating forwards to 0002_auto__add_unique_item_list_text.
- > lists:0001_initial
-FATAL ERROR - The following SQL query failed: CREATE TABLE "lists_list" ("id"
-integer NOT NULL PRIMARY KEY)
-[...]
- ! NOTE: The error which caused the migration to fail is further up.
-Error in migration: lists:0001_initial
-[...]
-django.db.utils.OperationalError: table "lists_list" already exists
-----
-
-It's because it's confused about the current state of the database. It 
-thinks it needs to create the lists table, but it's already there. Here's how
-we tell it that the database actually matches migration 0001, ie the place
-where live is:
-
-[subs="specialcharacters,quotes"]
-----
-$ *../virtualenv/bin/python3 manage.py migrate lists --fake 0001*
-Running migrations for lists:
- - Migrating forwards to 0001_initial.
- > lists:0001_initial
-   (faked)
-----
-
-And now we can test applying the real migration we want to do to live:
-
-[subs="specialcharacters,quotes"]
-----
-$ *../virtualenv/bin/python3 manage.py migrate lists*
-Running migrations for lists:
- - Migrating forwards to 0002_auto__add_unique_item_list_text.
- > lists:0002_auto__add_unique_item_list_text
- - Loading initial data for lists.
-Installed 0 object(s) from 0 fixture(s)
-----
-
-Brilliant! Are you confused?  I am, slightly, and I'm the one writing this.
-Here's a recap:
-
-* We need to apply a database migration to the live database when we deploy, 
-  to add the uniqueness constraint.
-
-* We're going to use South migrations for this.  We've created two migrations,
-  one (0001) which takes us from nothing to the old state, and one which takes
-  us from there to the state we want (0002).
-
-* To test this, we've created a database in the same state as live by
-  checking out our old model code and doing a syncdb.
-
-* In order to apply a migration, South needs to know what the current state
-  of the database is.
-
-* We tell it by applying a "fake" version of migration 0001.
-
-* Then we're in a position to apply the real migration, 0002.
-
-So how are we actually going to do this on our live servers?  By replicating
-those last two steps.  We're using a fabfile for our deployments, so let's 
-adjust it now:
-
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _update_database(source_folder):
-    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb' % (source_folder,))
-    # one-off fake database migration. remove me before next deploy
-    run('cd %s && ../virtualenv/bin/python3 manage.py migrate lists --fake 0001' % (
-        source_folder,
-    ))
-    run('cd %s && ../virtualenv/bin/python3 manage.py migrate' % (source_folder,))
-----
-
-Still nervous?  Me too, but that's why we have a staging environment. Here 
-goes nothing!  We start by pushing up our latest changes so that we can pull
-them down on the server:
-
-[role="skipme"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*git push*]  
-----
-
-And deploy!
+OK, so we know the first of the two tests passes now, is there a way to run
+just the failing one, I hear you ask!  Why yes indeed:
 
 //TODO: unskip
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*cd deploy_tools*]
-$ pass:quotes[*fab deploy --host=superlists-staging.ottg.eu*]
-[superlists-staging.ottg.eu] Executing task 'deploy'
-[superlists-staging.ottg.eu] run: mkdir -p
-/home/harry/sites/superlists-staging.ottg.eu
-
+$ pass:quotes[*python3 manage.py test \
+functional_tests.test_list_item_validation.ItemValidationTest.test_cannot_add_duplicate_items*] 
 [...]
-
-[superlists-staging.ottg.eu] run: cd
-/home/harry/sites/superlists-staging.ottg.eu/source &&
-../virtualenv/bin/python3 manage.py syncdb
-[superlists-staging.ottg.eu] out: Syncing...
-[superlists-staging.ottg.eu] out: Creating tables ...
-[superlists-staging.ottg.eu] out: Creating table south_migrationhistory
-[superlists-staging.ottg.eu] out: Installing custom SQL ...
-[superlists-staging.ottg.eu] out: Installing indexes ...
-[superlists-staging.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
-[superlists-staging.ottg.eu] out: 
-[superlists-staging.ottg.eu] out: Synced:
-[superlists-staging.ottg.eu] out:  > django.contrib.auth
-[superlists-staging.ottg.eu] out:  > django.contrib.contenttypes
-[superlists-staging.ottg.eu] out:  > django.contrib.sessions
-[superlists-staging.ottg.eu] out:  > django.contrib.sites
-[superlists-staging.ottg.eu] out:  > django.contrib.messages
-[superlists-staging.ottg.eu] out:  > django.contrib.staticfiles
-[superlists-staging.ottg.eu] out:  > functional_tests
-[superlists-staging.ottg.eu] out:  > south
-[superlists-staging.ottg.eu] out: 
-[superlists-staging.ottg.eu] out: Not synced (use migrations):
-[superlists-staging.ottg.eu] out:  - lists
-[superlists-staging.ottg.eu] out: (use ./manage.py migrate to migrate these)
-[superlists-staging.ottg.eu] out: 
-
-[superlists-staging.ottg.eu] run: cd
-/home/harry/sites/superlists-staging.ottg.eu/source &&
-../virtualenv/bin/python3 manage.py migrate lists --fake 0001
-[superlists-staging.ottg.eu] out:  - Soft matched migration 0001 to 0001_initial.
-[superlists-staging.ottg.eu] out: Running migrations for lists:
-[superlists-staging.ottg.eu] out:  - Migrating forwards to 0001_initial.
-[superlists-staging.ottg.eu] out:  > lists:0001_initial
-[superlists-staging.ottg.eu] out:    (faked)
-[superlists-staging.ottg.eu] out: 
-[superlists-staging.ottg.eu] run: cd
-/home/harry/sites/superlists-staging.ottg.eu/source &&
-../virtualenv/bin/python3 manage.py migrate
-[superlists-staging.ottg.eu] out: Running migrations for lists:
-[superlists-staging.ottg.eu] out:  - Migrating forwards to
-0002_auto__add_unique_item_list_text.
-[superlists-staging.ottg.eu] out:  > lists:0002_auto__add_unique_item_list_text
-[superlists-staging.ottg.eu] out:  - Loading initial data for lists.
-[superlists-staging.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
-[superlists-staging.ottg.eu] out: 
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":".has-error"}' ; Stacktrace: 
 ----
 
-Looks good.  We then go in and restart our web server:
+
+Preventing duplicates at the model layer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We add another test to our model unit tests to check that duplicate items
+in the same list raise an error
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch09l028)
+[source,python]
+----
+def test_cannot_save_duplicate_items(self):
+    list1 = List.objects.create()
+    Item.objects.create(list=list1, text='bla')
+    with self.assertRaises(ValidationError):
+        Item.objects.create(list=list1, text='bla')
+----
+
+And, while it occurs to us, we add another test to make sure we don't 
+overdo it on our integrity constraints:
+
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch09l029)
+[source,python]
+----
+def test_CAN_save_same_item_to_different_lists(self):
+    list1 = List.objects.create()
+    list2 = List.objects.create()
+    Item.objects.create(list=list1, text='bla')
+    Item.objects.create(list=list2, text='bla') # should not raise
+----
+
+I always like to put a little comment for tests which are checking 
+that a particular use case should 'not' raise an error, otherwise
+it can be hard to see what's being tested.
+
+----
+AssertionError: ValidationError not raised
+----
+
+If we want to get it deliberately wrong, we can do this:
+
+
+[role="sourcecode"]
+.lists/models.py (ch09l030)
+[source,python]
+----
+class Item(models.Model):
+    text = models.TextField(unique=True)
+    list = models.ForeignKey(List)
+----
+
+That lets us check that our second test really does pick up on this
+problem:
+
+----
+Traceback (most recent call last):
+  File "/workspace/superlists/lists/tests/test_models.py", line 60, in
+test_CAN_save_same_item_to_different_lists
+    Item.objects.create(list=list2, text='bla') # should not raise
+    [...]
+django.core.exceptions.ValidationError: {'text': ['Item with this Text already
+exists.']}
+----
+
+.An aside on when to test for developer stupidity
+*******************************************************************************
+One of the judgement calls in testing is when you should write tests that sound
+like "check we haven't done something stupid".  In general, you should be wary
+of these.
+
+In this case, we've written a test to check that you can't save duplicate items
+to the same list.  Now, the simplest way to get that test to pass, the way in
+which you'd write the least lines of code, would be to make it impossible to
+save 'any' duplicate items.  That justifies writing another test, despite the
+fact that it would be a "stupid" or "wrong" thing for us to code.
+
+But you can't be writing tests for every possible way we could have coded
+something wrong.  If you have a function that adds two numbers, you can write
+a couple of tests:
 
 [role="skipme"]
-.server commands
+[source,python]
 ----
-user@server:$ sudo restart gunicorn-superlists-staging.ottg.eu 
+assert adder(1, 1) == 2
+assert adder(2, 1) == 3
 ----
 
-And we can now run our FTs against staging:
+But you have the right to assume that the implementation isn't deliberately
+screwey or perverse:
 
 [role="skipme"]
+[source,python]
 ----
-$ python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu
-Creating test database for alias 'default'...
-....
+def adder(a, b):
+    # unlikely code!
+    if a = 3:
+        return 666
+    else:
+        return a + b
+----
+
+One way of putting it is that you should trust yourself not to do something
+'deliberately' stupid, but not to do something 'accidentally' stupid.
+*******************************************************************************
+
+Just like ModelForms, models have a `class Meta`, and that's where we can
+implement a constraint which says that that an item must be unique for a
+particular list, or in other words, that text and list must be unique together:
+
+[role="sourcecode"]
+.lists/models.py (ch09l031)
+[source,python]
+----
+class Item(models.Model):
+    text = models.TextField()
+    list = models.ForeignKey(List)
+
+    class Meta:
+        unique_together = ('list', 'text')
+
+
+    def save(self, *args, **kwargs):
+        [...]
+----
+
+You might want to take a quick peek at the 
+https://docs.djangoproject.com/en/1.6/ref/models/options/[Django docs on model
+meta attributes] at this point.
+
+
+A little digression on Queryset ordering and string representations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+When we run the tests they reveal an unexpected failure:
+
+TODO: Some users have reported they don't see this unexpected fail. Test on
+various platforms, amend if necessary.
+
+----
+======================================================================
+FAIL: test_saving_and_retrieving_items
+(lists.tests.test_models.ListAndItemModelsTest)
  ---------------------------------------------------------------------
-Ran 4 tests in 17.308s
+Traceback (most recent call last):
+  File "/workspace/superlists/lists/tests/test_models.py", line 31, in
+test_saving_and_retrieving_items
+    self.assertEqual(first_saved_item.text, 'The first (ever) list item')
+AssertionError: 'Item the second' != 'The first (ever) list item'
+- Item the second
+[...]
+----
+
+That's a bit of a puzzler. A bit of print-based debugging:
+
+[role="skipme"]
+[role="sourcecode"]
+.lists/tests/test_models.py
+[source,python]
+----
+    first_saved_item = saved_items[0]
+    print(first_saved_item.text)
+    second_saved_item = saved_items[1]
+    print(second_saved_item.text)
+    self.assertEqual(first_saved_item.text, 'The first (ever) list item')
+----
+
+Will show us...
+
+[role="skipme"]
+----
+.....Item the second
+The first (ever) list item
+F.....
+----
+
+It looks like our uniqueness constraint has messed with the default ordering
+of queries like `Item.objects.all()`.  Although we already have a failing test,
+it's best to add a new test that explicitly tests for ordering:
+
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch09l032)
+[source,python]
+----
+    def test_list_ordering(self):
+        list1 = List.objects.create()
+        item1 = Item.objects.create(list=list1, text='i1')
+        item2 = Item.objects.create(list=list1, text='item 2')
+        item3 = Item.objects.create(list=list1, text='3')
+        self.assertEqual(
+            Item.objects.all(),
+            [item1, item2, item3]
+        )
+----
+
+
+That gives us a new failure, but it's not a very readable one:
+
+----
+AssertionError: [<Item: Item object>, <Item: Item object>, <Item: Item object>]
+!= [<Item: Item object>, <Item: Item object>, <Item: Item object>]
+----
+
+We need a better string representation for our objects.  Let's add another
+unit tests:
+
+
+NOTE: Ordinarily you would be wary of adding more failing tests when you
+already have some -- it makes reading test output that much more complicated,
+and just generally makes you nervous. Will we ever get back to a working
+state? In this case, they're all quite simple tests, so I'm not worried.
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch09l033)
+[source,python]
+----
+def test_string_representation(self):
+    list1 = List.objects.create() 
+    item1 = Item.objects.create(list=list1, text='some text')
+    self.assertEqual(str(item1), item1.text)
+----
+
+That gives us:
+
+----
+AssertionError: 'Item object' != 'some text'
+----
+
+As well as the other two failures.  Let's start fixing them all now:
+
+
+[role="sourcecode"]
+.lists/models.py (ch09l034)
+[source,python]
+----
+class Item(models.Model):
+    [...]
+
+    def __str__(self):
+        return self.text
+----
+
+NOTE: in Python 2.x versions of Django, the string representation method used
+to be __unicode__. Like much string handling, this is simplified in Python 3.
+See the
+https://docs.djangoproject.com/en/1.6/topics/python3/#str-and-unicode-methods[docs].
+
+
+Now we're down to 2 failures, and the ordering test has a more readable failure
+message:
+
+----
+AssertionError: [<Item: 3>, <Item: i1>, <Item: item 2>] != [<Item: i1>, <Item:
+item 2>, <Item: 3>]
+----
+
+We can fix that in the class Meta:
+
+[role="sourcecode"]
+.lists/models.py (ch09l035)
+[source,python]
+----
+    class Meta:
+        ordering = ('id',)
+        unique_together = ('list', 'text')
+----
+
+Does that work?
+
+----
+AssertionError: [<Item: i1>, <Item: item 2>, <Item: 3>] != [<Item: i1>, <Item:
+item 2>, <Item: 3>]
+----
+
+Urp?  It has worked, you can see the items 'are' in the same order, but the
+tests are confused.  I keep running into this problem actually -- Django
+querysets don't compare well with lists.  We can fix it by converting the
+queryset to a list in our test:
+
+TODO: investigate new Django test helper, "assertQuerySetEqual"?
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch09l036)
+[source,python]
+----
+    self.assertEqual(
+        list(Item.objects.all()),
+        [item1, item2, item3]
+    )
+----
+
+That works, we get a fully passing test suite:
+
+----
+OK
+----
+
+Time for a commit!
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff*
+$ *git commit -am "Implement duplicate item validation at model layer"*
+----
+
+The next task is to handle the validation error in the view. Before we do that,
+a quick aside, for the curious. Do you remember I mentioned earlier that some
+data integrity errors 'are' picked up on save?  Try temporarily disabling our
+`.full_clean` in the model save:
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+    def save(self, *args, **kwargs):
+        #self.full_clean()
+        super().save(*args, **kwargs)
+----
+
+That gives
+
+----
+ERROR: test_cannot_save_duplicate_items
+(lists.tests.test_models.ListAndItemModelsTest)
+    return Database.Cursor.execute(self, query, params)
+django.db.utils.IntegrityError: columns list_id, text are not unique
+
+[... and a bunch of other failures due to validation not working any more]
+----
+
+Note that it's a different error to the one we want, an `IntegrityError` 
+instead of a `ValidationError`.  
+
+
+Handling validation at the views layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Let's put our `full_clean` back, and try running our FT, just to see where we
+are:
+
+[role="dofirst-ch09l035"] 
+----
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"id","selector":"id_list_table"}' ; Stacktrace: 
+----
+
+In case you didn't see it as it flew past, the site is 500ing
+footnote:[It's showing a server error, code 500.  Gotta get with the jargon!].
+A quick unit test at the view level ought to clear this up:
+
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch11l014)
+[source,python]
+----
+    def test_invalid_input_renders_form_with_errors(self):
+        [...]
+
+
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+        list1 = List.objects.create()
+        item1 = Item.objects.create(list=list1, text='textey')
+        response = self.client.post(
+            '/lists/%d/' % (list1.id,),
+            data={'text': 'textey'}
+        )
+
+        expected_error =  escape("You've already got this in your list")
+        self.assertContains(response, expected_error)
+        self.assertTemplateUsed(response, 'list.html')
+        self.assertEqual(Item.objects.all().count(), 1)
+----
+
+Gives
+
+----
+django.core.exceptions.ValidationError: {'__all__': ['Item with this List and
+Text already exists.']}
+----
+
+Here's one possible solution:
+
+[role="sourcecode"]
+.lists/views.py (ch11l015)
+[source,python]
+----
+if form.is_valid():
+    try:
+        form.save(for_list=list_)
+        return redirect(list_)
+    except ValidationError:
+        form.errors.update({'text': "You've already got this in your list"})
+return render(request, 'list.html', {'list': list_, "form": form})
+----
+
+OK, we know that's an ugly hack, we need to get the form to do this work,
+we did for new lists, but -- it will probably work. 
+
+----
+Ran 25 tests in 0.104s
 
 OK
 ----
 
-
-Everything seems in order!  Let's do it against live:
-
-
-[role="skipme"]
-[subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*cd deploy_tools*]
-$ pass:quotes[*fab deploy --host=superlists.ottg.eu*]
-[superlists.ottg.eu] Executing task 'deploy'
+Ran 4 tests in 19.048s
 
-[...]
+OK
 ----
 
-You'll need to restart the live gunicorn job too.
+What matters is that it gets us to 'Green'. We'll definitely do the 'Refactor'
+part very soon. First, a commit.
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff*
+$ *git commit -am"duplicate item validation hacked in at views level"*
+----
 
 
-Wrap-up: remove fake migration and git tag
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A more complex form to handle uniqueness validation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Before we forget, let's remove that fake migration from the fabfile.  We 
-don't want to run that next time we deploy, because south is now in sync on
-the server.  In fact we can simplify it down to a single command, the `syncb
---migrate`:
+The form to create a new list only needs to know one thing, the new item text.
+A form which validates that list items are unique needs to know both.  Just
+like we overrode the save method on our ItemForm, this time we'll override
+the constructor on our new form class so that it knows what list it applies to.
+
+We duplicate up our tests for the previous form, tweaking them slightly:
 
 [role="sourcecode"]
-.deploy_tools/fabfile.py (ch12l005)
+[source,python]
+.lists/tests/test_forms.py (ch11l016)
+----
+from lists.forms import (
+    DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
+    ExistingListItemForm, ItemForm
+)
+[...]
+
+class ExistingListItemFormTest(TestCase):
+
+    def test_form_renders_item_text_input(self):
+        list_ = List.objects.create()
+        form = ExistingListItemForm(for_list=list_)
+        self.assertIn('placeholder="Enter a to-do item"', form.as_p())
+
+
+    def test_form_validation_for_blank_items(self):
+        list_ = List.objects.create()
+        form = ExistingListItemForm(for_list=list_, data={'text': ''})
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['text'], [EMPTY_LIST_ERROR])
+
+
+    def test_form_validation_for_duplicate_items(self):
+        list_ = List.objects.create()
+        Item.objects.create(list=list_, text='no twins!')
+        form = ExistingListItemForm(for_list=list_, data={'text': 'no twins!'})
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
+----
+
+We can iterate through a few TDD cycles (I won't show them all, but I'm sure
+you'll do them, right? Remember, the Goat sees all) until we get a form with a
+custom constructor, which just ignores its for_list argument:
+
+[role="sourcecode"]
+.lists/forms.py (ch09l071)
 [source,python]
 ----
-def _update_database(source_folder):
-    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb --migrate --noinput' % (
-    source_folder,
-))
+DUPLICATE_ITEM_ERROR = "You've already got this in your list"
+[...]
+class ExistingListItemForm(forms.models.ModelForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 ----
 
-We commit that:
+Gives
+
+----
+ValueError: ModelForm has no model class specified.
+----
+
+Now let's see if making it inherit from our existing form helps:
+
+[role="sourcecode"]
+.lists/forms.py (ch09l072)
+[source,python]
+----
+class ExistingListItemForm(ItemForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+----
+
+That takes us down to just one failure:
+
+----
+FAIL: test_form_validation_for_duplicate_items
+(lists.tests.test_forms.ExistingListItemFormTest)
+    self.assertFalse(form.is_valid())
+AssertionError: True is not false
+----
+
+The next step requires a little knowledge of Django's internals, but you
+can read up on it in the Django docs on 
+https://docs.djangoproject.com/en/1.6/ref/models/instances/#validating-objects[Model
+validation] and
+https://docs.djangoproject.com/en/1.6/ref/forms/validation/[Form validation].
+
+Django uses a method called `validate_unique`, both on forms and models, and
+we can use both, in conjunction with the `instance` attribute:
+
+[role="sourcecode"]
+.lists/forms.py
+[source,python]
+----
+from django.core.exceptions import ValidationError
+[...]
+
+class ExistingListItemForm(ItemForm):
+
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.list = for_list
+
+
+    def validate_unique(self):
+        try:
+            self.instance.validate_unique()
+        except ValidationError as e:
+            e.error_dict = {'text': [DUPLICATE_ITEM_ERROR]}
+            self._update_errors(e)
+----
+//ch10l018
+
+That's a bit of Django voodoo right there, but we basically take the validation
+error, adjust its error message, and then pass it back up to the form.
+
+And we're there!  A quick commit
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git status*
-$ *git commit -am "deploy script now does syncdb --migrate"*
+$ *git diff*
+$ *git commit -a*
 ----
 
-And finally we tag our latest release:
 
-[subs="specialcharacters,quotes"]
+Using the existing lists item form in the list view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now let's see if we can put this form to work in our view.
+
+Let's start by using our constant, now that we've defined it. Tidy tidy!
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch11l049)
+[source,python]
 ----
-$ *git tag -f LIVE*  # needs the -f because we are replacing the old tag
-$ *export TAG=`date +DEPLOYED-%F/%H%M`*
-$ *git tag $TAG*
-$ *git push -f origin LIVE $TAG*
+from lists.forms import (
+    DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
+    ExistingListItemForm, ItemForm,
+)
+[...]
+
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+        [...]
+        expected_error =  escape(DUPLICATE_ITEM_ERROR)
 ----
 
-NOTE: We went through quite a bit of pain setting up that fake migrations. If
-we'd started using South at the time of our first deployment, none of this
-would have been necessary.  I hope that going through this more complex 
-procedure has given you more of an insight into how South works but... In
-your real projects, start using South from the very first deploy!
+----
+Ran 28 tests in 0.130s
+
+OK
+----
+
+Next -- let's find places where we should be using our new form class. There's
+two places in our view tests where we check the form, let's let's adjust them
+both:
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch11l050)
+[source,python]
+----
+def test_displays_item_form(self):
+    list_ = List.objects.create()
+    response = self.client.get('/lists/%d/' % (list_.id,))
+    self.assertIsInstance(response.context['form'], ExistingListItemForm)
 
 
-On testing database migrations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def test_invalid_input_renders_form_with_errors(self):
+    response = self.post_invalid_input()
+    self.assertIsInstance(response.context['form'], ExistingListItemForm)
+----
 
-We've now tested out our migration locally, and we've run it once on the
-staging site.  We've tested that our application still works after the
-migration, both locally and on staging, using our functional test suite. 
-We're comfortable that we can modify our database schema. Is there anything
-else we need to do?
+That gives us:
 
-You might worry that the most dangerous thing about a migration isn't so much
-that we can adjust our database schema, but more that we might lose data during
-the change.  Shouldn't we somehow test that the existing data in the database
-is still there after we migrate?
+//TODO: unskip
+[role="skipme"]
+----
+AssertionError: <lists.forms.ItemForm object at 0x7f767e4b7f90> is not an
+instance of <class 'lists.forms.ExistingListItemForm'>
+----
 
-The answer to that is: you should if you're 'particularly' nervous.  Hopefully
-you've now got enough building blocks from this book to see how you might be 
-able to write some automated tests that would do just that.
+So we can adjust the view:
 
+[role="sourcecode"]
+.lists/views.py (ch11l051)
+[source,python]
+----
+from lists.forms import ExistingListItemForm, ItemForm
+[...]
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    form = ExistingListItemForm(for_list=list_, data=request.POST or None)
+    if form.is_valid():
+        form.save()
+        return redirect(list_)
+    return render(request, 'list.html', {'list': list_, "form": form})
+----
 
-Don't test third party code
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+And, oops, an unexpected fail:
 
-One of the rules of thumb in testing is "don't test third party code".  If
-you're using some kind of external library, you can't afford to spend your 
-time writing tests for their code as well as your own -- you just have to
-decide whether you trust them or not.  South is an incredibly popular tool,
-it's been around for ages, and we can be pretty confident that it's going
-to do what it says it does.
+----
+TypeError: save() missing 1 required positional argument: 'for_list'
+----
 
-
-Do test migrations for speed
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-One thing you should be testing is how long your migrations are going to take.
-Database migrations typically involve down-time, as, depending on your
-database, the schema update operation may lock the table it's working on
-until it completes.  It's a good idea to use your staging site to find out
-how long a migration will take.
-
-
-Be extremely careful if using a dump of production data
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-In order to do so, you'll want fill your staging site's database with an
-amount of data that's commensurate to the size of your production data.
-Explaining how to do that is outside of the scope of this book, but I will
-say this:  if you're tempted to just take a dump of your production database
-and load it into staging, be 'very' careful.  Production data contains real
-customer details, and I've personally been responsible for accidentally sending
-out a few hundred incorrect invoices after an automated process on my staging
-server started processing the copied production data I'd just loaded into it.
-Not a fun afternoon.
+Our custom save method from the parent `ItemForm` is no longer needed. 
+Let's make a quick unit test for that:
 
 
-And on that stern note, time to move on to the next chapter!  Hopefully it'll
-have something fun in it to cheer us up.  Oh, wait --
+[role="sourcecode"]
+.lists/tests/test_forms.py (ch11l053)
+[source,python]
+----
+def test_form_save(self):
+    list_ = List.objects.create()
+    form = ExistingListItemForm(for_list=list_, data={'text': 'hi'})
+    new_item = form.save()
+    self.assertEqual(new_item, Item.objects.all()[0])
+----
+
+We can make our form call the grandparent save method:
+
+[role="sourcecode"]
+.lists/forms.py (ch11l054)
+[source,python]
+----
+    def save(self):
+        return forms.models.ModelForm.save(self)
+----
+
+NOTE: Personal opinion here: I could have used `super`, but I prefer not to use
+`super()` when it requires arguments, eg to get a grandparent method. I find
+Python 3's `super()` with no args awesome to get the immediate parent. Anything
+else is too error-prone, and I find it ugly besides. YMMV.
+
+
+And we're there!  Unit tests pass!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 29 tests in 0.082s
+
+OK
+----
+
+And so does our FT for validation:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_list_item_validation*]
+Creating test database for alias 'default'...
+..
+ ---------------------------------------------------------------------
+Ran 2 tests in 12.048s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+As a final check, we re-run 'all' the FTs:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests*]
+Creating test database for alias 'default'...
+....
+ ---------------------------------------------------------------------
+Ran 4 tests in 19.048s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+Hooray! Time for a final commit, and a wrap-up of what we've learned about
+testing views over the last few chapters:
+
+
+Recap: what to test in views
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[role="sourcecode skipme"]
+[source,python]
+.Partial listing show all view test + assertions
+----
+class ListViewTest(TestCase):
+    def test_uses_list_template(self):
+        response = self.client.get('/lists/%d/' % (list_.id,)) #<1>
+        self.assertTemplateUsed(response, 'list.html') #<2>
+    def test_passes_correct_list_to_template(self):
+        self.assertEqual(response.context['list'], correct_list) #<3>
+    def test_displays_item_form(self):
+        self.assertIsInstance(response.context['form'], ExistingListItemForm) #<4>
+        self.assertContains(response, 'name="text"') #<7>
+    def test_displays_only_items_for_that_list(self):
+        self.assertContains(response, 'itemey 1') #<5>
+        self.assertContains(response, 'itemey 2') #<5>
+        self.assertNotContains(response, 'other list item 1') #<5>
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        self.assertEqual(Item.objects.all().count(), 1) #<6>
+        self.assertEqual(new_item.text, 'A new item for an existing list') #<6>
+    def test_POST_redirects_to_list_view(self):
+        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,)) #<6>
+    def test_invalid_input_means_nothing_saved_to_db(self):
+        self.assertEqual(Item.objects.all().count(), 0) #<6>
+    def test_invalid_input_renders_list_template(self):
+        self.assertTemplateUsed(response, 'list.html') #<6>
+    def test_invalid_input_renders_form_with_errors(self):
+        self.assertIsInstance(response.context['form'], ExistingListItemForm) #<7>
+        self.assertContains(response, escape(EMPTY_LIST_ERROR)) #<7>
+----
+
+<1> Use the Django Test Client
+
+<2> Check the template used.  Then, check each item in the template context:
+
+<3> Check any objects are the right ones, or Querysets have the
+    correct items.
+
+<4> Check any forms are of the correct class
+
+<5> Test any template logic:  any `for` or `if` should get a minimal test
+
+<6> For views that handle POST requests, make sure you test both the valid
+    case and the invalid case.
+
+<7> Sanity-check that your form is rendered, and its errors are displayed
+
+Why these points?  Skip ahead to <<appendix2,Appendix II>>, and I'll show how
+they are sufficient to ensure that our views are still correct if we refactor
+them to start using Class-Based Views.
+
+Next: pushing our changes up to the server.
 
