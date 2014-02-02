@@ -1314,522 +1314,8 @@ $ tree -I __pycache__
     ├── [...]
 ----
 
-
-Automating deployment with fabric
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Fabric is a tool which lets you automate commands that you want to run on
-servers. You can install fabric system-wide -- it's not part of the core
-functionality of our site, so it doesn't need to go into our virtualenv and
-'requirements.txt'. So, on your local PC:
-
-[subs="specialcharacters,quotes"]
-----
-$ *pip-2.7 install fabric*
-----
-
-WARNING: at the time of writing, Fabric had not been ported to Python 3, so
-we have to use the Python 2 version.  Thankfully, the fabric code is totally
-separate from the rest of our codebase, so it's not a problem.
-
-.Installing Fabric on Windows.
-*******************************************************************************
-Fabric depends on pycrypto, which is a package that needs compiling. Compiling
-on Windows is a rather fraught process; it's often quicker to try and
-get hold of precompiled binaries put out there by some kindly soul.  In this
-case the excellent Michael Foord has provided some windows binaries:
-
-http://www.voidspace.org.uk/python/modules.shtml#pycrypto
-
-(Don't forget to giggle at the mention of absurd US munitions export controls.)
-
-So the instructions, for Windows, are:
-- download and install pycrypto from the url above
-- then pip install fabric.
-
-Another amazing source of precompiled Python packages for Windows is maintained
-by Christoph Gohlke at:
-
-http://www.lfd.uci.edu/~gohlke/pythonlibs/
-
-*******************************************************************************
-
-The usual setup is to have a file called 'fabfile.py', which will
-contain one or more functions that can later be invoked from a command-line
-tool called `fab`, like this:
-
-----
-fab function_name,host=SERVER_ADDRESS
-----
-
-That will invoke the function called function_name, passing in a connection
-to the server at SERVER_ADDRESS.  There are many other options for specifying
-usernames and passwords, which you can find out about using `fab --help`
-
-The best way to see how it works is with an example.
-https://en.wikipedia.org/wiki/Blue_Peter#Content[Here's one I made earlier],
-automating all the deployment steps we've been going through.  The main
-function is called `deploy`, that's the one we'll invoke from the command-line.
-It uses several helper functions.  `env.host` will contain the server address
-that we've passed in.
-
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-from fabric.contrib.files import append, exists, sed
-from fabric.api import env, local, run
-import random
-
-REPO_URL = 'https://github.com/hjwp/book-example.git' #<1>
-SITES_FOLDER = '/home/harry/sites'
-
-def deploy():
-    _create_directory_structure_if_necessary(env.host) #<2>
-    source_folder = '%s/%s/source' % (SITES_FOLDER, env.host)
-    _get_latest_source(source_folder)
-    _update_settings(source_folder, env.host)
-    _update_virtualenv(source_folder)
-    _update_static_files(source_folder)
-    _update_database(source_folder)
-----
-
-<1> You'll want to update the `REPO_URL` variable with the URL of your
-    own git repo on its code sharing site
-
-<2> `env.host` will contain the address of the server we've specified at the 
-    command-line, eg 'superlists.ottg.eu'.
-
-Hopefully each of those helper functions have fairly self-descriptive names.
-Because any function in a fabfile can theoretically be invoked from the
-command- line, I've used the convention of a leading underscore to indicate
-that they're not meant to be part of the "public API" of the fabfile. Here
-they are in chronological order.
-
-Here's how we build our directory structure, in a way that doesn't fall 
-down if it already exists:
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _create_directory_structure_if_necessary(site_name):
-    for subfolder in ('database', 'static', 'virtualenv', 'source'):
-        run('mkdir -p %s/%s/%s' % (SITES_FOLDER, site_name, subfolder)) #<1><2>
-----
-
-<1> `run` is the most common fabric command.  It says "run this shell command
-    on the server".
-
-<2> `mkdir -p` is a useful flavor of `mkdir`, which is better than mkdir in two
-    ways: it can create directories several levels deep, and it only creates
-    them if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory
-    'bar' but also its parent directory 'foo' if it needs to.  It also won't
-    complain if 'bar' already exists.
-footnote:[If you're wondering why we're building up paths manually with `%s` 
-instead of the `os.path.join` command we saw earlier, it's because path.join
-will use backslashes if you run the script from Windows, but we definitely 
-want forward slashes on the server]
-
-
-Next we want to pull down our source code:
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _get_latest_source(source_folder):
-    if exists(source_folder + '/.git'): #<1>
-        run('cd %s && git fetch' % (source_folder,)) #<2><3>
-    else:
-        run('git clone %s %s' % (REPO_URL, source_folder)) #<4>
-    current_commit = local("git log -n 1 --format=%H", capture=True) #<5>
-    run('cd %s && git reset --hard %s' % (source_folder, current_commit)) #<6>
-----
-
-<1> `exists` checks whether a directory or file already exists on the server.
-    We look for the '.git' hidden folder to check whether the repo has already
-    been cloned in that folder.
-
-<2> Many commands start with a `cd` in order to set the current working
-    directory. Fabric doesn't have any state, so it doesn't remember what
-    directory you're in from one `run` to the next.
-    footnote:[there is a fabric "cd" command, but I figured it was one thing
-    too many to add in this chapter]
-
-<3> `git fetch` inside an existing repository pulls down all the latest commits
-    from the web
-
-<4> Alternatively we use `git clone` with the repo URL to bring down a fresh
-    source tree.
-
-<5> Fabric's `local` command runs a command on your local machine -- it's just
-    a wrapper around `subprocess.Popen` really, but it's quite convenient.
-    Here we capture the output from that `git log` invocation to get the hash
-    of the current commit that's in your local tree.  That means the server
-    will end up with whatever code is currently checked out on your machine
-    (as long as you've pushed it up to the server).
-
-<6> We `reset --hard` to that commit, which will blow away any current changes
-    in the server's code directory.  
-
-NOTE: For this script to work, the current commit that's in your local working
-tree needs to be up on the VCS code sharing site, so that the server can pull
-it down and reset to it.  So if you see an errors saying `Could not parse
-object`, try doing a `git push`.
-
-
-Next we update our settings file, to set the `ALLOWED_HOSTS` and `DEBUG`, and
-to create a new secret key:
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _update_settings(source_folder, site_name):
-    settings_path = source_folder + '/superlists/settings.py'
-    sed(settings_path, "DEBUG = True", "DEBUG = False") #<1>
-    sed(settings_path,
-        'ALLOWED_HOSTS =.+$',
-        'ALLOWED_HOSTS = ["%s"]' % (site_name,) #<2>
-    )
-    secret_key_file = source_folder + '/superlists/secret_key.py'
-    if not exists(secret_key_file): #<3>
-        chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
-        key = ''.join(random.SystemRandom().choice(chars) for _ in range(50))
-        append(secret_key_file, "SECRET_KEY = '%s'" % (key,))
-    append(settings_path, '\nfrom .secret_key import SECRET_KEY') #<4>
-----
-
-<1> The fabric `sed` command does a string substitution in a file, here it's
-    changing DEBUG from True to False.  
-
-<2> And here it is adjust `ALLOWED_HOSTS`, using a regex to match 
-    bother if the line is already there).
-
-<3> Django uses `SECRET_KEY` for some if its crypto -- cookies and CSRF
-    protection. It's good practice to make sure the secret key on the server
-    is different from the one in your (possibly public) source code repo. This
-    code will generate a new key to import into settings, if there isn't one
-    there already (once you have a secret key, it should stay the same between
-    deploys).  More info in the
-    https://docs.djangoproject.com/en/1.6/topics/signing/[Django docs]
-
-<4> `append` just adds a line to the end of a file (it's clever enough not to
-    bother if the line is already there, but not clever enough to automatically
-    add a newline if the file doesn't end in one.  hence the back-n).
-    
-NOTE: Other people suggest using environment variables to set things like 
-    secret keys; you should use whatever you feel is most secure in your
-    environment.
-
-//TODO: this is a first use of a relative import, which I only explain in 
-// next chapter
-
-Next we create or update the virtualenv:
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _update_virtualenv(source_folder):
-    virtualenv_folder = source_folder + '/../virtualenv'
-    if not exists(virtualenv_folder + '/bin/pip'): #<1>
-        run('virtualenv --python=python3.3 %s' % (virtualenv_folder,))
-    run('%s/bin/pip install -r %s/requirements.txt' % ( #<2>
-            virtualenv_folder, source_folder
-    ))
-----
-
-
-<1> We look inside the virtualenv folder for the `pip` executable as a way of
-    checking whether it already exists.
-
-<2> Then we use `pip install -r` like we did earlier.
-
-
-Updating static files is a single command:
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _update_static_files(source_folder):
-    run('cd %s && ../virtualenv/bin/python3 manage.py collectstatic --noinput' % ( # <1>
-        source_folder,
-    ))
-----
-
-<1> We use the virtualenv binaries folder whenever we need to run a Django 
-    'manage.py' command, to make sure we get the virtualenv version of django,
-    not the system one.
-
-Finally, we update the database with `syncdb`:
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _update_database(source_folder):
-    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb --noinput' % (
-        source_folder,
-    ))
-----
-
-
-We can try this command out on our existing staging site -- the script should
-work for an existing site as well as for a new one.  If you like words with
-Latin roots, you might describe it as idempotent, which means it does nothing
-if run twice...
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*cd deploy_tools*]
-$ pass:quotes[*fab deploy:host=harry@superlists-staging.ottg.eu*]
-
-[superlists-staging.ottg.eu] Executing task 'deploy'
-[superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu
-[superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu/database
-[superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu/static
-[superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu/virtualenv
-[superlists-staging.ottg.eu] run: mkdir -p /home/harry/sites/superlists-staging.ottg.eu/source
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && git fetch
-[localhost] local: git log -n 1 --format=%H
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && git reset --hard 85a6c87d5d93c25b265ad0e712f402c76e2e01c3
-[superlists-staging.ottg.eu] out: HEAD is now at 85a6c87 Add a fabfile for automated deploys
-[superlists-staging.ottg.eu] out: 
-
-[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
-[superlists-staging.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists-staging.ottg.eu"]' >> "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
-[superlists-staging.ottg.eu] run: echo 'SECRET_KEY = '\\''4p2u8fi6)bltep(6nd_3tt9r41skhr%ttyjatf4+n#)jr=vd-q'\\''' >> "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/secret_key.py)"
-[superlists-staging.ottg.eu] run: echo 'from .secret_key import SECRET_KEY' >> "$(echo /home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
-
-[superlists-staging.ottg.eu] run: /home/harry/sites/superlists-staging.ottg.eu/source/../virtualenv/bin/pip install -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt
-[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): Django==1.6.1 in ./sites/superlists-staging.ottg.eu/virtualenv/lib/python3.3/site-packages (from -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt (line 1))
-[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): gunicorn==17.5 in ./sites/superlists-staging.ottg.eu/virtualenv/lib/python3.3/site-packages (from -r /home/harry/sites/superlists-staging.ottg.eu/source/requirements.txt (line 2))
-[superlists-staging.ottg.eu] out: Cleaning up...
-[superlists-staging.ottg.eu] out: 
-
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && ../virtualenv/bin/python3 manage.py collectstatic --noinput
-[superlists-staging.ottg.eu] out: 
-[superlists-staging.ottg.eu] out: 0 static files copied, 11 unmodified.
-[superlists-staging.ottg.eu] out: 
-
-[superlists-staging.ottg.eu] run: cd /home/harry/sites/superlists-staging.ottg.eu/source && ../virtualenv/bin/python3 manage.py syncdb --noinput
-[superlists-staging.ottg.eu] out: Creating tables ...
-[superlists-staging.ottg.eu] out: Installing custom SQL ...
-[superlists-staging.ottg.eu] out: Installing indexes ...
-[superlists-staging.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
-[superlists-staging.ottg.eu] out: 
-Done.
-Disconnecting from superlists-staging.ottg.eu... done.
-----
-
-Awesome.  I love making computers spew out pages and pages of output like that
-(in fact I find it hard to stop myself from making little 70's computer '<brrp,
-brrrp, brrrp>' noises like Mother in Alien).  If we look through it
-we can see it is doing our bidding: the `mkdir -p` commands go through
-happily, even though the directories already exist.  Next `git pull` pulls down
-the couple of commits we just made.  The `sed` and `echo >>` modify our
-'settings'py. Then `pip3 install -r requirements.txt`, completes happily,
-noting that the existing virtualenv already has all the packages we need.
-`collectstatic` also notices that the static files are all already there, and
-finally the `syncdb` completes without a hitch.
-
-So, let's try using it for our live site!
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*fab deploy:host=harry@superlists.ottg.eu*]
-
-$ fab deploy --host=superlists.ottg.eu
-[superlists.ottg.eu] Executing task 'deploy'
-[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu
-[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/database
-[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/static
-[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/virtualenv
-[superlists.ottg.eu] run: mkdir -p /home/harry/sites/superlists.ottg.eu/source
-[superlists.ottg.eu] run: git clone https://github.com/hjwp/book-example.git /home/harry/sites/superlists.ottg.eu/source
-[superlists.ottg.eu] out: Cloning into '/home/harry/sites/superlists.ottg.eu/source'...
-[superlists.ottg.eu] out: remote: Counting objects: 3128, done.
-[superlists.ottg.eu] out: Receiving objects:   0% (1/3128)   
-[...]
-[superlists.ottg.eu] out: Receiving objects: 100% (3128/3128), 2.60 MiB | 829 KiB/s, done.
-[superlists.ottg.eu] out: Resolving deltas: 100% (1545/1545), done.
-[superlists.ottg.eu] out: 
-
-[localhost] local: git log -n 1 --format=%H
-[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && git reset --hard 6c8615b6df4d766cb1f54d17d570e42d2db678f7
-[superlists.ottg.eu] out: HEAD is now at 6c8615b use a secret key file
-[superlists.ottg.eu] out: 
-
-[superlists.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' "$(echo /home/harry/sites/superlists.ottg.eu/source/superlists/settings.py)"
-[superlists.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists.ottg.eu"]' >> "$(echo /home/harry/sites/superlists.ottg.eu/source/superlists/settings.py)"
-[superlists.ottg.eu] run: echo 'SECRET_KEY = '\\''mqu(ffwid5vleol%ke^jil*x1mkj-44wz(7$f&^q2p15^4a(u!'\\''' >> "$(echo /home/harry/sites/superlists.ottg.eu/source/superlists/secret_key.py)"
-[superlists.ottg.eu] run: echo 'from .secret_key import SECRET_KEY' >> "$(echo /home/harry/sites/superlists.ottg.eu/source/superlists/settings.py)"
-[superlists.ottg.eu] run: virtualenv --python=python3.3 /home/harry/sites/superlists.ottg.eu/source/../virtualenv
-[superlists.ottg.eu] out: Already using interpreter /usr/bin/python3.3
-[superlists.ottg.eu] out: Using base prefix '/usr'
-[superlists.ottg.eu] out: New python executable in /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/python3.3
-[superlists.ottg.eu] out: Also creating executable in /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/python
-[superlists.ottg.eu] out: Installing Setuptools..............................................................................................................................................................................................................................done.
-[superlists.ottg.eu] out: Installing Pip.....................................................................................................................................................................................................................................................................................................................................done.
-[superlists.ottg.eu] out: 
-
-[superlists.ottg.eu] run: /home/harry/sites/superlists.ottg.eu/source/../virtualenv/bin/pip install -r /home/harry/sites/superlists.ottg.eu/source/requirements.txt
-[superlists.ottg.eu] out: Downloading/unpacking Django==1.6.1 (from -r /home/harry/sites/superlists.ottg.eu/source/requirements.txt (line 1))
-[superlists.ottg.eu] out:   Downloading Django-1.6.1.tar.gz (8.0MB): 
-[...]
-[superlists.ottg.eu] out:   Downloading Django-1.6.1.tar.gz (8.0MB): 100%  8.0MB
-[superlists.ottg.eu] out:   Running setup.py egg_info for package Django
-[superlists.ottg.eu] out:     
-[superlists.ottg.eu] out:     warning: no previously-included files matching '__pycache__' found under directory '*'
-[superlists.ottg.eu] out:     warning: no previously-included files matching '*.py[co]' found under directory '*'
-[superlists.ottg.eu] out: Downloading/unpacking gunicorn==17.5 (from -r /home/harry/sites/superlists.ottg.eu/source/requirements.txt (line 2))
-[superlists.ottg.eu] out:   Downloading gunicorn-17.5.tar.gz (367kB): 100%  367kB
-[...]
-[superlists.ottg.eu] out:   Downloading gunicorn-17.5.tar.gz (367kB): 367kB downloaded
-[superlists.ottg.eu] out:   Running setup.py egg_info for package gunicorn
-[superlists.ottg.eu] out:     
-[superlists.ottg.eu] out: Installing collected packages: Django, gunicorn
-[superlists.ottg.eu] out:   Running setup.py install for Django
-[superlists.ottg.eu] out:     changing mode of build/scripts-3.3/django-admin.py from 664 to 775
-[superlists.ottg.eu] out:     
-[superlists.ottg.eu] out:     warning: no previously-included files matching '__pycache__' found under directory '*'
-[superlists.ottg.eu] out:     warning: no previously-included files matching '*.py[co]' found under directory '*'
-[superlists.ottg.eu] out:     changing mode of /home/harry/sites/superlists.ottg.eu/virtualenv/bin/django-admin.py to 775
-[superlists.ottg.eu] out:   Running setup.py install for gunicorn
-[superlists.ottg.eu] out:     
-[superlists.ottg.eu] out:     Installing gunicorn_paster script to /home/harry/sites/superlists.ottg.eu/virtualenv/bin
-[superlists.ottg.eu] out:     Installing gunicorn script to /home/harry/sites/superlists.ottg.eu/virtualenv/bin
-[superlists.ottg.eu] out:     Installing gunicorn_django script to /home/harry/sites/superlists.ottg.eu/virtualenv/bin
-[superlists.ottg.eu] out: Successfully installed Django gunicorn
-[superlists.ottg.eu] out: Cleaning up...
-[superlists.ottg.eu] out: 
-
-[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && ../virtualenv/bin/python3 manage.py collectstatic --noinput
-[superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/base.css'
-[superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/bootstrap/fonts/glyphicons-halflings-regular.ttf'
-[...]
-[superlists.ottg.eu] out: Copying '/home/harry/sites/superlists.ottg.eu/source/lists/static/bootstrap/css/bootstrap.css'
-[superlists.ottg.eu] out: 
-[superlists.ottg.eu] out: 11 static files copied.
-[superlists.ottg.eu] out: 
-
-[superlists.ottg.eu] run: cd /home/harry/sites/superlists.ottg.eu/source && ../virtualenv/bin/python3 manage.py syncdb --noinput
-[superlists.ottg.eu] out: Creating tables ...
-[superlists.ottg.eu] out: Creating table auth_permission
-[...]
-[superlists.ottg.eu] out: Creating table lists_item
-[superlists.ottg.eu] out: Installing custom SQL ...
-[superlists.ottg.eu] out: Installing indexes ...
-[superlists.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
-[superlists.ottg.eu] out: 
-
-
-Done.
-Disconnecting from superlists.ottg.eu... done.
-
-----
-
-
-'Brrp brrp brpp'. You can see the script follows a slightly different path,
-doing a `git clone` to bring down a brand new repo instead of the `git pull`.
-It also needs to set up a new virtualenv from scratch, including a fresh
-install of pip and Django. The `collectstatic` actually creates new files this
-time, and the `syncdb` seems to have worked too.
-
-What else do we need to do to get our live site into production? We refer to
-our provisioning notes, which tell us to use the template files to create our
-nginx virtual host and the upstart script.  How about a little Unix
-command-line magic?
-
-.server command
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/nginx.template.conf | \
-    sudo tee /etc/nginx/sites-available/superlists.ottg.eu*
-----
-
-`sed` ("stream editor") takes a stream of text and performs edits on it. It's no
-accident that the fabric string substitution command has the same name.  In
-this case we ask it to substitute the string 'SITENAME' for the address of
-our site, with the `s/replaceme/withthis/g` syntax.  We pipe (`|`) the output
-of that to a root-user process (sudo) which uses `tee` to write what's piped
-to it to a file, in this case the nginx sites-available virtualhost config
-file.
-
-We can now activate that file:
-
-.server command
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo ln -s ../sites-available/superlists.ottg.eu \
-    /etc/nginx/sites-enabled/superlists.ottg.eu*
-----
-
-Now we write the upstart script:
-
-.server command
-[subs="specialcharacters,quotes"]
-----
-elspeth@server: *sed "s/SITENAME/superlists.ottg.eu/g" deploy_tools/gunicorn-upstart.template.conf | \
-    sudo tee /etc/init/gunicorn-superlists.ottg.eu.conf*
-----
-
-And now we start both services:
-
-.server commands
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo service nginx reload*
-elspeth@server:$ *sudo start gunicorn-superlists.ottg.eu*
-----
-
-And we take a look at our site.  It works, hooray! 
-
-Let's add the fabfile to our repo:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add deploy_tools/fabfile.py*
-$ *git commit -m "Add a fabfile for automated deploys"*
-----
-
-Git tag the release
-~~~~~~~~~~~~~~~~~~~
-
-One final bit of admin.  In order to preserve a historical marker,
-we'll use git tags to mark the state of the codebase that reflects
-what's currently live on the server:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git tag LIVE*
-$ *export TAG=`date +DEPLOYED-%F/%H%M`*  # this generates a timestamp
-$ *echo $TAG*
-$ *git tag $TAG*
-$ *git push origin LIVE $TAG* # pushes the tags up
-----
-
-Now it's easy, at any time, to check what the difference is between
-our current codebase and what's live on the servers.  This will come
-in useful in a few chapters, when we look at database migrations. Have
-a look at the tag in the history:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git log --graph --oneline --decorate*
-----
-
-
-Anyway, you now have a live website!  Tell all your friends!  Tell your mum, if
-no-one else is interested! And, in the next chapter, it's back to coding
-again...
-
-Recap:
-~~~~~
+Deployment Recap:
+~~~~~~~~~~~~~~~~~
 
 Lots of this, particularly on the provisioning side, was very specific to the
 setup I happened to use.  When you deploy sites, you might use Apache instead
@@ -1838,72 +1324,65 @@ If you use a PaaS, some of these problems will be solved for you, others won't.
 But I really wanted to take you through a practical example, so we could see
 some of the concerns involved in deployment.
 
-There are some elements that will be common to almost all situations though:
 
-* You need to choose a place for your static files
-* You'll need specific config for your database
-* You need to run some kind of webserver, set it to listen on some port
+
+
+Typical provisioning challenges:
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+There are some things that will come up for almost any platform:
+
+* Software installations: nginx, Python, pip, virtualenv, etc
+
+* Network ports and DNS - you need your web server to be listening on a
+  publicly available port, and your domain name needs to be pointing at
+  it.
+
+* Static file hosting -- how are they served, and where from?
+
+* What kind of database are you using on the server, and how 
+  do you ensure your app can talk to it?
+
+
+Typical deployment considerations:
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 On the deployment side, you should find that much of what we've done is
 transferable to any situation:
 
 * During a deploy, you need a way to 'update your source code'.  We're using
-`git pull`.
+  `git pull`.
 * You need a way to update your 'static files' (`collectstatic`)
+
 * You need to update your 'database' (`syncdb` for now, we'll look at 
-South and schema migrations later)
+  South and schema migrations later)
+
 * You need to manage your dependencies, and make sure any packages you need
-are available on the server. We use a 'virtualenv' to isolate our various
-sites from each other.
+  are available on the server. We use a 'virtualenv' to isolate our various
+  sites from each other.
+
 * You'll probably need to tweak some items in 'settings.py' when switching
-to production.
-* You'll want to 'test' that these things work, by doing your deployment to a
-staging site first
-* You should be able to run your functional test suite against the 'staging site'.
-* You'll want to 'automate' all of the steps involved in a deploy, to give
-yourself confidence that when you deploy to live, things will go just as
-smoothly as when you deployed to staging.
+  to production.
+
+* You need some way of 'restarting' the server, to take into account your
+  changes
 
 
-Further reading:
-~~~~~~~~~~~~~~~~
+Using your test suite to guide your investigations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-I'm no grizzled expert on deployment.  I've tried to set you off on a
-reasonably sane path, but there's lots of things you could do differently,
-and lots, lots more to learn besides.  Here are some articles I used for
-inspiration:
-
-* <<python-deployments,Solid Python Deployments for Everybody, by Hynek Schlawack>>
-* <<gitric,Git-based fabric deployments are awesome, by Dan Bravender>>
-
-For some ideas on how you might go about automating the provisioning step,
-and an alternative to Fabric, go check out <<appendix2,Appendix III>>.
+Throughout the whole chapter, you saw how we could use the FTs to check 
+whether everything worked.  Quite a few of those checks we could have 
+done manually, because our site is still relatively simple, but once you
+have a more complex application, being able to run the full test suite is
+the only way of being confident that you've got your deployment "right".
 
 
-Todos
-~~~~~~
+Saving your progress
+^^^^^^^^^^^^^^^^^^^^
 
-There's no such thing as the One True Way in deployment, and as I say I'm no 
-kind of expert.  I hope that this chapter will change and improve over the
-coming months, especially thanks to the feedback of beloved readers!
+But, most importantly of all, once you've solved all of these challenges,
+you need a way to automate the steps involved, so that you never have to
+think about it again.  That's the topic of the next chapter.
 
-Here's a few things I'm thinking of changing or adding.  Let me know what you
-think, and what else should be on the list! obeythetestinggoat@gmail.com
-
-Chapter Objectives:
-
-- As simple as possible
-- But no simpler
-- Illustrate some (the main?) challenges of deployment
-- Show where TDD fits in
-- Try and make it reminiscent of the environment you'd get in a PaaS
-
-Possible changes:
-
-- setup logging... but how best?  and where to put log files?
-- setuid in upstart script
-- using /home/username to make it "like shared hosting" -- is that totally
-  outdated?  Should I just put everything in /var/www?
-
-//TODO: recap on what local state and server state should be.
 
