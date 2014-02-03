@@ -8,12 +8,20 @@ class Chapter13Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        self.sourcetree.start_with_checkout(self.chapter_no)
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'code listing')
-        self.assertEqual(self.listings[1].type, 'code listing with git ref')
+        self.assertEqual(self.listings[0].type, 'other command')
+        self.assertEqual(self.listings[1].type, 'output')
         self.assertEqual(self.listings[2].type, 'code listing with git ref')
+        self.skip_with_check(47, 'needs the -f')
+        self.skip_with_check(50, 'git push -f origin')
+        fab_pos = 36
+        assert 'fab' in self.listings[fab_pos]
+
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.prep_virtualenv()
+        self.sourcetree.run_command('mkdir ../database')
+        self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
         #self.skip_with_check(30, '# review changes') # diff
@@ -21,17 +29,28 @@ class Chapter13Test(ChapterTest):
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 5
+            self.pos = 37
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch13l004')
+                self.sourcetree.get_commit_spec('ch12l015')
             ))
+
+        # while self.pos < fab_pos:
+        #     print(self.pos)
+        #     self.recognise_listing_and_process_it()
+
+        # self.sourcetree.run_command('git stash')
+        # self.sourcetree.run_command('git checkout repo/chapter_12^')
+        # self.sourcetree.run_command('git stash pop')
+        # self.recognise_listing_and_process_it()
+        # self.sourcetree.run_command('git stash')
+        # self.sourcetree.run_command('git checkout master')
+        # self.sourcetree.run_command('git stash pop')
 
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.sourcetree.run_command('git add . && git commit -m"final commit"')
         self.check_final_diff(self.chapter_no)
 
 
