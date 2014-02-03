@@ -637,25 +637,25 @@ class DictOrderingTest(ChapterTest):
 class CheckQunitOuptutTest(ChapterTest):
 
     def test_partial_listing_passes(self):
-        self.chapter_no = 13
-        self.sourcetree.start_with_checkout(14)
+        self.chapter_no = 14
+        self.sourcetree.start_with_checkout(15)
         expected = Output("2 assertions of 2 passed, 0 failed.")
         self.check_qunit_output(expected) # should pass
         assert expected.was_checked
 
     def test_fails_if_lists_fail_and_no_accounts(self):
-        self.chapter_no = 13
-        self.sourcetree.start_with_checkout(14)
+        self.chapter_no = 14
+        self.sourcetree.start_with_checkout(15)
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output('arg'))
 
 
     def test_runs_phantomjs_runner_against_lists_tests(self):
-        self.chapter_no = 13
-        self.sourcetree.start_with_checkout(14)
+        self.chapter_no = 14
+        self.sourcetree.start_with_checkout(15)
         lists_tests = os.path.join(
             os.path.abspath(os.path.dirname(__file__)),
-            '../source/chapter_13/superlists/lists/static/tests/tests.html'
+            '../source/chapter_14/superlists/lists/static/tests/tests.html'
         )
 
         manual_run = subprocess.check_output(['phantomjs', PHANTOMJS_RUNNER, lists_tests])
@@ -664,8 +664,8 @@ class CheckQunitOuptutTest(ChapterTest):
 
 
     def DONTtest_runs_against_accounts_if_lists_pass(self):
-        self.chapter_no = 14
-        self.sourcetree.start_with_checkout(15)
+        self.chapter_no = 15
+        self.sourcetree.start_with_checkout(16)
         lists_tests = os.path.abspath(os.path.join(
             os.path.dirname(__file__),
             '../source/chapter_13/superlists/lists/static/tests/tests.html'
