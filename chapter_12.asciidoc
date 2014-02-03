@@ -4,10 +4,11 @@ More advanced Forms
 Now let's look at some more advanced forms usage.  We've helped our users
 to avoid blank list items, let's help them avoid duplicate items.
 
-NOTE: If any chapter is going to get the chop, this is a likely one. So,
-please do let me know what you think:  is it valuable?  Which are your
-favourite and least favourite bits?  What would you try and preserve
-from it, if it were to disappear?
+NOTE: This chapter goes into more intricate details of Django's form
+validation, and you can consider it optional.  If you're still learning Django,
+there's good stuff in here.  If you want to skip ahead, that's OK too. Make
+sure you take a quick look at the aside on developer stupidity, and the recap
+on testing views at the end.
 
 
 Another FT for duplicate items
@@ -16,7 +17,7 @@ Another FT for duplicate items
 We add a second test method to `ItemValidationTest`:
 
 [role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch11l001)
+.functional_tests/test_list_item_validation.py (ch12l001)
 [source,python]
 ----
 def test_cannot_add_duplicate_items(self):
@@ -422,7 +423,7 @@ A quick unit test at the view level ought to clear this up:
 
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch11l014)
+.lists/tests/test_views.py (ch12l014)
 [source,python]
 ----
     def test_invalid_input_renders_form_with_errors(self):
@@ -453,23 +454,29 @@ Text already exists.']}
 Here's one possible solution:
 
 [role="sourcecode"]
-.lists/views.py (ch11l015)
+.lists/views.py (ch12l015)
 [source,python]
 ----
-if form.is_valid():
-    try:
-        form.save(for_list=list_)
-        return redirect(list_)
-    except ValidationError:
-        form.errors.update({'text': "You've already got this in your list"})
-return render(request, 'list.html', {'list': list_, "form": form})
+from django.core.exceptions import ValidationError
+[...]
+
+def view_list(request, list_id):
+[...]
+        try:
+            form.save(for_list=list_)
+            return redirect(list_)
+        except ValidationError:
+            form.errors.update(
+                {'text': "You've already got this in your list"}
+            )
+    return render(request, 'list.html', {'list': list_, "form": form})
 ----
 
 OK, we know that's an ugly hack, we need to get the form to do this work,
 we did for new lists, but -- it will probably work. 
 
 ----
-Ran 25 tests in 0.104s
+Ran 28 tests in 0.104s
 
 OK
 ----
@@ -502,7 +509,7 @@ We duplicate up our tests for the previous form, tweaking them slightly:
 
 [role="sourcecode"]
 [source,python]
-.lists/tests/test_forms.py (ch11l016)
+.lists/tests/test_forms.py (ch12l016)
 ----
 from lists.forms import (
     DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
@@ -626,7 +633,7 @@ Now let's see if we can put this form to work in our view.
 Let's start by using our constant, now that we've defined it. Tidy tidy!
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch11l049)
+.lists/tests/test_views.py (ch12l049)
 [source,python]
 ----
 from lists.forms import (
@@ -641,7 +648,7 @@ from lists.forms import (
 ----
 
 ----
-Ran 28 tests in 0.130s
+Ran 31 tests in 0.130s
 
 OK
 ----
@@ -651,7 +658,7 @@ two places in our view tests where we check the form, let's let's adjust them
 both:
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch11l050)
+.lists/tests/test_views.py (ch12l050)
 [source,python]
 ----
 def test_displays_item_form(self):
@@ -677,19 +684,22 @@ instance of <class 'lists.forms.ExistingListItemForm'>
 So we can adjust the view:
 
 [role="sourcecode"]
-.lists/views.py (ch11l051)
+.lists/views.py (ch12l051)
 [source,python]
 ----
 from lists.forms import ExistingListItemForm, ItemForm
 [...]
 def view_list(request, list_id):
     list_ = List.objects.get(id=list_id)
-    form = ExistingListItemForm(for_list=list_, data=request.POST or None)
-    if form.is_valid():
-        form.save()
-        return redirect(list_)
+    form = ExistingListItemForm(for_list=list_)
+    if request.method == 'POST':
+        form = ExistingListItemForm(for_list=list_, data=request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect(list_)
     return render(request, 'list.html', {'list': list_, "form": form})
 ----
+
 
 And, oops, an unexpected fail:
 
@@ -702,7 +712,7 @@ Let's make a quick unit test for that:
 
 
 [role="sourcecode"]
-.lists/tests/test_forms.py (ch11l053)
+.lists/tests/test_forms.py (ch12l053)
 [source,python]
 ----
 def test_form_save(self):
@@ -715,7 +725,7 @@ def test_form_save(self):
 We can make our form call the grandparent save method:
 
 [role="sourcecode"]
-.lists/forms.py (ch11l054)
+.lists/forms.py (ch12l054)
 [source,python]
 ----
     def save(self):
@@ -734,7 +744,7 @@ And we're there!  Unit tests pass!
 ----
 $ pass:quotes[*python3 manage.py test lists*]
 [...]
-Ran 29 tests in 0.082s
+Ran 32 tests in 0.082s
 
 OK
 ----
@@ -773,6 +783,8 @@ testing views over the last few chapters:
 
 Recap: what to test in views
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+//TODO: consider moving this into previous
 
 [role="sourcecode skipme"]
 [source,python]
