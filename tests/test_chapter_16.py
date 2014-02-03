@@ -3,7 +3,6 @@ import unittest
 
 from book_tester import ChapterTest
 
-
 class Chapter16Test(ChapterTest):
     chapter_no = 16
 
@@ -13,9 +12,9 @@ class Chapter16Test(ChapterTest):
         self.prep_virtualenv()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'code listing')
-        self.assertEqual(self.listings[1].type, 'code listing with git ref')
-        self.assertEqual(self.listings[2].type, 'code listing with git ref')
+        self.assertEqual(self.listings[0].type, 'output')
+        self.assertEqual(self.listings[1].type, 'output')
+        self.assertEqual(self.listings[2].type, 'code listing')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
@@ -25,9 +24,9 @@ class Chapter16Test(ChapterTest):
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 40
+            self.pos = 65
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch15l024')
+                self.sourcetree.get_commit_spec('ch15l035')
             ))
 
         while self.pos < len(self.listings):
