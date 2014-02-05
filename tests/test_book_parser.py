@@ -22,7 +22,7 @@ from examples import (
     OUTPUT_WITH_SKIPME,
     OUTPUTS_WITH_DOFIRST,
     COMMAND_MADE_WITH_ATS,
-    COMMAND_LISTING_WITH_CAPTION,
+    SERVER_COMMAND,
     COMMANDS_WITH_VIRTUALENV,
 )
 
@@ -33,14 +33,14 @@ class CodeListingTest(unittest.TestCase):
         c = CodeListing(filename='a.py', contents='abc\ndef')
         assert 'abc' in str(c)
         assert 'a.py' in str(c)
-        assert c.is_server_listing == False
+        assert c.is_server_listing is False
 
 
     def test_server_codelisting(self):
         c = CodeListing(filename='server: a_filename.py', contents='foo')
         assert c.contents == 'foo'
         assert c.filename == 'a_filename.py'
-        assert c.is_server_listing == True
+        assert c.is_server_listing is True
 
 
 class CommitRefFinderTest(unittest.TestCase):
@@ -51,7 +51,7 @@ class CommitRefFinderTest(unittest.TestCase):
         assert not re.search(COMMIT_REF_FINDER, 'bla bla 09l6666')
 
     def test_finder_on_codelisting(self):
-        matches =  re.match(
+        matches = re.match(
             CodeListing.COMMIT_REF_FINDER,
             'some_filename.txt (ch09l027-2)'
         )
@@ -160,14 +160,14 @@ class ParseCodeListingTest(unittest.TestCase):
         )
 
     def test_recognises_server_commands(self):
-        code_html = COMMAND_LISTING_WITH_CAPTION.replace('\n', '\r\n')
+        code_html = SERVER_COMMAND.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         print(listings)
-        self.assertEqual(len(listings), 4)
+        self.assertEqual(len(listings), 1)
         listing = listings[0]
         self.assertEqual(listing.type, 'server command')
-        self.assertEqual(listing, 'sudo apt-get install git')
+        self.assertEqual(listing, 'sudo do stuff')
 
 
     def test_recognises_virtualenv_commands(self):

@@ -123,8 +123,7 @@ def parse_listing(listing):
     else:
         commands = get_commands(listing)
         is_server_commands = False
-        caption = listing.cssselect('div.title')
-        if caption and caption[0].text_content().startswith('server command'):
+        if 'server-commands' in classes:
             is_server_commands = True
             listing = listing.cssselect('div.content')[0]
         lines = listing.text_content().strip(

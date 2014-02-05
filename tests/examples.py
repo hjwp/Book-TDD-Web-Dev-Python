@@ -33,13 +33,9 @@ CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF = """<div class="listingblock sourc
 </pre></div></div></div>"""
 
 
-COMMAND_LISTING_WITH_CAPTION = """<div class="listingblock">
-<div class="title">server commands</div>
+SERVER_COMMAND = """<div class="listingblock server-commands">
 <div class="content">
-<pre><code>user@server:$ <strong>sudo apt-get install git</strong>
-user@server:$ <strong>sudo apt-get install python3</strong>
-user@server:$ <strong>sudo apt-get install python3-pip</strong>
-user@server:$ <strong>sudo pip3 install virtualenv</strong></code></pre>
+<pre><code>elspeth@server:$ <strong>sudo do stuff</strong></code></pre>
 </div></div>"""
 
 
