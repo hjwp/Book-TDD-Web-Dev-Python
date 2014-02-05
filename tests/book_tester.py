@@ -265,7 +265,7 @@ class ChapterTest(unittest.TestCase):
             actual = actual.replace(self.tempdir, '/workspace')
 
         if ls:
-            actual=actual.strip()
+            actual = actual.strip()
             self.assertCountEqual(actual.split('\n'), expected.split())
             expected.was_checked = True
             return
@@ -293,7 +293,7 @@ class ChapterTest(unittest.TestCase):
             if line.startswith('[...'):
                 continue
             if line.endswith('[...]'):
-                line = line.rsplit('[...]')[0]
+                line = line.rsplit('[...]')[0].rstrip()
                 self.assertLineIn(line, [l[:len(line)] for l in actual_lines])
             elif line.startswith(' '):
                 self.assertLineIn(line, actual_lines)

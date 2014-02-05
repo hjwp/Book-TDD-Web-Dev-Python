@@ -219,7 +219,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_test_run_times_and_test_dashes(self):
-        actual =dedent("""
+        actual = dedent("""
             bla bla bla
 
             ----------------------------------------------------------------------
@@ -238,7 +238,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_handles_elipsis(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
             loads more stuff
@@ -254,8 +254,22 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_handles_elipsis_at_end_of_line_where_theres_actually_a_linebreak(self):
+        actual = dedent("""
+            bla bla bla
+            loads more stuff
+            """).strip()
+        expected = Output(dedent("""
+            bla bla bla [...]
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_with_start_elipsis_and_OK(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
 
             OK
@@ -273,7 +287,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_elipsis_finds_assertionerrors(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
                 self.assertSomething(burgle)
@@ -293,7 +307,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_start_elipsis_and_end_longline_elipsis(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
             loads more stuff
@@ -314,7 +328,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_start_elipsis_and_end_longline_elipsis_with_assertionerror(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
                 self.assertSomething(bla)
             AssertionError: a really long exception, which will eventually wrap into multiple lines, so much so that it gets boring after a while...
@@ -332,7 +346,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_for_short_expected_with_trailing_elipsis(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
                 self.assertSomething(burgle)
@@ -349,7 +363,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_elipsis_lines_still_checked(self):
-        actual =dedent("""
+        actual = dedent("""
             AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it changes and ends up saying something different from what was expected so we shoulf fail
             """
             ).strip()
@@ -364,7 +378,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_middle_elipsis(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
             ERROR: the first line
@@ -410,7 +424,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_diff_indexes(self):
-        actual =dedent("""
+        actual = dedent("""
             diff --git a/functional_tests.py b/functional_tests.py
             index d333591..1f55409 100644
             --- a/functional_tests.py
@@ -427,7 +441,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_callouts(self):
-        actual =dedent("""
+        actual = dedent("""
             bla bla
             stuff
             """).strip()
@@ -449,7 +463,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_git_commit_numers_in_logs(self):
-        actual =dedent("""
+        actual = dedent("""
             ea82222 Basic view now returns minimal HTML
             7159049 First unit test and url mapping, dummy view
             edba758 Add app for lists, with deliberately failing unit test
@@ -464,7 +478,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-        actual =dedent("""
+        actual = dedent("""
             abc Basic view now returns minimal HTML
             123 First unit test and url mapping, dummy view
             """).strip()
@@ -479,7 +493,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_mock_ids(self):
-        actual =dedent("""
+        actual = dedent("""
                 self.assertEqual(user, mock_user)
             AssertionError: None != <Mock name='mock()' id='46962183546064'>
             """
@@ -526,6 +540,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
+
 
     def test_handles_long_lines(self):
         actual = dedent("""
