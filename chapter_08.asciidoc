@@ -418,9 +418,18 @@ elspeth@server:$ *sudo service nginx start*
 
 (You may need to do an `apt-get update` and/or an `apt-get upgrade` first.)
 
+
+
+You should be able to go to the IP address of your server, and see the
+"Welcome to nginx" page at this point:
+
 .Nginx - It works!
 image::images/nginx_it_worked.png[The default "Welcome to nginx!" page]
 
+
+If you don't see it, it may be because your firewall does not open port 80 to
+the world. On AWS for example, you may need to configure the "security group"
+for your server to open port 80.
 
 While we've got root access, let's make sure the server has the key
 pieces of software we need at the system level: Python, Git, pip and virtualenv
@@ -436,9 +445,9 @@ elspeth@server:$ *sudo pip3 install virtualenv*
 Configuring domains for staging and live
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Next, we don't want to be messing about with IP addresses all the time, so we
-should point our staging and live domains to the server. At my registrar, the
-control screens looked a bit like this:
+We don't want to be messing about with IP addresses all the time, so we should
+point our staging and live domains to the server. At my registrar, the control
+screens looked a bit like this:
 
 .Domain setup
 image::images/domain_setup.png[Registrar control screens for two domains]
@@ -447,8 +456,13 @@ In the DNS system, pointing a domain at a specific IP address is called an
 "A-Record".  All registrars are slightly different, but a bit of clicking
 around should get you to the right screen in yours...
 
-To check this works, we can re-run our functional tests and see that their
-failure messages have changed slightly
+
+Using the FT to confirm the domain works and Nginx is running
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To confirm  this works, we can re-run our functional tests and see that their
+failure messages have changed slightly - one of them in particular should
+now mention Nginx:
 
 [subs="specialcharacters,macros"]
 ----
@@ -461,19 +475,15 @@ AssertionError: 'To-Do' not found in 'Welcome to nginx!'
 ----
 
 Progress!
-footnote:[If you don't see "Welcome to nginx!", it may be because your firewall
-does not open port 80 to the world. On AWS for example, you may need to
-configure the "security group" for your server to open port 80.]
 
 
 Deploying our code manually
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The next step is to get a copy of the staging site up and running, just
-to check whether we can get Nginx and Django to talk to each other.  As
-we do so, we're starting to do some of what you'd call "deployment", as
-well as provisioning, so we should be thinking about how we can automate the
-process, as we go.
+The next step is to get a copy of the staging site up and running, just to
+check whether we can get Nginx and Django to talk to each other.  As we do so,
+we're starting to move into doing "deployment" rather than provisioning, so we
+should be thinking about how we can automate the process, as we go.
 
 NOTE: One rule of thumb for distinguishing provisioning from deployment is
 that you tend to need root permissions for the former, but we don't for the
@@ -579,10 +589,9 @@ in bash:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *export SITENAME=superlists-staging.ottg.eu*
-elspeth@server:$ *mkdir -p \~/sites/$SITENAME*
-elspeth@server:$ *mkdir \~/sites/$SITENAME/database*
-elspeth@server:$ *mkdir \~/sites/$SITENAME/static*
-elspeth@server:$ *mkdir \~/sites/$SITENAME/virtualenv*
+elspeth@server:$ *mkdir -p \~/sites/$SITENAME/database*
+elspeth@server:$ *mkdir -p \~/sites/$SITENAME/static*
+elspeth@server:$ *mkdir -p \~/sites/$SITENAME/virtualenv*
 # you should replace the URL in the next line with the URL for your own repo
 elspeth@server:$ *git clone https://github.com/hjwp/book-example.git ~/sites/$SITENAME/source*
 Resolving deltas: 100% [...]
@@ -629,7 +638,7 @@ Let's try it out locally, on our own PC first:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *pip3 install virtualenv*
+$ *pip3 install virtualenv* # will need a sudo on linux/macos.
 ----
 
 We'll follow the same folder structure as we're planning for the server:
@@ -641,9 +650,6 @@ $ *ls ../virtualenv/*
 bin  include  lib
 ----
 
-NOTE: this folder structure will be slightly different on Windows, eg
-bin=Scripts. I trust you to adapt the commands you use locally as necessary.
-//TODO: run thru on windows, remove the "let me know"
 
 That will create a folder at '../virtualenv' which will contain its own
 copy of Python and `pip`, as well as a location to install Python packages
@@ -654,7 +660,11 @@ and packages:
 
 [subs="specialcharacters,quotes"]
 ----
+$ *which python3*
+/usr/bin/python3
 $ *source ../virtualenv/bin/activate*
+$ *which python*  # note switch to virtualenv Python
+/workspace/virtualenv/bin/python
 (virtualenv)$ *python3 manage.py test lists*
 [...]
 ImportError: No module named \'django'
@@ -663,13 +673,28 @@ ImportError: No module named \'django'
 NOTE: it's not required, but you might want to look into a tool called
 `virtualenvwrapper` for managing virtualenvs on your own PC.
 
-That will show an `ImportError: No module named django` because Django isn't
+
+.virtualenvs on Windows
+*******************************************************************************
+On Windows, things are slightly different. There are two main things to watch
+out for:
+
+* The 'virtualenv/bin' folder is called 'virtualenv/Scripts', so you should
+  substitute that in as appropriate
+
+* When using Git-Bash, do not try and run 'activate.bat' -- it is written for
+  the Dos shell.  Use `source ..\virtualenv\Scripts\activate`.  The `source` is
+  important.
+
+*******************************************************************************
+
+We're seeing that `ImportError: No module named django` because Django isn't
 installed inside the virtualenv.  So, we can install it, and see that it
 ends up inside the virtualenv's 'site-packages' folder:
 
 [subs="specialcharacters,quotes"]
 ----
-(virtualenv)$ *pip install django*
+(virtualenv)$ *pip install django==1.6.1*
 [...]
 Successfully installed django
 Cleaning up...
@@ -712,28 +737,32 @@ make the server virtualenv just like our local one:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *git pull*
+elspeth@server:$ *git pull*  # may ask you to do some git config first
 elspeth@server:$ *virtualenv --python=python3.3 ../virtualenv/*
-elspeth@server:$ *source ../virtualenv/bin/activate*
-(virtualenv)$ *pip install -r requirements.txt*
+elspeth@server:$ *../virtualenv/bin/pip install -r requirements.txt*
 Downloading/unpacking Django==1.6.1 (from -r requirements.txt (line 1))
 [...]
 Successfully installed Django
 Cleaning up...
-(virtualenv)$ *python3 manage.py runserver*
+elspeth@server:$ *../virtualenv/bin/python3 manage.py runserver*
 Validating models...
 0 errors found
 [...]
 ----
 
-That looks like it worked.
+That looks like it's running happily.  We can Ctrl-C it for now.
+
+TIP: Notice you don't have to use the `activate` to use the virtualenv.
+Directly specifying the path to the virtualenv copies of `python` or
+`pip` works too.  We'll use the direct paths on the server.
+
 
 
 Simple nginx configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Let's now go and create an nginx config file to tell it to send requests for
-our staging site along to Django. A minimal config looks like this:
+Next we create an Nginx config file to tell it to send requests for our staging
+site along to Django. A minimal config looks like this:
 
 
 [role="sourcecode"]
@@ -757,7 +786,8 @@ waiting to respond to requests.
 I saved
 footnote:[not sure how to edit a file on the server?  There's always vi, which
 I'll keep encouraging you to learn a bit of. Alternatively, try the relatively
-beginner-friendly nano.]
+beginner-friendly nano. Note you'll also need to use `sudo` because the file
+is in a system folder]
 this to a file called 'superlists-staging.ottg.eu'
 inside '/etc/nginx/sites-available' folder, and then added it to the enabled
 sites for the server by creating a symlink to it:
@@ -765,18 +795,16 @@ sites for the server by creating a symlink to it:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo ln -s ../sites-available/$SITENAME /etc/nginx/sites-enabled/$SITENAME*
+elspeth@server:$ *echo $SITENAME* # check this still has our site in
+superlists-staging.ottg.eu
+elspeth@server:$ *sudo ln -s ../sites-available/$SITENAME \
+/etc/nginx/sites-enabled/$SITENAME*
+elspeth@server:$ *ls -l /etc/nginx/sites-enabled* # check our symlink is there
 ----
 
-
-That's the Debian/Ubuntu preferred way of saving nginx configurations -- 
+That's the Debian/Ubuntu preferred way of saving Nginx configurations -- 
 the real config file in 'sites-available', and a symlink in 'sites-enabled',
 the idea is that it makes it easier to switch sites on or off.
-
-NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
-`server_names_hash_bucket_size 64;` to get my long domain name to work.  You 
-may not have this problem; Nginx will warn you when you do a `reload` if it has
-any trouble with its config files.
 
 We also may as well remove the default "Welcome to nginx" config, to avoid any
 confusion:
@@ -785,12 +813,7 @@ confusion:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo rm /etc/nginx/sites-enabled/default*
-elspeth@server:$ *sudo reboot*
 ----
-
-(The reboot is there to avoid a strange issue I came across whereby nginx 
-would keep serving the default page on the first hit. There always seems
-to be some voodoo in server config!)
 
 And now to test it:
 
@@ -798,9 +821,13 @@ And now to test it:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo service nginx reload*
-elspeth@server:$ *source ../virtualenv/bin/activate*
-(virtualenv)$ *python3 manage.py runserver*
+elspeth@server:$ *../virtualenv/bin/python3 manage.py runserver*
 ----
+
+NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
+`server_names_hash_bucket_size 64;` to get my long domain name to work.  You 
+may not have this problem; Nginx will warn you when you do a `reload` if it has
+any trouble with its config files.
 
 A quick visual inspection confirms -- the site is up!
 
@@ -828,24 +855,29 @@ manually.
 image::images/staging_database_error.png[Django DEBUG page showing database error]
 
 
-Let's set up the database then.
+NOTE: The tests saved us from potential embarrassment there.  The site 'looked'
+fine when we loaded its front page.  If we'd been a little hasty, we might have
+thought we were done, and it would have been the first users that discovered
+that nasty Django DEBUG page.  Okay, slight exaggeration for effect, maybe we
+'would' have checked, but what happens as the site gets bigger and more
+complex? You can't check everything. The tests can.
 
 
 Creating the database with syncdb
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 We run `syncdb` using the `--noinput` argument to suppress the two little "are
-you sure" prompts.  Press Ctrl+C to interrup the current `runserver`.
+you sure" prompts.
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-(virtualenv)$ *python3 manage.py syncdb --noinput*
+elspeth@server:$ *../virtualenv/bin/python3 manage.py syncdb --noinput*
 Creating tables ...
 [...]
-(virtualenv)$ *ls ../database/*
+elspeth@server:$ *ls ../database/*
 db.sqlite3
-(virtualenv)$ *python3 manage.py runserver*
+elspeth@server:$ *../virtualenv/bin/python3 manage.py runserver*
 ----
 
 Let's try the FTs again:
@@ -862,12 +894,21 @@ OK
 Destroying test database for alias 'default'...
 ----
 
-NOTE: if you see a "502 - Bad Gateway", it's probably because you forgot to
+It's great to see the site up and running!  We might reward ourselves with a
+well-earned tea break at this point, before moving on to the next section...
+
+TIP: If you see a "502 - Bad Gateway", it's probably because you forgot to
 restart the dev server with `manage.py runserver` after the `syncdb`
 
-Progress!  We're at least reassured that some of the piping works, but we
-really can't be using the Django dev. server in production.  We also can't be
-relying on manually starting it up with `runserver`.
+//TODO: this could be a good place to pause and make a new chapter.
+
+
+Getting to a production-ready deployment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We're at least reassured that the basic piping works, but we really can't be
+using the Django dev. server in production.  We also can't be relying on
+manually starting it up with `runserver`.
 
 
 Switching to Gunicorn
@@ -882,24 +923,17 @@ had a pony...
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-(virtualenv)$ *pip install gunicorn*
+elspeth@server:$ *../virtualenv/bin/pip install gunicorn*
 ----
 
 Gunicorn will need to know a path to a WSGI server, which is usually
 a function called `application`.  Django provides one in 'superlists/wsgi.py'.
 
-We can try that out, and check that all the virtualenv magic works too, by
-'deactivating' the virtualenv and seeing if we can 'still' serve our app using
-the `gunicorn` executable that pip just put in there for us:
-
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-(virtualenv)$ *which gunicorn*
-/home/harry/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn
-(virtualenv)$ deactivate
-$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
+elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
 2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.18.0
 2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
 [...]
