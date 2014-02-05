@@ -952,7 +952,7 @@ layout + styling fails.  Good job tests!
 ----
 $ pass:quotes[*python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
 [...]
-AssertionError: 125 != 497 within 3 delta
+AssertionError: 125.0 != 512 within 3 delta
 FAILED (failures=1)
 ----
 
@@ -1003,8 +1003,8 @@ Reload nginx and restart gunicorn...
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-$ *sudo service nginx reload*
-$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
+elspeth@server:$ *sudo service nginx reload*
+elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
 ----
 
 And if we take another look at the site, things are looking much healthier. We
@@ -1057,8 +1057,8 @@ of on the default port:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-$ *sudo service nginx reload*
-$ *../virtualenv/bin/gunicorn --bind \
+elspeth@server:$ *sudo service nginx reload*
+elspeth@server:$ *../virtualenv/bin/gunicorn --bind \
     unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
 ----
 
@@ -1125,51 +1125,61 @@ this is using upstart.
 ----
 description "Gunicorn server for superlists-staging.ottg.eu"
 
-start on net-device-up
+start on net-device-up  <1>
 stop on shutdown
 
-respawn
+respawn  <2>
 
-chdir /home/elspeth/sites/superlists-staging.ottg.eu/source
-exec ../virtualenv/bin/gunicorn \
+setuid elspeth <3>
+chdir ~/sites/superlists-staging.ottg.eu/source  <4>
+
+exec ../virtualenv/bin/gunicorn \  <5>
     --bind unix:/tmp/superlists-staging.ottg.eu.socket \
     superlists.wsgi:application
 ----
 
-//TODO: setuid to something.
-
 // TODO: log files? straight away?
 
 Upstart is joyously simple to configure (especially if you've ever had the
-pleasure of writing an `init.d` script), and is fairly self-explanatory.
-The `start on net-device-up` makes sure Gunicorn only runs once the server
-has connected up to the internet.  `respawn` will restart Gunicorn
-automatically if it crashes, and `chdir` sets the working directory
+dubious pleasure of writing an `init.d` script), and is fairly
+self-explanatory. 
+
+<1> `start on net-device-up` makes sure Gunicorn only runs once the server has
+     connected up to the internet.
+
+<2> `respawn` will restart the process automatically if it crashes
+
+<3> `setuid` changes to run as the "elspeth" user
+
+<4> `chdir` sets the working directory
+
+<5> `exec` is the actual process to execute
+
 
 Upstart scripts live in '/etc/init', and their names must end in '.conf'. 
 
-Now we can start gunicorn with
+Now we can start Gunicorn with
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-sudo start gunicorn-superlists-staging.ottg.eu
+elspeth@server:$ sudo start gunicorn-superlists-staging.ottg.eu
 ----
-
 
 And we can re-run the FTs to see that everything still works. You can even test
 that the site comes back up if you reboot the server!
 
 
-Saving our changes:  adding gunicorn to our requirements.txt
+
+Saving our changes:  adding Gunicorn to our requirements.txt
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Back in the *local* copy of your repo, we should add gunicorn to the list
+Back in the *local* copy of your repo, we should add Gunicorn to the list
 of packages we need in our virtualenvs:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *source ../virtualenv/bin/activate*
+$ *source ../virtualenv/bin/activate* # if necessary
 (virtualenv)$ pip install gunicorn
 (virtualenv)$ *pip freeze > requirements.txt*
 (virtualenv)$ deactivate
@@ -1177,7 +1187,7 @@ $ *git commit -am "Add gunicorn to virtualenv requirements"*
 $ *git push* 
 ----
 
-NOTE: On Windows, at the time of writing, gunicorn would pip install quite
+NOTE: On Windows, at the time of writing, Gunicorn would pip install quite
 happily, but it wouldn't actually work if you tried to use it.  Thankfully
 we only ever run it on the server, so that's not a problem. And, Windows
 support is
@@ -1258,7 +1268,9 @@ stop on shutdown
 
 respawn
 
-chdir /home/elspeth/sites/SITENAME/source
+setuid elspeth
+chdir ~/sites/superlists-staging.ottg.eu/source
+
 exec ../virtualenv/bin/gunicorn \
     --bind unix:/tmp/SITENAME.socket \
     superlists.wsgi:application
@@ -1349,75 +1361,27 @@ $ tree -I __pycache__
     ├── [...]
 ----
 
-Deployment Recap:
-~~~~~~~~~~~~~~~~~
 
-Lots of this, particularly on the provisioning side, was very specific to the
-setup I happened to use.  When you deploy sites, you might use Apache instead
-of nginx, uWSGI instead of Gunicorn, Supervisor instead of Upstart, and so on.
-If you use a PaaS, some of these problems will be solved for you, others won't.
-But I really wanted to take you through a practical example, so we could see
-some of the concerns involved in deployment.
+TDD as a way of confirming a stable deployment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-
-
-Typical provisioning challenges:
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-There are some things that will come up for almost any platform:
-
-* Software installations: nginx, Python, pip, virtualenv, etc
-
-* Network ports and DNS - you need your web server to be listening on a
-  publicly available port, and your domain name needs to be pointing at
-  it.
-
-* Static file hosting -- how are they served, and where from?
-
-* What kind of database are you using on the server, and how 
-  do you ensure your app can talk to it?
+During this chapter, we practised a bit of server administration, which is
+always fun (for certain values of fun).  The point I was trying to highlight
+was that having a functional test suite can take some of the uncertainty out
+of the process.  Whenever we make a change to our server configuration, we
+can re-run the test suite, and be confident that everything works as well as
+it did before.  It allows us to experiment with our setup with less fear.
 
 
-Typical deployment considerations:
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+"Saving your progress"
+^^^^^^^^^^^^^^^^^^^^^^
 
-On the deployment side, you should find that much of what we've done is
-transferable to any situation:
+Being able to run our FTs against a staging server can be very reassuring.
+But, in most cases, you don't want to run your FTs against your "real" server.
+In order to "save our work", and reassure ourselves that the production server
+will work just as well as the real server, we need to make our deployment
+process repeatable.
 
-* During a deploy, you need a way to 'update your source code'.  We're using
-  `git pull`.
-* You need a way to update your 'static files' (`collectstatic`)
-
-* You need to update your 'database' (`syncdb` for now, we'll look at 
-  South and schema migrations later)
-
-* You need to manage your dependencies, and make sure any packages you need
-  are available on the server. We use a 'virtualenv' to isolate our various
-  sites from each other.
-
-* You'll probably need to tweak some items in 'settings.py' when switching
-  to production.
-
-* You need some way of 'restarting' the server, to take into account your
-  changes
-
-
-Using your test suite to guide your investigations
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Throughout the whole chapter, you saw how we could use the FTs to check 
-whether everything worked.  Quite a few of those checks we could have 
-done manually, because our site is still relatively simple, but once you
-have a more complex application, being able to run the full test suite is
-the only way of being confident that you've got your deployment "right".
-
-
-Saving your progress
-^^^^^^^^^^^^^^^^^^^^
-
-But, most importantly of all, once you've solved all of these challenges,
-you need a way to automate the steps involved, so that you never have to
-think about it again.  That's the topic of the next chapter.
+Automation is the answer, and it's the topic of the next chapter.
 
 
