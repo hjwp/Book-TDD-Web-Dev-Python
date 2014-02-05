@@ -5,7 +5,7 @@ import unittest
 import time
 
 from book_tester import ChapterTest
-LOCAL = False
+LOCAL = True
 
 class Chapter8Test(ChapterTest):
     chapter_no = 8
@@ -15,8 +15,8 @@ class Chapter8Test(ChapterTest):
             self.oldhosts = f.read()
         shutil.copy('/etc/hosts', '/tmp/hosts.bak')
         with open('/etc/hosts', 'a') as f:
-            f.write('\n192.168.56.102  superlists-staging.ottg.eu')
-            f.write('\n192.168.56.102  superlists.ottg.eu')
+            f.write('\n192.168.56.101  superlists-staging.ottg.eu')
+            f.write('\n192.168.56.101  superlists.ottg.eu')
         self.addCleanup(self.restore_hosts_file)
 
     def restore_hosts_file(self):
@@ -45,6 +45,14 @@ class Chapter8Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
+        if LOCAL:
+            def fix_git_clones(listing):
+                if listing.type == 'server command':
+                    return listing.replace('https://github.com/hjwp/book-example.git', 'workspace/Book/source/chapter_08/superlists')
+                return listing
+            self.listings = [
+                fix_git_clones(l) for l in self.listings
+            ]
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing with git ref')
@@ -84,7 +92,7 @@ class Chapter8Test(ChapterTest):
         # hack fast-forward
         skip = True
         if skip:
-            self.pos = 67
+            self.pos = 42
             self.sourcetree.run_command('git checkout {0}'.format(
                 self.sourcetree.get_commit_spec('ch08l003')
             ))
