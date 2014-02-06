@@ -23,16 +23,12 @@ class Chapter3Test(ChapterTest):
         self.assertEqual(type(self.listings[2]), CodeListing)
 
         self.skip_with_check(10, 'will show you')
-        final_ft = 41
+        final_ft = 33
         self.assertIn('Finish the test', self.listings[final_ft + 1])
 
         self.start_with_checkout()
         self.start_dev_server()
 
-        print(self.pos)
-        assert 'manage.py startapp lists' in self.listings[self.pos]
-        self.recognise_listing_and_process_it()
-        time.sleep(1)  # voodoo sleep, otherwise db.sqlite3 doesnt appear in CI sometimes
 
         while self.pos < final_ft:
             print(self.pos)
