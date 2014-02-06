@@ -510,7 +510,7 @@ Let's add a new test method to `ListAndItemModelsTest`, which tries to create
 a blank list item:
 
 [role="sourcecode"]
-.lists/tests/test_models.py (ch10l012)
+.lists/tests/test_models.py (ch10l012-1)
 [source,python]
 ----
 from django.core.exceptions import ValidationError
@@ -542,7 +542,7 @@ manager.  We could have used something like this instead:
 ----
 try:
     item.save()
-    self.fail('The full_clean should have raised an exception')
+    self.fail('The save should have raised an exception')
 except ValidationError:
     pass
 ----
@@ -556,11 +556,11 @@ AssertionError: ValidationError not raised
 ----
 
 
-Overriding the save method on a model to ensure validation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+A Django quirk: model save doesn't necessarily validate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-And now we discover one of Django's dirty little secrets. 'This test should
-already pass'.  If you take a look at the
+And now we discover one of Django's little quirks. 'This test should already
+pass'.  If you take a look at the
 https://docs.djangoproject.com/en/1.6/ref/models/fields/#blank[docs for the
 Django model fields], you'll see that `TextField` actually defaults to
 `blank=False`, which means that it 'should' disallow empty values.
@@ -574,7 +574,7 @@ emptiness constraints on text columns, and so our save method is letting this
 invalid value through silently.
 
 Django does have a method to manually run full validation however, called
-`full_clean`.  You can hack it in to see it work if you like:
+`full_clean`.  Let's hack it in to see it work:
 
 
 [role="sourcecode"]
@@ -585,54 +585,52 @@ Django does have a method to manually run full validation however, called
         item.save()
         item.full_clean()
 ----
+//12-2
 
-Which would get the tests to pass.  Let's revert it and make a real
-implementation by overriding the model's `save` method:
+That gets the test to pass.
+
+----
+OK
+----
+
+That taught us a little about Django validation.  Let's leave the test there,
+now that we've written it.  It's not totally useless, in that it'll warn us 
+if we ever forget our requirement and set `blank=True` on the `text` field
+(try it!).
+
+
+Surfacing model validation errors in the view:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's try and enforce our model validation in the views layer and bring it up
+into our templates, so the user can see them. Here's how we can optionally
+display an error in our HTML -- we check whether the template has been passed
+an error variable, and if so, we display it next to the form:
 
 [role="sourcecode"]
-.lists/models.py (ch10l013)
-[source,python]
+.lists/templates/base.html (ch10l013)
+[source,html]
 ----
-class Item(models.Model):
-    text = models.TextField()
-    list = models.ForeignKey(List)
-
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-----
-
-TIP: It's good practice to use `*args, **kwargs` when overriding Django
-model methods like `save`, because they're called from all sorts of strange
-places, and you want to make sure those arguments get passed to the superclass
-save, so that all the Django magic still works.
-//TODO: but I'm not testing that, am I?
-
-That works:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test lists*] 
-Creating test database for alias 'default'...
-...........
- ---------------------------------------------------------------------
-Ran 11 tests in 0.037s
-
-OK
-Destroying test database for alias 'default'...
+<form method="POST" action="{% block form_action %}{% endblock %}">
+    <input name="item_text" id="id_new_item"
+           class="form-control input-lg"
+           placeholder="Enter a to-do item"
+    />
+    {% csrf_token %}
+    {% if error %}
+        <div class="form-group has-error">
+            <span class="help-block">{{ error }}</span>
+        </div>
+    {% endif %}
+</form>
 ----
 
-TODO: putting full_clean into the model save method may not be a good idea in 
-general.  investigate putting it in the view instead.
+Take a look at the http://getbootstrap.com/css/#forms[Bootstrap docs] for more
+info on form controls. 
 
-
-Handling model validation errors in the view:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Next we want to surface those validation errors from the model into a useful
-form for the user.  This is the job of the view and template. We start by
-adjusting our tests in the `NewListTest` class.  I'm going to use two slightly
-different error-handling patterns here.
+Passing this error to the template is the job of the view function. Let's take
+a look at the unit tests in the `NewListTest` class.  I'm going to use two
+slightly different error-handling patterns here.
 
 In the first case, our URL and view for new lists will optionally render the
 same template as the home page, but with the addition of an error message.
@@ -647,6 +645,7 @@ class NewListTest(TestCase):
 
     def test_validation_errors_are_sent_back_to_home_page_template(self):
         response = self.client.post('/lists/new', data={'item_text': ''})
+        self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'home.html')
         expected_error = "You can't have an empty list item"
         self.assertContains(response, expected_error)
@@ -661,10 +660,42 @@ and make a note to refactor them out.  But we won't do them straight away,
 because right now our application is in a broken state. We want to get back
 to a working state first.  
 
-As it is, the test fails out with an error -- our view tries to save an item
-with blank text, but the model validation raises an exception:
+Back to our test, which is failing because the view is currently returning a
+302 redirect, rather than a "normal" 200 response:
 
 ----
+AssertionError: 302 != 200
+----
+
+Let's try calling `full_clean()` in the view:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def new_list(request):
+    list_ = List.objects.create()
+    item = Item.objects.create(text=request.POST['item_text'], list=list_)
+    item.full_clean()
+    return redirect('/lists/%d/' % (list_.id,))
+----
+
+As we're looking at the view code, we find a good candidate for a hard-coded
+URL to get rid of.  Let's add that to our scratchpad:
+
+[role="scratchpad"]
+*****
+* 'remove hard-coded URLs from views.py'
+*****
+
+Now the model validation raises an exception, which comes up through our view:
+
+----
+  File "/workspace/superlists/lists/views.py", line 13, in new_list
+    item.full_clean()
+  File "/usr/local/lib/python3.3/dist-packages/django/db/models/base.py", line
+950, in full_clean
+    raise ValidationError(errors)
 django.core.exceptions.ValidationError: {'text': ['This field cannot be
 blank.']}
 ----
@@ -682,28 +713,22 @@ from django.core.exceptions import ValidationError
 
 def new_list(request):
     list_ = List.objects.create()
+    item = Item.objects.create(text=request.POST['item_text'], list=list_)
     try:
-        Item.objects.create(text=request.POST['item_text'], list=list_)
+        item.full_clean()
     except ValidationError:
         pass
     return redirect('/lists/%d/' % (list_.id,))
 ----
 
-As we're looking at the view code, we make a note that there's a hard-coded
-URL in there.  Let's add that to our scratchpad:
-
-[role="scratchpad"]
-*****
-* 'remove hard-coded URLs from views.py'
-*****
-
-Back to the test, which wants us to use a template:
+That gets us back to the 302 != 200:
 
 ----
-AssertionError: No templates used to render the response
+AssertionError: 302 != 200
 ----
 
-We try that naively:
+Let's return a rendered template then, which should take care of the template
+check as well:
 
 [role="sourcecode"]
 .lists/views.py (ch10l016)
@@ -727,49 +752,10 @@ We do that by passing a new template variable in:
 [source,python]
 ----
     except ValidationError:
-        error_text = "You can't have an empty list item"
-        return render(request, 'home.html', {"error": error_text})
+        error = "You can't have an empty list item"
+        return render(request, 'home.html', {"error": error})
 ----
 
-And adjusting the template HTML itself -- it's not actually in 'home.html',
-it's in the parent template. But while we're looking around for it, we
-notice another hard-coded URL:
-
-[role="skipme"]
-----
-{% block form_action %}/lists/new{% endblock %}
-----
-
-We'll make a note to fix that, and then go up to 'base.html':
-
-[role="scratchpad"]
-*****
-* 'remove hard-coded URLs from views.py'
-* 'remove hard-coded URLs from form in home.html'
-*****
-
-Here's what we actually want to change now:
-
-[role="sourcecode"]
-.lists/templates/base.html (ch10l018)
-[source,html]
-----
-<form method="POST" action="{% block form_action %}{% endblock %}">
-    <input name="item_text" id="id_new_item"
-           class="form-control input-lg"
-           placeholder="Enter a to-do item"
-    />
-    {% csrf_token %}
-    {% if error %}
-        <div class="form-group has-error">
-            <span class="help-block">{{ error }}</span>
-        </div>
-    {% endif %}
-</form>
-----
-
-Take a look at the http://getbootstrap.com/css/#forms[Bootstrap docs] for more
-info on form controls. 
 
 Hmm, it looks like that didn't quite work:
 
@@ -794,6 +780,7 @@ https://docs.djangoproject.com/en/1.6/topics/templates/#automatic-html-escaping[
 the apostrophe:
 
 ----
+[...]
 <span class="help-block">You can&#39;t have an 
 empty list item</span>
 ----
@@ -820,39 +807,111 @@ from django.utils.html import escape
     self.assertContains(response, expected_error)
 ----
 
-That passes!  Do the FTs pass?
-//TODO: am i being unclear about deleting an old fn called
-//test_redirects_after_POST  
+That passes!  
+
+----
+Ran 12 tests in 0.047s
+
+OK
+----
+
+Checking invalid input isn't saved to the database
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Before we go further though, did you notice a little logic error we've allowed
+to creep into our implementation?  We're currently creating an object, even
+if validation fails:
+
+[role="sourcecode currentcontents"]
+.lists/tests.py
+[source,python]
+----
+    item = Item.objects.create(text=request.POST['item_text'], list=list_)
+    try:
+        item.full_clean()
+    except ValidationError:
+        pass
+----
+
+Let's add a new unit test to make sure that empty list items don't get
+saved:
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch10l020-1)
+[source,python]
+----
+class NewListTest(TestCase):
+    [...]
+
+    def test_validation_errors_are_sent_back_to_home_page_template(self):
+        [...]
+
+    def test_invalid_list_items_arent_saved(self):
+        self.client.post('/lists/new', data={'item_text': ''})
+        self.assertEqual(List.objects.count(), 0)
+        self.assertEqual(Item.objects.count(), 0)
+----
+
+That gives:
+
+
+----
+FAIL: test_invalid_list_items_arent_saved (lists.tests.test_views.NewListTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/Dropbox/book/source/chapter_10/superlists/lists/tests/test_views.py", line 57, in test_invalid_list_items_arent_saved
+    self.assertEqual(List.objects.count(), 0)
+AssertionError: 1 != 0
+----
+
+We fix it like this:
+
+[role="sourcecode"]
+.lists/views.py (ch10l020-2)
+[source,python]
+----
+def new_list(request):
+    list_ = List.objects.create()
+    item = Item(text=request.POST['item_text'], list=list_)
+    try:
+        item.full_clean()
+        item.save()
+    except ValidationError:
+        list_.delete()
+        error = "You can't have an empty list item"
+        return render(request, 'home.html', {"error": error})
+    return redirect('/lists/%d/' % (list_.id,))
+----
+
+
+Do the FTs pass?
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test functional_tests.test_list_item_validation*] 
 [...]
   File "/workspace/superlists/functional_tests/test_list_item_validation.py",
-line 24, in test_cannot_add_empty_list_items
+line 25, in test_cannot_add_empty_list_items
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
-element: {"method":"id","selector":"id_list_table"}' ; Stacktrace: 
-
+element: {"method":"css selector","selector":".has-error"}' ; Stacktrace: 
 ----
 
-Not quite, but they did get a little further.  Checking the `line 24`, we can
+Not quite, but they did get a little further.  Checking the `line 25`, we can
 see that we've got past the first part of the test, and are now onto the second
-check -- that submitting a second empty item also raises an exception.  That's
-currently producing a server error instead of a nice exception, so let's fix
-that.
+check -- that submitting a second empty item also shows an error.
 
-But first, a little commit:
+We've got some working code though, so let's have a commit.
 
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git commit -am"Adjust new list view to render validation errors"*
+$ *git commit -am"Adjust new list view to do model validation"*
 ----
 
 
 Django pattern: processing POST request in the same view as renders the form
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This time we'll use a slightly different approach, one that's actually a very
 common pattern in Django, which is to use the same view to process POST
@@ -873,26 +932,37 @@ target:
     {% block form_action %}/lists/{{ list.id }}/{% endblock %}
 ----
 
-Incidentally, that's another item in our to-do list:
+Incidentally, that's another hard-coded URL.  Let's added to our to-do list,
+and while we're thinking about it, there's one in 'home.html' too:
 
 [role="scratchpad"]
 *****
 * '#remove hard-coded URLs from views.py'
-* '#remove hard-coded URLs from form in home.html'
-* '#remove hard-coded URLs from form in list.html'
+* '#remove hard-coded URL from form in list.html'
+* '#remove hard-coded URL from form in home.html'
 *****
 
-This will immediately break our original functional test:
+
+This will immediately break our original functional test, because the
+`view_list` page doesn't know how to process POST requests yet.
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_simple_list_creation*]
+$ pass:quotes[*python3 manage.py test functional_tests*]
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":".has-error"}' ; Stacktrace: 
+[...]
 AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
 peacock feathers']
 ----
 
-Now let's change the tests for saving POST requests to existing lists. We
-move them both into `ListViewTest`, and make them point at the base list URL:
+Refactor: Transferring the `new_item` functionality into `view_list`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Let's move all the old tests from `NewItemTest`, the ones that are about saving
+POST requests to existing lists, and move them into `ListViewTest`. As we do
+so, we also make them at the base list URL:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch10l021)
@@ -951,8 +1021,7 @@ FAIL: test_can_save_a_POST_request_to_an_existing_list
 AssertionError: 0 != 1
 ----
 
-We change the `view_list` function to handle two types of request,
-and delete the `add_item` view:
+We change the `view_list` function to handle two types of request:
 
 
 [role="sourcecode"]
@@ -967,8 +1036,16 @@ def view_list(request, list_id):
     return render(request, 'list.html', {'list': list_})
 ----
 
+That gets us passing tests:
 
-Oops, a couple of unexpected failures:
+----
+Ran 12 tests in 0.047s
+
+OK
+----
+
+Now we can delete the `add_item` view, since it's no longer needed... Oops, a
+couple of unexpected failures:
 
 ----
 django.core.exceptions.ViewDoesNotExist: Could not import lists.views.add_item.
@@ -991,8 +1068,7 @@ urlpatterns = patterns('',
 )
 ----
 
-And that gets us to the `OK`. Let's try a full FT run, to make sure our
-refactor is complete:
+And that gets us to the `OK`. Let's try a full FT run:
 
 
 [subs="specialcharacters,quotes"]
@@ -1005,7 +1081,8 @@ Ran 3 tests in 15.276s
 FAILED (errors=1)
 ----
 
-We're back to the 1 failure in our new functional test. We should commit there.
+We're back to the 1 failure in our new functional test. Our refactor of the 
+`add_item` functionality is complete. We should commit there.
 
 [subs="specialcharacters,quotes"]
 ----
@@ -1015,12 +1092,16 @@ $ *git commit -am"Refactor list view to handle new item POSTs"*
 NOTE: Am I breaking the rule about never refactoring against failing tests?  In
 this case, it's allowed, because the refactor is required to get our new
 functionality to work.  You should definitely never refactor against failing
-'unit' tests.  But it's OK for the FT for the current story you're working to
-be failing.
+'unit' tests.  But in my book it's OK for the FT for the current story you're
+working to be failing.
 
-Next we write a new unit test for the validation of items posted 
-to the 'existing' lists view.  It's very similar to the one for the 
-home page, just a couple of tweaks:
+
+Enforcing model validation in `view_list`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We still want the addition of items to existing lists to be subject to our
+model validation rules. Let's write a new unit test for that; it's very similar
+to the one for the home page, just a couple of tweaks:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch10l024)
@@ -1030,22 +1111,23 @@ class ListViewTest(TestCase):
     [...]
 
     def test_validation_errors_end_up_on_lists_page(self):
-        listey = List.objects.create()
+        list_ = List.objects.create()
         response = self.client.post(
-            '/lists/%d/' % (listey.id,),
+            '/lists/%d/' % (list_.id,),
             data={'item_text': ''}
         ) 
+        self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'list.html')
         expected_error = escape("You can't have an empty list item")
         self.assertContains(response, expected_error)
 ----
 
-Which should fail, because our view currently doesn't catch validation
-errors from the save. 
+Which should fail, because our view currently do any validation, and 
+just redirects for all POSTs:
 
 ----
-django.core.exceptions.ValidationError: {'text': ['This field cannot be
-blank.']}
+    self.assertEqual(response.status_code, 200)
+AssertionError: 302 != 200
 ----
 
 Here's an implementation:
@@ -1061,12 +1143,14 @@ def view_list(request, list_id):
 
     if request.method == 'POST':
         try:
-            Item.objects.create(text=request.POST['item_text'], list=list_)
+            item = Item(text=request.POST['item_text'], list=list_)
+            item.full_clean()
+            item.save()
             return redirect('/lists/%d/' % (list_.id,))
         except ValidationError:
             error = "You can't have an empty list item"
 
-    return render(request, 'list.html', {'list': list_, "error": error})
+    return render(request, 'list.html', {'list': list_, 'error': error})
 ----
 
 It's not deeply satisfying is it? There's definitely some duplication of code
@@ -1233,24 +1317,23 @@ Which gives
 AttributeError: 'List' object has no attribute 'get_absolute_url'
 ----
 
-And the implementation use one of Django's shortcut functions, so again we
-obey DRY and avoid using a hard-coded string:
+And the implementation is to us Django's `reverse` function, which you
+essentially does the reverse of what Django normally does with 'urls.py':
+
+TODO: link to docs
 
 [role="sourcecode"]
 .lists/models.py (ch10l026-5)
 [source,python]
 ----
-from django.shortcuts import resolve_url
+from django.core.urlresolvers import reverse
 
 
 class List(models.Model):
 
     def get_absolute_url(self):
-        return resolve_url('view_list', self.id)
+        return reverse('view_list', args=[self.id])
 ----
-
-// TODO: resolve_url is currently undocumented. Switch to using reverse, which
-// has a known stable API.
 
 And now we can use it in the view -- the `redirect` function just takes the
 object we want to redirect to, and it uses `get_absolute_url` under the
@@ -1284,8 +1367,7 @@ Then we do the same to `view_list`:
 def view_list(request, list_id):
     [...]
 
-        try:
-            Item.objects.create(text=request.POST['item_text'], list=list_)
+            item.save()
             return redirect(list_)
         except ValidationError:
             error = "You can't have an empty list item"
