@@ -9,6 +9,7 @@ import subprocess
 Commit = namedtuple('Commit', ['hash', 'subject', 'date'])
 WordCount = namedtuple('WordCount', ['filename', 'lines', 'words'])
 FileWordCount = namedtuple('FileWordCount', ['date', 'subject', 'hash', 'lines', 'words'])
+BOOK_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 def get_log():
     commits = []
@@ -26,7 +27,7 @@ def checkout_commit(hash):
 
 
 def get_wordcounts():
-    docs = [f for f in os.listdir('.') if f.endswith('.asciidoc')]
+    docs = [f for f in os.listdir(BOOK_ROOT) if f.endswith('.asciidoc')]
     wordcounts = []
     for filename in docs:
         with open(filename) as f:
