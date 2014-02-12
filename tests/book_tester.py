@@ -457,7 +457,7 @@ class ChapterTest(unittest.TestCase):
             )
 
         commit = self.run_command(self.listings[pos])
-        self.assertIn('insertion', commit)
+        assert 'insertion' in commit or 'changed' in commit
         self.pos += 1
 
 

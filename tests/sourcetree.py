@@ -163,7 +163,7 @@ class SourceTree(object):
 
     def checkout_file_from_commit_ref(self, commit_ref, path=None):
         commit_spec = self.get_commit_spec(commit_ref)
-        if path == None:
+        if path is None:
             paths = self.get_files_from_commit_spec(commit_spec)
         else:
             paths = [path]
@@ -175,9 +175,7 @@ class SourceTree(object):
     def apply_listing_from_commit(self, listing):
         commit_spec = self.get_commit_spec(listing.commit_ref)
         commit_info = self.run_command('git show %s' % (commit_spec,))
-        print('Applying listing from commit.\nListing:\n{0}\nCommit:\n:{1}'.format(
-            listing.contents, commit_info
-        ))
+        print('Applying listing from commit.\nListing:\n' + listing.contents)
 
         commit = Commit(commit_info)
 
