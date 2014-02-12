@@ -22,6 +22,7 @@ class Chapter13Test(ChapterTest):
         self.prep_virtualenv()
         self.sourcetree.run_command('mkdir ../database')
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
+        self.sourcetree.run_command('git fetch --tags repo')
 
         # skips
         #self.skip_with_check(30, '# review changes') # diff
