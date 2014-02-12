@@ -33,7 +33,7 @@ Forms have several powers in Django:
 
 Let's do a little experimenting with forms by using a unit test.  My plan is to
 iterate towards a complete solution, and hopefully introduce forms gradually
-enough that they'll make sense if you've never seen them before!
+enough that they'll make sense if you've never seen them before.
 
 First we add a new file for our forms unit tests, and we start with a test that
 just looks at the form HTML:
@@ -54,11 +54,9 @@ class ItemFormTest(TestCase):
         self.fail(form.as_p())
 ----
 
-`form.as_p()` renders the form as HTML.  This unit test is using a self.fail
+`form.as_p()` renders the form as HTML.  This unit test is using a `self.fail`
 for some explanatory coding.  You could just as easily use a `manage.py shell`
 session, although you'd need to keep reloading your code for each change.
-
-For now it will just fail with an import error.
 
 Let's make a minimal form.  It inherits from the base Form class, and has 
 a single field called `item_text`:
@@ -610,10 +608,8 @@ That's one change, and similarly for the `name`:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*grep -Ir item_text lists*]
-lists/views.py:        Item.objects.create(text=request.POST['item_text'],
-list=list_)
-lists/views.py:            Item.objects.create(text=request.POST['item_text'],
-list=list_)
+lists/views.py:    item = Item(text=request.POST['item_text'], list=list_)
+lists/views.py:            item = Item(text=request.POST['item_text'],
 lists/tests/test_views.py:            data={'item_text': 'A new list item'}
 lists/tests/test_views.py:            data={'item_text': 'A new list item'}
 lists/tests/test_views.py:        response = self.client.post('/lists/new',
@@ -628,9 +624,9 @@ Once we're done, we re-run the unit tests to check everything still works:
 ----
 $ pass:quotes[*python3 manage.py test lists*] 
 Creating test database for alias 'default'...
-................
+.................
  ---------------------------------------------------------------------
-Ran 16 tests in 0.126s
+Ran 17 tests in 0.126s
 
 OK
 Destroying test database for alias 'default'...
@@ -697,6 +693,7 @@ class NewListTest(TestCase):
 
     def test_validation_errors_are_sent_back_to_home_page_template(self):
         response = self.client.post('/lists/new', data={'text': ''})
+        self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'home.html')
         expected_error = escape("You can't have an empty list item")
         self.assertContains(response, expected_error)
@@ -710,7 +707,7 @@ For a start this test is testing too many things at once, so we've got
 an opportunity to clarify things here.  We should split out two different
 assertions:
 
-* If there's a validation error, we should render the home template
+* If there's a validation error, we should render the home template, with a 200
 * If there's a validation error, the response should contain our error text
 
 And we can add a new one too:
@@ -733,6 +730,7 @@ class NewListTest(TestCase):
 
     def test_for_invalid_input_renders_home_template(self):
         response = self.client.post('/lists/new', data={'text': ''})
+        self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'home.html')
 
 
@@ -758,14 +756,14 @@ ERROR: test_for_invalid_input_passes_form_to_template
 (lists.tests.test_views.NewListTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/workspace/superlists/lists/tests/test_views.py", line 54, in
+  File "/workspace/superlists/lists/tests/test_views.py", line 55, in
 test_for_invalid_input_passes_form_to_template
     self.assertIsInstance(response.context['form'], ItemForm)
 [...]
 KeyError: 'form'
 
  ---------------------------------------------------------------------
-Ran 18 tests in 0.041s
+Ran 19 tests in 0.041s
 
 FAILED (errors=1)
 ----
@@ -800,29 +798,21 @@ def new_list(request):
 <3> In the invalid case, we pass the form down to the template, instead of
     our hard-coded error string.
 
-Incidentally, did you notice that we've also fixed a small bug?  In the
-previous code, we were saving a superfluous List object, even for invalid
-inputs.  They would have been left lying around our database.  We can add
-an extra assert for that, just to make sure we don't make that mistake
-again:
+That view is now looking much nicer!  And all our tests pass, except one:
 
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch11l025)
-[source,python]
 ----
-    def test_invalid_input_means_nothing_saved(self):
-        self.client.post('/lists/new', data={'text': ''})
-        self.assertEqual(Item.objects.count(), 0)
-        self.assertEqual(List.objects.count(), 0)
+    self.assertContains(response, escape(EMPTY_LIST_ERROR))
+[...]
+AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
+list item' in response
 ----
 
 
 Using the form to display errors in the template
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-At this point the FT will still fail, because we're not yet using the form
-to display errors in the template:
+We're failing because we're not yet using the form to display errors in the
+template:
 
 [role="sourcecode"]
 .lists/templates/base.html (ch11l026)
@@ -862,7 +852,7 @@ That means we're going to need to re-work `view_list` as well, before we can
 get back to a working state.
 
 
-Using the form in the final view
+Using the form in the other view
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This view handles both GET and POST requests.  Let's start with checking 
@@ -899,14 +889,17 @@ Here's a minimal implementation:
 def view_list(request, list_id):
     [...]
     form = ItemForm()
-    return render(request, 'list.html', {'list': list_, "form": form, "error": error})
+    return render(request, 'list.html', {
+        'list': list_, "form": form, "error": error
+    })
 ----
 
 
 A helper method for several short tests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Onto invalid forms.  We'll split our current single test for the
+Next we want to use the form errors in the second view.
+We'll split our current single test for the
 invalid case (`test_validation_errors_end_up_on_lists_page`) into several
 separate ones:
 
@@ -924,24 +917,26 @@ class ListViewTest(TestCase):
             data={'text': ''}
         )
 
-    def test_invalid_input_means_nothing_saved_to_db(self):
+    def test_for_invalid_input_nothing_saved_to_db(self):
         self.post_invalid_input()
         self.assertEqual(Item.objects.count(), 0)
 
-    def test_invalid_input_renders_list_template(self):
+    def test_for_invalid_input_renders_list_template(self):
         response = self.post_invalid_input()
+        self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'list.html')
 
-    def test_invalid_input_renders_form_with_errors(self):
+    def test_for_invalid_input_passes_form_to_template(self):
         response = self.post_invalid_input()
         self.assertIsInstance(response.context['form'], ItemForm)
+
+    def test_for_invalid_input_shows_error_on_page(self):
+        response = self.post_invalid_input()
         self.assertContains(response, escape(EMPTY_LIST_ERROR))
 ----
 
-//TODO: slight inconsistency in tests. this one munges form and error...
-
-By making a little helper function, `post_invalid_input`,
-we can make three separate tests without duplicating lots of lines of code. 
+By making a little helper function, `post_invalid_input`, we can make four
+separate tests without duplicating lots of lines of code. 
 
 We've seen this several times now. It often feels more natural to write view
 tests as a single, monolithic block of assertions -- the view should do this
@@ -951,8 +946,12 @@ helps you isolate the exact problem you may have, when you later come and
 change your code and accidentally introduce a bug. Helper methods are one of
 the tools that lower the psychological barrier.
 
+For example, now, we can see there's just one failure, and it's a clear one:
+
 
 ----
+FAIL: test_for_invalid_input_shows_error_on_page
+(lists.tests.test_views.ListViewTest)
 AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
 list item' in response
 ----
@@ -980,7 +979,7 @@ def view_list(request, list_id):
 That gets the unit tests passing.  
 
 ----
-Ran 22 tests in 0.086s
+Ran 23 tests in 0.086s
 
 OK
 ----
@@ -1052,8 +1051,7 @@ let's see what happens if we just try to call `form.save()`:
 Django isn't happy, because an item needs to belong to a list:
 
 ----
-django.core.exceptions.ValidationError: {'list': ['This field cannot be
-null.']}
+django.db.utils.IntegrityError: lists_item.list_id may not be NULL
 ----
 
 Our solution is to tell the form's save method what list it should save to:
@@ -1100,7 +1098,7 @@ creating the object yourself, or using the `commit=False` argument to save,
 but this is by far the neatest.
 
 ----
-Ran 23 tests in 0.086s
+Ran 24 tests in 0.086s
 
 OK
 ----
@@ -1127,7 +1125,7 @@ def new_list(request):
 Re-run the test to check everything still passes:
 
 ----
-Ran 23 tests in 0.086s
+Ran 24 tests in 0.086s
 
 OK
 ----
@@ -1149,7 +1147,21 @@ def view_list(request, list_id):
     return render(request, 'list.html', {'list': list_, "form": form})
 ----
 
+And we still have full passes:
+
 ----
+Ran 24 tests in 0.111s
+
+OK
+----
+
+and
+
+//36 = remove unused imports
+[role="dofirst-ch11l036"]
+----
+Ran 3 tests in 14.367s
+
 OK
 ----
 
@@ -1170,14 +1182,18 @@ Thin views::
     tests for them, it's time to start thinking about whether that logic could
     be moved elsewhere: possibly to a form, like we've done here.  
     +
+    +
     Another possible place would be a custom method on the model class.  And --
     once the complexity of the app demands it -- out of Django-specific files
     and into your own classes and functions, that capture your core business
     logic.
 
-Single assertion per test::
-    One assertion per test is the ultimate goal, but it's OK if you don't start
-    out that way. Helper functions can keep them from getting too bloated.
+Each test should test one thing::
+    The heuristic is to be suspicious if there's more than one assertion in a
+    test. Sometimes two assertions are closely related, so they belong together.
+    But often your first draft of a test ends up testing multiple behaviours,
+    and it's worth re-writing it as several tests. Helper functions can keep
+    them from getting too bloated.
 *******************************************************************************
 
 
