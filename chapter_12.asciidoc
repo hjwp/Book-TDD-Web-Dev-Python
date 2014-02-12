@@ -55,12 +55,10 @@ Ran 2 tests in 9.613s
 OK, so we know the first of the two tests passes now, is there a way to run
 just the failing one, I hear you ask!  Why yes indeed:
 
-//TODO: unskip
-[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test \
-functional_tests.test_list_item_validation.ItemValidationTest.test_cannot_add_duplicate_items*] 
+$ pass:quotes[*python3 manage.py test functional_tests.\
+test_list_item_validation.ItemValidationTest.test_cannot_add_duplicate_items*] 
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
 element: {"method":"css selector","selector":".has-error"}' ; Stacktrace: 
@@ -77,12 +75,15 @@ in the same list raise an error
 .lists/tests/test_models.py (ch09l028)
 [source,python]
 ----
-def test_cannot_save_duplicate_items(self):
-    list1 = List.objects.create()
-    Item.objects.create(list=list1, text='bla')
+def test_duplicate_items_are_invalid(self):
+    list_ = List.objects.create()
+    Item.objects.create(list=list_, text='bla')
     with self.assertRaises(ValidationError):
-        Item.objects.create(list=list1, text='bla')
+        item = Item(list=list_, text='bla')
+        item.full_clean()
 ----
+
+//TODO: simplify first model test at this point??
 
 And, while it occurs to us, we add another test to make sure we don't 
 overdo it on our integrity constraints:
@@ -96,7 +97,8 @@ def test_CAN_save_same_item_to_different_lists(self):
     list1 = List.objects.create()
     list2 = List.objects.create()
     Item.objects.create(list=list1, text='bla')
-    Item.objects.create(list=list2, text='bla') # should not raise
+    item = Item(list=list2, text='bla')
+    item.full_clean()  # should not raise
 ----
 
 I always like to put a little comment for tests which are checking 
@@ -124,9 +126,9 @@ problem:
 
 ----
 Traceback (most recent call last):
-  File "/workspace/superlists/lists/tests/test_models.py", line 60, in
+  File "/workspace/superlists/lists/tests/test_models.py", line 63, in
 test_CAN_save_same_item_to_different_lists
-    Item.objects.create(list=list2, text='bla') # should not raise
+    item.full_clean()  # should not raise
     [...]
 django.core.exceptions.ValidationError: {'text': ['Item with this Text already
 exists.']}
@@ -187,10 +189,6 @@ class Item(models.Model):
 
     class Meta:
         unique_together = ('list', 'text')
-
-
-    def save(self, *args, **kwargs):
-        [...]
 ----
 
 You might want to take a quick peek at the 
@@ -203,9 +201,6 @@ A little digression on Queryset ordering and string representations
 
 
 When we run the tests they reveal an unexpected failure:
-
-TODO: Some users have reported they don't see this unexpected fail. Test on
-various platforms, amend if necessary.
 
 ----
 ======================================================================
@@ -220,6 +215,10 @@ AssertionError: 'Item the second' != 'The first (ever) list item'
 - Item the second
 [...]
 ----
+
+NOTE: Depending on your platform and its Sqlite installation, you may
+not see this error. You can follow along anyway, the code and tests are
+interesting in their own right.
 
 That's a bit of a puzzler. A bit of print-based debugging:
 
@@ -375,43 +374,49 @@ $ *git diff*
 $ *git commit -am "Implement duplicate item validation at model layer"*
 ----
 
-The next task is to handle the validation error in the view. Before we do that,
-a quick aside, for the curious. Do you remember I mentioned earlier that some
-data integrity errors 'are' picked up on save?  Try temporarily disabling our
-`.full_clean` in the model save:
+The next task is to handle the validation error in the view. 
+
+Before we do that, a quick aside, for the curious. Do you remember I mentioned
+earlier that some data integrity errors 'are' picked up on save?  Try doing a
+`.save` instead of a `.full_clean` in our duplicates test:
 
 [role="sourcecode"]
-.lists/models.py
+.lists/tests/test_models.py
 [source,python]
 ----
-    def save(self, *args, **kwargs):
-        #self.full_clean()
-        super().save(*args, **kwargs)
+    def test_duplicate_items_are_invalid(self):
+        list_ = List.objects.create()
+        Item.objects.create(list=list_, text='bla')
+        with self.assertRaises(ValidationError):
+            item = Item(list=list_, text='bla')
+            #item.full_clean()
+            item.save()
 ----
 
 That gives
 
 ----
-ERROR: test_cannot_save_duplicate_items
+ERROR: test_duplicate_items_are_invalid
 (lists.tests.test_models.ListAndItemModelsTest)
+[...]
     return Database.Cursor.execute(self, query, params)
+sqlite3.IntegrityError: columns list_id, text are not unique
+[...]
 django.db.utils.IntegrityError: columns list_id, text are not unique
-
-[... and a bunch of other failures due to validation not working any more]
 ----
 
 Note that it's a different error to the one we want, an `IntegrityError` 
 instead of a `ValidationError`.  
 
 
-Handling validation at the views layer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Experimenting with duplicate item validation at the views layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 Let's put our `full_clean` back, and try running our FT, just to see where we
 are:
 
-[role="dofirst-ch09l035"] 
+[role="dofirst-ch09l036"] 
 ----
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
 element: {"method":"id","selector":"id_list_table"}' ; Stacktrace: 
@@ -426,7 +431,10 @@ A quick unit test at the view level ought to clear this up:
 .lists/tests/test_views.py (ch12l014)
 [source,python]
 ----
-    def test_invalid_input_renders_form_with_errors(self):
+class ListViewTest(TestCase):
+    [...]
+
+    def test_for_invalid_input_shows_error_on_page(self):
         [...]
 
 
@@ -438,7 +446,7 @@ A quick unit test at the view level ought to clear this up:
             data={'text': 'textey'}
         )
 
-        expected_error =  escape("You've already got this in your list")
+        expected_error = escape("You've already got this in your list")
         self.assertContains(response, expected_error)
         self.assertTemplateUsed(response, 'list.html')
         self.assertEqual(Item.objects.all().count(), 1)
@@ -447,53 +455,24 @@ A quick unit test at the view level ought to clear this up:
 Gives
 
 ----
-django.core.exceptions.ValidationError: {'__all__': ['Item with this List and
-Text already exists.']}
+django.db.utils.IntegrityError: columns list_id, text are not unique
 ----
 
-Here's one possible solution:
+We want to avoid integrity errors! Ideally, we want the call to `is_valid` to
+somehow notice the duplication error before we even try to save, but to do
+that, our form will need to know what list it's being used for, in advance.
+
+Let's put a skip on that test for now.
 
 [role="sourcecode"]
-.lists/views.py (ch12l015)
+.lists/tests/test_views.py
 [source,python]
 ----
-from django.core.exceptions import ValidationError
+from unittest import skip
 [...]
 
-def view_list(request, list_id):
-[...]
-        try:
-            form.save(for_list=list_)
-            return redirect(list_)
-        except ValidationError:
-            form.errors.update(
-                {'text': "You've already got this in your list"}
-            )
-    return render(request, 'list.html', {'list': list_, "form": form})
-----
-
-OK, we know that's an ugly hack, we need to get the form to do this work,
-we did for new lists, but -- it will probably work. 
-
-----
-Ran 28 tests in 0.104s
-
-OK
-----
-
-----
-Ran 4 tests in 19.048s
-
-OK
-----
-
-What matters is that it gets us to 'Green'. We'll definitely do the 'Refactor'
-part very soon. First, a commit.
-
-[subs="specialcharacters,quotes"]
-----
-$ *git diff*
-$ *git commit -am"duplicate item validation hacked in at views level"*
+    @skip
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
 ----
 
 
@@ -542,7 +521,7 @@ class ExistingListItemFormTest(TestCase):
 
 We can iterate through a few TDD cycles (I won't show them all, but I'm sure
 you'll do them, right? Remember, the Goat sees all) until we get a form with a
-custom constructor, which just ignores its for_list argument:
+custom constructor, which just ignores its `for_list` argument:
 
 [role="sourcecode"]
 .lists/forms.py (ch09l071)
@@ -614,7 +593,7 @@ class ExistingListItemForm(ItemForm):
 //ch10l018
 
 That's a bit of Django voodoo right there, but we basically take the validation
-error, adjust its error message, and then pass it back up to the form.
+error, adjust its error message, and then pass it back into the form.
 
 And we're there!  A quick commit
 
@@ -630,7 +609,7 @@ Using the existing lists item form in the list view
 
 Now let's see if we can put this form to work in our view.
 
-Let's start by using our constant, now that we've defined it. Tidy tidy!
+We remove the skip, and while we're at it, we can use our new constant. Tidy.
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch12l049)
@@ -644,32 +623,36 @@ from lists.forms import (
 
     def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
         [...]
-        expected_error =  escape(DUPLICATE_ITEM_ERROR)
+        expected_error = escape(DUPLICATE_ITEM_ERROR)
 ----
 
-----
-Ran 31 tests in 0.130s
+That brings back out integrity error:
 
-OK
+----
+django.db.utils.IntegrityError: columns list_id, text are not unique
 ----
 
-Next -- let's find places where we should be using our new form class. There's
-two places in our view tests where we check the form, let's let's adjust them
-both:
+Our fix for this to switch to using the new form class.  Before we implement
+it, let's find the tests where we check the form class, and adjust them:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch12l050)
 [source,python]
 ----
-def test_displays_item_form(self):
-    list_ = List.objects.create()
-    response = self.client.get('/lists/%d/' % (list_.id,))
-    self.assertIsInstance(response.context['form'], ExistingListItemForm)
+class ListViewTest(TestCase):
+[...]
 
+    def test_displays_item_form(self):
+        list_ = List.objects.create()
+        response = self.client.get('/lists/%d/' % (list_.id,))
+        self.assertIsInstance(response.context['form'], ExistingListItemForm)
+        self.assertContains(response, 'name="text"')
 
-def test_invalid_input_renders_form_with_errors(self):
-    response = self.post_invalid_input()
-    self.assertIsInstance(response.context['form'], ExistingListItemForm)
+    [...]
+
+    def test_for_invalid_input_passes_form_to_template(self):
+        response = self.post_invalid_input()
+        self.assertIsInstance(response.context['form'], ExistingListItemForm)
 ----
 
 That gives us:
@@ -701,7 +684,7 @@ def view_list(request, list_id):
 ----
 
 
-And, oops, an unexpected fail:
+And 'almost' fixes everything, except for an unexpected fail:
 
 ----
 TypeError: save() missing 1 required positional argument: 'for_list'
@@ -733,18 +716,18 @@ We can make our form call the grandparent save method:
 ----
 
 NOTE: Personal opinion here: I could have used `super`, but I prefer not to use
-`super()` when it requires arguments, eg to get a grandparent method. I find
+`super` when it requires arguments, eg to get a grandparent method. I find
 Python 3's `super()` with no args awesome to get the immediate parent. Anything
 else is too error-prone, and I find it ugly besides. YMMV.
 
 
-And we're there!  Unit tests pass!
+And we're there!  All the unit tests pass:
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test lists*]
 [...]
-Ran 32 tests in 0.082s
+Ran 33 tests in 0.082s
 
 OK
 ----
