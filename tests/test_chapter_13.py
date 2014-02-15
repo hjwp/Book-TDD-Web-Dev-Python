@@ -35,18 +35,6 @@ class Chapter13Test(ChapterTest):
                 self.sourcetree.get_commit_spec('ch12l015')
             ))
 
-        # while self.pos < fab_pos:
-        #     print(self.pos)
-        #     self.recognise_listing_and_process_it()
-
-        # self.sourcetree.run_command('git stash')
-        # self.sourcetree.run_command('git checkout repo/chapter_12^')
-        # self.sourcetree.run_command('git stash pop')
-        # self.recognise_listing_and_process_it()
-        # self.sourcetree.run_command('git stash')
-        # self.sourcetree.run_command('git checkout master')
-        # self.sourcetree.run_command('git stash pop')
-
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
