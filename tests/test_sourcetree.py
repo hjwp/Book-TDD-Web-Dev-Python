@@ -90,6 +90,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
 
         self.sourcetree.apply_listing_from_commit(listing)
 
+
         with open(self.sourcetree.tempdir + '/superlists/file1.txt') as f:
             assert f.read() == dedent(
                 """
@@ -130,6 +131,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def _checkout_commit(self, commit):
+        commit_spec = self.sourcetree.get_commit_spec(commit)
+        self.sourcetree.run_command('git checkout ' + commit_spec)
+        self.sourcetree.run_command('git reset')
+
+
     def test_raises_if_too_many_files_in_commit(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """
@@ -139,6 +146,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
         )
         listing.commit_ref = 'ch17l023'
 
+        self._checkout_commit('ch17l022')
         with self.assertRaises(ApplyCommitException):
             self.sourcetree.apply_listing_from_commit(listing)
 
@@ -180,6 +188,8 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l027'
+        self._checkout_commit('ch17l026')
+
         self.sourcetree.apply_listing_from_commit(listing)
 
 
@@ -210,6 +220,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l028'
+        self._checkout_commit('ch17l027')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
@@ -255,6 +266,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l029'
+        self._checkout_commit('ch17l028-1')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
@@ -268,6 +280,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l030'
+        self._checkout_commit('ch17l029')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
@@ -321,12 +334,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l024'
+        self._checkout_commit('ch17l023')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
 
     def test_handles_indents(self):
-        self.sourcetree.run_command('git checkout f70efb1')
         listing = CodeListing(filename='pythonfile.py', contents=dedent(
             """
             def method1(self):
@@ -337,12 +350,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l026'
+        self._checkout_commit('ch17l025')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
 
     def test_with_diff_listing(self):
-        self.sourcetree.run_command('git checkout ddae23f')
         listing = CodeListing(filename='file2.txt', contents=dedent(
             """
             diff --git a/file2.txt b/file2.txt
@@ -359,6 +372,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
              """).lstrip()
         )
         listing.commit_ref = 'ch17l030'
+        self._checkout_commit('ch17l029')
 
         self.sourcetree.apply_listing_from_commit(listing)
 

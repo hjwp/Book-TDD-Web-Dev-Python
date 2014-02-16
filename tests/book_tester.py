@@ -520,7 +520,7 @@ class ChapterTest(unittest.TestCase):
         listing = self.listings[self.pos]
         if listing.dofirst:
             print("DOFIRST", listing.dofirst)
-            self.sourcetree.checkout_file_from_commit_ref(
+            self.sourcetree.patch_from_commit(
                 listing.dofirst,
             )
         if listing.skip:
@@ -604,16 +604,10 @@ class ChapterTest(unittest.TestCase):
                 listing.filename
             )
             print("CHECK CURRENT CONTENTS")
-            if '[...]' in listing.contents:
-                stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
-                for line in listing.contents.split('\n'):
-                    if line and not '[...]' in line:
-                        self.assertIn(line.strip(), stripped_actual_lines)
-            else:
-                self.assertEqual(
-                    listing.contents.strip(),
-                    actual_contents.strip(),
-                )
+            stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
+            for line in listing.contents.split('\n'):
+                if line and not '[...]' in line:
+                    self.assertIn(line.strip(), stripped_actual_lines)
             listing.was_written = True
             self.pos += 1
 

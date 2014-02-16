@@ -161,15 +161,13 @@ class SourceTree(object):
         return self.run_command('git show %s:%s' % (commit_spec, path),)
 
 
-    def checkout_file_from_commit_ref(self, commit_ref, path=None):
+    def patch_from_commit(self, commit_ref, path=None):
         commit_spec = self.get_commit_spec(commit_ref)
-        if path is None:
-            paths = self.get_files_from_commit_spec(commit_spec)
-        else:
-            paths = [path]
-        for path in paths:
-            self.run_command('git checkout %s -- %s' % (commit_spec, path))
-        self.run_command('git reset')
+        self.run_command(
+            #'git diff {commit}^ {commit} | patch'.format(commit=commit_spec)
+            'git show {commit} | patch -p1 --fuzz=3'.format(commit=commit_spec)
+        )
+        #self.run_command('git reset')
 
 
     def apply_listing_from_commit(self, listing):
@@ -224,7 +222,7 @@ class SourceTree(object):
                 )
             raise ApplyCommitException('listing line not found:\n%s' % (line,))
 
-        self.checkout_file_from_commit_ref(listing.commit_ref, listing.filename)
+        self.patch_from_commit(listing.commit_ref, listing.filename)
         listing.was_written = True
         print('applied commit')
 
