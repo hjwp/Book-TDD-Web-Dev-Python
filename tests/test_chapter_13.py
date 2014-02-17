@@ -13,9 +13,9 @@ class Chapter13Test(ChapterTest):
         self.assertEqual(self.listings[0].type, 'other command')
         self.assertEqual(self.listings[1].type, 'output')
         self.assertEqual(self.listings[2].type, 'code listing with git ref')
-        self.skip_with_check(47, 'needs the -f')
-        self.skip_with_check(50, 'git push -f origin')
-        fab_pos = 36
+        self.skip_with_check(48, 'needs the -f')
+        self.skip_with_check(51, 'git push -f origin')
+        fab_pos = 37
         assert 'fab' in self.listings[fab_pos]
 
         self.sourcetree.start_with_checkout(self.chapter_no)

@@ -22,7 +22,10 @@ upgrade to this as soon as it gets released in Django 1.7...  The basic
 concepts and steps involved aren't going to change much though.
 
 
-We start by installing South:
+We start by installing
+footnote:[use `source ../virtualenv/bin/activate to save yourself some
+long-windedness in the commands below]
+South:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -53,18 +56,18 @@ And to 'requirements.txt':
 ----
 Django==1.6.1
 gunicorn==18.0
-South==0.8.3
+South==0.8.4
 ----
 
 We can commit that to version control:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git commit -am "Add South"*
+$ *git commit -am "Add South as dependency"*
 ----
 
 Creating an initial migration to match the current live state
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For migrations to work, they need to know what we're migrating from and to.
 The place this really matters is on the live server, so we want to be able
@@ -77,15 +80,13 @@ version of our code that matches what's deployed.
 
 .If you didn't tag the release back in chapter 8
 ******************************************************************************
-If you were working from a previous version of the book, you might not have
-tagged the release.  You know, because I just only decided to add that bit.
-Instead, you can use `git log` to look back for a commit that we made during
-chapter 8, or maybe right at the beginning of chapter 9.
+You can use `git log` to look back for a commit that we made during chapter 8,
+or maybe right at the beginning of chapter 9.
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-$ *git log --oneline*
+$ *git log --oneline --decorate*
 [...]
 18480bd Create base FT class and a class for each test.
 87e99b5 Moved functional tests into a folder.
@@ -113,6 +114,7 @@ To revert our models to the state they were in at that point:
 [subs="specialcharacters,quotes"]
 ----
 $ *git checkout LIVE -- lists/models.py*
+$ *git reset*
 ----
 
 Now we can create our initial migration.  This tells south what the "starting"
@@ -141,24 +143,28 @@ lists/migrations/
 └── __pycache__
 ----
 
-We go back to the latest code version:
+And we add the initial migration to version control:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add lists/migrations/*
+$ *git status*  # make sure you don't commit changes to models.py
+$ *git commit -m"initial migration to match live"*
+----
+
+Creating the "real" migration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Next we create the actual migration that we want to apply, which represents
+the changes to our models since the last deploy. We go back to the latest code
+version:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git checkout HEAD -- lists/models.py* 
 ----
 
-And we add the initial migration to version control:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add lists/migrations/*
-$ *git status*  # should show 2 new files
-$ *git commit -m"initial migration to match live"*
-----
-
-Next we create the "real" migration that we want to apply.  This time
-we use `--auto`:
+And this time we use `--auto`:
 
 [subs="specialcharacters,macros"]
 ----
@@ -196,6 +202,9 @@ right?  And where do you think it stores it?  You can see this coming, can't
 you?  It stores it in the database.  South has its own set of tables.  Please
 don't ask me whether south stores information in those tables about the tables
 themselves.
+
+Doing a trial run of the migration against our local database
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Let's test this out locally and try and get used to it.  First, we go and make
 a database that has the old state, ie one that looks like live:
@@ -256,17 +265,22 @@ Running migrations for lists:
 Installed 0 object(s) from 0 fixture(s)
 ----
 
-It works! I appreciate it's a fair bit to take in... Here's a recap:
+It works! 
+
+Recap
+~~~~~
+
+I appreciate it's a fair bit to take in... Here's a recap:
 
 * We need to apply a database migration to the live database when we deploy, 
   to add the uniqueness constraint.
 
 * We're going to use South migrations for this.  We've created two migrations,
-  one (0001) which takes us from nothing to the old state, and one which takes
-  us from there to the state we want (0002).
+  one (0001) which takes us from nothing to the live state, and one which takes
+  us from there to the new state we want (0002).
 
 * To test this, we've created a database in the same state as live by
-  checking out our old model code and doing a syncdb.
+  checking out our old model code and doing a `syncdb`.
 
 * In order to apply a migration, South needs to know what the current state
   of the database is.
@@ -274,6 +288,9 @@ It works! I appreciate it's a fair bit to take in... Here's a recap:
 * We tell it by applying a "fake" version of migration 0001.
 
 * Then we're in a position to apply the real migration, 0002.
+
+Testing the migration against staging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 So how are we actually going to do this on our live servers?  By replicating
 those last two steps.  We're using a fabfile for our deployments, so let's 
@@ -314,26 +331,27 @@ $ pass:quotes[*fab deploy --host=superlists-staging.ottg.eu*]
 [superlists-staging.ottg.eu] Executing task 'deploy'
 [superlists-staging.ottg.eu] run: mkdir -p
 /home/harry/sites/superlists-staging.ottg.eu
-
 [...]
-
+[superlists-staging.ottg.eu] run: /home/elspeth/sites/superlists-staging3.ottg.eu/source/../virtualenv/bin/pip install -r /home/elspeth/sites/superlists-staging3.ottg.eu/source/requirements.txt
+[...]
+[superlists-staging3.ottg.eu] out: Requirement already satisfied (use --upgrade to upgrade): gunicorn==18.0 in ./sites/superlists-staging3.ottg.eu/virtualenv/lib/python3.3/site-packages (from -r /home/elspeth/sites/superlists-staging3.ottg.eu/source/requirements.txt (line 2))
+[...]
+[superlists-staging3.ottg.eu] out: Downloading/unpacking South==0.8.3 (from -r /home/elspeth/sites/superlists-staging3.ottg.eu/source/requirements.txt (line 3))
+[superlists-staging3.ottg.eu] out:   Downloading South-0.8.3-py2.py3-none-any.whl (135kB): 
+[superlists-staging3.ottg.eu] out:   Downloading South-0.8.3-py2.py3-none-any.whl (135kB):   9%  12kB 
+[...]
+[superlists-staging3.ottg.eu] out: Successfully installed South
+[...]
 [superlists-staging.ottg.eu] run: cd
 /home/harry/sites/superlists-staging.ottg.eu/source &&
 ../virtualenv/bin/python3 manage.py syncdb
 [superlists-staging.ottg.eu] out: Syncing...
-[superlists-staging.ottg.eu] out: Creating tables ...
-[superlists-staging.ottg.eu] out: Creating table south_migrationhistory
-[superlists-staging.ottg.eu] out: Installing custom SQL ...
-[superlists-staging.ottg.eu] out: Installing indexes ...
-[superlists-staging.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
-[superlists-staging.ottg.eu] out: 
+
+[...]
 [superlists-staging.ottg.eu] out: Synced:
 [superlists-staging.ottg.eu] out:  > django.contrib.auth
 [superlists-staging.ottg.eu] out:  > django.contrib.contenttypes
-[superlists-staging.ottg.eu] out:  > django.contrib.sessions
-[superlists-staging.ottg.eu] out:  > django.contrib.sites
-[superlists-staging.ottg.eu] out:  > django.contrib.messages
-[superlists-staging.ottg.eu] out:  > django.contrib.staticfiles
+[...]
 [superlists-staging.ottg.eu] out:  > functional_tests
 [superlists-staging.ottg.eu] out:  > south
 [superlists-staging.ottg.eu] out: 
@@ -371,6 +389,9 @@ Looks good.  We then go in and restart our web server:
 user@server:$ sudo restart gunicorn-superlists-staging.ottg.eu 
 ----
 
+Running the FT to confirm the migration has worked
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 And we can now run our FTs against staging:
 
 [role="skipme"]
@@ -384,6 +405,8 @@ Ran 4 tests in 17.308s
 OK
 ----
 
+Applying the migration to live
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Everything seems in order!  Let's do it against live:
 
