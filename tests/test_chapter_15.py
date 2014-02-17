@@ -19,7 +19,7 @@ class Chapter15Test(ChapterTest):
         # skips
         self.skip_with_check(22, 'switch back to master') # comment
         self.skip_with_check(24, 'remove any trace') # comment
-        self.skip_with_check(26, 'new FT') # comment
+        self.skip_with_check(26, 'our FT') # comment
 
         # hack fast-forward
         skip = False

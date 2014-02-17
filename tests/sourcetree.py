@@ -85,7 +85,7 @@ class SourceTree(object):
         #shutil.rmtree(self.tempdir)
 
 
-    def run_command(self, command, cwd=None, user_input=None, ignore_errors=False):
+    def run_command(self, command, cwd=None, user_input=None, ignore_errors=False, silent=False):
         if cwd is None:
             cwd = os.path.join(self.tempdir, 'superlists')
 
@@ -120,10 +120,11 @@ class SourceTree(object):
             print('process %s return a non-zero code (%s)' % (command, process.returncode))
             print('output:\n', output)
             raise Exception('process %s return a non-zero code (%s)' % (command, process.returncode))
-        try:
-            print(output)
-        except io.BlockingIOError:
-            pass
+        if not silent:
+            try:
+                print(output)
+            except io.BlockingIOError:
+                pass
         return output
 
 
@@ -158,7 +159,7 @@ class SourceTree(object):
 
 
     def show_future_version(self, commit_spec, path):
-        return self.run_command('git show %s:%s' % (commit_spec, path),)
+        return self.run_command('git show {}:{}'.format(commit_spec, path), silent=True)
 
 
     def patch_from_commit(self, commit_ref, path=None):
@@ -224,5 +225,6 @@ class SourceTree(object):
 
         self.patch_from_commit(listing.commit_ref, listing.filename)
         listing.was_written = True
-        print('applied commit')
+        print('applied commit. new contents:')
+        print(self.get_contents(listing.filename))
 
