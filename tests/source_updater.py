@@ -116,7 +116,7 @@ class Source(object):
     def _import_nodes(self):
         for node in self.ast:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
-                node.full_line = self.lines[node.lineno -1]
+                node.full_line = self.lines[node.lineno - 1]
                 yield node
 
     @property
@@ -227,7 +227,7 @@ class Source(object):
         lines_after_class = '\n'.join(self.lines[klass.last_line + 1:])
         print('lines after\n', lines_after_class)
         new_class = klass.source + '\n\n\n' + '\n'.join(
-                '    ' + l for l in new_lines
+            '    ' + l for l in new_lines
         )
         print('new class\n', new_class)
         self.contents = lines_before_class + '\n' + new_class + '\n' + lines_after_class
@@ -259,12 +259,9 @@ class Source(object):
 
     def update(self, new_contents):
         self.contents = new_contents
-        self.contents = re.sub(r' +#$', '', self.contents, re.MULTILINE)
-
 
 
     def get_updated_contents(self):
-
         if not self.contents.endswith('\n'):
             self.contents += '\n'
         return self.contents

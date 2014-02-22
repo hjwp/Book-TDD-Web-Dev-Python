@@ -704,12 +704,6 @@ class SourceUpdateTest(unittest.TestCase):
         s.update('new stuff')
         self.assertEqual(s.get_updated_contents(), 'new stuff\n')
 
-    def test_strips_line_callouts(self):
-        s = Source()
-        s.update('hello\nbla #')
-        assert s.get_updated_contents() == 'hello\nbla\n'
-
-
 
 if __name__ == '__main__':
     unittest.main()
