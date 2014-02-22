@@ -34,6 +34,9 @@ class Chapter16Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
+
+        # tidy up any .origs from patches
+        self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
         self.check_final_diff(self.chapter_no)
 
 
