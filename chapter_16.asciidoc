@@ -1,39 +1,52 @@
 Server-side authentication and mocking in Python
 ------------------------------------------------
 
-Let's crack on with the server side of our new auth system.
-
-NOTE: as with all new chapters, I'd really appreciate feedback.  How is 
-the pace?  What do you think of the "left as an exercise for the reader"
-bit at the end?
+Let's crack on with the server side of our new auth system.  In this chapter we'll
+do some more mocking, this time with Python.  We'll also find out about how to
+customise Django's authentication system.
 
 
-Mocking in Python
-~~~~~~~~~~~~~~~~~
+A look at our spiked login view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here's the spiked version of our view:
+At the end of the last chapter, we had a working client-side that was trying to
+send authentication assertions to our server's login view.  Let's start by
+building that view, and then move inwards to build the back-end authentication
+functions.
+
+Here's the spiked version of our login view:
 
 [role='skipme']
 [source,python]
 ----
-def login(request):
+def persona_login(request):
     print('login view', file=sys.stderr)
     #user = PersonaAuthenticationBackend().authenticate(request.POST['assertion'])
-    user = authenticate(assertion=request.POST['assertion'])
+    user = authenticate(assertion=request.POST['assertion'])  #<1>
     if user is not None:
-        auth_login(request, user)
+        login(request, user)  #<2>
     return redirect('/')
 ----
+
+<1> `authenticate` is our customised authentication function, which we'll
+    de-spike later.  Its job is to take the assertion from the client-side and
+    validate it.
+
+<2> `login` is Django's built-in login function. It stores a session
+    object on the server, tied to the user's cookies, so that we can recognise
+    them as being an authenticated user on future requests.
 
 Our authenticate function is going to make calls out, over the internet, to
 Mozilla's servers.  We don't want that to happen in our unit test, so we'll
 want to mock out `authenticate`.
 
-//TODO: explain auth_login
 
-The popular 'mock' package was added to the standard libary as part of Python
-3. It provides a magical object called a Mock, which is a bit like the sinon
-spy objects we saw in the last chapter, only much cooler.  Check this out:
+Mocking in Python
+~~~~~~~~~~~~~~~~~
+
+The popular 'mock' package was added to the standard library as part of Python
+3. It provides a magical object called a Mock, which is a bit like the Sinon
+mock objects we saw in the last chapter, only much cooler.  Check this out:
 
 
 [role='skipme']
@@ -57,7 +70,6 @@ True
 1
 ----
 
-
 A mock object would be a pretty neat thing to use to mock out the authenticate
 function, wouldn't it?  Here's how you can do that:
 
@@ -75,16 +87,16 @@ from unittest.mock import patch
 
 class LoginViewTest(TestCase):
 
-    @patch('accounts.views.authenticate') #<1>
+    @patch('accounts.views.authenticate')  #<1>
     def test_calls_authenticate_with_assertion_from_post(
-        self, mock_authenticate #<2>
+        self, mock_authenticate  #<2>
     ):
-        mock_authenticate.return_value = None #<3>
+        mock_authenticate.return_value = None  #<3>
         self.client.post('/accounts/login', {'assertion': 'assert this'})
-        mock_authenticate.assert_called_once_with(assertion='assert this') #<4>
+        mock_authenticate.assert_called_once_with(assertion='assert this')  #<4>
 ----
 
-<1> The decorator called `patch` is a bit like the sinon `spy` function we 
+<1> The decorator called `patch` is a bit like the Sinon `mock` function we 
     saw in the last chapter.  It lets you specify an object you want to "mock
     out". In this case we're mocking out the authenticate function, which we
     expect to be using in 'accounts/views.py'. 
@@ -98,7 +110,7 @@ class LoginViewTest(TestCase):
     that would probably confuse our view.
 
 <4> Mocks can make assertions! In this case, they can check whether they were
-    called, and what with
+    called, and what with.
     
 
 So what does that give us?
@@ -113,7 +125,12 @@ AttributeError: <module 'accounts.views' from
 ----
 
 We tried to patch something that doesn't exist yet.  We need to import 
-authenticate into our views.py:
+footnote:[Even though we're going to define our own authenticate function,
+we still import from `django.contrib.auth`. Django will dynamically replace
+it with our function once we've configured it in 'settings.py'. This has the
+benefit that, if we later switch to a 3rd party library for our authenticate
+function, our views.py doesn't need to change.]
+`authenticate` into our 'views.py':
 
 
 [role="sourcecode"]
@@ -239,26 +256,21 @@ def login(request):
 
 OK so far. One Python function mocked and tested.
 
-But our authenticate view also needs to call the Django auth.login 
-function if authenticate returns a user, and then it needs to return 
-something other than an empty response -- since this is an Ajax view,
-it doesn't need to return HTML, just an "OK" string will do.  We'll need to
-mock out the `auth_login` view as well:
-
+But our authenticate view also needs to actually log the user in by
+calling the Django `auth.login` function, if authenticate returns a user. 
+Then it needs to return something other than an empty response -- since this is
+an Ajax view, it doesn't need to return HTML, just an "OK" string will do.
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch16l012)
+.accounts/tests/test_views.py (ch16l012-1)
 [source,python]
 ----
 from django.contrib.auth import get_user_model
-from django.http import HttpRequest
 from django.test import TestCase
 from unittest.mock import patch
 
 User = get_user_model()  #<1>
-
-from accounts.views import login
 
 
 class LoginViewTest(TestCase):
@@ -275,7 +287,30 @@ class LoginViewTest(TestCase):
         mock_authenticate.return_value = user
         response = self.client.post('/accounts/login', {'assertion': 'a'})
         self.assertEqual(response.content.decode(), 'OK')
+----
 
+<1> I should explain this use of `get_user_model` from `django.contrib.auth`.
+    Its job is to find the project's User model, and it works whether you're
+    using the standard User model or a custom one (like we will be)
+
+That test covers the desired response.  Now test that the user
+actually gets logged in correctly.  We can do that by inspecting the
+Django test client, to see if the session cookie has been set correctly.
+
+TIP: Check out the 
+https://docs.djangoproject.com/en/1.6/topics/auth/default/#how-to-log-a-user-in[Django 
+docs on authentication] at this point.
+
+`auth_login`
+gets called correctly.  We do that by mocking it too:
+
+[role="sourcecode"]
+.accounts/tests/test_views.py (ch16l012-2)
+[source,python]
+----
+from django.http import HttpRequest
+from accounts.views import login
+[...]
 
     @patch('accounts.views.auth_login')
     @patch('accounts.views.authenticate')
@@ -300,10 +335,6 @@ class LoginViewTest(TestCase):
         login(request)
         self.assertFalse(mock_auth_login.called)
 ----
-
-<1> I should explain this use of `get_user_model` from `django.contrib.auth`.
-    Its job is to find the project's User model, and it works whether you're
-    using the standard User model or a custom one (like we will be)
 
 Notice that, for these tests, we go back to importing the view function
 directly, and calling it with an `HttpRequest` we build manually.  The Django
@@ -1021,14 +1052,14 @@ django.contrib.auth.models.DoesNotExist
 ----
 
 
-<1> We call `get_user`
+<1> We call `get_user`.
 
-<2> `get_user` calls `User.objects.get`
+<2> `get_user` calls `User.objects.get`.
 
 <3> Because `User.objects.get` is mocked out, the call is diverted into the
-    mock library's code
+    mock library's code.
 
-<4> Mock calls our pre-prepared exception-raising function.
+<4> Mock calls our pre-prepared exception-raising function..
 
 
 As you can see, mocks are powerful, but they can be pretty mind-bending!
