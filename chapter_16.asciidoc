@@ -27,6 +27,7 @@ def persona_login(request):
         login(request, user)  #<2>
     return redirect('/')
 ----
+//TODO: make it same as the actual spike??  ie auth_login
 
 <1> `authenticate` is our customised authentication function, which we'll
     de-spike later.  Its job is to take the assertion from the client-side and
@@ -72,6 +73,10 @@ True
 
 A mock object would be a pretty neat thing to use to mock out the authenticate
 function, wouldn't it?  Here's how you can do that:
+
+
+Testing our view by mocking out authenticate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 (I trust you to set up a tests folder with a dunderinit. Don't forget to delete
 the default 'tests.py', as well.)
@@ -169,7 +174,7 @@ urlpatterns = patterns('',
 from django.conf.urls import patterns, url
 
 urlpatterns = patterns('',
-    url(r'^login$', 'accounts.views.login', name='login'),
+    url(r'^login$', 'accounts.views.persona_login', name='persona_login'),
 )
 ----
 
@@ -181,14 +186,14 @@ Will a minimal view do anything?
 ----
 from django.contrib.auth import authenticate
 
-def login():
+def persona_login():
     pass
 ----
 
 Yep:
 
 ----
-TypeError: login() takes 0 positional arguments but 1 was given
+TypeError: persona_login() takes 0 positional arguments but 1 was given
 ----
 
 And so:
@@ -197,14 +202,15 @@ And so:
 .accounts/views.py (ch16l008)
 [source,python]
 ----
-def login(request):
+def persona_login(request):
     pass
 ----
 
 Then
 
 ----
-ValueError: The view accounts.views.login didn't return an HttpResponse object.
+ValueError: The view accounts.views.persona_login didn't return an HttpResponse
+object.
 ----
 
 [role="sourcecode"]
@@ -214,7 +220,7 @@ ValueError: The view accounts.views.login didn't return an HttpResponse object.
 from django.contrib.auth import authenticate
 from django.http import HttpResponse
 
-def login(request):
+def persona_login(request):
     return HttpResponse()
 ----
 
@@ -230,7 +236,7 @@ We try:
 .accounts/views.py
 [source,python]
 ----
-def login(request):
+def persona_login(request):
     authenticate()
     return HttpResponse()
 ----
@@ -248,13 +254,16 @@ And then we can fix that too:
 .accounts/views.py
 [source,python]
 ----
-def login(request):
+def persona_login(request):
     authenticate(assertion=request.POST['assertion'])
     return HttpResponse()
 ----
 
-
 OK so far. One Python function mocked and tested.
+
+
+Checking the view actually logs the user in
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 But our authenticate view also needs to actually log the user in by
 calling the Django `auth.login` function, if authenticate returns a user. 
@@ -301,27 +310,33 @@ TIP: Check out the
 https://docs.djangoproject.com/en/1.6/topics/auth/default/#how-to-log-a-user-in[Django 
 docs on authentication] at this point.
 
-`auth_login`
-gets called correctly.  We do that by mocking it too:
 
 [role="sourcecode"]
 .accounts/tests/test_views.py (ch16l012-2)
 [source,python]
 ----
-from django.http import HttpRequest
-from accounts.views import login
+from django.contrib.auth import get_user_model, SESSION_KEY
 [...]
 
-    @patch('accounts.views.auth_login')
     @patch('accounts.views.authenticate')
-    def test_calls_auth_login_if_authenticate_returns_a_user(
-        self, mock_authenticate, mock_auth_login
+    def test_gets_logged_in_session_if_authenticate_returns_a_user(
+        self, mock_authenticate
     ):
-        request = HttpRequest()
-        request.POST['assertion'] = 'asserted'
-        mock_user = mock_authenticate.return_value
-        login(request)
-        mock_auth_login.assert_called_once_with(request, mock_user)
+        user = User.objects.create(email='a@b.com')
+        user.backend = '' # required for auth_login to work
+        mock_authenticate.return_value = user
+        self.client.post('/accounts/login', {'assertion': 'a'})
+        self.assertEqual(self.client.session[SESSION_KEY], user.pk)
+
+
+    @patch('accounts.views.authenticate')
+    def test_does_not_get_logged_in_if_authenticate_returns_None(
+        self, mock_authenticate
+    ):
+        mock_authenticate.return_value = None
+        self.client.post('/accounts/login', {'assertion': 'a'})
+        self.assertNotIn(SESSION_KEY, self.client.session)
+----
 
 
     @patch('accounts.views.auth_login')
@@ -1391,7 +1406,7 @@ Lovely.  Then we wire up our various context variables for the call to
         var user = "{{ user.email }}" || null;
         var token = "{{ csrf_token }}";
         var urls = {
-            login: "{% url 'login' %}",
+            login: "{% url 'persona_login' %}",
             logout: "TODO",
         };
         Superlists.Accounts.initialize(navigator, user, token, urls);
@@ -1542,7 +1557,7 @@ to a page of our choice:
 [source,python]
 ----
 urlpatterns = patterns('',
-    url(r'^login$', 'accounts.views.login', name='login'),
+    url(r'^login$', 'accounts.views.persona_login', name='persona_login'),
     url(r'^logout$', 'django.contrib.auth.views.logout', {'next_page': '/'}, name='logout'),
 )
 ----
