@@ -300,11 +300,11 @@ class LoginViewTest(TestCase):
 
 <1> I should explain this use of `get_user_model` from `django.contrib.auth`.
     Its job is to find the project's User model, and it works whether you're
-    using the standard User model or a custom one (like we will be)
+    using the standard User model or a custom one (like we will be).
 
-That test covers the desired response.  Now test that the user
-actually gets logged in correctly.  We can do that by inspecting the
-Django test client, to see if the session cookie has been set correctly.
+That test covers the desired response.  Now test that the user actually gets
+logged in correctly.  We can do that by inspecting the Django test client, to
+see if the session cookie has been set correctly.
 
 TIP: Check out the 
 https://docs.djangoproject.com/en/1.6/topics/auth/default/#how-to-log-a-user-in[Django 
@@ -326,7 +326,7 @@ from django.contrib.auth import get_user_model, SESSION_KEY
         user.backend = '' # required for auth_login to work
         mock_authenticate.return_value = user
         self.client.post('/accounts/login', {'assertion': 'a'})
-        self.assertEqual(self.client.session[SESSION_KEY], user.pk)
+        self.assertEqual(self.client.session[SESSION_KEY], user.pk)  #<1>
 
 
     @patch('accounts.views.authenticate')
@@ -338,38 +338,45 @@ from django.contrib.auth import get_user_model, SESSION_KEY
         self.assertNotIn(SESSION_KEY, self.client.session)
 ----
 
+<1> The Django Test Client keeps track of the session for its user.  For
+    the case where the user gets authenticated successfully, we check that
+    their user ID (the primary key, or pk) is associated with their session.
+
+<2> In the case where the user should not be authenticated, the `SESSION_KEY`
+    should not appear in their session.
+
+
 .Django Sessions: how a user's cookies tells the server she is authenticated
 **********************************************************************
 Being an attempt to explain sessions, cookies, and authentication in Django.
 
-Because HTTP is stateless, servers need a way of identifying clients with
-'every single request' -- IP addresses can be shared, so the usual solution is
-to give the client a unique session ID, which the client will store in a
+Because HTTP is stateless, servers need a way of recognising different clients
+with 'every single request' -- IP addresses can be shared, so the usual
+solution is to give each client a unique session ID, which it will store in a
 cookie, and submit with every request.  The server will store that ID somewhere
 (by default, in the database), and then it can recognise each request that
 comes in as being from a particular client.
 
 If you log into the site using the dev server, you can actually take a look at
-the session ID by hand if you like.  It's stored under the key `sessionid` by
+your session ID by hand if you like.  It's stored under the key `sessionid` by
 default. See <<session-cookie-screenshot>>.
 
 [[session-cookie-screenshot]]
 .Examining the session cookie in the debug toolbar
 image::images/session_cookie_screenshot.png["Screenshot showing the session cookie for a request for our site's homepage"]
 
-
 These session cookies are set for all visitors to a Django site, whether they're
 logged in or not.
 
-When we want to recognise a client as being a logged-in and authenticated,
+When we want to recognise a client as being a logged-in and authenticated user,
 again, rather asking the client to send their username and password with every
 single request, the server can actually just mark that client's session as
-being an authenticated session, and associated it with a user ID in its
+being an authenticated session, and associate it with a user ID in its
 database.
 
 A session is dictionary-like data structure, and the user ID is stored under
 the key given by `django.contrib.auth.SESSION_KEY`.  You can check this out
-in a manage.py console if you like:
+in a `manage.py` console if you like:
 
 [role="skipme"]
 [subs="specialcharacters,macros"]
@@ -389,17 +396,45 @@ In [3]: print(session.get_decoded())
 You can also store any other information you like on a user's session,
 as a way of temporarily keeping track of some state. This works for
 non-logged-in users too.  Just use `request.session` inside any
-view, and it works as a dict.
-
-There's more information in the 
+view, and it works as a dict. There's more information in the 
 https://docs.djangoproject.com/en/1.6/topics/http/sessions/[Django docs on
 sessions]
 
 **********************************************************************
 
+That gives us two failures:
 
-bla
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+    self.assertEqual(self.client.session[SESSION_KEY], user.pk)
+KeyError: '_auth_user_id'
 
+[...]
+AssertionError: '' != 'OK'
++ OK
+----
+
+And we go through another couple of TDD cycles, until:
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    user = authenticate(assertion=request.POST['assertion'])
+    if user:
+        auth_login(request, user)
+    return HttpResponse('OK')
+----
+//ch16l015
+
+...
+
+----
+OK
+----
 
 
 .Testing login with mocks
@@ -408,7 +443,7 @@ An alternative way of testing that the Django login function was called
 correctly would be to mock it out too:
 
 [role="sourcecode skipme"]
-.accounts/tests/test_views.py (ch16l012-2)
+.accounts/tests/test_views.py
 [source,python]
 ----
 from django.http import HttpRequest
@@ -437,63 +472,6 @@ than testing behaviour -- it's tightly coupled to the particular
 name of the Django login function and its API.  
 
 **********************************************************************
-Notice that, for these tests, we go back to importing the view function
-directly, and calling it with an `HttpRequest` we build manually.  The Django
-Test Client does a bit too much magic, and for these highly mocky tests, we
-need more control -- we need to check that `auth_login` was passed the same
-`request` object that we called the view with, for example, and that's not
-possible if you use the Django client.
-
-That gives us:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-AttributeError: <module 'accounts.views' from
-'/workspace/superlists/accounts/views.py'> does not have the attribute
-'auth_login'
-[...]
-AttributeError: <module 'accounts.views' from
-'/workspace/superlists/accounts/views.py'> does not have the attribute
-'auth_login'
-[...]
-AssertionError: '' != 'OK'
-+ OK
-----
-
-Adding the import takes us down to two failures:
-
-[role="sourcecode"]
-.accounts/views.py
-[source,python]
-----
-from django.contrib.auth import authenticate
-from django.contrib.auth import login as auth_login
-from django.http import HttpResponse
-[...]
-----
-
-And we go through another couple of TDD cycles, until:
-
-
-[role="sourcecode"]
-.accounts/views.py
-[source,python]
-----
-def login(request):
-    user = authenticate(assertion=request.POST['assertion'])
-    if user:
-        auth_login(request, user)
-    return HttpResponse('OK')
-----
-//ch16l015
-
-...
-
-----
-OK
-----
 
 
 De-spiking our custom authentication back-end: mocking out an internet request
@@ -607,7 +585,7 @@ At this point we'll need to
 NOTE: don't forget to add `requests` to 'requirements.txt' too, or the 
 next deploy won't work...
 
-//TODO - consider making all tetsts (virtualenv) ones?
+//TODO - consider making all tests (virtualenv) ones?
 
 Then let's see how the tests get on!
 
