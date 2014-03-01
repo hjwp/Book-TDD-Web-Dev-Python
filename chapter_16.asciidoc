@@ -1,9 +1,9 @@
 Server-side authentication and mocking in Python
 ------------------------------------------------
 
-Let's crack on with the server side of our new auth system.  In this chapter we'll
-do some more mocking, this time with Python.  We'll also find out about how to
-customise Django's authentication system.
+Let's crack on with the server side of our new auth system.  In this chapter
+we'll do some more mocking, this time with Python.  We'll also find out about
+how to customise Django's authentication system.
 
 
 A look at our spiked login view
@@ -323,7 +323,7 @@ from django.contrib.auth import get_user_model, SESSION_KEY
         self, mock_authenticate
     ):
         user = User.objects.create(email='a@b.com')
-        user.backend = '' # required for auth_login to work
+        user.backend = ''  # required for auth_login to work
         mock_authenticate.return_value = user
         self.client.post('/accounts/login', {'assertion': 'a'})
         self.assertEqual(self.client.session[SESSION_KEY], user.pk)  #<1>
@@ -335,7 +335,7 @@ from django.contrib.auth import get_user_model, SESSION_KEY
     ):
         mock_authenticate.return_value = None
         self.client.post('/accounts/login', {'assertion': 'a'})
-        self.assertNotIn(SESSION_KEY, self.client.session)
+        self.assertNotIn(SESSION_KEY, self.client.session)  #<2>
 ----
 
 <1> The Django Test Client keeps track of the session for its user.  For
@@ -365,8 +365,8 @@ default. See <<session-cookie-screenshot>>.
 .Examining the session cookie in the debug toolbar
 image::images/session_cookie_screenshot.png["Screenshot showing the session cookie for a request for our site's homepage"]
 
-These session cookies are set for all visitors to a Django site, whether they're
-logged in or not.
+These session cookies are set for all visitors to a Django site, whether
+they're logged in or not.
 
 When we want to recognise a client as being a logged-in and authenticated user,
 again, rather asking the client to send their username and password with every
@@ -474,7 +474,7 @@ name of the Django login function and its API.
 **********************************************************************
 
 
-De-spiking our custom authentication back-end: mocking out an internet request
+De-spiking our custom authentication back-end: mocking out an Internet request
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -703,13 +703,11 @@ object. We expect this to fail.
 
 
 [role="sourcecode"]
-.accounts/tests/test_authentication.py (ch16l022)
+.accounts/tests/test_authentication.py (ch16l022-1)
 [source,python]
 ----
-from unittest.mock import Mock, patch
 from django.contrib.auth import get_user_model
 User = get_user_model()
-from django.test import TestCase
 [...]
 
     def test_finds_existing_user_with_email(self, mock_post):
@@ -742,28 +740,57 @@ User = get_user_model()
             PERSONA_VERIFY_URL,
             data={'assertion': assertion, 'audience': DOMAIN}
         )
-        return User.objects.all()[0]
+        return User.objects.first()
 ----
 
-That gets our new test passing, but other the other tests fail:
+That gets our new test passing, but still, none of the other tests
+are failing:
 
 ----
-ERROR: test_returns_none_if_response_errors
-IndexError: list index out of range
-[...]
-ERROR: test_returns_none_if_status_not_okay
-IndexError: list index out of range
-[...]
-ERROR: test_sends_assertion_to_mozilla_with_domain
-IndexError: list index out of range
+Ran 8 tests in 0.030s
+
+OK
 ----
 
-The positive case passes, we now need to build some of our guards for
-cases where authentication should fail -- if the response errors, or if
-the status is not okay.  Let's start with this:
+They're passing because `objects.first()` returns None if there are
+no users in the database.  Let's make our other cases more realistic,
+by making sure there's always at least one user in the database for all
+our tests.
 
 [role="sourcecode"]
-.accounts/authentication.py (ch16l024)
+.accounts/tests/test_authentication.py (ch16l022-2)
+[source,python]
+----
+    def setUp(self):
+        self.backend = PersonaAuthenticationBackend()
+        user = User(email='other@user.com')
+        user.username = 'otheruser'  #<1> 
+        user.save()
+----
+
+<1> By default, Django's users have a username attribute, which has to
+    be unique, so this value is just a placeholder to allow us to create
+    multiple users. Later on, we'll get rid of usernames in favour of using
+    emails as the primary key.  
+
+That gives us three failures:
+
+----
+FAIL: test_finds_existing_user_with_email
+AssertionError: <User: otheruser> != <User: >
+[...]
+FAIL: test_returns_none_if_response_errors
+AssertionError: <User: otheruser> is not None
+[...]
+FAIL: test_returns_none_if_status_not_okay
+AssertionError: <User: otheruser> is not None
+----
+
+Let's start building our guards for cases where authentication should fail -- if
+the response errors, or if the status is not okay.  Suppose we start with this:
+
+[role="sourcecode"]
+.accounts/authentication.py (ch16l024-1)
 [source,python]
 ----
 def authenticate(self, assertion):
@@ -772,20 +799,36 @@ def authenticate(self, assertion):
         data={'assertion': assertion, 'audience': DOMAIN}
     )
     if response.json()['status'] == 'okay':
-        return User.objects.all()[0]
+        return User.objects.first()
 ----
 
-That actually fixes all three, slightly surprisingly:
+That actually fixes two of the tests, slightly surprisingly:
+
+----
+AssertionError: <User: otheruser> != <User: >
+
+Ran 8 tests in 0.025s
+
+FAILED (failures=1)
+----
+
+Let's get our test to find the right user, and then we'll have a look
+at that surprise pass.
+
+
+[role="sourcecode"]
+.accounts/authentication.py (ch16l024-2)
+[source,python]
+----
+    if response.json()['status'] == 'okay':
+        return User.objects.get(email=response.json()['email'])
+----
+
+...
 
 ----
 OK
 ----
-
-But we know we've got a couple of "cheats".  Let's add the to our 
-scratchpad for now.
-
-* authenticate is just returning the first user it finds
-* why is the test for response.ok passing?
 
 
 Beware of Mocks in boolean comparisons
@@ -802,15 +845,17 @@ can also behave like a dictionary. More info in the
 http://docs.python.org/dev/library/unittest.mock-magicmethods.html[docs]]
 . So, when we do our 
 
-[role="skipme"]
+[role="sourcecode currentcontents"]
+.accounts/tests/test_authentication.py
 [source,python]
 ----
     if response.json()['status'] == 'okay':
 ----
 
-What we actually end up doing is comparing a Mock with the string "okay",
-which evaluates to false, and so we return None by default. Let's make our test
-more explicit:
+That means that `response` is a mock, `response.json()` is a mock, and 
+`response.json()['status']` is a mock too! We end up comparing a Mock with the
+string "okay", which evaluates to False, and so we return None by default.
+Let's make our test more explicit:
 
 
 [role="sourcecode"]
@@ -818,6 +863,7 @@ more explicit:
 [source,python]
 ----
     def test_returns_none_if_response_errors(self, mock_post):
+        User.objects.create(email='wrong@user.com')
         mock_post.return_value.ok = False
         mock_post.return_value.json.return_value = {}
         user = self.backend.authenticate('an assertion')
@@ -838,13 +884,8 @@ And we can fix it like this:
 .accounts/authentication.py (ch16l026)
 [source,python]
 ----
-    def authenticate(self, assertion):
-        response = requests.post(
-            PERSONA_VERIFY_URL,
-            data={'assertion': assertion, 'audience': DOMAIN}
-        )
-        if response.ok and response.json()['status'] == 'okay':
-            return User.objects.all()[0]
+    if response.ok and response.json()['status'] == 'okay':
+        return User.objects.get(email=response.json()['email'])
 ----
 
 ...
@@ -853,10 +894,8 @@ And we can fix it like this:
 OK
 ----
 
-Good.
+Great!  Our authenticate function is now working the way we want it to.
 
-* authenticate is just returning the first user it finds
-* [strikethrough line-through]#why is the test for response.ok passing?#
 
 Creating a user if necessary
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -871,18 +910,18 @@ for that:
 .accounts/tests/test_authentication.py (ch16l027)
 [source,python]
 ----
-    def test_creates_new_user_if_necessary_for_valid_assertion_(self, mock_post):
+    def test_creates_new_user_if_necessary_for_valid_assertion(self, mock_post):
         mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
         found_user = self.backend.authenticate('an assertion')
-        new_user = User.objects.all()[0]
-        self.assertEqual(found_user, new_user)
-        self.assertEqual(found_user.email, 'a@b.com')
+        new_user = User.objects.get(email='a@b.com')
 ----
 
-That fails as follows:
+That fails as in our application code, when we try find an existing user
+with that email:
 
 ----
-IndexError: list index out of range
+    return User.objects.get(email=response.json()['email'])
+django.contrib.auth.models.DoesNotExist: User matching query does not exist.
 ----
 
 So we add a try/except, returning an "empty" user at first:
@@ -894,20 +933,20 @@ So we add a try/except, returning an "empty" user at first:
 ----
     if response.ok and response.json()['status'] == 'okay':
         try:
-            return User.objects.all()[0]
-        except:
+            return User.objects.get(email=response.json()['email'])
+        except User.DoesNotExist:
             return User.objects.create()
 ----
 
-And that fails because our new user doesn't have the right email:
-
+And that fails, but this time it fails when the 'test' tries to find the
+new user by email:
 
 ----
-    self.assertEqual(found_user.email, 'a@b.com')
-AssertionError: '' != 'a@b.com'
+    new_user = User.objects.get(email='a@b.com')
+django.contrib.auth.models.DoesNotExist: User matching query does not exist.
 ----
 
-And so we fix it by getting the email from the response json:
+And so we fix it by assigning the correct email addresss:
 
 
 [role="sourcecode"]
@@ -917,7 +956,7 @@ And so we fix it by getting the email from the response json:
     if response.ok and response.json()['status'] == 'okay':
         email = response.json()['email']
         try:
-            return User.objects.all()[0]
+            return User.objects.get(email=email)
         except:
             return User.objects.create(email=email)
 ----
@@ -947,12 +986,13 @@ creating actual objects in the database, and by letting the method use the
 ORM to find them, or not.
 
 But, since we're learning about mocks, I thought I'd show how to mock out the
-Django ORM.  Although I have no qualms about using the database in my unit tests,
-some people really don't like it: the objection is that "true" unit tests should
-have no external dependencies at all,  and should never touch the database. 
+Django ORM.  Although I have no qualms about using the database in my unit
+tests, some people really don't like it: the objection is that "true" unit
+tests should have no external dependencies at all,  and should never touch the
+database. 
 
 NOTE: You can find out more about the "purist" approach to unit testing in 
-the appendix entitled "The Database is Hot Lava".
+    the appendix entitled "The Database is Hot Lava".
 
 So, by way of an educational exercise, here's how to avoid touching the
 database by mocking out the Django ORM. We'll also learn about how to use
@@ -1074,10 +1114,10 @@ writing, but that is the interface we have to comply with. See
 https://github.com/django/django/blob/1.6c1/django/contrib/auth/backends.py#L66[the source]).
 
 Ordinarily, if you do an ORM lookup and the user doesn't exist, it will 
-raise an Exception.  Since we're mocking out the ORM in these tests, we
-have to simulate that exception.  This is a good chance to learn about how
-to test exception handling with mocks. We do it by setting a special
-Mock attribute called `side_effect`:
+raise a `User.DoesNotExist` exception, as we saw earlier.  Since we're mocking
+out the ORM in these tests, we have to simulate that exception.  This is a good
+chance to learn about how to test exception handling with mocks. We do it by
+setting a special Mock attribute called `side_effect`:
 
 
 [role="sourcecode"]
@@ -1158,7 +1198,7 @@ any case, here's our implementation:
 ----
 
 
-And we 'almost' have a working authentication backend.  
+And we have a working authentication backend!
 
 [subs="specialcharacters,macros"]
 ----
@@ -1168,13 +1208,7 @@ Ran 11 tests in 0.020s
 OK
 ----
 
-We still have one item on our scratchpad
-
-* authenticate is just returning the first user it finds
-* [strikethrough line-through]#why is the test for response.ok passing?#
-
-
-Before we can fix that, we'll need to define our custom user model.
+Now we can define our custom user model.
 
 
 A minimal custom user model
@@ -1381,58 +1415,6 @@ OK
 ----
 
 
-Fixing our cheat
-^^^^^^^^^^^^^^^^
-
-Remember our little "cheat"?  Now that we have a custom user model that 
-only know about email, we can apply a little tweak to our authentication
-unit test, which we couldn't before:
-
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py (ch16l045)
-[source,python]
-----
-def test_finds_existing_user_with_email(self, mock_post):
-    mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
-    User.objects.create(email='someone@else.com')
-    actual_user = User.objects.create(email='a@b.com')
-    found_user = self.backend.authenticate('an assertion')
-    self.assertEqual(found_user, actual_user)
-----
-
-We create the user with the username `someone@else.com`, to make sure our
-implementation doesn't just grab any old user. Now the test fails:
-
-----
-FAIL: test_finds_existing_user_with_email
-[...]
-AssertionError: <User: User object> != <User: User object>
-----
-
-//TODO: consider implementing a repr for the user?
-
-
-And so we can improve on our "cheat" implementation:
-
-
-[role="sourcecode"]
-.accounts/authentication.py (ch16l046)
-[source,python]
-----
-def authenticate(self, assertion):
-    [...]
-        email = response.json()['email']
-        try:
-            return User.objects.get(email=email)
-        except:
-            return User.objects.create(email=email)
-----
-//TODO: except User.DoesNotExist?
-
-And we're back to passing tests.
-
-
 The moment of truth:  will the FT pass?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1532,8 +1514,8 @@ I started off writing code a bit like this:
 ----
 //49
 
-And, after 4 repetitions of very similar code, a helper function suggested
-itself:
+And, after 4 repetitions of very similar code, a couple of helper functions
+suggested themselves:
 
 
 [role="sourcecode"]
@@ -1590,7 +1572,7 @@ I also found that improving the failure message in the
     def wait_for_element_with_id(self, element_id):
         WebDriverWait(self.browser, timeout=20).until(
             lambda b: b.find_element_by_id(element_id),
-            'Could not find element with id %s. Page text was %s' % (
+            'Could not find element with id {}. Page text was {}'.format(
                 element_id, self.browser.find_element_by_tag_name('body').text
             )
         )
@@ -1676,13 +1658,13 @@ Mocks are truthy and can mask error::
 
 Mocking the Django ORM::
     If you want to avoid "touching" the database in your tests, you can
-    use Mock to simulate the Django ORM.  Sometimes, this is more trouble
+    use Mock to simulate the Django ORM.  I tend to think that's more trouble
     than it's worth. See the "Hot Lava" appendix for more discussion.
 
 Too many mocks are a code smell::
     Overly mocky tests end up very tightly coupled to their implementation.
     Sometimes this is unavoidable.  But, in general, try to find ways
-    of organising your code so that you don't need too many mocks, if you can.
+    of organising your code so that you don't need too many mocks.
 
 *******************************************************************************
 
