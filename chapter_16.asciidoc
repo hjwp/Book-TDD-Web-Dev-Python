@@ -426,7 +426,7 @@ couple of TDD cycles, until:
 from django.contrib.auth import authenticate, login
 from django.http import HttpResponse
 
-def login(request):
+def persona_login(request):
     user = authenticate(assertion=request.POST['assertion'])
     if user:
         login(request, user)
@@ -753,7 +753,11 @@ User = get_user_model()
 That gets our new test passing, but still, none of the other tests
 are failing:
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+
 Ran 8 tests in 0.030s
 
 OK
@@ -814,8 +818,6 @@ That actually fixes two of the tests, slightly surprisingly:
 ----
 AssertionError: <User: otheruser> != <User: >
 
-Ran 8 tests in 0.025s
-
 FAILED (failures=1)
 ----
 
@@ -853,7 +855,7 @@ http://docs.python.org/dev/library/unittest.mock-magicmethods.html[docs]]
 . So, when we do our 
 
 [role="sourcecode currentcontents"]
-.accounts/tests/test_authentication.py
+.accounts/authentication.py
 [source,python]
 ----
     if response.json()['status'] == 'okay':
@@ -917,11 +919,11 @@ for that:
 .accounts/tests/test_authentication.py (ch16l027)
 [source,python]
 ----
-    def test_creates_new_user_if_necessary_for_valid_assertion(self, mock_post):
-        mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
-        found_user = self.backend.authenticate('an assertion')
-        new_user = User.objects.get(email='a@b.com')
-        self.assertEqual(found_user, new_user)
+def test_creates_new_user_if_necessary_for_valid_assertion(self, mock_post):
+    mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
+    found_user = self.backend.authenticate('an assertion')
+    new_user = User.objects.get(email='a@b.com')
+    self.assertEqual(found_user, new_user)
 ----
 
 That fails as in our application code, when we try find an existing user
@@ -965,7 +967,7 @@ And so we fix it by assigning the correct email addresss:
         email = response.json()['email']
         try:
             return User.objects.get(email=email)
-        except:
+        except User.DoesNotExist:
             return User.objects.create(email=email)
 ----
 
@@ -1108,8 +1110,6 @@ And so we call `get` with the email as an argument:
 That gets us to passing tests:
 
 ----
-Ran 10 tests in 0.027s
-
 OK
 ----
 
@@ -1164,7 +1164,7 @@ You can actually trace the effect of our mocking in the traceback we get:
 ----
 ERROR: test_returns_none_if_user_does_not_exist
 [...]
-  File "/workspace/superlists/accounts/tests/test_authentication.py", line 70,
+  File "/workspace/superlists/accounts/tests/test_authentication.py", line 73,
 in test_returns_none_if_user_does_not_exist
     self.assertIsNone(backend.get_user('a@b.com'))<1>
   File "/workspace/superlists/accounts/authentication.py", line 25, in get_user
@@ -1173,7 +1173,7 @@ in test_returns_none_if_user_does_not_exist
     return _mock_self._mock_call(*args, **kwargs)<3>
   File "/usr/lib/python3.3/unittest/mock.py", line 911, in _mock_call
     ret_val = effect(*args, **kwargs)
-  File "/workspace/superlists/accounts/tests/test_authentication.py", line 66,
+  File "/workspace/superlists/accounts/tests/test_authentication.py", line 69,
 in raise_no_user_error<4>
     raise User.DoesNotExist()
 django.contrib.auth.models.DoesNotExist
@@ -1373,25 +1373,21 @@ to give your tests explicit, verbose method names.
 A slight disappointment
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-Meanwhile, we have a weird unexpected failure:
+Meanwhile, we have a couple of weird unexpected failure:
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test accounts*]
 [...]
-ERROR: test_returns_OK_when_user_found
-(accounts.tests.test_views.LoginViewTest)
-  File "/workspace/superlists/accounts/tests/test_views.py", line 28, in
-test_returns_OK_when_user_found
-    response = self.client.post('/accounts/login', {'assertion': 'a'})
+ERROR: test_gets_logged_in_session_if_authenticate_returns_a_user
 [...]
-  File "/workspace/superlists/accounts/views.py", line 8, in login
-    auth_login(request, user)
+ERROR: test_returns_OK_when_user_found
 [...]
     user.save(update_fields=['last_login'])
 [...]
 ValueError: The following fields do not exist in this model or are m2m fields:
 last_login
+
 ----
 
 It looks like Django is going to insist on us having a `last_login` field on
