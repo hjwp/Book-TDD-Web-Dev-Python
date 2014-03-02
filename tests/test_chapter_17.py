@@ -24,7 +24,7 @@ class Chapter17Test(ChapterTest):
         self.sourcetree.run_command('rm accounts/tests.py')
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 10
             self.sourcetree.run_command('git checkout {0}'.format(
@@ -36,7 +36,11 @@ class Chapter17Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no)
+
+        # tidy up any .origs from patches
+        self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
+        self.sourcetree.run_command('git add . && git commit -m"final commit ch17"')
+        self.check_final_diff(self.chapter_no, ignore_moves=True)
 
 
 if __name__ == '__main__':

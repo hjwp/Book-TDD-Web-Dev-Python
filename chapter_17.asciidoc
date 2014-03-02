@@ -234,7 +234,8 @@ Here's what happens when we run the functional tests:
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
+$ pass:quotes[*python3 manage.py test functional_tests \
+--liveserver=superlists-staging.ottg.eu*]
 
 ======================================================================
 ERROR: test_login_with_persona (functional_tests.test_login.LoginTest)
@@ -450,7 +451,7 @@ removing the cumbersome 2-line `sed` on `ALLOWED_HOSTS`:
 [source,python]
 ----
 def _update_settings(source_folder, site_name):
-    settings_path = path.join(source_folder, 'superlists/settings.py')
+    settings_path = source_folder + '/superlists/settings.py'
     sed(settings_path, "DEBUG = True", "DEBUG = False")
     sed(settings_path, 'DOMAIN = "localhost"', 'DOMAIN = "%s"' % (site_name,))
     secret_key_file = source_folder + '/superlists/secret_key.py'
@@ -479,8 +480,10 @@ Now we can re-run our FTs, and get to the next failure: our attempt to create
 pre-authenticated sessions doesn't work, so the "My lists" test fails:
 
 [role="skipme"]
+[subs="specialcharacters,macros"]
 ----
-$ python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu
+$ pass:quotes[*python3 manage.py test functional_tests \
+--liveserver=superlists-staging.ottg.eu*]
 
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
 (functional_tests.test_my_lists.MyListsTest)
@@ -551,6 +554,7 @@ def create_pre_authenticated_session(email):
     session.save()
     return session.session_key
 ----
+//15
 
 We've taken the code for `create_pre_authenticated_session` code from
 'test_my_lists.py'.  `handle` will pick up an email address as the first
@@ -594,18 +598,21 @@ $ pass:quotes[*python3 manage.py create_session a@b.com*]
 qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
+Getting the FT to run the management on the server
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Next we need to adjust `test_my_lists` so that it runs the local function
 when we're on the local server, and make it run the management command
 on the staging server if we're on that:
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py
+.functional_tests/test_my_lists.py (ch17l016)
 [source,python]
 ----
 from django.conf import settings
 from .base import FunctionalTest
 from .server_tools import create_session_on_server
-from ..management.commands.create_session import create_pre_authenticated_session
+from .management.commands.create_session import create_pre_authenticated_session
 
 class MyListsTest(FunctionalTest):
 
@@ -626,15 +633,16 @@ class MyListsTest(FunctionalTest):
     [...]
 ----
 
-First let's see how we know whether or not we're working against the 
+
+Let's see how we know whether or not we're working against the 
 staging server. `self.against_staging` gets populated in 'base.py':
 
 
 [role="sourcecode"]
-.functional_tests/base.py
+.functional_tests/base.py (ch17l017)
 [source,python]
 ----
-from .server_tools import reset_database
+from .server_tools import reset_database  #<2>
 
 class FunctionalTest(LiveServerTestCase):
 
@@ -652,7 +660,7 @@ class FunctionalTest(LiveServerTestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if not self.against_staging:
+        if not cls.against_staging:
             LiveServerTestCase.tearDownClass()
 
     def setUp(self):
@@ -705,6 +713,7 @@ def reset_database(host):
         cwd=THIS_FOLDER
     )
 ----
+//18
 
 
 Here we use the `subprocess` module to call some fabric functions using the
@@ -766,6 +775,7 @@ def create_session_on_server(email):
     ))
     print(session_key)
 ----
+//19
 
 Does that make a reasonable amount of sense?  We've got a function that
 can create a session in the database.  If we detect we're running locally,
@@ -776,27 +786,25 @@ command that calls that same function, on the server.
 
 How about an ASCII-art illustration?
 
+[role="skipme"]
+.Locally
 ----
-Locally:
-========
-
 MyListsTest
 .create_pre_authenticated_session --> .management.commands.create_session
                                       .create_pre_authenticated_session
+----
 
-
-Against staging:
-================
-
+[role="skipme"]
+.Against staging:
+----
 MyListsTest
 .create_pre_authenticated_session     .management.commands.create_session
                                       .create_pre_authenticated_session
-     |
-     |                                              /|\
-    \|/                                              |
-
-server_tools                             run manage.py create_session
-.create_session_on_server              
+     |                                              
+    \|/                                             /|\
+                                                     |
+server_tools
+.create_session_on_server               run manage.py create_session 
 
      |                                              /|\
     \|/                                              |
@@ -804,13 +812,37 @@ server_tools                             run manage.py create_session
 subprocess.check_output  -->   fab  -->  fabfile.create_session_on_server
 ----
 
-Anyway, let's see if it works...
+Anyway, let's see if it works.  First, locally, to check we didn't break
+anything:
 
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.MyListsTest \
---liveserver=superlists-staging.ottg.eu*]
+$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+[...]
+OK
+----
+
+
+Next, against the server.  We push our code up first:
+
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *git push*  # you'll need to commit changes first.
+$ *cd deploy_tools*
+$ *fab deploy --host=superlists-staging.ottg.eu*
+----
+
+And now we run the test -- notice we can include `elspeth@` in the 
+specification of the `liveserver` argument now:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists \
+--liveserver=elspeth@superlists-staging.ottg.eu*]
 Creating test database for alias 'default'...
 [superlists-staging.ottg.eu] Executing task 'reset_database'
 ~/sites/superlists-staging.ottg.eu/source/manage.py flush --noinput
@@ -826,9 +858,11 @@ OK
 
 Looking good!  We can re-run all the tests to make sure...
 
+[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
+$ pass:quotes[*python3 manage.py test functional_tests \
+--liveserver=elspeth@superlists-staging.ottg.eu*]
 Creating test database for alias 'default'...
 [superlists-staging.ottg.eu] Executing task 'reset_database'
 [...]
@@ -839,7 +873,9 @@ Destroying test database for alias 'default'...
 ----
 
 Hooray!  But before we can deploy our actual live site, we'd better actually
-give the users what they wanted -- the next chapter describes adding the ability to save their lists.
+give the users what they wanted -- the next chapter describes how to give them
+the ability to save their lists.
+
 
 NOTE: I've shown one way of managing the test database, but you could experiment
 with others -- for example, if you were using MySQL or Postgres, you could open
@@ -847,15 +883,23 @@ up an SSH tunnel to the server, and use port forwarding to talk to the database
 directly.  You could then amend `settings.DATABASES` during FTs to talk to the
 tunnelled port.
 
-WARNING: We're into dangerous territory, now that we have code that can directly
-affect the database on the server.  You want to be very, very careful that you 
+.Warning: be careful not to run test code against the live server
+*******************************************************************************
+We're into dangerous territory, now that we have code that can directly
+affect a database on the server.  You want to be very, very careful that you 
 don't accidentally blow away your production database by running FTs against the
-wrong host.  You might consider putting some safeguards in place at this point. 
-For example, you could put staging and production on different servers, and make it
-so they used different keypairs for authentication, with different passphrases.
+wrong host.  
 
+You might consider putting some safeguards in place at this point. For example,
+you could put staging and production on different servers, and make it so they
+used different keypairs for authentication, with different passphrases.
 
-TODO: save logging code
+This is similar dangerous territory to running tests against the production
+database, if you remember my little story about accidentally sending thousands
+of duplicate invoices to clients.  LFMF.
+
+*******************************************************************************
+
 
 TODO: bake in logging.warning if persona fails, using unit test.
 
