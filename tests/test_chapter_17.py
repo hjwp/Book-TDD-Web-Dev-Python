@@ -10,7 +10,8 @@ class Chapter17Test(ChapterTest):
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
         self.sourcetree.start_with_checkout(self.chapter_no)
-        self.prep_virtualenv()
+        self.sourcetree.run_command('mkdir -p ../database')
+        self.sourcetree.run_command('python3 manage.py syncdb --migrate --noinput')
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing')
@@ -23,11 +24,11 @@ class Chapter17Test(ChapterTest):
         self.sourcetree.run_command('rm accounts/tests.py')
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
-            self.pos = 40
+            self.pos = 10
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch15l024')
+                self.sourcetree.get_commit_spec('ch17l004')
             ))
 
         while self.pos < len(self.listings):
