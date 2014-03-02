@@ -50,6 +50,9 @@ def strip_mock_ids(output):
         output,
     )
 
+def strip_object_ids(output):
+    return re.sub('object at 0x(.+)>', 'object at 0xXX>', output)
+
 
 def strip_git_hashes(output):
     fixed_indexes = re.sub(
@@ -274,12 +277,14 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
         actual_fixed = strip_mock_ids(actual_fixed)
+        actual_fixed = strip_object_ids(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
 
         expected_fixed = fix_test_dashes(expected)
         expected_fixed = strip_test_speed(expected_fixed)
         expected_fixed = strip_git_hashes(expected_fixed)
         expected_fixed = strip_mock_ids(expected_fixed)
+        expected_fixed = strip_object_ids(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
 
         if '\t' in actual_fixed:

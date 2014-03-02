@@ -496,14 +496,20 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         actual = dedent("""
                 self.assertEqual(user, mock_user)
             AssertionError: None != <Mock name='mock()' id='46962183546064'>
-            """
-        ).rstrip()
+            """).rstrip()
         expected = Output(dedent("""
                 self.assertEqual(user, mock_user)
             AssertionError: None != <Mock name='mock()' id='139758452629392'>
             """).rstrip()
         )
 
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_ignores_object_ids(self):
+        actual = "<AnonymousUser object at 0x2b3629047150>"
+        expected = Output("<AnonymousUser object at 0x7f364795ef90>")
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 

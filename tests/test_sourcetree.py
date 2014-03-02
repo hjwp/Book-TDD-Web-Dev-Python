@@ -193,6 +193,45 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def test_line_ordering_check_isnt_confused_by_new_lines_that_dupe_existing(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            some duplicate lines coming up...
+
+            hello
+
+            one more line at end
+            add a line with a dupe of existing
+            hello
+            goodbye
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l031'
+        self._checkout_commit('ch17l030')
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_non_dupes_are_still_order_checked(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            some duplicate lines coming up...
+
+            hello
+
+            one more line at end
+            add a line with a dupe of existing
+            goodbye
+            hello
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l031'
+        self._checkout_commit('ch17l030')
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
     def test_raises_if_any_other_listing_lines_not_in_before_version(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """

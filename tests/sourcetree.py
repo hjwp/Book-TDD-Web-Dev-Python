@@ -202,10 +202,15 @@ class SourceTree(object):
         stripped_future_contents = [l.strip() for l in future_contents.split('\n')]
 
         line_pos_in_commit = 0
-        for line in listing_lines:
+        for listing_pos, line in enumerate(listing_lines):
             if not line or line.strip().startswith('[...'):
                 continue
             if line in commit.lines_to_add:
+                if listing_lines.count(line) > commit.lines_to_add.count(line):
+                    if listing_pos == listing_lines.index(line):
+                        # arbitrarily skip first occurrence of dupe line
+                        # (no way of telling whether dupe is 1st or 2nd)
+                        continue
                 try:
                     line_pos_in_commit = commit.lines_to_add[line_pos_in_commit:].index(line)
                 except ValueError:
