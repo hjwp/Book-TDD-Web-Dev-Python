@@ -4,6 +4,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
+import re
 
 URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/pr01.html',
@@ -33,7 +34,7 @@ URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/apc.html',
 ]
 
-
+metadata_parser = re.compile(r'Comment by (.+) (\d+) (.+ ago)')
 browser = webdriver.Firefox()
 wait = WebDriverWait(browser, 3)
 try:
@@ -51,12 +52,15 @@ try:
 
         elements = browser.find_elements_by_css_selector('.comment')
         for element in elements:
-            metadata = element.find_element_by_css_selector('.comment-body-top').text
-            by = metadata.split()[2]
-            date = ' '.join(metadata.split()[3:])
-
-            comment = element.find_element_by_css_selector('.comment-body-bottom').text
-            print('%s\t%s\t%s\t%s' % (page, by, date, comment))
+            metadata = element.find_element_by_css_selector('.comment-body-top').text.strip()
+            # print(repr(metadata))
+            parsed_metadata = metadata_parser.search(metadata).groups()
+            # print(parsed_metadata)
+            by = parsed_metadata[0]
+            date = parsed_metadata[1] + parsed_metadata[2]
+            if 'month' not in date:
+                comment = element.find_element_by_css_selector('.comment-body-bottom').text
+                print('%s\t%s\t%s\t%s' % (page, by, date, comment))
 
 finally:
     browser.quit()
