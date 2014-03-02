@@ -272,13 +272,12 @@ an Ajax view, it doesn't need to return HTML, just an "OK" string will do.
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch16l012-1)
+.accounts/tests/test_views.py (ch16l011)
 [source,python]
 ----
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from unittest.mock import patch
-
 User = get_user_model()  #<1>
 
 
@@ -312,7 +311,7 @@ docs on authentication] at this point.
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch16l012-2)
+.accounts/tests/test_views.py (ch16l012)
 [source,python]
 ----
 from django.contrib.auth import get_user_model, SESSION_KEY
@@ -416,16 +415,21 @@ AssertionError: '' != 'OK'
 + OK
 ----
 
-And we go through another couple of TDD cycles, until:
+The Django function that takes care of logging in a user, by marking their
+session, is avaialable at `django.contrib.auth.login`. So we go through another
+couple of TDD cycles, until:
 
 [role="sourcecode"]
 .accounts/views.py
 [source,python]
 ----
+from django.contrib.auth import authenticate, login
+from django.http import HttpResponse
+
 def login(request):
     user = authenticate(assertion=request.POST['assertion'])
     if user:
-        auth_login(request, user)
+        login(request, user)
     return HttpResponse('OK')
 ----
 //ch16l015
@@ -435,6 +439,8 @@ def login(request):
 ----
 OK
 ----
+
+We now have a working login view.
 
 
 .Testing login with mocks
@@ -478,7 +484,7 @@ De-spiking our custom authentication back-end: mocking out an Internet request
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-Our custom authentication back-end is next!  Here's how it looked in the spike:
+Our custom authentication back-end is next.  Here's how it looked in the spike:
 
 
 [role="skipme"]
@@ -520,6 +526,7 @@ Decoding this:
   the response JSON.
 * We then extract an email address, and either find an existing user with that 
   address, or create a new one.
+
 
 1 if = 1 more test
 ^^^^^^^^^^^^^^^^^^
@@ -812,8 +819,8 @@ Ran 8 tests in 0.025s
 FAILED (failures=1)
 ----
 
-Let's get our test to find the right user, and then we'll have a look
-at that surprise pass.
+Let's get the final test passing by retrieving the right user, and then we'll
+have a look at that surprise pass.
 
 
 [role="sourcecode"]
@@ -855,7 +862,8 @@ http://docs.python.org/dev/library/unittest.mock-magicmethods.html[docs]]
 That means that `response` is a mock, `response.json()` is a mock, and 
 `response.json()['status']` is a mock too! We end up comparing a Mock with the
 string "okay", which evaluates to False, and so we return None by default.
-Let's make our test more explicit:
+Let's make our test more explicit, by saying that the response JSON will 
+be an empty dict:
 
 
 [role="sourcecode"]
@@ -863,7 +871,6 @@ Let's make our test more explicit:
 [source,python]
 ----
     def test_returns_none_if_response_errors(self, mock_post):
-        User.objects.create(email='wrong@user.com')
         mock_post.return_value.ok = False
         mock_post.return_value.json.return_value = {}
         user = self.backend.authenticate('an assertion')
@@ -914,6 +921,7 @@ for that:
         mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
         found_user = self.backend.authenticate('an assertion')
         new_user = User.objects.get(email='a@b.com')
+        self.assertEqual(found_user, new_user)
 ----
 
 That fails as in our application code, when we try find an existing user
@@ -1098,9 +1106,10 @@ And so we call `get` with the email as an argument:
 ----
 
 That gets us to passing tests:
-...
 
 ----
+Ran 10 tests in 0.027s
+
 OK
 ----
 
