@@ -51,7 +51,8 @@ def main():
             filenames.update(set(wc.filename for wc in all_wordcounts[commit]))
 
         with open('wordcounts.tsv', 'w') as csvfile:
-            fieldnames = ['date', 'subject', 'hash']
+            fieldnames = ['date.{}'.format(thing) for thing in ['year', 'month', 'day', 'hour']]
+            fieldnames += ['subject', 'hash', 'date']
             fieldnames.extend(sorted(filename + " (words)" for filename in filenames))
             fieldnames.extend(sorted(filename + " (lines)" for filename in filenames))
             writer = csv.DictWriter(csvfile, fieldnames, dialect="excel-tab")
@@ -60,7 +61,11 @@ def main():
                 row = {}
                 row['hash'] = commit.hash
                 row['subject'] = commit.subject
-                row['date'] = commit.date
+                row['date'] = ''
+                row['date.year'] = commit.date.year
+                row['date.month'] = commit.date.month
+                row['date.day'] = commit.date.day
+                row['date.hour'] = commit.date.hour
                 for wordcount in wordcounts:
                     row[wordcount.filename + " (words)"] = wordcount.words
                     row[wordcount.filename + " (lines)"] = wordcount.lines
