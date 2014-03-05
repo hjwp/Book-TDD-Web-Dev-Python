@@ -37,9 +37,10 @@ and it also doesn't set itself up to listen on the public internet by default.
 [subs="specialcharacters,quotes"]
 ----
 # instructions taken from jenkins site
-user@server:$ *wget -q -O - http://pkg.jenkins-ci.org/debian/jenkins-ci.org.key | sudo apt-key add -*
+user@server:$ *wget -q -O - http://pkg.jenkins-ci.org/debian/jenkins-ci.org.key |\
+     sudo apt-key add -*
 user@server:$ *echo deb http://pkg.jenkins-ci.org/debian binary/ | sudo tee \
-    /etc/apt/s*ources.list.d/jenkins.list*
+    /etc/apt/sources.list.d/jenkins.list*
 user@server:$ *sudo apt-get update*
 user@server:$ *sudo apt-get install jenkins*
 ----
@@ -51,8 +52,10 @@ While we're at we'll install a few other dependencies:
 user@server:$ *sudo apt-get install git firefox python3 python-virtualenv xvfb*
 ----
 
-You should then be able to visit it at the URL for your server on port `8080`:
+You should then be able to visit it at the URL for your server on port `8080`,
+as in <<jenkins-welcome>>:
 
+[[jenkin-welcome]]
 .A butler! How quaint...
 image::images/jenkins_first_page.png["Jenkins' default welcome screen"]
 
@@ -63,15 +66,23 @@ Configuring Jenkins security
 The first thing we'll do is set up some authentication, since our server is
 available on the public internet:
 
-* Manage Jenkins -> Configure Global Security -> Enable security
-* Choose "Jenkins' own user database", "Matrix-based security"
-* Disable all permissions for Anonymous
-* And add a user for yourself
-* The next screen offers you the option to create an account that matches that
-  username, and set a password
+* Manage Jenkins -> Configure Global Security -> Enable security.
 
+* Choose "Jenkins' own user database", "Matrix-based security".
+
+* Disable all permissions for Anonymous.
+
+* And add a user for yourself, give it all the permissions
+  (<<jenkins-security>>).
+
+* The next screen offers you the option to create an account that matches that
+  username, and set a password.
+footnote:[If you miss that screen, you can still hit "signup", and as long as
+you use the same username you specified earlier, you'll have an account set up]
+
+[[jenkins-security]]
 .Locking it down...
-image::images/jenkins_security_config.png["Jenkins' default welcome screen"]
+image::images/jenkins_security_config.png["Jenkins security config screnshot"]
 
 
 
@@ -79,7 +90,7 @@ Adding required plugins
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 Next we install a few plugins, to help us work with Git, Python, and virtual
-displays:
+displays, see <<installing-plugins>>:
 
 * Manage Jenkins -> Manage Plugins -> Available
 * We'll want the plugins for:
@@ -88,22 +99,28 @@ displays:
     * Xvfb
 
 
+[[installing-plugins]]
 .Installing plugins...
 image::images/jenkins_installing_plugins.png["Jenkins installing plugins"]
 
 Restart afterwards - either using the tick-box on that last screen, or
-from the command-line with a `sudo restart jenkins`.
+from the command-line with a `sudo service jenkins restart`.
 
 
-Telling jenkins where to find Python 3
-++++++++++++++++++++++++++++++++++++++
+Telling jenkins where to find Python 3 and Xvfb
++++++++++++++++++++++++++++++++++++++++++++++++
 
 We need to tell the ShiningPanda plugin where Python 3 is installed 
 (usually `/usr/bin/python3`, but you can check with a `which python3`)
 
-* Manage Jenkins -> Configure System
-* Python -> Python installations -> Add Python 
+* Manage Jenkins -> Configure System.
 
+* Python -> Python installations -> Add Python (<<add-python-to-jenkins>>).
+
+* Xvfb installation -> Add Xvfb installation, enter `/usr/bin` as the
+  installation directory.
+
+[[add-python-to-jenkins]]
 .Where did I leave that Python?
 image::images/jenkins_adding_python3.png["Adding Python 3"]
 
@@ -116,21 +133,25 @@ Now we've got the basic Jenkins configured, let's set up our project.
 
 * New Job -> Build a free-style software project 
 
-* Add the Git repo
+* Add the Git repo, as in <<choose-git-repo>>:
 
+[[choose-git-repo]]
 .Get it from git
 image::images/jenkins_set_git_repo.png["Setting the git repo"]
 
-* Set it to poll every hour (check out the help text here --
+* Set it to poll every hour (<<poll-hourly>>) (check out the help text here --
 there are many other options for ways of triggering builds).
 
+[[poll-hourly]]
 .Poll Github for changes
 image::images/jenkins_poll_scm.png["Config polling github"]
 
 * Run the tests inside a Python 3 virtualenv
 
-* Run the unit tests and functional tests separately
+* Run the unit tests and functional tests separately.  See
+  <<virtualenv-buildstep>>.
 
+[[virtualenv-buildstep]]
 .Virtualenv build steps
 image::images/jenkins_build_in_virtualenv.png["Adding Python 3"]
 
@@ -230,16 +251,18 @@ server use actual browsers.
 The alternative is to set up a virtual display:  we get the server to pretend
 it has a screen attached to it, so Firefox runs happily. There's a few tools
 out there to do this, we'll use one called "Xvfb" (X Virtual Framebuffer) 
+footnote:[Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
+as a way of controlling virtual displays from Python.
 because it's easy to install and use, and because it has a convenient Jenkins
 plug-in
 
-TIP: Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
-as a way of controlling virtual displays from Python.
 
 We go back to our project and hit "Configure" again, then find the section
 called "Build Environment".  Using the virtual display is as simple as
-ticking the box marked "Start Xvfb before the build, and shut it down after.":
+ticking the box marked "Start Xvfb before the build, and shut it down after.",
+as in <<xvfb-tickbox>>:
 
+[[xvfb-tickbox]]
 .Sometimes config is easy
 image::images/jenkins_start_xvfb.png["Tickbox saying we want Xvfb"]
 
@@ -308,12 +331,13 @@ would be good to see a picture of the screen at the moment of the failure,
 and maybe also a dump of the HTML of the page.  We can do that using some
 custom logic in our FT class teardown. We have to do a bit of introspection of
 `unittest` internals, a private attribute called `_outcomeForDoCleanups`, but
-his will work:
+this will work:
 
 [role="sourcecode"]
 .functional_tests/base.py
 [source,python]
 ----
+from datetime import datetime
 import os
 SCREEN_DUMP_LOCATION = os.path.abspath(
     os.path.join(os.path.dirname(__file__), 'screendumps')
@@ -372,7 +396,8 @@ includes the name of the test and its class, as well as a timestamp:
         )
 ----
 
-You can test this first locally by deliberately breaking one of the tests. 
+You can test this first locally by deliberately breaking one of the tests, with
+a `self.fail()` for example.
 
 Then, commit, push, and when we re-run the build on Jenkins, we see this:
 
@@ -385,14 +410,17 @@ screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.html
 
 
 We can go and visit these in the "workspace", which is the folder which jenkins
-uses to store our source code and run the tests in:
+uses to store our source code and run the tests in, as in
+<<screenshots-in-workspace>>:
 
+[[screenshots-in-workspace]]
 .Visiting the project workspace
 image::images/jenkins_workspace_with_screenshots.png["worspace files including screenshot"]
 
-And then we look at the screenshot:
 
+And then we look at the screenshot, <<normal-screenshot>>:
 
+[[normal-screenshot]]
 .Screenshot looking normal
 image::images/jenkins_screenshot_example.png["Screenshot of site page"]
 
@@ -428,15 +456,17 @@ It looks like the current URL is still the URL of the "my lists" page.  What's
 going on?
 
 Do you remember that we set an `implicitly_wait` on the browser, way back in
-chapter 2?  Well, that implicitly_wait applies to any calls to any of the 
+<<chapter-2,Chapter 2>>?  Do you remember I mentioned it was unreliable?
+
+`implicitly_wait` works reasonably well for any calls to any of the 
 Selenium `find_element_` calls, but it doesn't apply to `browser.current_url`.
-Selenium doesn't "wait" when you tell it to click an element, so what's happened
-is that the browser hasn't finished loading the new page yet, so `current_url`
-is still the old page.  We need to use some more wait code, like we did for the
-various Persona pages.
+Selenium doesn't "wait" after you tell it to click an element, so what's
+happened is that the browser hasn't finished loading the new page yet, so
+`current_url` is still the old page.  We need to use some more wait code, like
+we did for the various Persona pages.
 
 At this point it's time for a "wait for" helper function. To see how this
-is going to work, it helps to see how I expect to use it:
+is going to work, it helps to see how I expect to use it (outside-in!):
 
 
 [role="sourcecode"]
@@ -458,6 +488,7 @@ then pass it into our `wait_for` helper.
 .functional_tests/base.py
 [source,python]
 ----
+import time
 from selenium.common.exceptions import WebDriverException
 [...]
 
@@ -467,24 +498,24 @@ from selenium.common.exceptions import WebDriverException
             try:
                 return function_with_assertion()
             except (AssertionError, WebDriverException):
-                pass
+                time.sleep(0.1)
         # one more try, which will raise any errors if they are outstanding
         return function_with_assertion()
 ----
 
 `wait_for` then tries to execute that function, but instead of letting the 
 test fail if the assertion fails, it catches the `AssertionError` that
-`assertEqual` would ordinarily raise, and loops around retrying it, until a
-given timeout.  It also catches any `WebDriverException` that
-might happen if, say, an element hasn't appeared on the page yet.  It tries
-one last time after the timeout has expired, this time without the try/except,
-so that if there really is still an AssertionError, the test will fail
-appropriately.
+`assertEqual` would ordinarily raise, wait for a brief moment, and then loops
+around retrying it.  The `while` loop lasts until a given timeout.  It also catches any
+`WebDriverException` that might happen if, say, an element hasn't appeared on
+the page yet.  It tries one last time after the timeout has expired, this time
+without the try/except, so that if there really is still an AssertionError, the
+test will fail appropriately.
 
-NOTE: Selenium does provide `WebdriverWait` as a tool for doing waits, but
-it's a little restrictive.  This hand-rolled version lets us pass a function
-that does a unittest assertion, with all the benefits of the readable error
-messages that it gives us.
+NOTE: We've seen that Selenium provides `WebdriverWait` as a tool for doing
+waits, but it's a little restrictive.  This hand-rolled version lets us pass a
+function that does a `unittest` assertion, with all the benefits of the
+readable error messages that it gives us.
 
 I've added the timeout there as an optional argument, and I'm basing it on 
 a constant we'll add to 'base.py'.  We'll also use it in our original 
@@ -496,9 +527,10 @@ a constant we'll add to 'base.py'.  We'll also use it in our original
 [source,python]
 ----
 [...]
-import time
-
 DEFAULT_WAIT = 3
+SCREEN_DUMP_LOCATION = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), 'screendumps')
+)
 
 
 class FunctionalTest(LiveServerTestCase):
@@ -511,7 +543,7 @@ class FunctionalTest(LiveServerTestCase):
 ----
 
 
-Now we can re-run the test to confirm it still works:
+Now we can re-run the test to confirm it still works locally:
 
 [subs="specialcharacters,macros"]
 ----
@@ -547,24 +579,20 @@ change, and the commit our changes:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git status*
-[...]
-#   modified:   functional_tests/base.py
-#   modified:   functional_tests/test_my_lists.py
-$ *git add Functional tests*
-$ *git diff --staged*
+$ *git diff*
 $ *git commit -m"use wait_for function for URL checks in my_lists"*
 $ *git push* # send our changes up to github
 ----
 
 Then we can re-run the build on Jenkins using "Build now", and confirm it now
-works:
+works, as in <<outlook-brighter>>:
 
+[[outlook-brighter]]
 .The outlook is brighter
 image::images/jenkins_build_starting_to_look_better.png["Build showing a recent pass and sun-peeking-through-clouds logo"]
 
 Jenkins uses blue to indicate passing builds rather than green, which is a bit
-disappointing, but look at the sun peeking through the clouds!  That's cheery!
+disappointing, but look at the sun peeking through the clouds:  that's cheery!
 It's an indicator of a moving average ratio of passing builds to failing
 builds.  Things are looking up!
 
@@ -662,6 +690,14 @@ $ *git commit -m"Add phantomjs test runner for javascript tests"*
 $ *git push* 
 ----
 
+Adding the build steps to Jenkins
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Edit the project configuration again, and add a step for each set of 
+JavaScript tests, as per <<js-unit-tests-jenkey>>.
+
+
+[[js-unit-tests-jenkey]]
 .Add a build step for our JavaScript unit tests
 image::images/jenkins_add_phantomjs_build_step.png["Jenkins' default welcome screen"]
 
@@ -732,9 +768,26 @@ Nice to know that, no matter how lazy I get about running the full test suite
 on my own machine, the CI server will catch me.  Another one of the testing
 goat's agents in cyberspace, watching over us...
 
+More things to do with a CI server
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+I've only scratched the surface of what you can do with Jenkins and CI servers.
+For example, you can make it much smarter about how it monitors your repo for
+new commits.  
+
+Perhaps more interestingly, you can use your CI server to automate your staging
+tests as well as your normal functional tests.  If all the FTs pass, you can
+add a build step that deploys the code to staging, and then re-runs the FTs 
+against that -- automating one more step of the process, and ensuring that your
+staging server is automatically kept up to date with the latest code.
+
+Some people even use a CI server as the way of deploying their production
+releases!
+
 
 .Tips on CI and Selenium best practices
 *******************************************************************************
+
 Set up CI as soon as possible for your project::
     As soon as your functional tests take more than a few seconds to run,
     you'll find yourself avoiding running them all. Give this job to a CI
@@ -751,10 +804,16 @@ Use waits in Selenium tests::
     still on the old page).  Build a `wait_for` helper function, and alternate
     between actions on the site, and then some sort of wait to see that they've
     taken effect.
+
+Look in to hooking up CI and staging::
+    Tests against that use LiveServerTestCase are all very well for dev boxes,
+    but the true reassurance comes from running your tests against a real 
+    server.  Look into getting your CI server to deploy to your stagin server,
+    and run the functional tests against that instead.  It has the side benefit
+    of testing your automated deploy scripts.
+
 *******************************************************************************
 
-
-TODO: Something about jUnit XML output using py.test?
 
 TODO: talk about the idea of getting jenkins to automatically deploy to 
 staging?  (thanks Paolo for the suggestion)
