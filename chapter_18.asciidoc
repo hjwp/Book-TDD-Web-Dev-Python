@@ -53,29 +53,18 @@ calls your outer layers would like to make... Worse still, you might end up
 with inner components which, you later realise, don't actually solve the
 problem that your outer layers need solved.
 
-This all contrasts with the continuous thread with which outside-in
-leads our thoughts, from specification, through outermost functional test, and
-then from one part of our implementation to another. Each step along the way
-produces outputs (e.g. test failures) that directly inform what we need to
-do in the next step. Because of this, I believe that outside-in empowers me to
-tackle larger, or more complex, problems than I otherwise would be able to
-bite off without blowing my stack.
+In contrast, working outside-in in allows you to use each layer to imagine the
+most convenient API you could want from the layer beneath it. Let's see it in 
+action.
 
-Outside-in allows you to write your outer layers of code in a style that is
-convenient and natural, for the code you are calling doesn't exist yet, so you
-can make up an API that is convenient for your purpose. Your inner layers will
-subsequently have to provide this API - their specification has been created by
-some real-world usage. This is the natural order of things - your inner layers
-only exist to perform services for your outer layers, and should be subordinate
-to them in design and in purpose.
 
 The FT for "My Lists"
 ~~~~~~~~~~~~~~~~~~~~~
 
-As we work through the following functional test, I'll point out how we start
-with the most outward-facing (presentation layer), through to the view
-functions (or "controllers"), and lastly the innermost layers, which in this
-case will be model code.
+As we work through the following functional test, we start with the most
+outward-facing (presentation layer), through to the view functions (or
+"controllers"), and lastly the innermost layers, which in this case will be
+model code.
 
 We know our `create_pre_authenticated_session` code works now, so we can just
 write our FT to look for a "My Lists" page:
@@ -179,8 +168,9 @@ URL and nothing else:
 Moving down one layer to view functions (the controller)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-That will cause a template error, so we can move in one step, from the
-presentation layer down to the controller layer, Django's view functions.
+That will cause a template error, so we'll start to move down from the
+presentation layer and URLs down to the controller layer, Django's view
+functions.
 
 As always, we start with a test:
 
@@ -202,8 +192,7 @@ AssertionError: False is not true : Template 'my_lists.html' was not a template
 used to render the response. Actual template(s) used: <Unknown Template>
 ----
 
-And we fix it, still at the views level, in 'urls.py', 'views.py', and by
-creating 'my_lists.html':
+And we fix it, still at the presentation level, in 'urls.py':
 
 
 [role="sourcecode"]
@@ -218,8 +207,16 @@ urlpatterns = patterns('',
 ----
 //004
 
+That gives us a test failure, which informs us of what we should do as we
+move down to the next level:
 
-Here's a minimal view:
+----
+django.core.exceptions.ViewDoesNotExist: Could not import lists.views.my_lists.
+View does not exist in module lists.views.
+----
+
+We move in from the presentation layer to the views layer, and create a
+minimal placeholder:
 
 [role="sourcecode"]
 .lists/views.py (ch18l005)
@@ -254,11 +251,11 @@ Another pass, outside-in
 
 At each stage, we still let the FT drive what development we do.
 
-Starting again at the outside layer, in the template, we can start to
+Starting again at the outside layer, in the template, we begin to
 write the template code we'd like to use to get the my lists page to
-work the  way we want it to. It forces us to think about the API we
-want our code to have, from the point of view of the things that use it, 
-rather than trying to work bottom-up.
+work the  way we want it to. As we do so, we start to specify the API
+we want from the code at the layers below.
+
 
 A quick re-structure of the template inheritance hierarchy
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -309,6 +306,7 @@ we'll put that into a block too, making it optional:
 
 </div>
 <script src="http://code.jquery.com/jquery.min.js"></script>
+[...]
 ----
 
 We haven't seen this feature of the Django template language yet: 'list.html'
@@ -321,9 +319,9 @@ using `{{ block.super }}`
 ----
 {% extends 'base.html' %}
 
-{% block list_form %}{{ block.super }}{% endblock %}
-
 {% block header_text %}Start a new To-Do list{% endblock %}
+
+{% block list_form %}{{ block.super }}{% endblock %}
 
 {% block form_action %}{% url 'new_list' %}{% endblock %}
 ----
@@ -335,9 +333,9 @@ using `{{ block.super }}`
 ----
 {% extends 'base.html' %}
 
-{% block list_form %}{{ block.super }}{% endblock %}
-
 {% block header_text %}Your To-Do list{% endblock %}
+
+{% block list_form %}{{ block.super }}{% endblock %}
 
 {% block form_action %}{% url 'view_list' list.id %}{% endblock %}
 
@@ -497,17 +495,19 @@ class NewListTest(TestCase):
         request.user = User.objects.create(email='a@b.com')
         request.POST['text'] = 'new list item'
         new_list(request)
-        list_ = List.objects.all()[0]
+        list_ = List.objects.first()
         self.assertEqual(list_.owner, request.user)
 ----
 
-footnote:[I've chosen to use the raw view function, and to manually construct
-an `HttpRequest`, rather than using the Django Test Client, because our custom
-authentication function module, since it relies on Persona, would need a mock
-to get the test to work. I think the non-mocky way is simpler, but, if you're
-curious, why not try and write it differently?]
+I've chosen to use the raw view function, and to manually construct an
+`HttpRequest` because it's slightly easier to write the test that way.
+Although the Django Test does have a helper function called `login`, but it 
+doesn't work well with external authentication services.  The alternative would
+be to manually create a session object (like we do in the functional tests), or
+to use mocks, and I think both of which would end up uglier than this version.
+If you're curious, you could have a go at writing it differently.
 
-That fails as follows:
+The test fails as follows:
 
 ----
 AttributeError: 'List' object has no attribute 'owner'
@@ -536,7 +536,10 @@ def new_list(request):
 But it won't actually work until we go down to the next layer and 
 adjust the model.
 
-//TODO: insert error msg
+----
+    self.assertEqual(list_.owner, request.user)
+AttributeError: 'List' object has no attribute 'owner'
+----
 
 
 .A more purist approach involving mocks
@@ -625,10 +628,23 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 [...]
 
+class ListModelTest(TestCase):
+
+    def test_get_absolute_url(self):
+        [...]
+
     def test_list_can_have_owners(self):
         user = User.objects.create(email='a@b.com')
         list_ = List.objects.create(owner=user)
         self.assertIn(list_, user.list_set.all())
+----
+
+And that gives us a new unit test failure:
+
+----
+    list_ = List.objects.create(owner=user)
+    [...]
+TypeError: 'owner' is an invalid keyword argument for this function
 ----
 
 The naive implementation would be this:
@@ -636,6 +652,9 @@ The naive implementation would be this:
 [role="skipme"]
 [source,python]
 ----
+from django.conf import settings
+[...]
+
 class List(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL)
 ----
@@ -704,10 +723,11 @@ ValueError: Cannot assign "<SimpleLazyObject:
 "List.owner" must be a "User" instance.
 ----
 
-Notice that these are in the old test for the new_list view, when we
-haven't got a logged-in user.  We should only save the list owner
-when the user is actually logged in.  When they're not logged in,
-Django represents them using a class called `AnonymousUser`:
+We're moving back up to the views layer now, just doing a little 
+tidying up. Notice that these are in the old test for the `new_list` view, when
+we haven't got a logged-in user.  We should only save the list owner when the
+user is actually logged in.  When they're not logged in, Django represents them
+using a class called `AnonymousUser`:
 
 
 [role="sourcecode"]
@@ -727,6 +747,12 @@ from django.contrib.auth.models import AnonymousUser
 ----
 
 And that gets us passing!
+footnote:[The alternative way of checking whether a user is authenticated in
+Django is to use `user.is_authenticated()` but, since we're using a custom
+user model, we'd need to define that function on our User model manually.  That
+feels like a distraction for this chapter, but by all means look into it.
+The source of `AbstractBaseUser` in `django.contrib.auth.models` is a good
+guide]
 
 [subs="specialcharacters,macros"]
 ----
@@ -775,7 +801,7 @@ its first item:
 ----
     @property
     def name(self):
-        return self.item_set.all()[0].text
+        return self.item_set.first().text
 ----
 
 .The @property decorator in Python
@@ -799,9 +825,10 @@ doesn't apply to Python in general...
 
 
 And that, believe it or not, actually gets us a passing test, 
-and a working "My Lists" page!
+and a working "My Lists" page! (<<my-lists-page>>).
 
-.The "My Lists" page, in all its glory
+[[my-lists-page]]
+.The "My Lists" page, in all its glory (and proof I did test on Windows)
 image::images/my_lists_screenshot.png[Screenshot of new My Lists page]
 
 
