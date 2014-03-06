@@ -61,11 +61,10 @@ def strip_git_hashes(output):
         output,
     )
     fixed_commit_numbers = re.sub(
-            r"^[a-f0-9]{7} ",
-            r"XXXXXXX ",
-            fixed_indexes,
-            flags=re.MULTILINE,
-
+        r"^[a-f0-9]{7} ",
+        r"XXXXXXX ",
+        fixed_indexes,
+        flags=re.MULTILINE,
     )
     return fixed_commit_numbers
 
@@ -610,7 +609,8 @@ class ChapterTest(unittest.TestCase):
             )
             print("CHECK CURRENT CONTENTS")
             stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
-            for line in listing.contents.split('\n'):
+            listing_contents = re.sub(r' +#$', '', listing.contents, flags=re.MULTILINE)
+            for line in listing_contents.split('\n'):
                 if line and not '[...]' in line:
                     self.assertIn(line.strip(), stripped_actual_lines)
             listing.was_written = True
@@ -638,7 +638,7 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'output':
             self._strip_out_any_pycs()
             test_run = self.run_unit_tests()
-            if 'OK' in  test_run and not 'OK' in listing:
+            if 'OK' in test_run and not 'OK' in listing:
                 print('unit tests pass, must be an FT:\n', test_run)
                 test_run = self.run_fts()
             try:
