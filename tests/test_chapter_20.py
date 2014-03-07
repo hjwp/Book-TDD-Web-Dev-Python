@@ -33,7 +33,15 @@ class Chapter20Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no, ignore_moves=True)
+
+        self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
+        # final branch includes a suggested implementation...
+        # so just check diff up to the last listing
+        commit = self.sourcetree.get_commit_spec('ch20l013')
+        diff = self.sourcetree.run_command(
+            'git diff -b {}'.format(commit)
+        )
+        self.check_final_diff(self.chapter_no, ignore_moves=True, diff=diff)
 
 
 if __name__ == '__main__':

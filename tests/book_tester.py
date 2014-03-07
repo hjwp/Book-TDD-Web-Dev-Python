@@ -121,10 +121,14 @@ class ChapterTest(unittest.TestCase):
         self.listings = [p for n in listings_nodes for p in parse_listing(n)]
 
 
-    def check_final_diff(self, chapter, ignore_moves=False, ignore_secret_key=False):
-        diff = self.run_command(Command(
-            'git diff -b repo/chapter_{0:02d}'.format(chapter)
-        ))
+    def check_final_diff(
+        self, chapter, ignore_moves=False, ignore_secret_key=False,
+        diff=None
+    ):
+        if diff is None:
+            diff = self.run_command(Command(
+                'git diff -b repo/chapter_{0:02d}'.format(chapter)
+            ))
         try:
             print('checking final diff', diff)
         except io.BlockingIOError:
