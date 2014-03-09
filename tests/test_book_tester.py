@@ -507,6 +507,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_ignores_phantomjs_run_times(self):
+        actual = "Took 24ms to run 2 tests. 2 passed, 0 failed."
+        expected = Output("Took 15ms to run 2 tests. 2 passed, 0 failed.")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_ignores_object_ids(self):
         actual = "<AnonymousUser object at 0x2b3629047150>"
         expected = Output("<AnonymousUser object at 0x7f364795ef90>")
