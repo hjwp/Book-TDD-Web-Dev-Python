@@ -85,6 +85,17 @@ def strip_test_speed(output):
         output,
     )
 
+def strip_screenshot_timestamps(output):
+    fixed = re.sub(
+        r"window0-(201\d-\d\d-\d\dT\d\d\.\d\d\.\d?\d?)",
+        r"window0-201X-XX-XXTXX.XX",
+        output,
+    )
+    # this last is very specific to one listing in 19...
+    fixed = re.sub(r"^\d\d\.html$", "XX.html", fixed, flags=re.MULTILINE)
+    return fixed
+
+
 
 def fix_creating_database_line(actual_text):
     if "Creating test database for alias 'default'..." in actual_text:
@@ -190,6 +201,9 @@ class ChapterTest(unittest.TestCase):
             type(command), Command,
             "passed a non-Command to run-command:\n%s" % (command,)
         )
+        if command == 'git push':
+            command.was_run = True
+            return
         print('running command', command)
         output = self.sourcetree.run_command(command, cwd=cwd, user_input=user_input)
         command.was_run = True
@@ -281,6 +295,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_git_hashes(actual_fixed)
         actual_fixed = strip_mock_ids(actual_fixed)
         actual_fixed = strip_object_ids(actual_fixed)
+        actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
 
         expected_fixed = fix_test_dashes(expected)
@@ -288,6 +303,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_git_hashes(expected_fixed)
         expected_fixed = strip_mock_ids(expected_fixed)
         expected_fixed = strip_object_ids(expected_fixed)
+        expected_fixed = strip_screenshot_timestamps(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
 
         if '\t' in actual_fixed:
@@ -473,7 +489,7 @@ class ChapterTest(unittest.TestCase):
         LIKELY_FILES = [
             'urls.py', 'tests.py', 'views.py', 'functional_tests.py',
             'settings.py', 'home.html', 'list.html', 'base.html',
-            'fabfile.py', 'tests/test_',
+            'fabfile.py', 'tests/test_', 'base.py', 'test_my_lists.py'
         ]
         self.assertTrue(
             'diff' in self.listings[pos] or 'status' in self.listings[pos]

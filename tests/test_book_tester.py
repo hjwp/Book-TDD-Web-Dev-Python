@@ -513,6 +513,26 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+    def test_ignores_screenshot_times(self):
+        actual = (
+            'screenshotting to /workspace/superlists/functional_tests/screendumps/MyListsTes\n'
+            't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.38.\n'
+            'png\n'
+            'dumping page HTML to /workspace/superlists/functional_tests/screendumps/MyLists\n'
+            'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.\n'
+            '38.html\n'
+        )
+        expected = Output(
+            'screenshotting to /workspace/superlists/functional_tests/screendumps/MyListsTes\n'
+            't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2013-04-09T13.40.39.\n'
+            'png\n'
+            'dumping page HTML to /workspace/superlists/functional_tests/screendumps/MyLists\n'
+            'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-04-04T12.43.\n'
+            '42.html\n'
+        )
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
 
     def test_fixes_stdout_stderr_for_creating_db(self):
         actual = dedent("""
