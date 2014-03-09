@@ -106,15 +106,15 @@ a bit of an FT refactor
 [subs="specialcharacters,quotes"]
 ----
 $ *git add functional_tests*
-$ *git commit -m "New FT for sharing, adjust session creation code to take email"*
+$ *git commit -m "New FT for sharing, move session creation stuff to base"*
 ----
 
 
 Implementing the Selenium interact/wait pattern
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Before we continue, let's take a closer look at our the interactions with the
-site that we have in our FT so far:
+Before we continue, let's take a closer look at the interactions with the site
+which we have in our FT so far:
 
 [role="sourcecode currentcontents"]
 .functional_tests/test_sharing.py
@@ -143,9 +143,15 @@ theory, `implicitly_wait` will make sure that, if the call to
 `find_element_by_css_selector` doesn't find our `input[name=email]` at first,
 it will silently retry a few times.  But it can also go wrong -- imagine if
 there was an input on the previous page, with the same `name=email`, but a
-different placeholder text?  We'd get a strange failure.
+different placeholder text?  We'd get a strange failure, because Selenium
+could theoretically pick up the element from the previous page while the
+new page is loading.  That tends to raise a `StaleElementException`.
 
-So instead, it's always prudent to follow the "wait-for" pattern whenever we
+TIP: Unexpected `StaleElementException` errors from Selenium often mean you
+    have some kind of race condition.  You should probably specify an explicit
+    interaction/wait pattern.
+
+Instead, it's always prudent to follow the "wait-for" pattern whenever we
 want to check on the effects of an interaction that we've just triggered.
 Something like this:
 
@@ -168,7 +174,7 @@ Something like this:
 ----
 
 
-The page pattern
+The Page pattern
 ~~~~~~~~~~~~~~~~
 
 But do you know what would be even better?  This is an occasion for a "3
@@ -187,9 +193,8 @@ pattern], and it involves having objects to represent the different pages on
 your site, and to be the single place to store information about how to 
 interact with them.
 
-Let's see how we would build a page object for the home page, and one for the
-lists page.  Here's one for the home page
-
+Let's see how we would Page objects for the home and lists pages. Here's one
+for the home page:
 
 
 [role="sourcecode"]
@@ -235,8 +240,9 @@ class HomePage(object):
 
 <4> Here's our function that starts a new list.  It goes to the home page,
     finds the input box, and sends the new item text to it, as well as a
-    carriage return.  It also then uses a wait to check that the interaction
-    has completed, but you'll see it actually uses a new Page object:
+    carriage return.  Then it uses a wait to check that the interaction
+    has completed, but as you can see that wait is actually on a different
+    Page object:
 
 <5> The `ListPage`, which we'll see the code for shortly. It's initialized just
     like a `HomePage`.
@@ -274,6 +280,10 @@ class ListPage(object):
             [row.text for row in self.get_list_table_rows()]
         ))
 ----
+
+NOTE: It's usually best to have a separate file for each page object. 
+    In this case, `HomePage` and `ListPage` are so closely related it's
+    easier to keep them together.
 
 
 Let's see how to use it in our test:
@@ -430,6 +440,7 @@ class HomePage(object):
     def get_item_input(self):
         return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
 
+
 class ListPage(object):
     [...]
 
@@ -447,7 +458,7 @@ class ListPage(object):
         return self.test.browser.find_element_by_id('id_list_owner').text
 ----
 
-At this point we might run the FT to check all of this works!
+It's long past time to run the FT and check all of this works!
 
 [subs="specialcharacters,macros"]
 ----
@@ -476,45 +487,85 @@ An exercise for the reader
 Here's an outline of the steps to take to get this new feature implemented:
 
 * We'll need a new section in 'list.html', with, at first, a form with an
-  input box for an email address.
+  input box for an email address.  That should get the FT one step further.
 
 * Next, we'll need a view for the form to submit to. Start by defining the
   URL in the template, maybe something like 'lists/<list_id>/share'.
   
 * Then, our first unit test. It can be just enough to get a placeholder view
   in. We want the view to respond to POST requests, and it should respond with
-  a redirect back to the list page.
+  a redirect back to the list page, so the test could be called something like
+  `ShareListTest.test_post_redirects_to_lists_page`.
 
-* Build out the view, as just a two-liner that finds a list and redirects to
-  it.
+* We build out our placeholder view, as just a two-liner that finds a list and
+  redirects to it.
 
 * We can then write a new unit test which creates a user and a list,
   does a POST with their email address, and checks the user is added to
-  `list_.shared_with.all()` (a similar ORM usage to "my lists").
+  `list_.shared_with.all()` (a similar ORM usage to "my lists").  That
+  `shared_with` attribute won't exist yet, we're going outside-in.
 
-* Before we can get this test to pass, we have to move down one layer,
-  to the models layer.  The next test will check that a list has a 
-  `shared_with.add` method, which can be called with a users' email address
-  and it then has a `shared_with.all()` queryset, which will subsequently
-  contain that user.
+* So before we can get this test to pass, we have to move down to the models
+  layer.  The next test, in 'test_models.py', can check that a list has a
+  `shared_with.add` method, which can be called with a users' email address and
+  then check the lists' `shared_with.all()` queryset, which will subsequently
+  contain that user.  
 
 * You'll then need a ManyToManyField.  You'll probably see an error message
-  about clashing related_names, which you'll find a solution to if you look
+  about a clashing `related_name`, which you'll find a solution to if you look
   around the Django docs.
 
 * It will need a database migration.
 
 * That should get the model tests passing. Pop back up to fix the view test.
 
-* Then back up to the template level, put a for loop of the lists shared with, 
-  and mention the list owner on a lists page.  You could have brief unit tests
-  for each of these if you like, as well.
+* You may find the redirect view test fails, because it's not sending a valid
+  POST request.  You can either choose to ignore invalid inputs, or adjust the
+  test to send a valid POST.
 
-NOTE: I would appreciate feedback about this chapter.  Did you find it too
-hard? Are there any specific extra hints could I have given you that would have
-kept you on the right track?  Did you find yourself doing things differently?
-Let me know!
+* Then back up to the template level, on the "my lists" page we'll want a
+  `<ul>` with a for loop of the lists shared with the user. On the lists
+  page, we want also want to show who the list is shared with, as well as
+  mention of who the list owner is. Look back at the FT for the correct classes
+  and IDs to use. You could have brief unit tests for each of these if you
+  like, as well.
+
+* You might find that spinning up the site with `runserver` will help you 
+  iron out any bugs, as well as for fine-tuning the layout and aesthetics.
+  If you use a private browser session, you'll be able to log multiple users
+  in.
 
 
-TODO: wrap-up on the Page pattern.
+By the end, you might end up with something that looks like
+<<list-sharing-example>>:
+
+[[list-sharing-example]]
+.Sharing lists
+image::images/list_sharing_example.png["Screenshot of list sharing UI"]
+
+
+.The Page pattern, and the real exercise for the reader
+*******************************************************************************
+
+Apply DRY to your functional tests::
+    Once your FT suite starts to grow, you'll find that different tests will
+    inevitably find themselves using similar parts of the UI. Try to avoid 
+    having constants, like the HTML IDs or classes of particular UI elements
+    duplicated between your FTs.
+
+The Page pattern::
+    Moving helper methods into a base `FunctionalTest` class can become 
+    unwieldy.  Consider using individual Page objects to hold all the
+    logic for dealing with particular parts of your site. 
+
+An exercise for the reader::
+    I hope you've actually tried this out!  Try to follow the "Outside-In"
+    method, and occasionally try things out manually if you get stuck. 
+    The real exercise for the reader, of course, is to apply TDD to your
+    next project.  I hope you'll enjoy it!
+
+*******************************************************************************
+
+In the next chapter, we'll wrap up with a discussion of testing "best
+practices".
 
