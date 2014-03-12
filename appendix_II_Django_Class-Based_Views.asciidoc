@@ -294,21 +294,36 @@ One thing it did made me realise was the value of having lots of individual
 tests, each testing one thing.  I went back and re-wrote some of chapters 10-12
 as a result.
 
-Anyway, after much hacking and swearing, this is the solution I eventually got
-to work. First I had to add a `get_absolute_url` on the `Item` class:
+The tests guide us, for a while
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Here's how things might go.  Start by thinking we want a `DetailView`,
+something that shows you the detail of an object:
+
 
 [role="sourcecode dofirst-ch31l008"]
-.lists/models.py (ch31l009)
+.lists/views.py
 [source,python]
 ----
-class Item(models.Model):
-    [...]
+from django.views.generic import FormView, CreateView, DetailView
+[...]
 
-    def get_absolute_url(self):
-        return self.list.get_absolute_url()
+class ViewAndAddToList(DetailView):
+    model = List
 ----
 
-I also had to assign a "named" regex capture group:
+Gives:
+
+----
+[...]
+AttributeError: Generic detail view ViewAndAddToList must be called with either
+an object pk or a slug.
+
+FAILED (failures=5, errors=6)
+----
+
+Not totally obvious, but a bit of Googling around led me to understand that
+I needed to use a "named" regex capture group:
 
 [role="sourcecode"]
 .lists/urls.py (ch31l011)
@@ -326,17 +341,132 @@ I also had to assign a "named" regex capture group:
  )
 ----
 
+The next error was fairly helpful:
 
-And I was able to get the view working using multiple inheritance, and an
-override of the `get_form` method:
+----
+[...]
+django.template.base.TemplateDoesNotExist: lists/list_detail.html
+
+FAILED (failures=5, errors=6)
+----
+
+That's easily solved:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+class ViewAndAddToList(DetailView):
+    model = List
+    template_name = 'list.html'
+----
+
+That takes us down 3 errors:
+
+----
+[...]
+ERROR: test_displays_item_form (lists.tests.test_views.ListViewTest)
+KeyError: 'form'
+
+FAILED (failures=5, errors=2)
+----
+
+Until we're left with trial and error
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+So I figured, our view doesn't just show us the detail of an object,
+it also allows us to create new ones.  Let's make it both a 
+`DetailView` 'and' a `CreateView`:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+class ViewAndAddToList(DetailView, CreateView):
+    model = List
+    template_name = 'list.html'
+    form_class = ExistingListItemForm
+----
+
+But that gives us a lot of errors saying:
+
+----
+[...]
+TypeError: __init__() missing 1 required positional argument: 'for_list'
+----
+
+And the `KeyError: 'form'` was still there too!
+
+At this point the errors stopped being quite as helpful, and it was no longer
+obvious what to do next.  I had to resort to trial and error.  Still, the 
+tests did at least tell me when I was getting things more right or more wrong.
+
+My first attempts to use `get_form_kwargs` didn't really work, but I found
+that I could use `get_form`:
+
+----
+    def get_form(self, form_class):
+        self.object = self.get_object()
+        return form_class(for_list=self.object, data=self.request.POST)
+----
+
+But it would only work if I also assigned to `self.object`, as a side-effect,
+along the way, which was a bit upsetting.  Still, that takes us down
+to just 3 errors, but we're still apparently not passing that form to the
+template!
+
+----
+KeyError: 'form'
+
+FAILED (errors=3)
+----
+
+Back on track
+^^^^^^^^^^^^^
+
+A bit more experimenting led me to swap out the `DetailView` for a 
+`SingleObjectMixin` (the docs had some useful pointers here):
+
+----
+from django.views.generic.detail import SingleObjectMixin
+[...]
+
+class ViewAndAddToList(CreateView, SingleObjectMixin):
+    [...]
+----
+
+That takes us down to just two errors:
+
+----
+django.core.exceptions.ImproperlyConfigured: No URL to redirect to.  Either
+provide a url or define a get_absolute_url method on the Model.
+----
+
+And for this final failure, the tests are being helpful again.
+It's quite easy to define a `get_absolute_url` on the `Item` class, such
+that items point to their parent list's page:
+
+
+.lists/models.py
+[source,python]
+----
+class Item(models.Model):
+    [...]
+
+    def get_absolute_url(self):
+        return reverse('view_list', args=[self.list.id])
+----
+
+
+Is that your final answer?
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We end up with a view class that looks like this:
 
 [role="sourcecode"]
 .lists/views.py (ch31l010)
 [source,python]
 ----
-from django.views.generic.detail import SingleObjectMixin
-[...]
-
 class ViewAndAddToList(CreateView, SingleObjectMixin):
     template_name = 'list.html'
     model = List
@@ -348,14 +478,8 @@ class ViewAndAddToList(CreateView, SingleObjectMixin):
 ----
 
 
-NOTE: I did also manage to get it working using `get_form_kwargs`, but I
-decided it was uglier.  Any other suggestions are very much welcomed, 
-just drop me a line at obeythetestinggoat@gmail.com.
-
-
-
 Compare old and new
-^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~
 
 Let's see the old version for comparison?
 
@@ -377,8 +501,11 @@ def view_list(request, list_id):
 Well, it has reduced the number of lines of code from 9 to 7.  Still, I find
 the function-based version a little easier to understand, in that it has a
 little bit less magic -- "explicit is better than implicit", as the Zen of
-Python would have it. I mean... `SingleObjectMixin`?  What? Still, I guess some
-of it is in the eye of the beholder.
+Python would have it. I mean... `SingleObjectMixin`?  What?  And, more
+offensively, the whole thing falls apart if we don't assign to `self.object`
+inside `get_form`?  yuck.
+
+Still, I guess some of it is in the eye of the beholder.
 
 
 Best practices for unit testing CBGVs?
@@ -388,8 +515,8 @@ As I was working through this, I felt like my "unit" tests were sometimes a
 little too high-level.  This is no surprise, since tests for views that involve
 the Django Test Client are probably more properly called Integration tests.
 
-They told me whether I was getting things right or wrong, but they didn't offer
-many clues on exactly how to fix things.
+They told me whether I was getting things right or wrong, but they didn't
+always offer enough clues on exactly how to fix things.
 
 I occasionally wondered whether there might be some mileage in a test that
 was closer to the implementation -- something like this:
@@ -461,14 +588,15 @@ working.
 
 .Lessons learned from CBGVs
 *******************************************************************************
+
 Class-Based Generic Views can do anything::
-    It might not always be readable, or clear what's going on, but you can 
-    do just about anything with class-based views.
+    It might not always be clear what's going on, but you can do just about
+    anything with class-based views.
 
 Single-assertion unit tests help refactoring::
     With each unit test providing individual guidance on what works and what
-    doesn't, it's much easier to change the implementation of our views so
-    drastically.
+    doesn't, it's much easier to change the implementation of our views to
+    using this fundamentally different paradigm.
 
 *******************************************************************************
 
