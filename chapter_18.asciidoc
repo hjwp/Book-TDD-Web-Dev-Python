@@ -309,46 +309,11 @@ we'll put that into a block too, making it optional:
 [...]
 ----
 
-We haven't seen this feature of the Django template language yet: 'list.html'
-and 'home.html' now need to explicitly pull down the `list_form` block content
-using `{{ block.super }}` 
-
-[role="sourcecode"]
-.lists/templates/home.html
-[source,html]
-----
-{% extends 'base.html' %}
-
-{% block header_text %}Start a new To-Do list{% endblock %}
-
-{% block list_form %}{{ block.super }}{% endblock %}
-
-{% block form_action %}{% url 'new_list' %}{% endblock %}
-----
-
-
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
-----
-{% extends 'base.html' %}
-
-{% block header_text %}Your To-Do list{% endblock %}
-
-{% block list_form %}{{ block.super }}{% endblock %}
-
-{% block form_action %}{% url 'view_list' list.id %}{% endblock %}
-
-{% block table %}
-    <table id="id_list_table" class="table">
-    [...]
-----
-
 
 Designing our API using the template
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
+Now, 'my_lists.html' can override the `list_form` block, and make it empty.
 
 [role="sourcecode"]
 .lists/templates/my_lists.html
@@ -358,11 +323,23 @@ Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
 
 {% block header_text %}My Lists{% endblock %}
 
+{% block list_form %}{% endblock %}
+----
+
+And then we can just work in the new `extra_content` block:
+
+[role="sourcecode"]
+.lists/templates/my_lists.html
+[source,html]
+----
+[...]
+{% block list_form %}{% endblock %}
+
 {% block extra_content %}
-    <h2>{{ owner.email }}'s lists</h2>
+    <h2>{{ owner.email }}'s lists</h2> <1>
     <ul>
-        {% for list in owner.list_set.all %}
-            <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
+        {% for list in owner.list_set.all %} <2>
+            <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li> <3>
         {% endfor %}
     </ul>
 {% endblock %}
@@ -371,14 +348,15 @@ Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
 We've made several design decisions in this template which are going
 to filter their way down through the code:
 
-* We want a variable called `owner` to represent the user in our template.
+<1> We want a variable called `owner` to represent the user who owns the
+    lists in our template.
 
-* We want to be able to iterate through the lists created by the user using
-  `owner.list_set.all` (I happen to know we get this for free from the Django
-  ORM)
+<2> We want to be able to iterate through the lists created by the user using
+    `owner.list_set.all` (I happen to know we get this for free from the Django
+    ORM)
 
-* We want to use `list.name` to print out the "name" of the list, which is
-  currently specified as the text of its first element.
+<3> We want to use `list.name` to print out the "name" of the list, which is
+    currently specified as the text of its first element.
 
 We can re-run our FTs, to check we didn't break anything, and to see whether
 we've got any further:
@@ -396,13 +374,14 @@ Ran 7 tests in 77.613s
 FAILED (errors=1)
 ----
 
-This is a good time for a commit
+OK, no further, but at least nothing is broken. This is a good time for a
+commit:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git add lists*
 $ *git diff --staged*
-$ *git commit -m "url, placeholder view, and first-cut templates for my_lists"*
+$ *git commit -m "url, placeholder view, and first-cut template for my_lists"*
 ----
 
 
@@ -421,10 +400,11 @@ class MyListsTest(TestCase):
     def test_my_lists_url_renders_my_lists_template(self):
         [...]
 
-    def test_passes_owner_to_template(self):
-        user = User.objects.create(email='a@b.com')
+    def test_passes_correct_owner_to_template(self):
+        User.objects.create(email='wrong@owner.com')
+        correct_user = User.objects.create(email='a@b.com')
         response = self.client.get('/lists/users/a@b.com/')
-        self.assertEqual(response.context['owner'], user)
+        self.assertEqual(response.context['owner'], correct_user)
 ----
 
 Gives
@@ -469,156 +449,13 @@ OK
 ----
 
 
-The next "requirement" from the views layer
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Moving down to the model layer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Before we move down to the model layer, there's another part of the code
-at the views layer that will need to use our model:  we need some way for
-newly created lists to be assigned to an owner, if the current user is 
-logged in to the site:
+The design in our template layer wants to be able to get access to the
+lists a user owns by using `.list_set.all`.   So we move down to write
+a new test at the model layer:
 
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch18l014)
-[source,python]
-----
-from django.http import HttpRequest
-[...]
-from lists.views import new_list
-[...]
-
-class NewListTest(TestCase):
-    [...]
-
-    def test_list_owner_is_saved_if_user_is_authenticated(self):
-        request = HttpRequest()
-        request.user = User.objects.create(email='a@b.com')
-        request.POST['text'] = 'new list item'
-        new_list(request)
-        list_ = List.objects.first()
-        self.assertEqual(list_.owner, request.user)
-----
-
-I've chosen to use the raw view function, and to manually construct an
-`HttpRequest` because it's slightly easier to write the test that way.
-Although the Django Test does have a helper function called `login`, but it 
-doesn't work well with external authentication services.  The alternative would
-be to manually create a session object (like we do in the functional tests), or
-to use mocks, and I think both of which would end up uglier than this version.
-If you're curious, you could have a go at writing it differently.
-
-The test fails as follows:
-
-----
-AttributeError: 'List' object has no attribute 'owner'
-----
-
-To fix this, we can try writing code like this:
-
-[role="sourcecode"]
-.lists/views.py  
-[source,python]
-----
-def new_list(request):
-    form = ItemForm(data=request.POST)
-    if form.is_valid():
-        list_ = List.objects.create()
-        list_.owner = request.user
-        list_.save()
-        form.save(for_list=list_)
-        return redirect(list_)
-    else:
-        return render(request, 'home.html', {"form": form})
-----
-//015
-
-
-But it won't actually work until we go down to the next layer and 
-adjust the model.
-
-----
-    self.assertEqual(list_.owner, request.user)
-AttributeError: 'List' object has no attribute 'owner'
-----
-
-
-.A more purist approach involving mocks
-*******************************************************************************
-
-Is this "pure" outside-in TDD? No.  A purist approach to outside-in TDD would
-want you to use mocks at this point, and have unit tests that are more 
-isolated from one level to another.  Something like this:
-
-[role="sourcecode skipme"]
-.lists/tests/test_views.py
-[source,python]
-----
-from unittest.mock import Mock, patch
-[...]
-
-    @patch('lists.views.ItemForm.save', Mock())  #<3>
-    @patch('lists.views.List.objects.create')  #<1>
-    def test_list_owner_is_saved_mocky(self, mock_List_create):
-        request = HttpRequest()
-        request.user = Mock()
-        request.POST['text'] = 'new list item'
-        mock_list = mock_List_create.return_value
-        new_list(request)
-        self.assertEqual(mock_list.owner, request.user)  #<2>
-----
-
-<1> We mock out the `List.objects.create` function to be able
-    to get access to the list that's going to be created by the view.
-
-<2> Then we can assert about the owner we assign to it
-
-<3> This is needed because otherwise the `form.save()` will complain
-    that it's not been passed a real List object.
-
-Try it!  You should find that it will pass, if you've added the
-`list_.owner =` bit to the view.  Try removing the owner assignment,
-and you'll see it fail:
-
-[role="skipme"]
-----
-AssertionError: <MagicMock name='create().owner' id='140176904220432'> != <Mock
-id='140176904185168'>
-----
-
-Actually, 'strictly' speaking, you'd need another check that
-the list.owner gets assigned 'before' the save function is called, 
-making the test even more complicated:
-
-[role="sourcecode skipme"]
-.lists/tests/test_views.py
-[source,python]
-----
-        mock_list = mock_List_create.return_value
-        def check_owner_assigned_before_save():
-            self.assertEqual(mock_list.owner, request.user)
-        mock_list.save.side_effect = check_owner_assigned_before_save
-
-        new_list(request)
-----
-
-So, yes, it's a more purist approach, but it does leave you with much
-mockier, and less readable tests.  That's why I prefer a more pragmatic
-approach.  I think "purist" Outside-In TDD, sometimes called "London-Style
-TDD", isn't worth it when you're dealing with the Django ORM a lot -- it
-works better if you have code that has no external dependencies or 
-"boundaries". There's more discussion of this in the "Hot Lava" chapter.
-
-*******************************************************************************
-
-
-
-Moving down again: to the model layer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-Next we move down to the model layer, to get the owner.list_set.all API
-working:
- 
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch18l018)
@@ -633,7 +470,7 @@ class ListModelTest(TestCase):
     def test_get_absolute_url(self):
         [...]
 
-    def test_list_can_have_owners(self):
+    def test_lists_can_have_owners(self):
         user = User.objects.create(email='a@b.com')
         list_ = List.objects.create(owner=user)
         self.assertIn(list_, user.list_set.all())
@@ -708,7 +545,72 @@ with: ./manage.py migrate lists
 ----
 //22
 
-We're almost there, a couple more failures:
+
+Fantastic.  We now have the ability, optionally, to assign owners to lists.
+
+
+Another pass at the views layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before our FT will pass, we need the view that creates new lists to actually 
+save the list owner, if the current user is actually logged-in.
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch18l014)
+[source,python]
+----
+from django.http import HttpRequest
+[...]
+from lists.views import new_list
+[...]
+
+class NewListTest(TestCase):
+    [...]
+
+    def test_list_owner_is_saved_if_user_is_authenticated(self):
+        request = HttpRequest()
+        request.user = User.objects.create(email='a@b.com')
+        request.POST['text'] = 'new list item'
+        new_list(request)
+        list_ = List.objects.first()
+        self.assertEqual(list_.owner, request.user)
+----
+
+I've chosen to use the raw view function, and to manually construct an
+`HttpRequest` because it's slightly easier to write the test that way. Although
+the Django Test Client does have a helper function called `login`, but it
+doesn't work well with external authentication services.  The alternative would
+be to manually create a session object (like we do in the functional tests), or
+to use mocks, and I think both of which would end up uglier than this version.
+If you're curious, you could have a go at writing it differently.
+
+The test fails as follows:
+
+----
+    self.assertEqual(list_.owner, request.user)
+AssertionError: None != <User: User object>
+----
+
+To fix this, we can try writing code like this:
+
+[role="sourcecode"]
+.lists/views.py  
+[source,python]
+----
+def new_list(request):
+    form = ItemForm(data=request.POST)
+    if form.is_valid():
+        list_ = List.objects.create()
+        list_.owner = request.user
+        list_.save()
+        form.save(for_list=list_)
+        return redirect(list_)
+    else:
+        return render(request, 'home.html', {"form": form})
+----
+//021
+
+That gets our new test passing, but two old tests now have errors:
 
 ----
 ERROR: test_redirects_after_POST (lists.tests.test_views.NewListTest)
@@ -723,10 +625,8 @@ ValueError: Cannot assign "<SimpleLazyObject:
 "List.owner" must be a "User" instance.
 ----
 
-We're moving back up to the views layer now, just doing a little 
-tidying up. Notice that these are in the old test for the `new_list` view, when
-we haven't got a logged-in user.  We should only save the list owner when the
-user is actually logged in.  When they're not logged in, Django represents them
+The problem is when the user is not logged in, we shouldn't be trying to save
+them as the list owner. When they're not logged in, Django represents users
 using a class called `AnonymousUser`:
 
 
@@ -779,8 +679,8 @@ $ *git commit -m"lists can have owners, which are saved on creation."*
 Final step: feeding through the .name API from the template
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The last thing our outside-in design wanted came from the templates,
-which wanted to be able to access a list "name" based on the text of
+The last thing our outside-in design wanted in the templates,
+was to be able to access a list "name" based on the text of
 its first item:
 
 [role="sourcecode"]
