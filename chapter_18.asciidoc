@@ -309,46 +309,12 @@ we'll put that into a block too, making it optional:
 [...]
 ----
 
-We haven't seen this feature of the Django template language yet: 'list.html'
-and 'home.html' now need to explicitly pull down the `list_form` block content
-using `{{ block.super }}` 
-
-[role="sourcecode"]
-.lists/templates/home.html
-[source,html]
-----
-{% extends 'base.html' %}
-
-{% block header_text %}Start a new To-Do list{% endblock %}
-
-{% block list_form %}{{ block.super }}{% endblock %}
-
-{% block form_action %}{% url 'new_list' %}{% endblock %}
-----
-
-
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
-----
-{% extends 'base.html' %}
-
-{% block header_text %}Your To-Do list{% endblock %}
-
-{% block list_form %}{{ block.super }}{% endblock %}
-
-{% block form_action %}{% url 'view_list' list.id %}{% endblock %}
-
-{% block table %}
-    <table id="id_list_table" class="table">
-    [...]
-----
-
 
 Designing our API using the template
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
+Meanwhile, in 'my_lists.html' we override the `list_form` and say it should
+be empty...
 
 [role="sourcecode"]
 .lists/templates/my_lists.html
@@ -358,11 +324,24 @@ Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
 
 {% block header_text %}My Lists{% endblock %}
 
+{% block list_form %}{% endblock %}
+----
+
+And then we can just work inside the `extra_content` block:
+
+[role="sourcecode"]
+.lists/templates/my_lists.html
+[source,html]
+----
+[...]
+
+{% block list_form %}{% endblock %}
+
 {% block extra_content %}
-    <h2>{{ owner.email }}'s lists</h2>
+    <h2>{{ owner.email }}'s lists</h2>  <1>
     <ul>
-        {% for list in owner.list_set.all %}
-            <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
+        {% for list in owner.list_set.all %}  <2>
+            <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>  <3>
         {% endfor %}
     </ul>
 {% endblock %}
@@ -371,14 +350,14 @@ Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
 We've made several design decisions in this template which are going
 to filter their way down through the code:
 
-* We want a variable called `owner` to represent the user in our template.
+<1> We want a variable called `owner` to represent the user in our template.
 
-* We want to be able to iterate through the lists created by the user using
-  `owner.list_set.all` (I happen to know we get this for free from the Django
-  ORM)
+<2> We want to be able to iterate through the lists created by the user using
+    `owner.list_set.all` (I happen to know we get this for free from the Django
+    ORM)
 
-* We want to use `list.name` to print out the "name" of the list, which is
-  currently specified as the text of its first element.
+<3> We want to use `list.name` to print out the "name" of the list, which is
+    currently specified as the text of its first element.
 
 We can re-run our FTs, to check we didn't break anything, and to see whether
 we've got any further:
@@ -396,7 +375,7 @@ Ran 7 tests in 77.613s
 FAILED (errors=1)
 ----
 
-This is a good time for a commit
+Well, no further, but at least we didn't break anything. Time for a commit:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -448,9 +427,8 @@ def my_lists(request, email):
     return render(request, 'my_lists.html', {'owner': owner})
 ----
 
-We'll then get an error which will require adding a user
-to our other unit test
-
+That gets our new test passing, but we'll also see an error from
+the previous test. We just need to add a user for it as well:
 
 
 [role="sourcecode"]
@@ -469,13 +447,15 @@ OK
 ----
 
 
-The next "requirement" from the views layer
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The next "requirement" from the views layer: new lists should record owner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Before we move down to the model layer, there's another part of the code
 at the views layer that will need to use our model:  we need some way for
 newly created lists to be assigned to an owner, if the current user is 
-logged in to the site:
+logged in to the site.
+
+Here's a first crack at writing the test:
 
 
 [role="sourcecode"]
@@ -499,7 +479,7 @@ class NewListTest(TestCase):
         self.assertEqual(list_.owner, request.user)
 ----
 
-I've chosen to use the raw view function, and to manually construct an
+This test uses the raw view function, and to manually construct an
 `HttpRequest` because it's slightly easier to write the test that way.
 Although the Django Test does have a helper function called `login`, but it 
 doesn't work well with external authentication services.  The alternative would
@@ -516,13 +496,13 @@ AttributeError: 'List' object has no attribute 'owner'
 To fix this, we can try writing code like this:
 
 [role="sourcecode"]
-.lists/views.py  
+.lists/views.py   (ch18l015)
 [source,python]
 ----
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
-        list_ = List.objects.create()
+        list_ = List()
         list_.owner = request.user
         list_.save()
         form.save(for_list=list_)
@@ -532,9 +512,8 @@ def new_list(request):
 ----
 //015
 
-
-But it won't actually work until we go down to the next layer and 
-adjust the model.
+But it won't actually work, because we haven't been down to the model layer
+yet.  Our lists don't know how to save a list owner: 
 
 ----
     self.assertEqual(list_.owner, request.user)
@@ -542,82 +521,103 @@ AttributeError: 'List' object has no attribute 'owner'
 ----
 
 
-.A more purist approach involving mocks
-*******************************************************************************
+At this stage, I'm sorely tempted to just leave this test failing, and just 
+jump down to the models layer (and I should thank to Gary Bernhardt, one 
+of the Testing Goat's great prophets, for pulling me up and making me do it
+"properly").
 
-Is this "pure" outside-in TDD? No.  A purist approach to outside-in TDD would
-want you to use mocks at this point, and have unit tests that are more 
-isolated from one level to another.  Something like this:
+In a simple example like this, we can probably get away with leaving the tests
+for the outer layer failing while we wait to implement the inner layer that
+they depend on.  But imagine if our app was more complex, and there were
+several more layers between the outside and the inside.  Imagine leaving
+three or four or five layers of tests, all failing while we wait to get to 
+the bottom layer to implement our critical feature.  While tests are failing,
+we're not sure that layer really works, on its own terms, or not.  We have
+to wait until we get to the bottom layer.
+
+Instead, rigorous outside-in TDD suggests that you 'isolate' each layer from
+the next one.  
+
+We can achieve this using a bit of mocking:
 
 [role="sourcecode skipme"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch18l016)
 [source,python]
 ----
 from unittest.mock import Mock, patch
 [...]
 
-    @patch('lists.views.ItemForm.save', Mock())  #<3>
-    @patch('lists.views.List.objects.create')  #<1>
-    def test_list_owner_is_saved_mocky(self, mock_List_create):
+    @patch('lists.views.List')  #<1>
+    def test_list_owner_is_saved_if_user_is_authenticated(self, mockList):
+        mock_list = List.objects.create()  #<2>
+        mock_list.save = Mock()
+        mockList.return_value = mock_list
         request = HttpRequest()
-        request.user = Mock()
+        request.user = User.objects.create()  #<3>
         request.POST['text'] = 'new list item'
-        mock_list = mock_List_create.return_value
+
         new_list(request)
-        self.assertEqual(mock_list.owner, request.user)  #<2>
+
+        self.assertEqual(mock_list.owner, request.user)  #<4>
 ----
 
 <1> We mock out the `List.objects.create` function to be able
     to get access to the list that's going to be created by the view.
 
-<2> Then we can assert about the owner we assign to it
+<2> Then we create a real List object for the view to use.  It has
+    to be a real List object, otherwise the Item that the view is
+    trying to save will fail with a foreign key error.
 
-<3> This is needed because otherwise the `form.save()` will complain
-    that it's not been passed a real List object.
+<3> We set a real user on the request object.  
 
-Try it!  You should find that it will pass, if you've added the
-`list_.owner =` bit to the view.  Try removing the owner assignment,
-and you'll see it fail:
+<4> And now we can make assertions about whether the list has had
+    the `.owner` attribute set on it.  
 
-[role="skipme"]
+If we try to run this test now, it should pass.
+
 ----
-AssertionError: <MagicMock name='create().owner' id='140176904220432'> != <Mock
-id='140176904185168'>
-----
+Ran 38 tests in 0.145s
 
-Actually, 'strictly' speaking, you'd need another check that
-the list.owner gets assigned 'before' the save function is called, 
-making the test even more complicated:
-
-[role="sourcecode skipme"]
-.lists/tests/test_views.py
-[source,python]
-----
-        mock_list = mock_List_create.return_value
-        def check_owner_assigned_before_save():
-            self.assertEqual(mock_list.owner, request.user)
-        mock_list.save.side_effect = check_owner_assigned_before_save
-
-        new_list(request)
+OK
 ----
 
-So, yes, it's a more purist approach, but it does leave you with much
-mockier, and less readable tests.  That's why I prefer a more pragmatic
-approach.  I think "purist" Outside-In TDD, sometimes called "London-Style
-TDD", isn't worth it when you're dealing with the Django ORM a lot -- it
-works better if you have code that has no external dependencies or 
-"boundaries". There's more discussion of this in the "Hot Lava" chapter.
 
-*******************************************************************************
+Listen to your tests: ugly tests signal a need to refactor
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Whenever you find yourself having to write a test like this, and you're finding
+it hard work, it's likely that your tests are trying to tell you something. 7
+lines of setup (3 lines for the mock user, and 4 more lines for the request 
+object) is way too many.
+
+What this test is telling us is that our view may be doing too much work,
+dealing with creating a form, creating a new list object 'and' deciding whether
+or not to save an owner for the list.
+
+We'll come back to this in the next chapter, when we explore the topic of
+test isolation in more detail.
+
+Let's do a commit, and then 'tag' the commit as a way of remembering our 
+position for the next chapter.
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am"slightly more isolated tests at views layer"*
+$ *git tag needs_moar_isolation*
+----
 
 
 
-Moving down again: to the model layer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Moving down to the model layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Next we move down to the model layer, to get the owner.list_set.all API
-working:
+Our outside-in design has driven out two requirements for the models layer:
+we want to be able to assign an owner to a list using the attribute
+`.owner`, and we want to be able to access the lists owner by a user with 
+the API `owner.list_set.all`.
+
+Let's write a test for that:
  
 
 [role="sourcecode"]
