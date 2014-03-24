@@ -513,8 +513,7 @@ def new_list(request):
 ----
 //015
 
-But it won't actually work, because we haven't been down to the model layer
-yet.  Our lists don't know how to save a list owner: 
+But it won't actually work, because don't know how to save a list owner yet:
 
 ----
     self.assertEqual(list_.owner, request.user)
@@ -522,81 +521,28 @@ AttributeError: 'List' object has no attribute 'owner'
 ----
 
 
-At this stage, I'm sorely tempted to just leave this test failing, and just 
-jump down to the models layer (and I should thank to Gary Bernhardt, one 
-of the Testing Goat's great prophets, for pulling me up and making me do it
-"properly").
+A decision point: whether to proceed to the next layer with a failing test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In a simple example like this, we can probably get away with leaving the tests
-for the outer layer failing while we wait to implement the inner layer that
-they depend on.  But imagine if our app was more complex, and there were
-several more layers between the outside and the inside.  Imagine leaving
-three or four or five layers of tests, all failing while we wait to get to 
-the bottom layer to implement our critical feature.  While tests are failing,
-we're not sure that layer really works, on its own terms, or not.  We have
-to wait until we get to the bottom layer.
+In order to get this test passing, as it's written now, we have to move
+down to the model layer.  However, it means doing more work with a failing
+test, which is not ideal.
 
-Instead, rigorous outside-in TDD suggests that you 'isolate' each layer from
-the next one.  
+The alternative is to re-write the test to make it more 'isolated' from the
+level below, using mocks.
 
-We can achieve this using a bit of mocking:
+On the one hand, it's a lot more effort to use mocks, and it can lead to
+tests that are harder to read.  On the other hand, imagine if our app was more
+complex, and there were several more layers between the outside and the inside.
+Imagine leaving three or four or five layers of tests, all failing while we
+wait to get to the bottom layer to implement our critical feature.  While tests
+are failing, we're not sure that layer really works, on its own terms, or not.
+We have to wait until we get to the bottom layer.
 
-[role="sourcecode skipme"]
-.lists/tests/test_views.py (ch18l016)
-[source,python]
-----
-from unittest.mock import Mock, patch
-[...]
-
-    @patch('lists.views.List')  #<1>
-    def test_list_owner_is_saved_if_user_is_authenticated(self, mockList):
-        mock_list = List.objects.create()  #<2>
-        mock_list.save = Mock()
-        mockList.return_value = mock_list
-        request = HttpRequest()
-        request.user = User.objects.create()  #<3>
-        request.POST['text'] = 'new list item'
-
-        new_list(request)
-
-        self.assertEqual(mock_list.owner, request.user)  #<4>
-----
-
-<1> We mock out the `List.objects.create` function to be able
-    to get access to the list that's going to be created by the view.
-
-<2> Then we create a real List object for the view to use.  It has
-    to be a real List object, otherwise the Item that the view is
-    trying to save will fail with a foreign key error.
-
-<3> We set a real user on the request object.  
-
-<4> And now we can make assertions about whether the list has had
-    the `.owner` attribute set on it.  
-
-If we try to run this test now, it should pass.
-
-----
-Ran 38 tests in 0.145s
-
-OK
-----
-
-
-Listen to your tests: ugly tests signal a need to refactor
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Whenever you find yourself having to write a test like this, and you're finding
-it hard work, it's likely that your tests are trying to tell you something. 7
-lines of setup (3 lines for the mock user, and 4 more lines for the request 
-object) is way too many.
-
-What this test is telling us is that our view may be doing too much work,
-dealing with creating a form, creating a new list object 'and' deciding whether
-or not to save an owner for the list.
-
-We'll come back to this in the next chapter, when we explore the topic of
-test isolation in more detail.
+This is a decision point you're likely to run into in your own projects. Let's
+investigate both approaches.  We'll start by taking the shortcut, and leaving
+the test failing.  In the next chapter, we'll come back to this exact point,
+and investigate how things would have gone if we'd used more isolation.
 
 Let's do a commit, and then 'tag' the commit as a way of remembering our 
 position for the next chapter.
@@ -604,10 +550,8 @@ position for the next chapter.
 [subs="specialcharacters,quotes"]
 ----
 $ *git commit -am"slightly more isolated tests at views layer"*
-$ *git tag needs_moar_isolation*
+$ *git tag revisit_this_point_with_isolated_tests*
 ----
-
-
 
 
 Moving down to the model layer
