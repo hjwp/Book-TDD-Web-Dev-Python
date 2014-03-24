@@ -372,7 +372,7 @@ class NewListViewUnitTest(unittest.TestCase): #<1>
 
 <1> The Django `TestCase` class makes it too easy to write integrated tests.
     As a way of making sure we're writing "pure", isolated unit tests, we'll
-    only use `unittest.testcase`
+    only use `unittest.TestCase`
 
 <2> We mock out the NewListForm class (which doesn't even exist yet). It's
     going to be used in all the tests, so we mock it out at the class level.
@@ -468,7 +468,7 @@ def new_list2(request):
 ----
 
 Now, if the form is valid, we want to redirect to the object that
-the form returns.  So we mock out another of the views collaborators,
+the form returns.  So we mock out another of the view's collaborators,
 the `redirect` function:
 
 [role="sourcecode"]
@@ -490,6 +490,9 @@ the `redirect` function:
 
 That takes us to here:
 
+[role="sourcecode"]
+.lists/views.py
+[source,python]
 ----
 def new_list2(request):
     form = NewListForm(data=request.POST)
@@ -500,6 +503,9 @@ def new_list2(request):
 And now the failure case -- if the form is invalid, we want to render
 the home page template, 
 
+[role="sourcecode"]
+.lists/tests/test_views.py
+[source,python]
 ----
     @patch('lists.views.render')
     def test_renders_home_template_with_form_if_form_invalid(
@@ -587,7 +593,9 @@ Moving down to the forms layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 So we've built up our views function based on a "wishful thinking" version
-of a form called `NewItemForm`, which doesn't even exist yet.
+of a form called `NewItemForm`, which doesn't even exist yet. Let's write
+some unit tests for it now.  Again, they'll be fully isolated from the
+layers below:
 
 
 [role="sourcecode"]
@@ -741,7 +749,7 @@ Finally, moving down to the models layer
 
 Notice that we've been able to drive all this design, and the models layer
 still doesn't implement lists having owners.  We can finally put that together
-now:
+now, using the same tests we wrote in the last chapter:
 
 [role="sourcecode"]
 .lists/tests/test_models.py
@@ -775,10 +783,22 @@ class List(models.Model):
 And a schemamigration...  takes us to failing integrated tests!  what's 
 happening?
 
+----
+ValueError: Cannot assign "<SimpleLazyObject: <django.contrib.auth.models.AnonymousUser object at 0x7fbad1cb6c10>>": "List.owner" must be a "User" instance.
+----
+
+Ah, the old view isn't discerning enough  about what it does with list
+owners:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
     if form.is_valid():
         list_ = List()
         list_.owner = request.user
         list_.save()
+----
 
 
 This is the point at which we realise that our old code wasn't fit for purpose.
@@ -947,19 +967,24 @@ what each mock is saying about the implicit contract:
 <4> The form's `.save` method should return a new list object, for our view
     to redirect the user to.
 
-If we have a look through our form tests, we'll see that, actually, only item <3>
-is tested explicitly.  Items <1> and <2>  we slightly glossed over, because
+If we have a look through our form tests, we'll see that, actually, only item %3%
+is tested explicitly.  Items %1% and %2%  we slightly glossed over, because
 they're default features of a Django `ModelForm`,  but they are actually covered
-by our tests for the parent `ItemForm` class.  But contract clause number <4>
+by our tests for the parent `ItemForm` class.  But contract clause number %4%
 managed to slip through the net.
 
 NOTE: When doing outside-in TDD with isolated tests, you need to keep track of
     each test's implicit assumptions about the contract which the next layer
-    should implement, and remember to test each of those in turn.
+    should implement, and remember to test each of those in turn. It's hard
+    work!
 
 Let's fix that now:
 
 
+[role="sourcecode"]
+.lists/tests/test_forms.py
+[source,python]
+----
     def test_save_returns_new_list_object(self, mockItem, mockList):
         mock_list = mockList.return_value
         user = Mock(is_authenticated=lambda: True)
@@ -969,6 +994,7 @@ Let's fix that now:
         response = form.save(owner=user)
 
         self.assertEqual(response, mock_list)
+----
 
 
 
@@ -1163,7 +1189,10 @@ class NewListViewIntegratedTest(TestCase):
         self.assertEqual(list_.owner, request.user)
 ----
 
-If you're going to keep any intermediate-level tests at all, 
+If you're going to keep any intermediate-level tests at all,  I like these
+three because they feel like they're doing the most "integration" jobs:  they
+test the full stack, from the request down to the actual database, and they
+cover the three most important use cases of our view.
 
 
 .On the pros and cons of different types of test
@@ -1196,6 +1225,8 @@ associated with the use of Mock objects. At each stage, you're writing
 tests for classes defining how they will collaborate with other
 classes that don't exist yet, at the next level down.  The natural solution
 is to use mocks to represent them.
+
+TODO: better conclusion.  talk about feedback cycles.
 
 In simple Django applications, where our layers are simply template/view/model,
 I find mocks to be overkill.  Once  applications reach the next level of
