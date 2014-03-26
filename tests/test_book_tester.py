@@ -506,6 +506,20 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+    def test_ignores_mock_ids_when_they_dont_have_names(self):
+        actual = dedent("""
+                self.assertEqual(user, mock_user)
+            AssertionError: None != <Mock id='46962183546064'>
+            """).rstrip()
+        expected = Output(dedent("""
+                self.assertEqual(user, mock_user)
+            AssertionError: None != <Mock id='139758452629392'>
+            """).rstrip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
 
     def test_ignores_phantomjs_run_times(self):
         actual = "Took 24ms to run 2 tests. 2 passed, 0 failed."

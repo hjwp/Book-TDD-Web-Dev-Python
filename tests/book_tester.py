@@ -44,14 +44,20 @@ def fix_test_dashes(output):
 
 
 def strip_mock_ids(output):
-    return re.sub(
-        r"Mock name='.+' id='(\d+)'>",
-        r"Mock name='.+' id='XX'>",
+    strip_mocks_with_names = re.sub(
+        r"Mock name='(.+)' id='(\d+)'>",
+        r"Mock name='\1' id='XX'>",
         output,
     )
+    strip_all_mocks = re.sub(
+        r"Mock id='(\d+)'>",
+        r"Mock id='XX'>",
+        strip_mocks_with_names,
+    )
+    return strip_all_mocks
 
 def strip_object_ids(output):
-    return re.sub('object at 0x(.+)>', 'object at 0xXX>', output)
+    return re.sub('0x([0-9a-f]+)>', '0xXX>', output)
 
 
 def strip_git_hashes(output):

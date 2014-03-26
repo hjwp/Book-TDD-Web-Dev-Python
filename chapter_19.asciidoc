@@ -95,10 +95,13 @@ Lists don't have owners yet, but we can let the views layer tests pretend they
 do by using a bit of mocking:
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch19l003)
 [source,python]
 ----
 from unittest.mock import Mock, patch
+
+from django.http import HttpRequest
+from django.test import TestCase
 [...]
 
     @patch('lists.views.List')  #<1>
@@ -130,14 +133,16 @@ from unittest.mock import Mock, patch
 
 If we try to run this test now, it should pass.
 
+[subs="specialcharacters,macros"]
 ----
-Ran 38 tests in 0.145s
-
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 37 tests in 0.145s
 OK
 ----
 
-If you don't see a pass, make sure that your views code in 'views.py' is exactly
-as I've shown it, using `List()`, not `List.objects.create`.  
+If you don't see a pass, make sure that your views code in 'views.py' is
+exactly as I've shown it, using `List()`, not `List.objects.create`.  
 
 
 NOTE: Using mocks does tie you to specific ways of using an API.  This is one
@@ -156,7 +161,7 @@ we assign the owner:
 [source,python]
 ----
     if form.is_valid():
-        list_ = List.objects.create()
+        list_ = List()
         list_.save()
         list_.owner = request.user
         form.save(for_list=list_)
@@ -178,14 +183,14 @@ moment it's called:
 
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch19l005)
 [source,python]
 ----
     @patch('lists.views.List')
     def test_list_owner_is_saved_if_user_is_authenticated(self, mockList):
         mock_list = List.objects.create()
         mock_list.save = Mock()
-        mockList.objects.create.return_value = mock_list
+        mockList.return_value = mock_list
         request = HttpRequest()
         request.user = Mock()
         request.user.is_authenticated.return_value = True
@@ -226,7 +231,7 @@ fail:
 ERROR: test_list_owner_is_saved_if_user_is_authenticated
 (lists.tests.test_views.NewListTest)
 [...]
-  File "/workspace/superlists/lists/views.py", line 14, in new_list
+  File "/workspace/superlists/lists/views.py", line 17, in new_list
     list_.save()
 [...]
   File "/workspace/superlists/lists/tests/test_views.py", line 84, in
@@ -245,12 +250,14 @@ We can get it passing again like this:
 [source,python]
 ----
     if form.is_valid():
-        list_ = List.objects.create()
+        list_ = List()
         list_.owner = request.user
         list_.save()
         form.save(for_list=list_)
         return redirect(list_)
 ----
+//006
+
 
 ...
 
@@ -320,11 +327,13 @@ back the integrated version, with a skip on it for now:
 
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch19l008)
 [source,python]
 ----
 import unittest
-class NewListViewIntegratedTest(object):
+[...]
+
+class NewListViewIntegratedTest(TestCase):
 
     def test_saving_a_POST_request(self):
         [...]
@@ -344,6 +353,15 @@ TIP: Have you heard the term "integration test" and are wondering what the
     definitions box in <<hot-lava-chapter>>.
 
 
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 37 tests in 0.139s
+OK
+----
+
+
 A new test suite with full isolation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -354,7 +372,7 @@ the old integrated tests all still pass.
 
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch19l009)
 [source,python]
 ----
 def new_list(request):
@@ -379,16 +397,14 @@ to define, by wishful thinking, the way we want our form to work.
 
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/tests/test_views.py (ch19l010)
 [source,python]
 ----
-import unittest
-from unittest.mock import Mock, patch
-[...]
 from lists.views import new_list, new_list2
+[...]
 
 @patch('lists.views.NewListForm')  #<2>
-class NewListViewUnitTest(unittest.TestCase): #<1>
+class NewListViewUnitTest(unittest.TestCase):  #<1>
 
     def setUp(self):
         self.request = HttpRequest()
@@ -419,27 +435,35 @@ our view yet.
 
 ----
 AttributeError: <module 'lists.views' from
-'/home/harry/Dropbox/book/source/chapter_18b/superlists/lists/views.py'> does
-not have the attribute 'NewListForm'
+'/workspace/superlists/lists/views.py'> does not have the attribute
+'NewListForm'
 ----
 
 Let's create a placeholder for it:
 
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch19l011)
 [source,python]
 ----
 from lists.forms import ExistingListItemForm, ItemForm, NewListForm
 [...]
 ----
 
+and:
+
 [role="sourcecode"]
-.lists/forms.py
+.lists/forms.py (ch19l012)
 [source,python]
 ----
+class ItemForm(forms.models.ModelForm):
+    [...]
+
 class NewListForm(object):
     pass
+
+class ExistingListItemForm(ItemForm):
+    [...]
 ----
 
 Next we get a real failure:
@@ -453,20 +477,30 @@ And we implement like this:
 
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch19l012-2)
 [source,python]
 ----
 def new_list2(request):
     NewListForm(data=request.POST)
 ----
 
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 38 tests in 0.143s
+OK
+-----
+
+
 Let's continue.  If the form is valid, we want to call save on it:
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/tests/test_views.py (ch19l013)
 [source,python]
 ----
-@patch('lists.views.ItemForm')
+@patch('lists.views.NewListForm')
 class NewListViewUnitTest(unittest.TestCase):
 
     def setUp(self):
@@ -475,13 +509,13 @@ class NewListViewUnitTest(unittest.TestCase):
         self.request.user = Mock() 
 
 
-    def test_passes_POST_data_to_ItemForm(self, mockItemForm):
+    def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
         new_list2(self.request)
-        mockItemForm.assert_called_once_with(data=self.request.POST)
+        mockNewListForm.assert_called_once_with(data=self.request.POST)
 
 
-    def test_saves_form_with_owner_if_form_valid(self, mockItemForm):
-        mock_form = mockItemForm.return_value
+    def test_saves_form_with_owner_if_form_valid(self, mockNewListForm):
+        mock_form = mockNewListForm.return_value
         mock_form.is_valid.return_value = True
         new_list2(self.request)
         mock_form.save.assert_called_once_with(owner=self.request.user)
@@ -489,25 +523,29 @@ class NewListViewUnitTest(unittest.TestCase):
 
 That takes us to this:
 
+[role="sourcecode"]
+.lists/views.py (ch19l014)
+[source,python]
 ----
 def new_list2(request):
     form = NewListForm(data=request.POST)
     form.save(owner=request.user)
 ----
 
+
 In the case where the form is valid, we want the view to return a redirect, 
 to send us to see the object that the form has just created.  So we mock out
 another of the view's collaborators, the `redirect` function:
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch19l015)
 [source,python]
 ----
     @patch('lists.views.redirect')  #<1>
     def test_redirects_to_form_returned_object_if_form_valid(
-        self, mock_redirect, mockItemForm  #<2>
+        self, mock_redirect, mockNewListForm  #<2>
     ):
-        mock_form = mockItemForm.return_value
+        mock_form = mockNewListForm.return_value
         mock_form.is_valid.return_value = True  #<3>
 
         response = new_list2(self.request)
@@ -519,7 +557,7 @@ another of the view's collaborators, the `redirect` function:
 <1> We mock out the `redirect` function, this time at the method level
 
 <2> `patch` decorators are applied innermost first, so the new mock is injected
-    to our method as before the `mockItemForm`.
+    to our method as before the `mockNewListForm`.
 
 <3> We specify we're testing the case where the form is valid
 
@@ -532,7 +570,7 @@ another of the view's collaborators, the `redirect` function:
 That takes us to here:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch19l016)
 [source,python]
 ----
 def new_list2(request):
@@ -541,18 +579,27 @@ def new_list2(request):
     return redirect(list_)
 ----
 
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 40 tests in 0.163s
+OK
+----
+
 And now the failure case -- if the form is invalid, we want to render
 the home page template, 
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch19l017)
 [source,python]
 ----
     @patch('lists.views.render')
     def test_renders_home_template_with_form_if_form_invalid(
-        self, mock_render, mockItemForm
+        self, mock_render, mockNewListForm
     ):
-        mock_form = mockItemForm.return_value
+        mock_form = mockNewListForm.return_value
         mock_form.is_valid.return_value = False
 
         response = new_list2(self.request)
@@ -575,14 +622,14 @@ TIP: When using assert methods on mocks, like `assert_called_once_with`,
     it's doubly important to make sure you run the test and see it fail.
     It's all too easy to make a typo in your assert function name and
     end up calling a mock method that does nothing (mine was to write
-    `asssert_called_once_with`, try it!)
+    `asssert_called_once_with` with three essses, try it!)
 
 
 We make a deliberate mistake, just to make sure our tests are comprehensive:
 
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch19l018)
 [source,python]
 ----
 def new_list2(request):
@@ -596,11 +643,11 @@ def new_list2(request):
 That passes but it shouldn't!  One more test then:
 
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch19l019)
 [source,python]
 ----
-    def test_does_not_save_if_form_invalid(self, mockItemForm):
-        mock_form = mockItemForm.return_value
+    def test_does_not_save_if_form_invalid(self, mockNewListForm):
+        mock_form = mockNewListForm.return_value
         mock_form.is_valid.return_value = False
         new_list2(self.request)
         self.assertFalse(mock_form.save.called)
@@ -629,9 +676,11 @@ def new_list2(request):
 
 ...
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
 Ran 42 tests in 0.163s
-
 OK
 ----
 
@@ -648,12 +697,25 @@ of the ORM:
 
 
 [role="sourcecode"]
-.lists/tests/test_forms.py
+.lists/tests/test_forms.py (ch19l021)
 [source,python]
 ----
+import unittest
+from unittest.mock import patch, Mock
+from django.test import TestCase
+
+from lists.forms import (
+    DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
+    ExistingListItemForm, ItemForm, NewListForm
+)
+
+
+class ItemFormTest(TestCase):
+    [...]
+
 @patch('lists.forms.List')  #<1>
 @patch('lists.forms.Item')  #<1>
-class NewListFormTest(TestCase):
+class NewListFormTest(unittest.TestCase):
 
     def test_save_creates_new_list_and_item_from_cleaned_data(
         self, mockItem, mockList  #<1>
@@ -695,7 +757,7 @@ Comparing isolated and integrated versions of the same test
 Compare this test to the old form save test in `ItemFormTest`:
 
 [role="sourcecode currentcontens"]
-.lists/tests.py
+.lists/tests/test_forms.py
 [source,python]
 ----
 class ItemFormTest(TestCase):
@@ -712,7 +774,7 @@ class ItemFormTest(TestCase):
 
 It seems much more straightforward!
 
-So on the one hand, the isolated test is harder to read.  It takes a good deal
+On the one hand, the isolated test is harder to read.  It takes a good deal
 of wrapping your head around, and it's very sensitive to slight changes in the
 way we use the model API (it will break if we use `Item.objects.create` instead
 of `Item()`, for example).
@@ -731,9 +793,12 @@ If we step through the requirements of this tests, we should eventually get to
 code like this:
 
 [role="sourcecode"]
-.lists/forms.py
+.lists/forms.py (ch19l022)
 [source,python]
 ----
+from lists.models import Item, List
+[...]
+
 class NewListForm(object):
 
     def save(self, owner):
@@ -750,7 +815,7 @@ which will get us the css classes and validation for free:
 
 
 [role="sourcecode"]
-.lists/tests/test_forms.py
+.lists/tests/test_forms.py (ch19l023)
 [source,python]
 ----
     def test_is_an_ItemForm(self, mockItem, mockList):
@@ -760,7 +825,7 @@ which will get us the css classes and validation for free:
 So:
 
 [role="sourcecode"]
-.lists/forms.py
+.lists/forms.py (ch19l024)
 [source,python]
 ----
     class NewListForm(ItemForm):
@@ -775,7 +840,7 @@ Here's where we implement our new functionality: the form should conditionally
 save the owner:
 
 [role="sourcecode"]
-.lists/tests/test_forms.py
+.lists/tests/test_forms.py (ch19l025)
 [source,python]
 ----
     def test_save_saves_owner_if_authenticated(self, mockItem, mockList):
@@ -802,6 +867,19 @@ save the owner:
         self.assertEqual(mock_list.owner, None)
 ----
 
+One of those two will fail:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+AssertionError: None != <Mock id='140348870426896'>
+[...]
+Ran 46 tests in 0.172s
+FAILED (failures=1)
+----
+
 
 And that should take us to this:
 
@@ -824,8 +902,6 @@ And that should take us to this:
 And passing tests.
 
 ----
-Ran 46 tests in 0.170s
-
 OK
 ----
 
@@ -838,45 +914,65 @@ still doesn't actually implement lists having owners!  We can finally put that
 together now, using the same tests we wrote in the last chapter:
 
 [role="sourcecode"]
-.lists/tests/test_models.py
+.lists/tests/test_models.py (ch19l027)
 [source,python]
 ----
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
+class ListModelTest(TestCase):
+    [...]
+
     def test_lists_can_have_owners(self):
-        user = User.objects.create(email='a@b.com')
-        list_ = List.objects.create(owner=user)
-        self.assertIn(list_, user.list_set.all())
+        List(owner=User())  # should not raise
 
 
     def test_list_owner_is_optional(self):
-        List.objects.create()  # should not raise
+        List().full_clean()  # should not raise
 ----
 
 Now that we're at the models layer, we're at a boundary of the system, so 
-it's OK not to use mocks any more.
+it's OK not to use mocks any more -- we can use the real ORM, and even 
+use the database if we need to.
+
+Although in this case, I have managed to re-write the tests so that they don't
+actually save objects -- just having them as in-memory objects is enough to for
+this test.
+
+TIP: Don't save models objects to the database if you don't need to. It will
+    make your tests faster.
+
 
 We implement, just like we did in the last chapter:
 
 [role="sourcecode"]
-.lists/models.py
+.lists/models.py (ch19l028)
 [source,python]
 ----
+from django.conf import settings
+[...]
+
+
 class List(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
-
     [...]
 ----
 
 And a schemamigration...  takes us to failing integrated tests!  what's 
 happening?
 
+[role="dofirst-ch19l029"]
 ----
-ValueError: Cannot assign "<SimpleLazyObject: <django.contrib.auth.models.AnonymousUser object at 0x7fbad1cb6c10>>": "List.owner" must be a "User" instance.
+ValueError: Cannot assign "<SimpleLazyObject:
+<django.contrib.auth.models.AnonymousUser object at 0x7fbad1cb6c10>>":
+"List.owner" must be a "User" instance.
 ----
 
 Ah, the old view isn't discerning enough about what it does with list
 owners yet:
 
-[role="sourcecode"]
+[role="sourcecode currentcontents"]
 .lists/views.py
 [source,python]
 ----
@@ -891,7 +987,7 @@ This is the point at which we realise that our old code wasn't fit for purpose.
 Let's fix it to get all our tests passing:
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/views.py (ch19l031)
 [source,python]
 ----
 def new_list(request):
@@ -918,7 +1014,11 @@ NOTE:  One of the benefits of integrated tests is that they help you to catch
     to let us know we'd forgotten something,
 
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 48 tests in 0.175s
 OK
 ----
 
@@ -938,24 +1038,34 @@ can make the swap in 'urls.py':
 ----
 
 We should also remove the `unittest.skip` from our integrated test class,
-to see if our new code for list owners really works:
+and make it point at our new view (`new_list2`), to see if our new code for
+list owners really works:
 
 
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l033)
+[source,python]
 ----
-class NewListViewIntegratedTest(object):
+class NewListViewIntegratedTest(TestCase):
 
     def test_saving_a_POST_request(self):
         [...]
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
         request = HttpRequest()
-        [...]
+        request.user = User.objects.create(email='a@b.com')
+        request.POST['text'] = 'new list item'
+        new_list2(request)
+        list_ = List.objects.first()
+        self.assertEqual(list_.owner, request.user)
 ----
 
 So what happens when we run our tests? Oh no!
 
 
 ----
+ERROR: test_list_owner_is_saved_if_user_is_authenticated
+[...]
 ERROR: test_saving_a_POST_request
 [...]
 ERROR: test_redirects_after_POST
@@ -965,7 +1075,7 @@ ERROR: test_redirects_after_POST
 [...]
 TypeError: argument of type 'NoneType' is not iterable
 
-FAILED (errors=2)
+FAILED (errors=3)
 ----
 
 
@@ -976,7 +1086,7 @@ verify the integration 'between' your layers.
 What's happened here is that the view was expecting the form to return 
 a list item:
 
-[role="sourcecode"]
+[role="sourcecode currentcontents"]
 .lists/views.py
 [source,python]
 ----
@@ -986,7 +1096,7 @@ a list item:
 
 But we forgot to make it return anything:
 
-[role="sourcecode"]
+[role="sourcecode currentcontents"]
 .lists/forms.py
 [source,python]
 ----
@@ -1001,28 +1111,28 @@ Thinking of interactions between layers as "contracts"
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ultimately, even if we had been writing nothing but isolated unit tests, our
-functional tests would have picked up this particular slip-up.  But ideally we'd
-want our feedback cycle to be quicker -- functional tests may take a couple of 
-minutes to run, or even a few hours once your app starts to grow.  Is there
-any way to avoid this sort of problem before it happens?
+functional tests would have picked up this particular slip-up.  But ideally
+we'd want our feedback cycle to be quicker -- functional tests may take a
+couple of minutes to run, or even a few hours once your app starts to grow.  Is
+there any way to avoid this sort of problem before it happens?
 
-Methodologically, the way to do it is to think about the interaction between your
-layers in terms of contracts.  Whenever we mock out the behaviour of one layer,
-we have to make a mental note that there is now an implicit contract between the
-layers, and that a mock on one layer should probably translate into a test at the
-layer below.
+Methodologically, the way to do it is to think about the interaction between
+your layers in terms of contracts.  Whenever we mock out the behaviour of one
+layer, we have to make a mental note that there is now an implicit contract
+between the layers, and that a mock on one layer should probably translate into
+a test at the layer below.
 
 Here's the part of the contract that we missed:
 
-[role="sourcecode"]
+[role="sourcecode currentcontents"]
 .lists/tests/test_views.py
 [source,python]
 ----
     @patch('lists.views.redirect')
     def test_redirects_to_form_returned_object_if_form_valid(
-        self, mock_redirect, mockItemForm
+        self, mock_redirect, mockNewListForm
     ):
-        mock_form = mockItemForm.return_value
+        mock_form = mockNewListForm.return_value
         mock_form.is_valid.return_value = True
 
         response = new_list2(self.request)
@@ -1041,8 +1151,8 @@ Identifying implicit contracts
 It's worth reviewing each of the tests in `NewListViewUnitTest` and seeing
 what each mock is saying about the implicit contract:
 
-[role="sourcecode"]
-.lists/tests.py
+[role="sourcecode currentcontents"]
+.lists/tests/test_views.py
 [source,python]
 ----
     def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
@@ -1050,14 +1160,14 @@ what each mock is saying about the implicit contract:
         mockNewListForm.assert_called_once_with(data=self.request.POST)  #<1>
 
 
-    def test_saves_form_with_owner_if_form_valid(self, mockItemForm):
-        mock_form = mockItemForm.return_value
+    def test_saves_form_with_owner_if_form_valid(self, mockNewListForm):
+        mock_form = mockNewListForm.return_value
         mock_form.is_valid.return_value = True  #<2>
         new_list2(self.request)
         mock_form.save.assert_called_once_with(owner=self.request.user)  #<3>
 
 
-    def test_does_not_save_if_form_invalid(self, mockItemForm):
+    def test_does_not_save_if_form_invalid(self, mockNewListForm):
         [...]
         mock_form.is_valid.return_value = False  #<2>
         [...]
@@ -1065,7 +1175,7 @@ what each mock is saying about the implicit contract:
 
     @patch('lists.views.redirect')
     def test_redirects_to_form_returned_object_if_form_valid(
-        self, mock_redirect, mockItemForm
+        self, mock_redirect, mockNewListForm
     ):
         [...]
         mock_redirect.assert_called_once_with(mock_form.save.return_value)  #<4>
@@ -1107,7 +1217,7 @@ Let's fix that now:
 
 
 [role="sourcecode"]
-.lists/tests/test_forms.py
+.lists/tests/test_forms.py (ch19l038)
 [source,python]
 ----
     def test_save_returns_new_list_object(self, mockItem, mockList):
@@ -1125,7 +1235,10 @@ Let's fix that now:
 
 gives:
 
-    AssertionError: None != <MagicMock name='List()' id='139707803945360'>
+
+----
+AssertionError: None != <MagicMock name='List()' id='139707803945360'>
+----
 
 
 And so:
@@ -1152,7 +1265,10 @@ class NewListForm(ItemForm):
 
 And that gets us to a fully passing test suite:
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
 Ran 49 tests in 0.169s
 
 OK
@@ -1166,7 +1282,7 @@ We only have one more feature to implement, the `.name` attribute on list
 objects.  Again, we can grab the test and code from the last chapter:
 
 [role="sourcecode"]
-.lists/tests/test_models.py
+.lists/tests/test_models.py (ch19l040)
 [source,python]
 ----
     def test_list_name_is_first_item_text(self):
@@ -1177,10 +1293,12 @@ objects.  Again, we can grab the test and code from the last chapter:
 
 ----
 
-and
+(Since we're back at the boundary layer, it's OK to use the ORM again. You
+could conceivable write this test using mocks, but there wouldn't be much
+point).
 
 [role="sourcecode"]
-.lists/models.py
+.lists/models.py (ch19l041)
 [source,python]
 ----
     @property
@@ -1243,13 +1361,15 @@ little duplication from its tests:
 .lists/tests/test_forms.py
 [source,diff]
 ----
-@@ -99,18 +90,8 @@ class NewListFormTest(TestCase):
+--- a/lists/tests/test_forms.py
++++ b/lists/tests/test_forms.py
+@@ -99,18 +90,8 @@ class NewListFormTest(unittest.TestCase):
  
  class ExistingListItemFormTest(TestCase):
  
 +    def test_is_an_ItemForm(self):
 +        self.assertIsInstance(ExistingListItemForm(for_list=List()), ItemForm)
-+
+-
 -    def test_form_renders_item_text_input(self):
 -        list_ = List.objects.create()
 -        form = ExistingListItemForm(for_list=list_)
@@ -1261,7 +1381,7 @@ little duplication from its tests:
 -        form = ExistingListItemForm(for_list=list_, data={'text': ''})
 -        self.assertFalse(form.is_valid())
 -        self.assertEqual(form.errors['text'], [EMPTY_LIST_ERROR])
--
++
      def test_form_validation_for_duplicate_items(self):
          list_ = List.objects.create()
 ----
@@ -1410,12 +1530,12 @@ Integrated tests (reliant on, eg, the ORM or the Django Test Client)::
     * Are quick to write,
     * Easy to understand,
     * Will warn you of any integration issues,
-    * But may not drive good design.
+    * But may not always drive good design.
 
 Isolated ("mocky") tests::
     * These involve the most hard work.
     * They are harder to read and understand,
-    * But: these are the only ones that force you towards good design
+    * But: these are the only ones that can guide you towards better design
 
 *******************************************************************************
 
