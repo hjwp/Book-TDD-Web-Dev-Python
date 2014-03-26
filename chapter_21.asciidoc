@@ -6,28 +6,16 @@ ______________________________________________________________
 The database is Hot Lava!
 ______________________________________________________________
 
-Time to let you in on a little secret.  Almost none of the "unit" tests 
-in this book are "true" unit tests.  Strictly speaking, you should
-call them "integrated" tests, because they either rely on the database, or
+Right up until <<isolation-chapter>>, almost all of the "unit" tests in
+the book were integrated tests, because they either rely on the database, or
 they use the Django Test Client, which does too much magic with the middleware
 layers that sit between requests, responses and view functions.
 
-TDD veterans say you should strive to write unit tests wherever possible,
-instead of writing integrated tests.  In this chapter, I'd like to talk about
-why they say that, and try and give you some idea of when you can get away with
-muddling through with integrated tests, and when it's worth striving for more
-"pure" unit tests..
-
-If you'll forgive me the pretentious philosophical terminology, I'm going to
-follow a Hegelian dialectical structure: 
-
-* The Thesis: the case for "purist" unit tests that are fast.
-
-* The Antithesis: the pitfalls of "pure" unit tests.
-
-* The Synthesis: a discussion of ideal best practices like "Ports and Adapters"
-  or "Functional Core, Imperative Shell", and how to figure out when they're
-  worth striving for.
+TDD veterans say you should strive to write "pure", isolated unit tests
+wherever possible, instead of writing integrated tests.  In this chapter, I'd
+like to talk about why they say that, and try and give you some idea of when
+you can get away with muddling through with integrated tests, and when it's
+worth striving for more "pure" unit tests..
 
 
 .Terminology: different types of test
@@ -36,12 +24,12 @@ follow a Hegelian dialectical structure:
 Isolated tests ("pure" unit tests) vs integrated tests:: 
     The primary purpose of a unit test should be to verify the correctness
     of the logic of your application.  
-    An 'isolated' test is one that tests exactly one chunk of code, and whose
+    An *isolated* test is one that tests exactly one chunk of code, and whose
     success or failure does not depend on any other external code. This is what
     I call a "pure" unit test:  a test for a single function, for example,
     written in such a way that only that function can make it fail.  If the
     function depends on another system, and breaking that system breaks our
-    test, we have an 'integrated' test. That system could be an external
+    test, we have an *integrated* test. That system could be an external
     system, like a database, but it could also be another function which we
     don't control.  In either case, if breaking the system makes our test fail,
     our test is not properly isolated, it is not a "pure" unit test.  That's
@@ -50,10 +38,8 @@ Isolated tests ("pure" unit tests) vs integrated tests::
 
 Integration tests::
     An integration test checks that the code you control is integrated
-    correctly with some external system which you don't control. One way of
-    writing 'integration' tests is by using an 'integrated' test which actually
-    uses that external system, but another way is to use mocks, as we did in
-    the Persona chapters.
+    correctly with some external system which you don't control. 
+    'Integration' tests are typically also 'integrated' tests. 
 
 System tests::
     If an integration test checks the integration with one external system,
@@ -71,8 +57,12 @@ Functional tests and Acceptance tests::
 ******************************************************************************
 
 
-Thesis: Unit tests should be pure and fast
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+WARNING: This chapter has reverted to draft format following the addition
+    of a new chapter on tests isolation.  Apologies to readers, bullet points
+    etc follow.
+
+Faster tests
+~~~~~~~~~~~~
 
 Other things being equal, the faster your unit tests run, the better.  To a 
 lesser extent, the faster 'all' your tests run, the better.
@@ -89,6 +79,14 @@ longer they take, the more time you spend waiting for your tests, and that
 will slow down your development.
 
 
+Flow
+^^^^
+
+One of the great things about programming is getting into the "flow" state.
+And one of the things that's likely to kick you out of that state is if your
+tests start taking so long that you context-switch.
+
+
 Slow tests don't get run as often, which causes bad code
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -100,19 +98,20 @@ refactor will mean having to wait ages while all the tests run. In either
 case, bad code can be the result.
 
 
-Good unit tests should be isolated
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Integrated tests get slower over time
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The idealised unit test test exactly one thing -- this is why we strive to
-have a single assertion per test.  If your unit test actually has several
-dependencies, if the function under test calls other functions, and we end
-up relying on their effects, our unit tests are no longer isolated.
+So far, you might be thinking, OK, but our test suite has lots of integrated
+tests in it - over 50 of them, and it only takes 0.2 seconds to run.
 
-Another way of thinking of it is: in the idealised unit test setup, introducing
-a bug should cause exactly one unit test to fail, and that unit test should 
-tell you exactly where the problem is.  If introducing a bug in a function
-causes several other tests to fail, because they rely on that function 
-indirectly, then it's harder to debug the problem.
+But remember, we've got a very simple app. Once your starts to get more
+complex, as your database grows more and more tables and columns, integrated
+tests will get slower and slower.  Having Django reset the database between
+each test will take longer and longer.  
+
+At PythonAnywhere, we have a "unit" test suite that's full of integrated tests,
+and it now takes almost an hour to run.  Needless to say we don't run the whole
+thing day-to-day, while developing.  
 
 
 Don't take it from me
@@ -129,94 +128,34 @@ the concepts of test isolation, and how it fits with trying to adopt
 a more functional paradigm in the core business logic of your application.
 
 
+
 The problems with "pure" unit tests
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-That all sounds convincing, right?  The problem comes when striving for pure,
-fast unit tests leads to using a lot of mocks.
-
-Here's an illustration. Imagine our site does a bit of setup for each
-user: it makes a temp folder for them, and then sets a flag on their user
-profile:
-
-Imagine this:
-
-[source,python]
-----
-
-def _setup_temp_storage(user):
-    os.makedirs(TEMPDIR + '/' + user.username)
-
-def setup_user_environment(user):
-    _setup_temp_storage(user)
-    profile = user.get_profile()
-    profile.environment_setup = True
-    profile.save()
-----
-
-Here's the kind of test I'm inclined to write:
-
-[source,python]
-----
-def test_sets_up_temp_storage_and_sets_flag_on_profile(self):
-    user = User.objects.create(username='jim')
-    setup_user_environment(user)
-    self.assertTrue(os.path.exists(TEMPDIR + '/' + 'jim')
-    self.assertTrue(user.get_profile().environment_setup)
-
-def tearDown(self):
-    cleanup_tempdir()
-----
+* harder to write
+* harder to read
+* don't test integration between components
 
 
-Clearly breaking all the rules of "pure" unit tests there -- our test touches
-not just the database, but the filesytem as well. Oh no!
+What do we want from our tests
+
+* help verify correctness - at both the high level and low level
+* encourage us to keep refactoring our code
+* prevent regressions
+* drive good design
+* provide fast feedback.  want to know asap if we break something
+* maintainable -- tests shouldn't be a major brake on efforts to
+  evolve our application
 
 
-Mocky tests can be harder to work with
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-But consider what happens if we naively try and write a "pure" unit test, with
-mocks:
+Pros and cons
 
-
-[source,python]
-----
-def test_calls_setup_temp_storage_and_sets_flag_on_profile(self):
-    mock_user = Mock()
-    with patch('myapp._setup_temp_storage') as mock_setup_temp_storage:
-        setup_user_environment(mock_user)
-    mock_setup_temp_storage.assert_called_once_with(mock_user)
-    mock_profile = mock_user.get_profile.return_value
-    self.assertEqual(mock_profile.environment_setup, True)
-----
-
-Well, I would argue that, firstly, you have a much less readable test there,
-and it's also a test that's very closely coupled to the implementation.  It
-discourages refactoring, because something as simple as changing the name of
-the helper method `_setup_temp_storage` involves changing the test code in 4
-places -- three of which (eg `mock_setup_temp_storage`) won't be found by
-automated refactoring tools.
-
-
-The problem of the "disconnected" mocky test
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-But, secondly: imagine I change `_setup_temp_storage` to take a username
-instead of a user. I go and find its unit tests and change them, then change
-its implementation. What will happen next is that my "impure" unit test for
-`setup_user_environment` would break, because it uses the real function, and so
-that's my reminder to change the place it gets used. 
-
-In contrast, in the "fast" test, `setup_user_environment` is mocked, so 'that
-test will still pass', even though my code is broken.  If we were using a 
-statically typed language like Java, the compiler would warn us, but in Python,
-it's up to us to catch this sort of problem.
-
-So there's a danger, if you just dive in with mocks everywhere, that your 
-tests won't pick up on bugs in your application that are due to the way
-the individual components are integrated.
-
+unit test
+* fast
+* help drive design
+* help verify correctness at low level
+* but: harder to write, harder to read
 
 
 
@@ -303,9 +242,9 @@ you to take a look at.
 *******************************************************************************
 
 Fast Test, Slow Test and Boudaries:: 
-    Gary Bernhardt's talks from Pycon 2013
+    Gary Bernhardt's talks from Pycon 2012
     https://www.youtube.com/watch?v=RAxiiRPHS9k and 
-    https://www.youtube.com/watch?v=eOYal8elnZk.  His screencasts at 
+    2013: https://www.youtube.com/watch?v=eOYal8elnZk.  His screencasts at 
     http://www.destroyallsoftware.com are also well worth a look.
 
 Ports and Adapters:: 
