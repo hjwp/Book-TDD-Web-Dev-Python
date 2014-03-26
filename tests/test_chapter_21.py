@@ -4,8 +4,8 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter19Test(ChapterTest):
-    chapter_no = 19
+class Chapter20Test(ChapterTest):
+    chapter_no = 20
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -13,9 +13,9 @@ class Chapter19Test(ChapterTest):
         #self.prep_virtualenv()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'git command')
-        self.assertEqual(self.listings[1].skip, 'other command')
-        self.assertEqual(self.listings[4].type, 'code listing')
+        self.assertEqual(self.listings[0].type, 'code listing')
+        self.assertEqual(self.listings[1].type, 'test')
+        self.assertEqual(self.listings[2].type, 'output')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
@@ -23,9 +23,9 @@ class Chapter19Test(ChapterTest):
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 35
+            self.pos = 23
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch19l016')
+                self.sourcetree.get_commit_spec('ch18l011')
             ))
 
         while self.pos < len(self.listings):
@@ -33,7 +33,15 @@ class Chapter19Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no, ignore_moves=True)
+
+        self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
+        # final branch includes a suggested implementation...
+        # so just check diff up to the last listing
+        commit = self.sourcetree.get_commit_spec('ch20l013')
+        diff = self.sourcetree.run_command(
+            'git diff -b {}'.format(commit)
+        )
+        self.check_final_diff(self.chapter_no, ignore_moves=True, diff=diff)
 
 
 if __name__ == '__main__':

@@ -13,9 +13,9 @@ class Chapter20Test(ChapterTest):
         #self.prep_virtualenv()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'code listing')
-        self.assertEqual(self.listings[1].type, 'test')
-        self.assertEqual(self.listings[2].type, 'output')
+        self.assertEqual(self.listings[0].skip, True)
+        self.assertEqual(self.listings[1].skip, True)
+        self.assertEqual(self.listings[11].type, 'code listing with git ref')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
@@ -23,9 +23,9 @@ class Chapter20Test(ChapterTest):
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 23
+            self.pos = 35
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch18l011')
+                self.sourcetree.get_commit_spec('ch19l016')
             ))
 
         while self.pos < len(self.listings):
@@ -33,15 +33,7 @@ class Chapter20Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-
-        self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
-        # final branch includes a suggested implementation...
-        # so just check diff up to the last listing
-        commit = self.sourcetree.get_commit_spec('ch20l013')
-        diff = self.sourcetree.run_command(
-            'git diff -b {}'.format(commit)
-        )
-        self.check_final_diff(self.chapter_no, ignore_moves=True, diff=diff)
+        self.check_final_diff(self.chapter_no, ignore_moves=True)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,282 @@
+Fast tests, slow tests and Hot Lava
+-----------------------------------
+
+[quote, 'https://www.youtube.com/watch?v=bsmFVb8guMU[Casey Kinsey]']
+______________________________________________________________
+The database is Hot Lava!
+______________________________________________________________
+
+Right up until <<isolation-chapter>>, almost all of the "unit" tests in
+the book were integrated tests, because they either rely on the database, or
+they use the Django Test Client, which does too much magic with the middleware
+layers that sit between requests, responses and view functions.
+
+TDD veterans say you should strive to write "pure", isolated unit tests
+wherever possible, instead of writing integrated tests.  In this chapter, I'd
+like to talk about why they say that, and try and give you some idea of when
+you can get away with muddling through with integrated tests, and when it's
+worth striving for more "pure" unit tests..
+
+
+.Terminology: different types of test
+******************************************************************************
+
+Isolated tests ("pure" unit tests) vs integrated tests:: 
+    The primary purpose of a unit test should be to verify the correctness
+    of the logic of your application.  
+    An *isolated* test is one that tests exactly one chunk of code, and whose
+    success or failure does not depend on any other external code. This is what
+    I call a "pure" unit test:  a test for a single function, for example,
+    written in such a way that only that function can make it fail.  If the
+    function depends on another system, and breaking that system breaks our
+    test, we have an *integrated* test. That system could be an external
+    system, like a database, but it could also be another function which we
+    don't control.  In either case, if breaking the system makes our test fail,
+    our test is not properly isolated, it is not a "pure" unit test.  That's
+    not necessarily a bad thing, but it may mean the test is doing two jobs at
+    once.
+
+Integration tests::
+    An integration test checks that the code you control is integrated
+    correctly with some external system which you don't control. 
+    'Integration' tests are typically also 'integrated' tests. 
+
+System tests::
+    If an integration test checks the integration with one external system,
+    a system test checks the integration of multiple systems in your
+    application -- for example, checking that we've wired up our database,
+    static files, our server config, together in such a way that they all work.
+    
+Functional tests and Acceptance tests::
+    An acceptance test is meant to test that our system works from the point
+    of view of the user ("would the user accept this behaviour?").  It's 
+    hard to write an acceptance test that's not a full-stack, end-to-end test.
+    We've been using our functional tests to play the role of both acceptance
+    tests and system tests.
+    
+******************************************************************************
+
+
+WARNING: This chapter has reverted to draft format following the addition
+    of a new chapter on tests isolation.  Apologies to readers, bullet points
+    etc follow.
+
+Faster tests
+~~~~~~~~~~~~
+
+Other things being equal, the faster your unit tests run, the better.  To a 
+lesser extent, the faster 'all' your tests run, the better.
+
+
+Faster tests mean faster development
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+I've outlined the TDD test/code cycle in this book.  You've started to get a 
+feel for the TDD workflow, the way you flick between writing tiny amounts of
+code, and running your tests.  You end up running your unit tests several times
+a minute, and your functional tests several times a day. So, naturally, the
+longer they take, the more time you spend waiting for your tests, and that 
+will slow down your development.
+
+
+Flow
+^^^^
+
+One of the great things about programming is getting into the "flow" state.
+And one of the things that's likely to kick you out of that state is if your
+tests start taking so long that you context-switch.
+
+
+Slow tests don't get run as often, which causes bad code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The follow-up argument is that, if your test suite is slow, then running it
+becomes annoying.  As a developer, the danger is that you'll start to avoid
+running your tests, which may lead to bugs getting through, or it may lead
+to programmers being shy of refactoring the code, since they know that any
+refactor will mean having to wait ages while all the tests run. In either
+case, bad code can be the result.
+
+
+Integrated tests get slower over time
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+So far, you might be thinking, OK, but our test suite has lots of integrated
+tests in it - over 50 of them, and it only takes 0.2 seconds to run.
+
+But remember, we've got a very simple app. Once your starts to get more
+complex, as your database grows more and more tables and columns, integrated
+tests will get slower and slower.  Having Django reset the database between
+each test will take longer and longer.  
+
+At PythonAnywhere, we have a "unit" test suite that's full of integrated tests,
+and it now takes almost an hour to run.  Needless to say we don't run the whole
+thing day-to-day, while developing.  
+
+
+Don't take it from me
+^^^^^^^^^^^^^^^^^^^^^
+
+Gary Bernhardt, a man with far more experience of testing than me, put these
+points eloquently in a talk called
+https://www.youtube.com/watch?v=RAxiiRPHS9k[Fast Tests, Slow test]. I encourage
+you to watch it.  
+
+You should also check out his follow-up talk, 
+https://www.youtube.com/watch?v=eOYal8elnZk[Boundaries], in which he expands on
+the concepts of test isolation, and how it fits with trying to adopt
+a more functional paradigm in the core business logic of your application.
+
+
+
+The problems with "pure" unit tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* harder to write
+* harder to read
+* don't test integration between components
+
+
+What do we want from our tests
+
+* help verify correctness - at both the high level and low level
+* encourage us to keep refactoring our code
+* prevent regressions
+* drive good design
+* provide fast feedback.  want to know asap if we break something
+* maintainable -- tests shouldn't be a major brake on efforts to
+  evolve our application
+
+
+
+Pros and cons
+
+unit test
+* fast
+* help drive design
+* help verify correctness at low level
+* but: harder to write, harder to read
+
+
+
+Synthesis: Functional core, Imperative shell... if it works for you
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you've watched Gary's second talk, called 
+"https://www.youtube.com/watch?v=eOYal8elnZk[Boundaries]",  you'll start to
+see a potential way out of our thesis/antithesis dilemma.
+
+The problem of choosing between mocky tests and integrated tests 
+only really occurs at "boundaries" -- points of interaction between our
+code and external systems, like a database or a filesystem.
+
+So the solution is to try and keep the boundaries as separate as possible from
+the core of our application.  We can judiciously use a combination of mocks and
+integrated tests, maybe even functional tests, to test our code at the
+boundaries, but keep the "core" of our application -- the business logic --
+free of direct interactions with the database or the filesystem.
+
+Steve Freeman and Nat Pryce, in their book <<GOOSGBT, Growing Object-Oriented
+Software, Guided By Tests>>, call their approach to this "Ports and
+Adapters" (see <<ports-and-adapters>>).
+
+[[ports-and-adapters]]
+.Ports and Adapters (diagram by Nat Pryce)
+image::images/ports-and-adapters-architecture.svg[Illustration of ports and adapaters architecture, with isolated core and integration points]
+
+You can also see
+http://blog.8thlight.com/uncle-bob/2012/08/13/the-clean-architecture.html[Uncle
+Bob's perspective on his blog], and 
+http://alistair.cockburn.us/Hexagonal+architecture[Alistair Cockburn coining
+the term Hexagonal Architecture].
+
+Gary pushes this further, recommending an architecture he calls "Functional
+Core, Imperative Shell", whereby the "shell" of the application, the place
+where interaction with boundaries happens, follows the imperative programming
+pattern, and can be tested by integrated tests, acceptance tests, or even
+(gasp!) not at all, if it's kept minimal enough. But the core of the
+application is actually written following the functional programming paradigm
+(complete with the "no side-effects" corollary), which actually allows fully
+isolated, "pure" unit tests, entirely without mocks.
+
+
+Either way, the end result should be an application that's (say) 80% core and
+20% boundaries, 80% unit tests and 20% integrated tests.  This is sometimes
+described as trying to create a
+http://watirmelon.com/tag/testing-pyramid/["testing pyramid"].
+
+
+A health warning: simple examples in a book don't always reflect real life
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The problem is that, while the FCIS architecture sounds like a great idea
+for an app of moderate complexity, the example we used in this book was
+way to simple to really demonstrate the concept.
+
+A simple Django app is basically a thin wrapper around a CRUD system for a
+database.  It doesn't feel like there's a large enough "core" that's worth
+extracting and isolating from its boundaries.  But in a more complex system
+it's something that's definitely worth exploring.  It probably depends on
+your ration of "boundaries" to "business logic".
+
+On the biggest project I've ever worked on, PythonAnywhere, almost everything
+we do interacts with boundaries, one or more of: the filesystem, the database,
+websockets, Paypal, Dropbox, github, pypi, linux chroots and cgroups, CRON,
+Nginx and uWSGI, and many more.  So it's never seemed worth-while to create a
+separate business logic layer. But most apps are not PythonAnywhere.
+
+You can verify the correctness of your application using integrated tests,
+as we've done throughout the book. But remember, the tests we write in
+test-driven development are meant to do two jobs: not just verify correctness,
+but also help to drive good design.  Striving to write good, isolated tests
+should help to drive a clean, modular design.  If you rely too much on 
+integrated tests, you may not get the benefits of improved design in the
+same way.
+
+A wider discussion of these issues is beyond the scope of this book and the 
+wisdom of its writer, but here are a few further reading sources I encourage
+you to take a look at.
+
+
+.Further reading
+*******************************************************************************
+
+Fast Test, Slow Test and Boudaries:: 
+    Gary Bernhardt's talks from Pycon 2012
+    https://www.youtube.com/watch?v=RAxiiRPHS9k and 
+    2013: https://www.youtube.com/watch?v=eOYal8elnZk.  His screencasts at 
+    http://www.destroyallsoftware.com are also well worth a look.
+
+Ports and Adapters:: 
+    Steve Freeman and Nat Pryce wrote about this in <<GOOSGBT, their book>>.
+    You can also catch a good discussion of the idea in this talk:
+    http://vimeo.com/83960706. There's also
+    http://blog.8thlight.com/uncle-bob/2012/08/13/the-clean-architecture.html[Uncle
+    Bob's blog], and 
+    http://alistair.cockburn.us/Hexagonal+architecture[Alistair Cockburn's
+    site].
+
+Hot Lava::
+    Casey Kinsey's memorable warning about avoiding the database whenever
+    you can: https://www.youtube.com/watch?v=bsmFVb8guMU
+
+
+Integrated tests are a scam::
+    J.B. Rainsberger has a famous rant about the way integrated tests will
+    ruin your life, http://blog.thecodewhisperer.com/2010/10/16/integrated-tests-are-a-scam/[here].
+    Watch the video presentation 
+    http://www.infoq.com/presentations/integration-tests-scam[here] or 
+    http://vimeo.com/80533536[here] (there are two videos available choose,
+    neither has perfect cinematography). Then check out a couple of 
+    follow-up posts, particularly 
+    http://www.jbrains.ca/permalink/using-integration-tests-mindfully-a-case-study[this
+    defence of acceptance tests] (what I call functional tests), and
+    http://www.jbrains.ca/permalink/part-2-some-hidden-costs-of-integration-tests[this
+    analysis of how slow tests kill productivity]
+
+Inverting the Pyramid::
+
+    http://watirmelon.com/tag/testing-pyramid/
+
+*******************************************************************************
+
