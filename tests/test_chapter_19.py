@@ -13,12 +13,12 @@ class Chapter19Test(ChapterTest):
         #self.prep_virtualenv()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'git command')
-        self.assertEqual(self.listings[1].skip, 'other command')
-        self.assertEqual(self.listings[4].type, 'code listing')
+        self.assertEqual(self.listings[0].type, 'other command')
+        self.assertEqual(self.listings[1].type, 'output')
+        self.assertEqual(self.listings[4].type, 'code listing currentcontents')
 
         # skips
-        #self.skip_with_check(22, 'switch back to master') # comment
+        self.skip_with_check(1, '# a branch') # comment
 
         # hack fast-forward
         skip = False
