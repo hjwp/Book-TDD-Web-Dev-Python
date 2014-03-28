@@ -18,14 +18,16 @@ class Chapter19Test(ChapterTest):
         self.assertEqual(self.listings[4].type, 'code listing currentcontents')
 
         # skips
-        self.skip_with_check(1, '# a branch') # comment
+        self.skip_with_check(1, '# a branch')  # comment
+        self.skip_with_check(89, '# optional backup')  # comment
+        self.skip_with_check(92, '# reset master')  # comment
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 35
+            self.pos = 75
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch19l016')
+                self.sourcetree.get_commit_spec('ch19l041')
             ))
 
         while self.pos < len(self.listings):
