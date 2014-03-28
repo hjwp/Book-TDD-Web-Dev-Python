@@ -4,8 +4,8 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter20Test(ChapterTest):
-    chapter_no = 20
+class Chapter21Test(ChapterTest):
+    chapter_no = 21
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -37,7 +37,7 @@ class Chapter20Test(ChapterTest):
         self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
         # final branch includes a suggested implementation...
         # so just check diff up to the last listing
-        commit = self.sourcetree.get_commit_spec('ch20l013')
+        commit = self.sourcetree.get_commit_spec('ch21l013')
         diff = self.sourcetree.run_command(
             'git diff -b {}'.format(commit)
         )
