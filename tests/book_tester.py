@@ -169,11 +169,14 @@ class ChapterTest(unittest.TestCase):
 
         elif ignore_moves:
             if commit.deleted_lines or commit.new_lines:
-                raise error
+                raise AssertionError(
+                    'Found lines to delete or add in diff.\nto delete:\n{}\n\nto add:\n{}'.format(
+                        '\n- '.join(commit.deleted_lines), '\n+'.join(commit.new_lines)
+                    )
+                )
 
         elif commit.lines_to_add or commit.lines_to_remove:
-            raise error
-
+            raise AssertionError('Final diff was not empty, was:\n{}'.format(diff))
 
 
     def write_to_file(self, codelisting):
@@ -197,7 +200,7 @@ class ChapterTest(unittest.TestCase):
         tf.close()
         print('patch:\n', codelisting.contents)
         patch_output = self.run_command(
-            Command('patch %s %s' % (codelisting.filename, tf.name))
+            Command('patch --no-backup-if-mismatch %s %s' % (codelisting.filename, tf.name))
         )
         print(patch_output)
         self.assertNotIn('malformed', patch_output)
