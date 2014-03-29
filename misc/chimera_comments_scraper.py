@@ -8,6 +8,7 @@ import re
 
 URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/pr01.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/pr02.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch01.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch02.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch03.html',
@@ -29,9 +30,12 @@ URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/ch19.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch20.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/ch21.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/ch22.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/pr03.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/apa.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/apb.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/apc.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/apd.html',
 ]
 
 metadata_parser = re.compile(r'Comment by (.+) (\d+) (.+ ago)')
