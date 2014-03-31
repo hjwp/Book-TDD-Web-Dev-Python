@@ -68,6 +68,10 @@ At this point your directory tree should look like this:
 ├── lists
 │   ├── admin.py
 │   ├── __init__.py
+│   ├── migrations
+│   │   ├── 0001_initial.py
+│   │   ├── __init__.py
+│   │   └── __pycache__
 │   ├── models.py
 │   ├── __pycache__
 │   ├── templates
@@ -656,9 +660,8 @@ urlpatterns = patterns('',
     url(r'^lists/the-only-list-in-the-world/$', 'lists.views.view_list',
         name='view_list'
     ),
-
     # url(r'^admin/', include(admin.site.urls)),
-    [...]
+)
 ----
 
 Running the tests again, we get:
@@ -689,7 +692,7 @@ Now we get
 
 ----
 ValueError: The view lists.views.view_list didn't return an HttpResponse
-object.
+object. It returned None instead.
 ----
 
 Let's copy the two last lines from the `home_page` view and see if they'll do
@@ -1285,18 +1288,35 @@ ImportError: cannot import name List
 
 Fix that, then you should see:
 
-[role="skipme"]
+[role="dofirst-ch06l029-1"]
 ----
 AttributeError: 'List' object has no attribute 'save'
 ----
 
-Fix that, then you should see:
+Next you should see:
 
-[role="skipme"]
+[role="dofirst-ch06l029-2"]
+----
+django.db.utils.OperationalError: no such table: lists_list
+----
+
+So we run a `makemigrations`:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'lists':
+  0002_list.py:
+    - Create model List
+----
+
+And then you should see:
+
 ----
     self.assertEqual(first_saved_item.list, list_)
 AttributeError: 'Item' object has no attribute 'list'
 ----
+
 
 How do we give our Item a list attribute?  Let's just try making it
 like the text attribute:
@@ -1306,21 +1326,55 @@ like the text attribute:
 .lists/models.py
 [source,python]
 ----
-[...]
+from django.db import models
+
+class List(models.Model):
+    pass
 
 class Item(models.Model):
     text = models.TextField()
     list = models.TextField()
 ----
+//029-4
 
 
-That gives us:
+New columns on existing tables require default values
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    AssertionError: 'List object' != <List: List object>
+And once again we need a migration, but this time it asks us a question:
 
-Not quite -- Django has only saved the string representation of the list
-object. To save the relationship to the object itself, we tell Django about the
-relationship between the two classes using a `ForeignKey`:
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+You are trying to add a non-nullable field 'list' to item without a default;
+we can't do that (the database needs something to populate existing rows).
+Please select a fix:
+ 1) Provide a one-off default now (will be set on all existing rows)
+ 2) Quit, and let me add a default in models.py
+Select an option: pass:quotes[*1*]
+Please enter the default value now, as valid Python
+The datetime module is available, so you can do e.g. datetime.date.today()
+>>> pass:quotes[*''*]
+Migrations for 'lists':
+  0003_item_list.py:
+    - Add field list to item
+----
+
+Django is telling us that, when we add a new column to an existing table,
+it needs to be given a default value to assign to any existing items in
+the table.  We choose option 1 to enter a value manually, and then type
+the empty string, `''`.
+
+Let's see what that gives us:
+
+----
+AssertionError: 'List object' != <List: List object>
+----
+
+
+We're not quite there. Django has only saved the string representation of the
+list object. To save the relationship to the object itself, we tell Django
+about the relationship between the two classes using a `ForeignKey`:
 
 [role="sourcecode"]
 .lists/models.py
@@ -1336,19 +1390,43 @@ class Item(models.Model):
     text = models.TextField()
     list = models.ForeignKey(List)
 ----
+//029-5
 
-NOTE: In case you want to go and take a manual look at the site via
-`runserver`, you should know that this change to 'models.py' won't filter
-through to the "real" database at 'db.sqlite3' unless you delete it, and do a
-`syncdb --noinput`, like we did in the last chapter.  The test database
-`manage.py test` gets re-created with each test run, so it's fine. We'll learn
-more about managing database schema updates in Chapter 12.
+
+Let's delete the last migration and try again
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*rm lists/migrations/0003_item_list.py*]
+$ pass:quotes[*python3 manage.py makemigrations*]
+You are trying to add a non-nullable field 'list' to item without a default;
+we can't do that (the database needs something to populate existing rows).
+Please select a fix:
+ 1) Provide a one-off default now (will be set on all existing rows)
+ 2) Quit, and let me add a default in models.py
+Select an option: pass:quotes[*1*]
+Please enter the default value now, as valid Python
+The datetime module is available, so you can do e.g. datetime.date.today()
+>>> pass:quotes[*1*]
+Migrations for 'lists':
+  0003_item_list.py:
+    - Add field list to item
+----
+
+It doesn't matter too much what we choose as the default value here, because
+we haven't yet got any "real" data in a "real" database that we care about.
+Once we have deployed our site to real users, we'll need to be more careful.
+
+For now we'll make a concession towards having sane defaults by using the
+integer `1` as our default, because that's at least potentially a valid 
+primary key for a list object.
+
 
 
 Adjusting the rest of the world to our new models
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Now what happens?
+Back in our tests, now what happens?
 
 [subs="specialcharacters,macros"]
 ----
@@ -1362,12 +1440,23 @@ django.db.utils.IntegrityError: lists_item.list_id may not be NULL
 [...]
 ERROR: test_saving_a_POST_request (lists.tests.NewListTest)
 django.db.utils.IntegrityError: lists_item.list_id may not be NULL
+
+Ran 7 tests in 0.021s
+
+FAILED (errors=3)
 ----
 
-Oh dear!  Our model tests are passing but three of our view tests are
-failing, because Items have to be associated with a list now. Still, this is
-exactly why we have tests. Let's get them working again.  The easiest is the
-`ListViewTest`; we just create a parent list for our two test items:
+Oh dear!  There is some good news which is that, although it's hard to
+see, our model tests are passing.  But three of our view tests are
+failing nastily.
+
+The reason is because of the new relationship we've introduced between
+Items and Lists, which requires each list to have a parent item, which 
+our old tests weren't prepared for.
+
+Still, this is exactly why we have tests. Let's get them working again.  The
+easiest is the `ListViewTest`; we just create a parent list for our two test
+items:
 
 
 [role="sourcecode"]
@@ -1392,6 +1481,7 @@ failure, we identify:
 File "/workspace/superlists/lists/views.py", line 14, in new_list
 Item.objects.create(text=request.POST['item_text'])
 ----
+//shld line 14 be line 9?
 
 It's when we try and create an item without a parent list. So we make a similar
 change in the view:
@@ -1432,9 +1522,10 @@ pleased with! Let's commit:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git status* # 3 changed files
-$ *git diff*
-$ *git commit -a*
+$ *git status* # 3 changed files, plus 3 migrations
+$ *git add lists*
+$ *git diff --staged*
+$ *git commit*
 ----
 
 And we can cross out another item on the to-do list:
@@ -1504,8 +1595,7 @@ AssertionError: 404 != 200 : Couldn't retrieve content: Response code was 404
 (expected 200)
 [...]
 FAIL: test_uses_list_template (lists.tests.ListViewTest)
-AssertionError: False is not true : Template 'list.html' was not a template
-used to render the response. Actual template(s) used: <Unknown Template>
+AssertionError: No templates used to render the response
 ----
 
 
@@ -1827,6 +1917,7 @@ And then:
 
 ----
 ValueError: The view lists.views.add_item didn't return an HttpResponse object.
+It returned None instead.
 ----
 
 

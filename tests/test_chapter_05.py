@@ -29,26 +29,26 @@ class Chapter5Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
-        syncdb_pos = 66
-        assert 'syncdb' in self.listings[syncdb_pos]
-        assert self.listings[syncdb_pos].type == 'interactive manage.py'
-
-        nutemplate_pos = 62
+        nutemplate_pos = 74
         assert "{'items': items}" in self.listings[nutemplate_pos].contents
+
+        migrate_pos = 78
+        assert 'migrate' in self.listings[migrate_pos]
+        assert self.listings[migrate_pos].type == 'interactive manage.py'
 
         self.sourcetree.start_with_checkout(5)
         self.start_dev_server()
 
         # skips
-        self.skip_with_check(73, "3: Buy peacock feathers")
+        self.skip_with_check(84, "3: Buy peacock feathers")
 
-        restarted_after_syncdb = False
+        restarted_after_migrate = False
         restarted_after_nutemplate = False
         while self.pos < len(self.listings):
             print(self.pos)
-            if self.pos > syncdb_pos and not restarted_after_syncdb:
+            if self.pos > migrate_pos and not restarted_after_migrate:
                 self.restart_dev_server()
-                restarted_after_syncdb = True
+                restarted_after_migrate = True
             if self.pos > nutemplate_pos and not restarted_after_nutemplate:
                 self.restart_dev_server()
                 restarted_after_nutemplate = True

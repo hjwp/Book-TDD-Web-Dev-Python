@@ -119,7 +119,9 @@ class RunCommandTest(ChapterTest):
         cmd = Command('foo')
         output = self.run_command(cmd, cwd='bar', user_input='thing')
         assert output == self.sourcetree.run_command.return_value
-        self.sourcetree.run_command.assert_called_with('foo', cwd='bar', user_input='thing')
+        self.sourcetree.run_command.assert_called_with(
+            'foo', cwd='bar', user_input='thing', ignore_errors=False,
+        )
         assert cmd.was_run
 
 
@@ -137,7 +139,7 @@ class RunServerCommandTest(ChapterTest):
         result = self.run_server_command('foo bar')
         assert result == 'some bytes'
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'foo bar'],
+            ['python2.7', self.RUN_SERVER_PATH, 'foo bar'],
         )
 
 

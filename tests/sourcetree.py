@@ -113,6 +113,8 @@ class SourceTree(object):
 
         if user_input and not user_input.endswith('\n'):
             user_input += '\n'
+        if user_input:
+            print('sending user input: {}'.format(user_input))
         output, _ = process.communicate(user_input)
         if process.returncode and not ignore_errors:
             if 'test' in command or 'diff' in command or 'migrate' in command:
@@ -123,7 +125,8 @@ class SourceTree(object):
         if not silent:
             try:
                 print(output)
-            except io.BlockingIOError:
+            except io.BlockingIOError as e:
+                print(e)
                 pass
         return output
 

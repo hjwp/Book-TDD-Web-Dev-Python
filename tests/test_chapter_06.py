@@ -29,7 +29,7 @@ class Chapter6Test(ChapterTest):
         self.skip_with_check(63, 'add a message summarising') # git
         self.skip_with_check(81, '5 changed files') # git
         self.skip_with_check(83, 'forms x2') # git
-        self.skip_with_check(98, '3 changed files') # git
+        self.skip_with_check(115, '3 changed files') # git
         touch_pos = 49
         touch = self.listings[touch_pos]
         assert 'touch' in touch
@@ -37,9 +37,9 @@ class Chapter6Test(ChapterTest):
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 59
+            self.pos = 93
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch06l021-1')
+                self.sourcetree.get_commit_spec('ch06l029-4')
             ))
 
         while self.pos < touch_pos:

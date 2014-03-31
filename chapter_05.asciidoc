@@ -214,7 +214,7 @@ NOTE: Are you wondering about the line spacing in the test? I'm grouping
 You can see that we're using a couple of special attributes of the
 `HttpRequest`, `.method` and `.POST` (they're fairly self-explanatory,
 although now might be a good time for a peek at the Django
-https://docs.djangoproject.com/en/1.6/ref/request-response/[Request and
+https://docs.djangoproject.com/en/1.7/ref/request-response/[Request and
 Response documentation]). Then we check that the text from our POST request
 ends up in the rendered HTML. That gives us our expected fail:
 
@@ -650,7 +650,7 @@ information was saved.
 
 Django's ORM has many other helpful and intuitive features, this might be a
 good time to skim through the
-https://docs.djangoproject.com/en/1.6/intro/tutorial01/#creating-models[Django
+https://docs.djangoproject.com/en/1.7/intro/tutorial01/#creating-models[Django
 Tutorial] which has an excellent intro to them. 
 
 NOTE: I've written this unit test in a very verbose style, as a way of
@@ -700,8 +700,8 @@ That gets our test as far as:
 AttributeError: 'Item' object has no attribute 'save'
 ----
 
-To give our `Item` class a `save` method, we make it inherit from the Django
-`Model` class:
+To give our `Item` class a `save` method, and to make it into a real Django
+model, we make it inherit from the `Model` class:
 
 
 [role="sourcecode"]
@@ -714,9 +714,59 @@ class Item(models.Model):
     pass
 ----
 
-Now the test actually gets surprisingly far:
+
+Our first database migration
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+And the next thing that happens is a database error:
 
 ----
+first_item.save()
+  File "/usr/local/lib/python3.3/dist-packages/django/db/models/base.py", line
+603, in save
+[...]
+    return Database.Cursor.execute(self, query, params)
+django.db.utils.OperationalError: no such table: lists_item
+----
+
+In Django, the ORM's job is to model the database, but there's a second
+system that's in charge of actually building the database called 'migrations'.
+Its job is to give you the ability to add and remove tables and columns,
+based on changes you make to your 'models.py' files.
+
+One way to think of it is as a version control system for your database.
+As we'll see later, it comes in particularly useful when we need to 
+upgrade a database that's deployed on a live server.
+
+For now all we need to know is how to build our first database migration,
+which we do using the `makemigrations` command:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'lists':
+  0001_initial.py:
+    - Create model Item
+$ pass:quotes[*ls lists/migrations*]
+0001_initial.py  __init__.py  __pycache__
+----
+
+If you're curious, you can go and take a look in the migrations file,
+and you'll see it's a representation of our additions to 'models.py'.
+
+In the meantime, we should find our tests get a little further
+
+
+The test gets surprisingly far
+++++++++++++++++++++++++++++++
+
+The test actually gets surprisingly far:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
     self.assertEqual(first_saved_item.text, 'The first (ever) list item')
 AttributeError: 'Item' object has no attribute 'text'
 ----
@@ -732,7 +782,7 @@ things like that.
 
 Classes that inherit from `models.Model` map to tables in the database.  By
 default they get an auto-generated `id` attribute which will be a primary key
-column in the database, but you have to define any other columns you want
+column in the database but you have to define any other columns you want
 explicitly. Here's how we set up a text field:
 
 
@@ -748,28 +798,63 @@ Django has many other field types, like `IntegerField`, `CharField`,
 `DateField` and so on.  I've chosen `TextField` rather than `CharField` because
 the latter requires a length restriction which seems arbitrary at this point.
 You can read more on field types in the Django
-https://docs.djangoproject.com/en/1.6/intro/tutorial01/#creating-models[tutorial]
+https://docs.djangoproject.com/en/1.7/intro/tutorial01/#creating-models[tutorial]
 and in the
-https://docs.djangoproject.com/en/1.6/ref/models/fields/[documentation].
+https://docs.djangoproject.com/en/1.7/ref/models/fields/[documentation].
 
-In any case, the `.text` attribute is now a special attribute, so it does get
-saved, and the tests pass:
+
+A new field means we need to update our migration
++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Running the tests gives us another database error:
 
 ----
-Ran 4 tests in 0.010s
+django.db.utils.OperationalError: table lists_item has no column named text
+----
 
+It's because we've added another new field to our database.
+
+At this point we can either create a second migration, or we can decide that
+we want a single migration to cover everything.  It's a bit like choosing 
+how many changes to combine into a single commit.  In this case, it doesn't
+make much sense to have an Item model without a text attribute, so let's
+combine them into one.  We do that by deleting the old version and re-creating
+it:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*rm lists/migrations/0001_initial.py*]
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'lists':
+  0001_initial.py:
+    - Create model Item
+----
+
+TIP: A rule of thumb for choosing how many migrations to keep is to have no
+    more than one per app per commit.
+
+And as a result of all this, the `.text` attribute on our model objects is now 
+recognised as a special attribute, so it does get saved to the database, and
+the tests pass:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+
+Ran 4 tests in 0.010s
 OK
 ----
 
 
-In any case, the unit tests now pass, so let's do a commit for our first ever
-model!
+So let's do a commit for our first ever model!
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git status* # see tests.py and models.py have changed
-$ *git diff* # see actual changes to tests.py and models.py
-$ *git commit -am"Created model for list Items"*
+$ *git status* # see tests.py, models.py, and untracked migration
+$ *git diff* # review changes to tests.py and models.py
+$ *git add lists*
+$ *git commit -m"Model for list Items and associated migration"*
 ----
 
 
@@ -1115,7 +1200,7 @@ This is one of the major strengths of the templating system. Now the template
 will render with multiple `<tr>` rows, one for each item in the variable
 `items`.  Pretty neat!  I'll introduce a few more bits of Django template
 magic as we go, but at some point you'll want to go and read up on the rest of
-them in the https://docs.djangoproject.com/en/1.6/topics/templates/[Django
+them in the https://docs.djangoproject.com/en/1.7/topics/templates/[Django
 Docs]
 
 Just changing the template doesn't get our tests to pass, we need to actually
@@ -1147,14 +1232,15 @@ AssertionError: 'To-Do' not found in 'OperationalError at /'
 Oops, apparently not.  Let's use another functional test debugging technique,
 and it's one of the most straightforward: manually visiting the site!  Open
 up 'http://localhost:8000' in your web browser, and you'll see a Django debug
-page saying "no such table: lists_item"
+page saying "no such table: lists_item", as in <<operationalerror>>:
 
+[[operationalerror]]
 .Another helpful debug message
 image::images/django_operationalerror_no_table.png[OperationalError at / no such table: lists_item]
 
 
-Creating our production database with syncdb
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Creating our production database with `migrate`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Another helpful error message from Django, which is basically complaining that
 we haven't set up the database properly.  How come everything worked fine
@@ -1173,7 +1259,7 @@ project directory:
 ----
 [...]
 # Database
-# https://docs.djangoproject.com/en/1.6/ref/settings/#databases
+# https://docs.djangoproject.com/en/1.7/ref/settings/#databases
 
 DATABASES = {
     'default': {
@@ -1183,32 +1269,36 @@ DATABASES = {
 }
 ----
 
-We've told Django everything it needs to create the database, including
-what tables and columns it needs, in 'models.py'. It's time for another Django
-Swiss army knife `manage.py` command, `syncdb`:
+We've told Django everything it needs to create the database, first via
+'models.py' and then when we created the migrations file.  To actually apply
+it to creating a real database, we use another Django Swiss army knife
+`manage.py` command, `migrate`:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py syncdb*]
-Creating tables ...
-Creating table django_admin_log
-Creating table auth_permission
-Creating table auth_group_permissions
-Creating table auth_group
-Creating table auth_user_groups
-Creating table auth_user_user_permissions
-Creating table auth_user
-Creating table django_content_type
-Creating table django_session
-Creating table lists_item
+$ pass:quotes[*python3 manage.py migrate*]
+Operations to perform:
+  Synchronize unmigrated apps: admin, contenttypes, auth, sessions
+  Apply all migrations: lists
+Synchronizing apps without migrations:
+  Creating tables...
+    Creating table django_admin_log
+    Creating table auth_permission
+    Creating table auth_group_permissions
+    Creating table auth_group
+    Creating table auth_user_groups
+    Creating table auth_user_user_permissions
+    Creating table auth_user
+    Creating table django_content_type
+    Creating table django_session
+  Installing custom SQL...
+  Installing indexes...
+Running migrations:
+  Applying lists.0001_initial... OK
 
-You just installed Django's auth system, which means you don't have any
-superusers defined.
-Would you like to create one now? (yes/no):
+You have installed Django's auth system, and don't have any superusers defined.
+Would you like to create one now? (yes/no): 
 pass:quotes[*no*]
-Installing custom SQL ...
-Installing indexes ...
-Installed 0 object(s) from 0 fixture(s)
 ----
 
 I said "no" to the question about superusers -- we don't need one yet, but we
@@ -1216,7 +1306,8 @@ will look at it in a later chapter. For now we can refresh the page on
 'localhost', see that our error is gone, and try running the functional tests
 again.
 footnote:[if you get a different error at this point, try restarting your dev
-server -- it may have gotten confused by the `syncdb`]
+server -- it may have gotten confused by the changes to the database happening
+under its feet]
 
 ----
 AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
@@ -1268,12 +1359,12 @@ worse:
 
 Grrr.  We're so close! We're going to need some kind of automated way of
 tidying up after ourselves. For now, if you feel like it, you can do it
-manually, by deleting the database and re-creating it fresh with `syncdb`:
+manually, by deleting the database and re-creating it fresh with `migrate`:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *rm db.sqlite3*
-$ *python3 manage.py syncdb --noinput*
+$ *python3 manage.py migrate --noinput*
 ----
 
 And then reassure yourself that the FT still passes.

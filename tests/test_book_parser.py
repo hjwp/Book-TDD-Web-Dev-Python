@@ -24,6 +24,7 @@ from examples import (
     COMMAND_MADE_WITH_ATS,
     SERVER_COMMAND,
     COMMANDS_WITH_VIRTUALENV,
+    OUTPUT_WITH_COMMANDS_INLINE,
 )
 
 
@@ -142,9 +143,9 @@ class ParseCodeListingTest(unittest.TestCase):
         code_html = OUTPUTS_WITH_DOFIRST.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
-        self.assertEqual(len(listings), 2)
         listing = listings[0]
         assert listing.dofirst == 'ch09l058'
+        self.assertEqual(len(listings), 2)
 
 
     def test_recognises_qunit_tag(self):
@@ -175,9 +176,9 @@ class ParseCodeListingTest(unittest.TestCase):
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         print(listings)
-        self.assertEqual(len(listings), 3)
         virtualenv_command = listings[1]
         self.assertEqual(virtualenv_command, 'source ../virtualenv/bin/activate && python3 manage.py test lists')
+        self.assertEqual(len(listings), 3)
 
 
     def test_recognises_command_with_ats(self):
@@ -271,7 +272,7 @@ class ParseCodeListingTest(unittest.TestCase):
             parsed_listings,
             [
                 'git diff',
-                '# should show changes to functional_tests.py',
+                '  # should show changes to functional_tests.py',
                 'git commit -am "Functional test now checks we can input a to-do item"',
             ]
         )
@@ -296,7 +297,7 @@ class ParseCodeListingTest(unittest.TestCase):
             parsed_listings,
             [
                 "git diff --staged",
-                "# will show you the diff that you're about to commit",
+                " # will show you the diff that you're about to commit",
             ]
         )
         self.assertEqual(type(parsed_listings[0]), Command)
@@ -325,6 +326,31 @@ class ParseCodeListingTest(unittest.TestCase):
         print(parsed_listings)
         self.assertEqual(type(parsed_listings[0]), Command)
         self.assertEqual(parsed_listings[0], commands[0])
+
+
+    def test_handles_inline_inputs(self):
+        listing = html.fromstring(OUTPUT_WITH_COMMANDS_INLINE)
+        commands = get_commands(listing)
+        self.assertEqual(
+            [str(c) for c in commands],
+            [
+                'python3 manage.py makemigrations',
+                '1',
+                "''",
+            ]
+        )
+
+        # too hard for now
+        parsed_listings = parse_listing(listing)
+        print(parsed_listings)
+        self.assertEqual(type(parsed_listings[0]), Command)
+        self.assertEqual(parsed_listings[0], commands[0])
+
+        print(parsed_listings[1])
+        self.assertIn('Select an option:', parsed_listings[1])
+        self.assertTrue(
+            parsed_listings[1].endswith('Select an option: ')
+        )
 
 
 

@@ -137,3 +137,23 @@ $ <strong>mv dist lists/static/bootstrap</strong>
 $ <strong>rm bootstrap.zip</strong></code></pre>
 </div></div>
 """
+
+
+OUTPUT_WITH_COMMANDS_INLINE = """
+<div class="listingblock">
+<div class="content">
+<pre><code>$ <strong>python3 manage.py makemigrations</strong>
+You are trying to add a non-nullable field 'list' to item without a default;
+we can't do that (the database needs something to populate existing rows).
+Please select a fix:
+ 1) Provide a one-off default now (will be set on all existing rows)
+ 2) Quit, and let me add a default in models.py
+Select an option: <strong>1</strong>
+Please enter the default value now, as valid Python
+The datetime module is available, so you can do e.g. datetime.date.today()
+&gt;&gt;&gt; <strong>''</strong>
+Migrations for 'lists':
+  0003_item_list.py:
+    - Add field list to item</code></pre>
+</div></div>
+"""

@@ -120,6 +120,14 @@ def fix_creating_database_line(actual_text):
     return actual_text
 
 
+
+def fix_interactive_managepy_stuff(actual_text):
+    return actual_text.replace(
+        'Select an option: ', 'Select an option:\n',
+    ).replace(
+        '>>> ', '>>>\n',
+    )
+
 class ChapterTest(unittest.TestCase):
     maxDiff = None
 
@@ -158,6 +166,7 @@ class ChapterTest(unittest.TestCase):
             print('checking final diff', diff)
         except io.BlockingIOError:
             pass
+        self.assertNotIn('fatal:', diff)
         start_marker = 'diff --git a/\n'
         commit = Commit(start_marker + diff)
         error = AssertionError('Final diff was not empty, was:\n{}'.format(diff))
@@ -176,7 +185,7 @@ class ChapterTest(unittest.TestCase):
                 )
 
         elif commit.lines_to_add or commit.lines_to_remove:
-            raise AssertionError('Final diff was not empty, was:\n{}'.format(diff))
+            raise error
 
 
     def write_to_file(self, codelisting):
@@ -213,7 +222,7 @@ class ChapterTest(unittest.TestCase):
         codelisting.was_written = True
 
 
-    def run_command(self, command, cwd=None, user_input=None):
+    def run_command(self, command, cwd=None, user_input=None, ignore_errors=False):
         self.assertEqual(
             type(command), Command,
             "passed a non-Command to run-command:\n%s" % (command,)
@@ -222,7 +231,7 @@ class ChapterTest(unittest.TestCase):
             command.was_run = True
             return
         print('running command', command)
-        output = self.sourcetree.run_command(command, cwd=cwd, user_input=user_input)
+        output = self.sourcetree.run_command(command, cwd=cwd, user_input=user_input, ignore_errors=ignore_errors)
         command.was_run = True
         return output
 
@@ -315,6 +324,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_object_ids(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
+        actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
 
         expected_fixed = fix_test_dashes(expected)
         expected_fixed = strip_test_speed(expected_fixed)
@@ -352,10 +362,16 @@ class ChapterTest(unittest.TestCase):
 
     def skip_with_check(self, pos, expected_content):
         listing = self.listings[pos]
+        error = 'Could not find {} in at pos {}: "{}". Listings were:\n{}'.format(
+            expected_content, pos, listing,
+            '\n'.join(str(t) for t in enumerate(self.listings))
+        )
         if hasattr(listing, 'contents'):
-            assert expected_content in listing.contents
+            if expected_content not in listing.contents:
+                raise Exception(error)
         else:
-            assert expected_content in listing
+            if expected_content not in listing:
+                raise Exception(error)
         listing.skip = True
 
 
@@ -586,22 +602,67 @@ class ChapterTest(unittest.TestCase):
 
         elif listing.type == 'interactive manage.py':
             print("INTERACTIVE MANAGE.PY")
+            output_before = self.listings[self.pos + 1]
+            assert isinstance(output_before, Output)
+
+            LIKELY_INPUTS = ('yes', 'no', '1', '2', "''")
             user_input = self.listings[self.pos + 2]
-            assert isinstance(user_input, Command)
+            if isinstance(user_input, Command) and user_input in LIKELY_INPUTS:
+                if user_input == 'yes':
+                    print('yes case')
+                    # in this case there is moar output after the yes
+                    output_after = self.listings[self.pos + 3]
+                    assert isinstance(output_after, Output)
+                    expected_output = Output(wrap_long_lines(output_before + ' ' + output_after.lstrip()))
+                elif user_input == '1':
+                    print('migrations 1 case')
+                    # in this case there is another hop
+                    output_after = self.listings[self.pos + 3]
+                    assert isinstance(output_after, Output)
+                    first_input = user_input
+                    next_input = self.listings[self.pos + 4]
+                    assert isinstance(next_input, Command)
+                    next_output = self.listings[self.pos + 5]
+                    expected_output = Output(wrap_long_lines(
+                        output_before + '\n' + output_after + '\n' + next_output
+                    ))
+                    user_input = Command(first_input + '\n' + next_input)
+                else:
+                    expected_output = output_before
+                    output_after = None
+                    next_output = None
+                if user_input == '2':
+                    ignore_errors = True
+                else:
+                    ignore_errors = False
 
-            expected_output_start = self.listings[self.pos + 1]
-            assert isinstance(expected_output_start, Output)
-            expected_output_end = self.listings[self.pos + 3]
-            assert isinstance(expected_output_end, Output)
-            expected_output = Output(wrap_long_lines(expected_output_start + ' ' + expected_output_end))
+            else:
+                user_input = None
+                expected_output = output_before
+                output_after = None
+                ignore_errors = False
+                next_output = None
 
-            output = self.run_command(listing, user_input=user_input)
+            output = self.run_command(listing, user_input=user_input, ignore_errors=ignore_errors)
+            self.assertEqual(output.strip().split(), expected_output.strip().split())
             self.assert_console_output_correct(output, expected_output)
+
             listing.was_checked = True
-            user_input.was_run = True
-            self.listings[self.pos + 1].was_checked = True
-            self.listings[self.pos + 3].was_checked = True
-            self.pos += 4
+            output_before.was_checked = True
+            self.pos += 2
+            if user_input is not None:
+                user_input.was_run = True
+                self.pos += 1
+            if output_after is not None:
+                output_after.was_checked = True
+                self.pos += 1
+            if next_output is not None:
+                self.pos += 2
+                next_output.was_checked = True
+                first_input.was_run = True
+                next_input.was_run = True
+
+
 
         elif listing.type == 'tree':
             print("TREE")
