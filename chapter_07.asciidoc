@@ -22,12 +22,8 @@ image::images/ugly_homepage_screenshot.png[Our homepage, looking a little ugly]
 
 NOTE: If you spin up your dev server with `manage.py runserver`, you 
 may run into a database error "table lists_item has no column named list_id".
-It's because, in the last chapter, we added a column to an existing table: the
-foreign key field on the item model pointing at the list model. Syncdb doesn't
-know how to modify existing tables. For now, just delete your database
-file ('database.sqlite') and re-run `syncdb`, and everything should work
-again.  We'll come back to this issue in chapter 12.
-
+You need to update your local database to reflect the changes we made in 
+'models.py'.  Use `manage.py migrate`.
 
 We can't be adding to Python's reputation for being
 http://grokcode.com/746/dear-python-why-are-you-so-ugly/[ugly],
@@ -98,7 +94,7 @@ Traceback (most recent call last):
   File "/workspace/superlists/functional_tests/tests.py", line 104, in
 test_layout_and_styling
     delta=5
-AssertionError: 125.0 != 512 within 5 delta
+AssertionError: 110.0 != 512 within 5 delta
 
  ---------------------------------------------------------------------
 Ran 2 tests in 9.188s
@@ -148,7 +144,7 @@ That gives us another test failure:
   File "/workspace/superlists/functional_tests/tests.py", line 114, in
 test_layout_and_styling
     delta=5
-AssertionError: 125.0 != 512 within 5 delta
+AssertionError: 110.0 != 512 within 5 delta
 ----
 
 Let's commit just the FT:
@@ -324,19 +320,19 @@ and mark out the "blocks", places where child templates can customise it.
 [source,html]
 ----
 <html>
-    <head>
-        <title>To-Do lists</title>
-    </head>
+<head>
+    <title>To-Do lists</title>
+</head>
 
-    <body>
-        <h1>{% block header_text %}{% endblock %}</h1>
-        <form method="POST" action="{% block form_action %}{% endblock %}">
-            <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
-            {% csrf_token %}
-        </form>
-        {% block table %}
-        {% endblock %}
-    </body>
+<body>
+    <h1>{% block header_text %}{% endblock %}</h1>
+    <form method="POST" action="{% block form_action %}{% endblock %}">
+        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
+        {% csrf_token %}
+    </form>
+    {% block table %}
+    {% endblock %}
+</body>
 </html>
 ----
 
@@ -383,7 +379,7 @@ That's a refactor of the way our templates work.  We re-run the FTs to make
 sure we haven't broken anything...
 
 ----
-AssertionError: 125.0 != 512 within 5 delta
+AssertionError: 110.0 != 512 within 5 delta
 ----
 
 Sure enough, they're still getting to exactly where they were before.  That's 
@@ -407,7 +403,7 @@ Now it's much easier to integrate the boilerplate code that bootstrap wants -
 we won't add the JavaScript yet, just the CSS:
 
 [role="sourcecode"]
-.lists/templates/base.html
+.lists/templates/base.html (ch07l006)
 [source,html]
 ----
 <!DOCTYPE html>
@@ -474,7 +470,7 @@ brimming full of useful tools to use in your site.
 Does that work?
 
 ----
-AssertionError: 125.0 != 512 within 5 delta
+AssertionError: 110.0 != 512 within 5 delta
 ----
 
 Hm. no.  Why isn't our CSS loading?
@@ -504,7 +500,7 @@ default, the prefix is `/static/`. It's defined in 'settings.py':
 [...]
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/1.6/howto/static-files/
+# https://docs.djangoproject.com/en/1.7/howto/static-files/
 
 STATIC_URL = '/static/'
 ----
@@ -512,12 +508,9 @@ STATIC_URL = '/static/'
 The rest of the settings we will add to this section are all to do with item 2:
 finding the actual static files on disk. 
 
-While we're using the Django development server (`manage.py runserver`), or
-`LiveServerTestCase`, we can rely on Django to magically find static files for
-us -- it'll just look in any subfolder of one of our apps called 'static'.
-footnote:[LiveServerTestCase is set to change in Django 1.7, and stop magically
-detecting static files.  There will be an alternative called 
-https://docs.djangoproject.com/en/dev/ref/contrib/staticfiles/#django.contrib.staticfiles.testing.StaticLiveServerCase[StaticLiveServerCase]]
+While we're using the Django development server (`manage.py runserver`), we can
+rely on Django to magically find static files for us -- it'll just look in any
+subfolder of one of our apps called 'static'.
 
 You now see why we put all the bootstrap static files into
 'lists/static'.  So why are they not working at the moment?  It's because we're
@@ -539,16 +532,58 @@ To get this to work, we need to change it to:
 ----
 <link href="/static/bootstrap/css/bootstrap.min.css" rel="stylesheet" media="screen">
 ----
+//007-1
 
 // TODO: use {% static %} here?
 
-When Django sees the request, it knows that it's for a static file because
+When `runserver` sees the request, it knows that it's for a static file because
 it begins with `/static/`.  It then tries to find a file called
 `bootstrap/css/bootstrap.min.css`, looking in each of our app folders for
 subfolders called static, and then it should find it at
 'lists/static/bootstrap/css/bootstrap.min.css'
 
-Hopefully it will now find the new CSS, which should get our test to pass:
+So if you take a look manually, you should see it works, as in
+<<list-page-centered>>.
+
+[[list-page-centered]]
+.Our site starts to look a little better...
+image::images/slightly_better_screenshot.png[The list page with centered header]
+
+
+
+Switching to StaticLiveServerCase
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you run the FT though, it won't pass.  
+
+----
+AssertionError: 110.0 != 512 within 5 delta
+----
+
+That's because, although `runserver` automagically finds static files,
+`LiveServerTestCase` doesn't.  Never fear though, the Django developers have
+made a more magical test class called `StaticLiveServerCase` (see
+https://docs.djangoproject.com/en/1.7/howto/static-files/#staticfiles-testing-support[the
+docs]).
+
+Let's switch to that:
+
+[role="sourcecode"]
+.functional_tests/tests.py
+[source,diff]
+----
+@@ -1,8 +1,8 @@
+-from django.test import LiveServerTestCase
++from django.contrib.staticfiles.testing import StaticLiveServerCase
+ from selenium import webdriver
+ from selenium.webdriver.common.keys import Keys
+ 
+-class NewVisitorTest(LiveServerTestCase):
++class NewVisitorTest(StaticLiveServerCase):
+----
+//008
+
+And now it will now find the new CSS, which will get our test to pass:
 
 [subs="specialcharacters,macros"]
 ----
@@ -568,12 +603,7 @@ NOTE: At this point, Windows users may see some (harmless, but distracting)
     a minimal repro, which you should always include if you can when reporting
     bugs to open source projects.
 
-Hooray! And, as the tests zipped past, you may have noticed our site was
-starting to look a little better laid-out, as in <<list-page-centered>>.
-
-[[list-page-centered]]
-.Our site looking a little better...
-image::images/slightly_better_screenshot.png[The list page with centered header]
+Hooray!
 
 
 Using Bootstrap components to improve the look of the site
@@ -591,7 +621,7 @@ particularly prominent on the page.  Let's use that to embiggen the main
 page header and the input form:
 
 [role="sourcecode"]
-.lists/templates/base.html
+.lists/templates/base.html (ch07l009)
 ----
     <div class="col-md-6 col-md-offset-3 jumbotron">
         <div class="text-center">
@@ -713,8 +743,8 @@ That's it! Definitely time for a commit:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git status* # shows changes to base.html, list.html, and untracked lists/static
-$ *git add lists*
+$ *git status* # changes tests.py, base.html, list.html + untracked lists/static
+$ *git add .*
 $ *git status* # will now show all the bootstrap additions
 $ *git commit -m"Use Bootstrap to improve layout"*
 ----
@@ -768,7 +798,7 @@ of the 'settings.py' file
 [source,python]
 ----
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/1.6/howto/static-files/
+# https://docs.djangoproject.com/en/1.7/howto/static-files/
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.abspath(os.path.join(BASE_DIR, '../static'))
@@ -783,19 +813,21 @@ Take a look at the top of the settings file, and you'll see how that
 $ pass:quotes[*python3 manage.py collectstatic*]
 
 You have requested to collect static files at the destination
-location as specified in your settings.
+location as specified in your settings:
+
+/workspace/static
 
 This will overwrite existing files!
 Are you sure you want to do this?
 
 Type 'yes' to continue, or 'no' to cancel: 
 pass:quotes[*yes*]
+
 [...]
-
 Copying '/workspace/superlists/lists/static/bootstrap/fonts/glyphicons-halfling
-s-regular.eot'
+s-regular.svg'
 
-82 static files copied.
+74 static files copied to '/workspace/static'.
 ----
 
 And if we look in '../static', we'll find all our CSS files:
@@ -827,12 +859,12 @@ $ *tree ../static/*
         ├── bootstrap.js
         └── bootstrap.min.js
 
-10 directories, 82 files
+10 directories, 74 files
 ----
 
-`collectstatic` has also picked up all the css for the admin site. It's
-one of Django's powerful features, and we'll find out about it later,
-but we're not ready to use that yet, so let's disable it for now:
+`collectstatic` has also picked up all the css for the admin site. It's one of
+Django's powerful features, and we'll find out all about it one day, but we're
+not ready to use that yet, so let's disable it for now:
 
 [role="sourcecode"]
 .superlists/settings.py 
@@ -861,7 +893,7 @@ Copying '/workspace/superlists/lists/static/bootstrap/js/bootstrap.min.js'
 Copying '/workspace/superlists/lists/static/bootstrap/js/bootstrap.js'
 [...]
 
-13 static files copied.
+13 static files copied to '/workspace/static'.
 ----
 
 Much better.

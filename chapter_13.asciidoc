@@ -1,87 +1,35 @@
 Database migrations
 -------------------
 
-We've made a change to our database -- we added constraints to some of the
-columns in the list table.  In order to apply these to our live site, we'll
-need to alter the tables in the existing database, and for that we'll need a
-'database migration'.
+Since Django 1.7 came out, with its new migrations framework, migrations
+are built in from the ground up, so there's no need to do anything special
+when we deploy our code - the database will be migrated automatically.
 
+This chapter is really just a guide for the ultra-cautious, in case you
+want to test your migrations step by step.
 
-South vs Django migrations
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+TODO: make sure we've actually created the migration for data integrity
+in the previous chapter!
 
-The current established tool for database migrations with Django is called 
-http://south.readthedocs.org/en/latest/index.html[South].  
-
-NOTE: At the time of writing, Andrew Godwin, South's talented creator, had just
-finished a
-http://www.kickstarter.com/projects/andrewgodwin/schema-migrations-for-django[project]
-to integrate South into the Django core, in the shape of a new feature called
-https://docs.djangoproject.com/en/dev/topics/migrations/[Migrations]. I plan to
-upgrade to this as soon as it gets released in Django 1.7...  The basic
-concepts and steps involved aren't going to change much though.
-
-
-We start by installing
-footnote:[use `source ../virtualenv/bin/activate to save yourself some
-long-windedness in the commands below]
-South:
-
-[subs="specialcharacters,quotes"]
-----
-$ *../virtualenv/bin/pip install south*
-[...]
-Successfully installed south
-----
-
-We add it to `INSTALLED_APPS`:
-
-[role="sourcecode"]
-.superlists/settings.py (ch13l001)
-[source,python]
-----
-INSTALLED_APPS = (
-    [...]
-    'lists',
-   'south',
-)
-----
-
-
-And to 'requirements.txt':
-
-[role="sourcecode"]
-.requirements.txt
-[source,text]
-----
-Django==1.6.1
-gunicorn==18.0
-South==0.8.4
-----
-
-We can commit that to version control:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "Add South as dependency"*
-----
-
-Creating an initial migration to match the current live state
+Doing a trial run of the migration against our local database
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For migrations to work, they need to know what we're migrating from and to.
-The place this really matters is on the live server, so we want to be able
-to migrate from the database state as it currently is on live, to the state
-that's in the latest version of the code.
+Let's test this out on our local PC first.  We need to make a database that has
+the old state, ie one that looks like live.  We can use the tag we made
+in our repository during the deploy.
 
-Here's where version control comes in useful. You remember in chapter 8
-we tagged the current release?  That makes it easy for us to get an old
-version of our code that matches what's deployed.
+[subs="specialcharacters,quotes"]
+----
+$ *git checkout LIVE*
+$ *rm ../database/db.sqlite3*
+$ *python3 manage.py migrate --noinput*
+$ *git checkout master*
+----
 
 .If you didn't tag the release back in chapter 8
 ******************************************************************************
-You can use `git log` to look back for a commit that we made during chapter 8,
-or maybe right at the beginning of chapter 9.
+You can use `git log` to look back for a commit that we made during 
+<<deployment-chapter>>, or maybe right at the beginning of <<fabric-chapter>>.
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
@@ -109,210 +57,34 @@ Then you should be able to follow on with the instructions.
 ******************************************************************************
 
 
-To revert our models to the state they were in at that point: 
+Adding some test data
+^^^^^^^^^^^^^^^^^^^^^
+
+Open up the site from `runserver` and enter a couple of lists. Make a note of
+their URLs.
+
+
+Running the migration
+^^^^^^^^^^^^^^^^^^^^^
+
+Running the migration is the usual `migrate` command:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git checkout LIVE -- lists/models.py*
-$ *git reset*
+$ *python3 manage.py migrate --migrate*
 ----
 
-Now we can create our initial migration.  This tells south what the "starting"
-state of the database should be:
+Open up the `runserver` again and check our lists are still there... OK.
 
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*../virtualenv/bin/python3 manage.py schemamigration lists --initial*]
-Creating migrations directory at '/workspace/superlists/lists/migrations'...
-[...]
- + Added model lists.List
- + Added model lists.Item
-Created 0001_initial.py. You can now apply this migration with: ./manage.py
-migrate lists
-----
-
-The migration is stored in a directory called 'migrations' inside the
-lists app:
-
-[subs="specialcharacters,quotes"]
-----
-$ *tree lists/migrations/*
-lists/migrations/
-├── 0001_initial.py
-├── __init__.py
-└── __pycache__
-----
-
-And we add the initial migration to version control:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add lists/migrations/*
-$ *git status*  # make sure you don't commit changes to models.py
-$ *git commit -m"initial migration to match live"*
-----
-
-Creating the "real" migration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Next we create the actual migration that we want to apply, which represents
-the changes to our models since the last deploy. We go back to the latest code
-version:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout HEAD -- lists/models.py* 
-----
-
-And this time we use `--auto`:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*../virtualenv/bin/python3 manage.py schemamigration --auto lists*]
- + Added unique constraint for ['list', 'text'] on lists.Item
-Created 0002_auto__add_unique_item_list_text.py. You can now apply this
-migration with: ./manage.py migrate lists
-----
-
-Sure enough, it spots the new constraint.  Let's add that to VCS too:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add lists/migrations/0002_auto__add_unique_item_list_text.py*
-$ *git commit -m"Add new migration for list item uniqueness constraint"*
-----
-
-Migrations: like a VCS for your database
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The way migrations work is that they store a series of pictures of what your
-database looks like as your code evolves.  In order to apply a migration, the
-migrations tool also needs to have a view of what the database 'currently'
-looks like.  
-
-But, because we only started using migrations half-way through our development
-(and this is quite a common occurrence), the migrations tool doesn't know
-where it currently is.  In order to tell it, we do what's called a "fake" 
-migration, to tell it that the current database state is at the 0001 migration
-that we stored earlier, and that the one we want to go to is 0002.
-
-If that hasn't melted your brain enough, how about this: so South needs to
-store information about what it thinks the current state of the database is,
-right?  And where do you think it stores it?  You can see this coming, can't 
-you?  It stores it in the database.  South has its own set of tables.  Please
-don't ask me whether south stores information in those tables about the tables
-themselves.
-
-Doing a trial run of the migration against our local database
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Let's test this out locally and try and get used to it.  First, we go and make
-a database that has the old state, ie one that looks like live:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout LIVE*
-$ *rm ../database/db.sqlite3*
-$ *python3 manage.py syncdb --noinput*
-$ *git checkout master*
-----
-
-Now, if you try doing a migration, you'll see that South explodes violently:
-
-[subs="specialcharacters,quotes"]
-----
-$ *../virtualenv/bin/python3 manage.py syncdb --migrate*
-Syncing...
-Creating tables ...
-Creating table south_migrationhistory
-[...]
-Migrating...
-Running migrations for lists:
- - Migrating forwards to 0002_auto__add_unique_item_list_text.
- > lists:0001_initial
-FATAL ERROR - The following SQL query failed: CREATE TABLE "lists_list" ("id"
-integer NOT NULL PRIMARY KEY)
-[...]
- ! NOTE: The error which caused the migration to fail is further up.
-Error in migration: lists:0001_initial
-[...]
-django.db.utils.OperationalError: table "lists_list" already exists
-----
-
-It's because it's confused about the current state of the database. It 
-thinks it needs to create the lists table, but it's already there. Here's how
-we tell it that the database actually matches migration 0001, ie the place
-where live is:
-
-[subs="specialcharacters,quotes"]
-----
-$ *../virtualenv/bin/python3 manage.py migrate lists --fake 0001*
-Running migrations for lists:
- - Migrating forwards to 0001_initial.
- > lists:0001_initial
-   (faked)
-----
-
-And now we can test applying the real migration we want to do to live:
-
-[subs="specialcharacters,quotes"]
-----
-$ *../virtualenv/bin/python3 manage.py migrate lists*
-Running migrations for lists:
- - Migrating forwards to 0002_auto__add_unique_item_list_text.
- > lists:0002_auto__add_unique_item_list_text
- - Loading initial data for lists.
-Installed 0 object(s) from 0 fixture(s)
-----
-
-It works! 
-
-Recap
-~~~~~
-
-I appreciate it's a fair bit to take in... Here's a recap:
-
-* We need to apply a database migration to the live database when we deploy, 
-  to add the uniqueness constraint.
-
-* We're going to use South migrations for this.  We've created two migrations,
-  one (0001) which takes us from nothing to the live state, and one which takes
-  us from there to the new state we want (0002).
-
-* To test this, we've created a database in the same state as live by
-  checking out our old model code and doing a `syncdb`.
-
-* In order to apply a migration, South needs to know what the current state
-  of the database is.
-
-* We tell it by applying a "fake" version of migration 0001.
-
-* Then we're in a position to apply the real migration, 0002.
 
 Testing the migration against staging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-So how are we actually going to do this on our live servers?  By replicating
-those last two steps.  We're using a fabfile for our deployments, so let's 
-adjust it now:
+So how are we actually going to do this on our live servers?  As usual,
+we start by using our staging server.
 
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _update_database(source_folder):
-    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb' % (source_folder,))
-    # one-off fake database migration. remove me before next deploy
-    run('cd %s && ../virtualenv/bin/python3 manage.py migrate lists --fake 0001' % (
-        source_folder,
-    ))
-    run('cd %s && ../virtualenv/bin/python3 manage.py migrate' % (source_folder,))
-----
-
-Still nervous?  Me too, but that's why we have a staging environment. Here 
-goes nothing!  We start by pushing up our latest changes so that we can pull
-them down on the server:
+First we pushing up our latest changes so that we can pull them down on the
+server:
 
 [role="skipme"]
 [subs="specialcharacters,macros"]
@@ -344,7 +116,7 @@ $ pass:quotes[*fab deploy --host=superlists-staging.ottg.eu*]
 [...]
 [superlists-staging.ottg.eu] run: cd
 /home/harry/sites/superlists-staging.ottg.eu/source &&
-../virtualenv/bin/python3 manage.py syncdb
+../virtualenv/bin/python3 manage.py migrate
 [superlists-staging.ottg.eu] out: Syncing...
 
 [...]
@@ -389,12 +161,26 @@ Looks good.  We then go in and restart our web server:
 user@server:$ sudo restart gunicorn-superlists-staging.ottg.eu 
 ----
 
-NOTE: If you see a message saying '"FATAL ERROR - The following SQL query
-    failed: CREATE UNIQUE INDEX..."', it could be that your existing data
-    violates the integrity constraint, ie you have some duplicate items already
-    in the database.  If you want to be rigorous, you should investigate South
-    'data migrations', and build one that can enter placeholder values for any
-    duplicate items. If you're feeling lazy, just delete the old database!
+.If your existing data violates the integrity constraint
+******************************************************************************
+
+If you see a message saying '"FATAL ERROR - The following SQL query
+failed: CREATE UNIQUE INDEX..."', it could be that your existing data
+violates the integrity constraint, ie you have some duplicate items already
+in the database.  
+
+At this point, the thing to do will be to create a 
+`data migration` script which goes through, detects any data integrity
+problems in the old data, and assigns some dummy values to save them.
+
+Further discussion is outside the scope of the book, but check out
+https://docs.djangoproject.com/en/dev/topics/migrations/#data-migrations[the
+docs].
+
+And think how glad you feel that your staging server caught this, rather
+than your live server!
+
+******************************************************************************
 
 
 Running the FT to confirm the migration has worked
@@ -412,6 +198,7 @@ Ran 4 tests in 17.308s
 
 OK
 ----
+
 
 Applying the migration to live
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -432,31 +219,8 @@ $ pass:quotes[*fab deploy --host=superlists.ottg.eu*]
 You'll need to restart the live gunicorn job too.
 
 
-Wrap-up: remove fake migration and git tag
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Before we forget, let's remove that fake migration from the fabfile.  We 
-don't want to run that next time we deploy, because south is now in sync on
-the server.  In fact we can simplify it down to a single command, the `syncb
---migrate`:
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py (ch13l005)
-[source,python]
-----
-def _update_database(source_folder):
-    run('cd %s && ../virtualenv/bin/python3 manage.py syncdb --migrate --noinput' % (
-    source_folder,
-))
-----
-
-We commit that:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git status*
-$ *git commit -am "deploy script now does syncdb --migrate"*
-----
+Wrap-up: git tag the new release
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 And finally we tag our latest release:
 
@@ -468,15 +232,8 @@ $ *git tag $TAG*
 $ *git push -f origin LIVE $TAG*
 ----
 
-NOTE: We went through quite a bit of pain setting up that fake migrations. If
-we'd started using South at the time of our first deployment, none of this
-would have been necessary.  I hope that going through this more complex 
-procedure has given you more of an insight into how South works but... In
-your real projects, start using South from the very first deploy!
-
-
-Wrap-up
-~~~~~~~
+Conclusions
+~~~~~~~~~~~
 
 We've now tested out our migration locally, and we've run it once on the
 staging site.  We've tested that our application still works after the

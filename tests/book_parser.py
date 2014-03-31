@@ -96,42 +96,43 @@ class Output(str):
             return 'output'
 
 
+def fix_newlines(text):
+    if text is None:
+        return ''
+    return text.replace('\r\n', '\n').replace('\\\n', '').strip('\n')
 
 def parse_output(listing):
-    commands = get_commands(listing)
-    text = listing.text_content().strip().replace('\r\n', '\n').replace('\\\n', '')
-    outputs = []
+    text = fix_newlines(listing.text_content().strip())
 
-
+    commands = listing.cssselect('pre code strong')
     if not commands:
         return [Output(text)]
 
-    # hack special-case.  when looking for "1", there's one to ignore
-    if '1) Provide' in text:
-        text = text.replace('1) Provide', '!) Provide')
+    outputs = []
+    output_before = listing.text
+    if output_before:
+        output_before = fix_newlines(output_before.strip())
+    else:
+        output_before = ''
 
     for command in commands:
-        assert command in text
-        output_before, _, output_after = text.partition(command)
-
-        # unhack
-        if command == '1':
-            output_before = output_before.replace('!) Provide', '1) Provide')
-
-        if output_before:
-            if '$' in output_before and '\n' in output_before:
-                last_cr = output_before.rfind('\n')
-                previous_lines = output_before[:last_cr]
+        if '$' in output_before and '\n' in output_before:
+            last_cr = output_before.rfind('\n')
+            previous_lines = output_before[:last_cr]
+            if previous_lines:
                 outputs.append(Output(previous_lines))
-            elif not '$' in output_before:
-                outputs.append(Output(output_before))
-        if output_before.startswith('(virtualenv)'):
-            command = 'source ../virtualenv/bin/activate && ' + command
-        outputs.append(Command(command))
-        text = output_after.lstrip('\n')
+        elif output_before and not '$' in output_before:
+            outputs.append(Output(output_before))
 
-    if output_after:
-        outputs.append(Output(output_after.lstrip('\n')))
+        command_text = fix_newlines(command.text)
+        if output_before.strip().startswith('(virtualenv)'):
+            command_text = 'source ../virtualenv/bin/activate && ' + command_text
+        outputs.append(Command(command_text))
+
+        output_before = fix_newlines(command.tail)
+
+    if output_before:
+        outputs.append(Output(output_before))
 
     return outputs
 

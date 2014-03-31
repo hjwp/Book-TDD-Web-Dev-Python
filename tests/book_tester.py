@@ -614,6 +614,7 @@ class ChapterTest(unittest.TestCase):
                     output_after = self.listings[self.pos + 3]
                     assert isinstance(output_after, Output)
                     expected_output = Output(wrap_long_lines(output_before + ' ' + output_after.lstrip()))
+                    next_output = None
                 elif user_input == '1':
                     print('migrations 1 case')
                     # in this case there is another hop
@@ -644,7 +645,6 @@ class ChapterTest(unittest.TestCase):
                 next_output = None
 
             output = self.run_command(listing, user_input=user_input, ignore_errors=ignore_errors)
-            self.assertEqual(output.strip().split(), expected_output.strip().split())
             self.assert_console_output_correct(output, expected_output)
 
             listing.was_checked = True
