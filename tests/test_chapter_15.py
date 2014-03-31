@@ -8,7 +8,6 @@ class Chapter15Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        self.sourcetree.start_with_checkout(self.chapter_no)
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'other command')
@@ -16,16 +15,21 @@ class Chapter15Test(ChapterTest):
         self.assertEqual(self.listings[2].type, 'code listing with git ref')
         #self.assertTrue(self.listings[88].dofirst)
 
+        # prep
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.sourcetree.run_command('mkdir ../database')
+        self.sourcetree.run_command('python3 manage.py migrate --noinput')
+
         # skips
-        self.skip_with_check(22, 'switch back to master') # comment
-        self.skip_with_check(24, 'remove any trace') # comment
+        self.skip_with_check(26, 'switch back to master') # comment
+        self.skip_with_check(28, 'remove any trace') # comment
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 86
+            self.pos = 65
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch15l047')
+                self.sourcetree.get_commit_spec('ch15l033')
             ))
 
         while self.pos < len(self.listings):
