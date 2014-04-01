@@ -9,8 +9,6 @@ class Chapter19Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        self.sourcetree.start_with_checkout(self.chapter_no)
-        #self.prep_virtualenv()
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'other command')
@@ -21,6 +19,9 @@ class Chapter19Test(ChapterTest):
         self.skip_with_check(1, '# a branch')  # comment
         self.skip_with_check(89, '# optional backup')  # comment
         self.skip_with_check(92, '# reset master')  # comment
+
+        # prep
+        self.sourcetree.start_with_checkout(self.chapter_no)
 
         # hack fast-forward
         skip = False

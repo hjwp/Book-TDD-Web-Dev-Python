@@ -9,7 +9,6 @@ class Chapter18Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        self.sourcetree.start_with_checkout(self.chapter_no)
         #self.prep_virtualenv()
 
         # sanity checks
@@ -20,12 +19,15 @@ class Chapter18Test(ChapterTest):
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
 
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.prep_database()
+
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 27
+            self.pos = 36
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch18l014')
+                self.sourcetree.get_commit_spec('ch18l020')
             ))
 
         while self.pos < len(self.listings):
