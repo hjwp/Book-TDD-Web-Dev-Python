@@ -57,7 +57,6 @@ def update_sources_for_chapter(chapter_no):
         )
 
 def main(arguments):
-    return
     subprocess.check_output(['git', 'submodule', 'init'])
     if arguments['<chapter_no>']:
         update_sources_for_chapter(int(arguments['<chapter_no>']))
