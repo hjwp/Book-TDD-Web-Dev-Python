@@ -15,14 +15,13 @@ class Chapter15Test(ChapterTest):
         self.assertEqual(self.listings[2].type, 'code listing with git ref')
         #self.assertTrue(self.listings[88].dofirst)
 
-        # prep
-        self.sourcetree.start_with_checkout(self.chapter_no)
-        self.sourcetree.run_command('mkdir ../database')
-        self.sourcetree.run_command('python3 manage.py migrate --noinput')
-
         # skips
         self.skip_with_check(26, 'switch back to master') # comment
         self.skip_with_check(28, 'remove any trace') # comment
+
+        # prep
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.prep_database()
 
         # hack fast-forward
         skip = False

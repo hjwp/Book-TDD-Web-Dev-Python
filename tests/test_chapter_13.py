@@ -18,14 +18,14 @@ class Chapter13Test(ChapterTest):
         fab_pos = 37
         assert 'fab' in self.listings[fab_pos]
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
-        self.prep_virtualenv()
-        self.sourcetree.run_command('mkdir ../database')
-        self.sourcetree.run_command('python3 manage.py syncdb --noinput')
-        self.sourcetree.run_command('git fetch --tags repo')
-
         # skips
         #self.skip_with_check(30, '# review changes') # diff
+
+        #prep
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.prep_virtualenv()
+        self.prep_database()
+        self.sourcetree.run_command('git fetch --tags repo')
 
         # hack fast-forward
         skip = False

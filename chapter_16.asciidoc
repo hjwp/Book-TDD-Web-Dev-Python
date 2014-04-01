@@ -213,7 +213,7 @@ Then
 
 ----
 ValueError: The view accounts.views.persona_login didn't return an HttpResponse
-object.
+object. It returned None instead.
 ----
 
 [role="sourcecode"]
@@ -1254,7 +1254,6 @@ That gives us an expected failure:
 ----
 django.core.exceptions.ValidationError: {'username': ['This field cannot be
 blank.'], 'password': ['This field cannot be blank.']}
-
 ----
 
 Password?  Username?  Bah!  How about this?
@@ -1328,49 +1327,30 @@ class User(models.Model):
 ----
 //41
 
-
-What now?
+The next error is a database error:
 
 ----
-accounts.user: The USERNAME_FIELD must be unique. Add unique=True to the field
-parameters.
+django.db.utils.OperationalError: no such table: accounts_user
 ----
 
-I'll do one better! Let's make the email field into the primary key, and
-thus implicitly remove the auto-generated `id` column.  
+That prompts us, as usual, to do a migration:
 
-
-Tests as documentation
-^^^^^^^^^^^^^^^^^^^^^^
-
-We have a failing test, so we could just go ahead and make the change,
-but it would be better to have a specific test:
-
-[role="sourcecode"]
-.accounts/tests/test_models.py (ch16l043)
-[source,python]
+[subs="specialcharacters,macros"]
 ----
-    def test_email_is_primary_key(self):
-        user = User()
-        self.assertFalse(hasattr(user, 'id'))
+$ pass:quotes[*python3 manage.py makemigrations*]
+System check identified some issues:
+
+WARNINGS:
+accounts.User: (auth.W004) 'User.email' is named as the 'USERNAME_FIELD', but
+it is not unique.
+        HINT: Ensure that your authentication backend(s) can handle non-unique
+usernames.
+Migrations for 'accounts':
+  0001_initial.py:
+    - Create model User
 ----
 
-And here's the implementation (feel free to check what happens with
-`unique=True` first):
-
-[role="sourcecode"]
-.accounts/models.py (ch16l042)
-[source,python]
-----
-    email = models.EmailField(primary_key=True)
-----
-
-
-NOTE: Your tests can be are a form of documentation for your code -- they
-express what your requirements are of a particular class or function.
-Sometimes, if you forget why you've done something a particular way, going back
-and looking at the tests will give you the answer.  That's why it's important
-to give your tests explicit, verbose method names.
+Let's hold that thought, and see if we can get the tests passing again.
 
 
 A slight disappointment
@@ -1405,14 +1385,88 @@ from django.db import models
 from django.utils import timezone
 
 class User(models.Model):
-    email = models.EmailField(primary_key=True)
+    email = models.EmailField()
     last_login = models.DateTimeField(default=timezone.now)
     REQUIRED_FIELDS = ()
     USERNAME_FIELD = 'email'
 ----
-//44
+//42
 
-Right!  Anyway! That works!
+We get another database error, so let's clear down the migration and 
+re-create it:
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*rm accounts/migrations/0001_initial.py*]
+$ pass:quotes[*python3 manage.py makemigrations*]
+System check identified some issues:
+[...]
+Migrations for 'accounts':
+  0001_initial.py:
+    - Create model User
+----
+
+That gets the tests passing, although they are still giving us 
+some warnings:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+System check identified some issues:
+
+WARNINGS:
+accounts.User: (auth.W004) 'User.email' is named as the 'USERNAME_FIELD', but
+it is not unique.
+[...]
+
+Ran 12 tests in 0.041s
+
+OK
+----
+
+Tests as documentation
+^^^^^^^^^^^^^^^^^^^^^^
+
+Let's go all the way and make the email field into the primary key, and
+thus implicitly remove the auto-generated `id` column.  
+
+Although that warning is probably enough of a justification to go ahead
+and make the change, it would be better to have a specific test:
+
+[role="sourcecode"]
+.accounts/tests/test_models.py (ch16l043)
+[source,python]
+----
+    def test_email_is_primary_key(self):
+        user = User()
+        self.assertFalse(hasattr(user, 'id'))
+----
+
+It'll help us remember if we ever come back and look at the code again
+in future.
+
+----
+    self.assertFalse(hasattr(user, 'id'))
+AssertionError: True is not false
+----
+
+NOTE: Your tests can be are a form of documentation for your code -- they
+express what your requirements are of a particular class or function.
+Sometimes, if you forget why you've done something a particular way, going back
+and looking at the tests will give you the answer.  That's why it's important
+to give your tests explicit, verbose method names.
+
+And here's the implementation (feel free to check what happens with
+`unique=True` first):
+
+[role="sourcecode"]
+.accounts/models.py (ch16l044)
+[source,python]
+----
+    email = models.EmailField(primary_key=True)
+----
+
+That works:
 
 [subs="specialcharacters,macros"]
 ----
@@ -1421,6 +1475,20 @@ $ pass:quotes[*python3 manage.py test accounts*]
 Ran 13 tests in 0.021s
 OK
 ----
+
+One final cleanup of migrations to make sure we've got everything there:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*rm accounts/migrations/0001_initial.py*]
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'accounts':
+  0001_initial.py:
+    - Create model User
+----
+
+No warnings now!
+
 
 Users are authenticated
 ^^^^^^^^^^^^^^^^^^^^^^^

@@ -15,10 +15,9 @@ class Chapter10Test(ChapterTest):
         self.assertEqual(self.listings[1].type, 'code listing with git ref')
         self.assertEqual(self.listings[2].type, 'test')
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
         # other prep
-        self.sourcetree.run_command('mkdir ../database')
-        self.sourcetree.run_command('python3 manage.py syncdb --noinput')
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.prep_database()
 
         # hack fast-forward
         skip = False

@@ -283,6 +283,10 @@ class ChapterTest(unittest.TestCase):
             )
 
 
+    def prep_database(self):
+        self.sourcetree.run_command('mkdir ../database')
+        self.sourcetree.run_command('python3 manage.py migrate --noinput')
+
 
     def write_file_on_server(self, target, contents):
         with tempfile.NamedTemporaryFile() as tf:
