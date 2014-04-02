@@ -6,6 +6,7 @@ import os
 import stat
 import re
 import subprocess
+import time
 import tempfile
 from textwrap import wrap
 import unittest
@@ -565,6 +566,17 @@ class ChapterTest(unittest.TestCase):
     def start_dev_server(self):
         self.run_command(Command('python3 manage.py runserver'))
         self.dev_server_running = True
+        time.sleep(1)
+
+
+    def restart_dev_server(self):
+        print('restarting dev server')
+        self.run_command(Command('pkill -f runserver'))
+        time.sleep(1)
+        self.start_dev_server()
+        time.sleep(1)
+
+
 
 
     def run_unit_tests(self):

@@ -13,14 +13,6 @@ from book_tester import (
 class Chapter5Test(ChapterTest):
     chapter_no = 5
 
-    def restart_dev_server(self):
-        print('restarting dev server')
-        self.run_command(Command('pkill -f runserver'))
-        time.sleep(1)
-        self.start_dev_server()
-        time.sleep(1)
-
-
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
 

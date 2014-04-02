@@ -24,18 +24,22 @@ class Chapter3Test(ChapterTest):
 
         self.skip_with_check(10, 'will show you')
 
-        self.run_command(Command('python3 manage.py runserver'))
+        self.start_dev_server()
 
-        while self.pos < 43:
+        final_ft = 44
+        self.assertIn('Finish the test', self.listings[final_ft + 1])
+
+        while self.pos < final_ft:
             print(self.pos)
             self.recognise_listing_and_process_it()
-        self.start_dev_server()
+        self.restart_dev_server()
+
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
 
-        self.check_final_diff(self.chapter_no)
         self.assert_all_listings_checked(self.listings)
+        self.check_final_diff(self.chapter_no)
 
 
 if __name__ == '__main__':
