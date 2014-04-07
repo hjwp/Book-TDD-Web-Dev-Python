@@ -21,18 +21,19 @@ class Chapter5Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
-        nutemplate_pos = 74
+        nutemplate_pos = 77
         assert "{'items': items}" in self.listings[nutemplate_pos].contents
 
-        migrate_pos = 78
+        migrate_pos = 81
         assert 'migrate' in self.listings[migrate_pos]
         assert self.listings[migrate_pos].type == 'interactive manage.py'
+
+        # skips
+        self.skip_with_check(87, "3: Buy peacock feathers")
 
         self.sourcetree.start_with_checkout(5)
         self.start_dev_server()
 
-        # skips
-        self.skip_with_check(84, "3: Buy peacock feathers")
 
         restarted_after_migrate = False
         restarted_after_nutemplate = False
