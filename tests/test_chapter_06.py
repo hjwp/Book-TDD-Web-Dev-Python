@@ -18,21 +18,21 @@ class Chapter6Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Command)
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
-
-        # other prep
-        self.run_command(Command('python3 manage.py syncdb --noinput'))
-
         # skips
         self.skip_with_check(15, 'msg eg') # git
         self.skip_with_check(58, 'should show 4 changed files') # git
         self.skip_with_check(63, 'add a message summarising') # git
         self.skip_with_check(81, '5 changed files') # git
         self.skip_with_check(83, 'forms x2') # git
-        self.skip_with_check(115, '3 changed files') # git
+        self.skip_with_check(109, '3 changed files') # git
         touch_pos = 49
         touch = self.listings[touch_pos]
         assert 'touch' in touch
+
+
+        # other prep
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.run_command(Command('python3 manage.py syncdb --noinput'))
 
         # hack fast-forward
         skip = False

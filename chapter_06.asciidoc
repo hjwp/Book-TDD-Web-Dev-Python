@@ -79,6 +79,7 @@ At this point your directory tree should look like this:
 │   ├── __init__.py
 │   ├── migrations
 │   │   ├── 0001_initial.py
+│   │   ├── 0002_item_text.py
 │   │   ├── __init__.py
 │   │   └── __pycache__
 │   ├── models.py
@@ -1315,7 +1316,7 @@ So we run a `makemigrations`:
 ----
 $ pass:quotes[*python3 manage.py makemigrations*]
 Migrations for 'lists':
-  0002_list.py:
+  0003_list.py:
     - Create model List
 ----
 
@@ -1327,7 +1328,10 @@ AttributeError: 'Item' object has no attribute 'list'
 ----
 
 
-How do we give our Item a list attribute?  Let's just try making it
+A foreign key relationship
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+How do we give our Item a list attribute?  Let's just try naively making it
 like the text attribute:
 
 
@@ -1341,38 +1345,25 @@ class List(models.Model):
     pass
 
 class Item(models.Model):
-    text = models.TextField()
-    list = models.TextField()
+    text = models.TextField(default='')
+    list = models.TextField(default='')
 ----
 //029-4
 
-
-New columns on existing tables require default values
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-And once again we need a migration, but this time it asks us a question:
+As usual, the tests tell us we need a migration:
 
 [subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+django.db.utils.OperationalError: table lists_item has no column named list
+
 $ pass:quotes[*python3 manage.py makemigrations*]
-You are trying to add a non-nullable field 'list' to item without a default;
-we can't do that (the database needs something to populate existing rows).
-Please select a fix:
- 1) Provide a one-off default now (will be set on all existing rows)
- 2) Quit, and let me add a default in models.py
-Select an option: pass:quotes[*1*]
-Please enter the default value now, as valid Python
-The datetime module is available, so you can do e.g. datetime.date.today()
->>> pass:quotes[*''*]
 Migrations for 'lists':
-  0003_item_list.py:
+  0004_item_list.py:
     - Add field list to item
 ----
 
-Django is telling us that, when we add a new column to an existing table,
-it needs to be given a default value to assign to any existing items in
-the table.  We choose option 1 to enter a value manually, and then type
-the empty string, `''`.
 
 Let's see what that gives us:
 
@@ -1381,9 +1372,10 @@ AssertionError: 'List object' != <List: List object>
 ----
 
 
-We're not quite there. Django has only saved the string representation of the
-list object. To save the relationship to the object itself, we tell Django
-about the relationship between the two classes using a `ForeignKey`:
+We're not quite there. Look closely at each side of the `!=`.  Django has only
+saved the string representation of the list object. To save the relationship to
+the object itself, we tell Django about the relationship between the two
+classes using a `ForeignKey`:
 
 [role="sourcecode"]
 .lists/models.py
@@ -1396,39 +1388,32 @@ class List(models.Model):
 
 
 class Item(models.Model):
-    text = models.TextField()
-    list = models.ForeignKey(List)
+    text = models.TextField(default='')
+    list = models.ForeignKey(List, default=None)
 ----
 //029-5
 
+//TODO: explain default=None
 
-Let's delete the last migration and try again
+That'll need a migration too.  Since the last one was a red herring, let's
+delete it and replace it with a new one:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*rm lists/migrations/0003_item_list.py*]
+$ pass:quotes[*rm lists/migrations/0004_item_list.py*]
 $ pass:quotes[*python3 manage.py makemigrations*]
-You are trying to add a non-nullable field 'list' to item without a default;
-we can't do that (the database needs something to populate existing rows).
-Please select a fix:
- 1) Provide a one-off default now (will be set on all existing rows)
- 2) Quit, and let me add a default in models.py
-Select an option: pass:quotes[*1*]
-Please enter the default value now, as valid Python
-The datetime module is available, so you can do e.g. datetime.date.today()
->>> pass:quotes[*1*]
 Migrations for 'lists':
-  0003_item_list.py:
+  0004_item_list.py:
     - Add field list to item
 ----
 
-It doesn't matter too much what we choose as the default value here, because
-we haven't yet got any "real" data in a "real" database that we care about.
-Once we have deployed our site to real users, we'll need to be more careful.
 
-For now we'll make a concession towards having sane defaults by using the
-integer `1` as our default, because that's at least potentially a valid 
-primary key for a list object.
+WARNING: Deleting migrations is dangerous. If you delete a migration that's
+    already been applied to a database somewhere, Django will be confused about
+    what state it's in, and how to apply future migrations. You should only do
+    it when you're sure the migration hasn't been used.  A good rule of thumb
+    is that you should never delete a migration that's been committed to your
+    VCS. 
 
 
 
@@ -1455,9 +1440,10 @@ Ran 7 tests in 0.021s
 FAILED (errors=3)
 ----
 
-Oh dear!  There is some good news which is that, although it's hard to
-see, our model tests are passing.  But three of our view tests are
-failing nastily.
+Oh dear!  
+
+There is some good news. Although it's hard to see, our model tests are
+passing.  But three of our view tests are failing nastily.
 
 The reason is because of the new relationship we've introduced between
 Items and Lists, which requires each list to have a parent item, which 
