@@ -127,8 +127,8 @@ If we want to get it deliberately wrong, we can do this:
 [source,python]
 ----
 class Item(models.Model):
-    text = models.TextField(unique=True)
-    list = models.ForeignKey(List)
+    text = models.TextField(default='', unique=True)
+    list = models.ForeignKey(List, default=None)
 ----
 
 That lets us check that our second test really does pick up on this
@@ -136,7 +136,7 @@ problem:
 
 ----
 Traceback (most recent call last):
-  File "/workspace/superlists/lists/tests/test_models.py", line 64, in
+  File "/workspace/superlists/lists/tests/test_models.py", line 62, in
 test_CAN_save_same_item_to_different_lists
     item.full_clean()  # should not raise
     [...]
@@ -194,8 +194,8 @@ particular list, or in other words, that text and list must be unique together:
 [source,python]
 ----
 class Item(models.Model):
-    text = models.TextField()
-    list = models.ForeignKey(List)
+    text = models.TextField(default='')
+    list = models.ForeignKey(List, default=None)
 
     class Meta:
         unique_together = ('list', 'text')
@@ -212,6 +212,7 @@ A little digression on Queryset ordering and string representations
 
 When we run the tests they reveal an unexpected failure:
 
+[role="skipme"]
 ----
 ======================================================================
 FAIL: test_saving_and_retrieving_items
@@ -327,6 +328,7 @@ https://docs.djangoproject.com/en/1.6/topics/python3/#str-and-unicode-methods[do
 Now we're down to 2 failures, and the ordering test has a more readable failure
 message:
 
+[role="skipme"]
 ----
 AssertionError: [<Item: 3>, <Item: i1>, <Item: item 2>] != [<Item: i1>, <Item:
 item 2>, <Item: 3>]
@@ -373,15 +375,6 @@ That works, we get a fully passing test suite:
 
 ----
 OK
-----
-
-Time for a commit!
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *git diff*
-$ *git commit -am "Implement duplicate item validation at model layer"*
 ----
 
 
@@ -435,7 +428,6 @@ class ItemModelTest(TestCase):
 
 
 
-
 class ListModelTest(TestCase):
 
     def test_get_absolute_url(self):
@@ -457,9 +449,25 @@ OK
 Some integrity errors 'do' show up on save
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A final aside before we move on. Do you remember I mentioned in chapter 10
-that some data integrity errors 'are' picked up on save?  Try doing a
-`.save` instead of a `.full_clean` in our duplicates test:
+A final aside before we move on. Do you remember I mentioned in
+<<manual-validation-chapter>> that some data integrity errors 'are' picked up
+on save?  It all depends on whether the integrity constraint is actually being
+enforced by the database.
+
+Try running `makemigrations` and you'll see that Django wants to add the 
+`unique_together` constraint to the database itself, rather than just having
+it as an application-layer constraint:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'lists':
+  0005_auto_20140414_2038.py:
+    - Alter unique_together for item (1 constraints)
+----
+
+Now if we change our duplicates test to do a `.save` instead of a
+`.full_clean`...
 
 [role="sourcecode"]
 .lists/tests/test_models.py
@@ -474,7 +482,7 @@ that some data integrity errors 'are' picked up on save?  Try doing a
             item.save()
 ----
 
-That gives
+It gives:
 
 ----
 ERROR: test_duplicate_items_are_invalid (lists.tests.test_models.ItemModelTest)
@@ -489,14 +497,36 @@ Note that it's a different error to the one we want, an `IntegrityError`
 instead of a `ValidationError`.  
 
 
+Let's revert our changes to the test, and see them all passing again
+
+[role="dofirst-ch12l013"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 29 tests in 0.092s
+OK
+----
+
+And now it's time to commit our model-layer changes
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* # should show changes to tests + models and new migration
+# let's give our new migration a better name
+$ @mv lists/migrations/0005_auto* lists/migrations/0005_list_item_unique_together.py@
+$ *git add lists*
+$ *git diff --staged*
+$ *git commit -am "Implement duplicate item validation at model layer"*
+----
+
 
 Experimenting with duplicate item validation at the views layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's put our `full_clean` back, and try running our FT, just to see where we
-are:
+Let's try running our FT, just to see where we are:
 
-[role="dofirst-ch12l013"]
 ----
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
 element: {"method":"id","selector":"id_list_table"}' ; Stacktrace: 

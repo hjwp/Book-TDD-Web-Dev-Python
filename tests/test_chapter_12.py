@@ -15,24 +15,24 @@ class Chapter12Test(ChapterTest):
         self.assertEqual(self.listings[1].type, 'test')
         self.assertEqual(self.listings[2].type, 'output')
 
-        # skips
-        #self.skip_with_check(30, '# review changes') # diff
-
         # prep
         self.sourcetree.start_with_checkout(self.chapter_no)
         self.prep_database()
 
+        # skips
+        self.skip_with_check(37, '# should show changes') # diff
+
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 5
+            self.pos = 13
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch12l001')
+                self.sourcetree.get_commit_spec('ch09l031')
             ))
 
 
         while self.pos < len(self.listings):
-            print(self.pos)
+            print(self.pos, self.listings[self.pos].type)
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)

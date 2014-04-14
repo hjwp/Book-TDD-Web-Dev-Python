@@ -536,6 +536,14 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+
+    def test_ignores_migration_timestamps(self):
+        actual = "  0005_auto_20140414_2038.py:"
+        expected = Output("  0005_auto_20140414_2108.py:")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_ignores_screenshot_times(self):
         actual = (
             'screenshotting to /workspace/superlists/functional_tests/screendumps/MyListsTes\n'
