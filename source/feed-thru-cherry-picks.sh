@@ -3,6 +3,7 @@ set -e
 
 CHAP=$1
 PREV=$(($CHAP - 1))
+REPO=origin
 
 if (($CHAP < 10)); then
     CHAP="chapter_0$CHAP"
@@ -18,12 +19,12 @@ fi
 cd $CHAP/superlists
 
 git checkout $PREV
-git reset --hard local/$PREV
+git reset --hard $REPO/$PREV
 git checkout $CHAP
 
-git fetch local
-git reset --hard local/$PREV
-git cherry-pick $PREV..local/$CHAP
-git diff local/$CHAP
+git fetch $REPO
+git reset --hard $REPO/$PREV
+git cherry-pick $PREV..$REPO/$CHAP
+git diff $REPO/$CHAP
 
 cd ../..

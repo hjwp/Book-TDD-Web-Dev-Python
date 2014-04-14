@@ -2,6 +2,7 @@
 set -e
 
 CHAP=$1
+REPO=origin
 
 if (($CHAP < 10)); then
     CHAP="chapter_0$CHAP"
@@ -10,9 +11,6 @@ else
 fi
 
 cd $CHAP/superlists
-git push -f local $CHAP
-if (($# == 2)); then
-    git push -f origin $CHAP
-fi
+git push -f $REPO $CHAP
 
 cd ../..
