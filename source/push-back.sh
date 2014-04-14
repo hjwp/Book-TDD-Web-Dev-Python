@@ -11,4 +11,8 @@ fi
 
 cd $CHAP/superlists
 git push -f local $CHAP
+if (($# == 2)); then
+    git push -f origin $CHAP
+fi
+
 cd ../..
