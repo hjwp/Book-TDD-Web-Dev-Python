@@ -1,0 +1,257 @@
+[[data-migrations]]
+Testing Database migrations
+---------------------------
+
+Django-migrations and its predecessor South have been around for ages,
+so it's not usually necessary to test database migrations.  But it just
+so happens that we're introducing a dangerous type of migration, ie one
+that introduces a new integrity constraint on our data.  When I first ran
+the migration script, I saw an error.
+
+On larger projects, where you have sensitive data, you may want the additional
+confidence that comes from testing your migrations in a safe environment
+before applying them to production data, so this toy example will hopefully
+be a useful rehearsal.
+
+Another common reason to want to test migrations is for speed -- migrations
+often involve downtime, and sometimes, when they're applied to very large
+datasets, they can take time.  It's good to know in advance how long that
+might be.
+
+
+An attempted deploy to staging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here's what happened to me when I first tried to deploy our new validation
+constraints in <<deploying-validation>>:
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*cd deploy_tools*]
+$ pass:quotes[*fab deploy:host=elspeth@superlists-staging.ottg.eu*]
+[...]
+Running migrations:
+  Applying lists.0005_list_item_unique_together...Traceback (most recent call last):
+  File "/usr/local/lib/python3.3/dist-packages/django/db/backends/utils.py", line 61, in execute
+    return self.cursor.execute(sql, params)
+  File "/usr/local/lib/python3.3/dist-packages/django/db/backends/sqlite3/base.py", line 475, in execute
+    return Database.Cursor.execute(self, query, params)
+sqlite3.IntegrityError: columns list_id, text are not unique
+[...]
+----
+
+What happened was that some of the existing data in the database violated
+the integrity constraint, so the database was complaining when I tried to 
+apply it.
+
+In order to deal with this sort of problem, we'll need to build a "data
+migration".  Let's first set up a local environment to test against.
+
+
+Running a test migration locally
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We'll use a copy of the live database to test our migration against.
+
+WARNING: Be very, very, very careful when using real data for testing.  For 
+    example, you may have real customer email addresses in there, and you don't
+    want to accidentally send them a bunch of test emails.  Ask me how I know
+    this.
+
+
+Entering problematic data
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Start a list with some duplicate items on your live site, as shown in
+<<dupe-data>>:
+
+[[dupe-data]]
+.A list with duplicate items
+image::images/dupe_data.png[This list has 3 identical items]
+
+
+Copying test data from the live site
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Copy the database down from live:
+
+[subs="specialcharacters,quotes"]
+----
+$ *scp elspeth@superlists.ottg.eu:\
+/home/elspeth/sites/superlists.ottg.eu/database/db.sqlite3 .*
+$ *mv ../database/db.sqlite3 ../database/db.sqlite3.bak*
+$ *mv db.sqlite3 ../database/db.sqlite3*
+----
+
+
+Confirming the error
+^^^^^^^^^^^^^^^^^^^^
+
+We now have a local database that has not been migrated, and that contains
+some problematic data.  We should see an error if we try to run `migrate`:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python3 manage.py migrate --migrate*
+python3 manage.py migrate
+Operations to perform:
+[...]
+Running migrations:
+[...]
+  Applying lists.0005_list_item_unique_together...Traceback (most recent call last):
+[...]
+    return Database.Cursor.execute(self, query, params)
+sqlite3.IntegrityError: columns list_id, text are not unique
+----
+
+
+Inserting a data migration
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+https://docs.djangoproject.com/en/dev/topics/migrations/#data-migrations[Data
+migrations] are a special type of migration that modifies data in the database
+rather than changing the schema.  We need to create one that will run before
+we apply the integrity constraint, to preventively remove any duplicates.
+Here's how we can do that.
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*git rm lists/migrations/0005_list_item_unique_together.py*]
+$ pass:quotes[*python3 manage.py makemigrations lists --empty*]
+Migrations for 'lists':
+  0005_auto_20140414_2325.py:
+$ pass:quotes[*mv lists/migrations/0005_* lists/migrations/0005_remove_duplicates.py*]
+----
+
+Check out https://docs.djangoproject.com/en/dev/topics/migrations/#data-migrations[the
+Django docs on data migrations] for more info, but here's how we add some
+instructions to change existing data:
+
+[role="sourcecode"]
+.lists/migrations/0005_remove_duplicates.py
+[source,python]
+----
+# encoding: utf8
+from django.db import models, migrations
+
+def find_dupes(apps, schema_editor):
+    List = apps.get_model("lists", "List")
+    for list_ in List.objects.all():
+        items = list_.item_set.all()
+        texts = set()
+        for ix, item in enumerate(items):
+            if item.text in texts:
+                item.text = '{} ({})'.format(item.text, ix)
+                item.save()
+            texts.add(item.text)
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('lists', '0004_item_list'),
+    ]
+
+    operations = [
+        migrations.RunPython(find_dupes),
+    ]
+----
+
+
+Recreating the old migration
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We recreate the old migration using `makemigrations`, which will ensure it
+is now the sixth migration and has an explicit dependency on `0005`, the
+data migration:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'lists':
+  0006_auto_20140415_0018.py:
+    - Alter unique_together for item (1 constraints)
+$ pass:quotes[@mv lists/migrations/0006_* lists/migrations/0006_unique_together.py@]
+----
+
+
+Testing the new migrations together
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We're now ready to run our test against the live data:
+
+----
+$ pass:quotes[*cd deploy_tools*]
+$ pass:quotes[*fab deploy:host=elspeth@superlists-staging.ottg.eu*]
+[...]
+----
+
+We'll need to restart the live gunicorn job too:
+
+[role="server-commands skipme"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo restart gunicorn-superlists.ottg.eu*
+----
+
+
+And we can now run our FTs against staging:
+
+[role="skipme"]
+----
+$ python3 manage.py test functional_tests --liveserver=superlists-staging.ottg.eu
+Creating test database for alias 'default'...
+....
+ ---------------------------------------------------------------------
+Ran 4 tests in 17.308s
+
+OK
+----
+
+
+Everything seems in order!  Let's do it against live:
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*fab deploy --host=superlists.ottg.eu*]
+[superlists.ottg.eu] Executing task 'deploy'
+[...]
+----
+
+
+And that's a wrap.  `git add lists/migrations`, `git commit`, etc.
+
+
+.On testing database migrations
+******************************************************************************
+
+Be wary of migrations which introduce constraints::
+    99% of migrations happen without a hitch, but be wary of any situations,
+    like this one, where you are introducing a new constraint on columns that
+    already exist.
+
+Test migrations for speed::
+    Once you have a larger project, you should think about testing is how long
+    your migrations are going to take. Database migrations typically involve
+    down-time, as, depending on your database, the schema update operation may
+    lock the table it's working on until it completes.  It's a good idea to use
+    your staging site to find out how long a migration will take.
+
+
+Be extremely careful if using a dump of production data::
+    In order to do so, you'll want fill your staging site's database with an
+    amount of data that's commensurate to the size of your production data.
+    Explaining how to do that is outside of the scope of this book, but I will
+    say this:  if you're tempted to just take a dump of your production
+    database and load it into staging, be 'very' careful.  Production data
+    contains real customer details, and I've personally been responsible for
+    accidentally sending out a few hundred incorrect invoices after an
+    automated process on my staging server started processing the copied
+    production data I'd just loaded into it. Not a fun afternoon.
+
+******************************************************************************
+
