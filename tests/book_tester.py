@@ -64,6 +64,11 @@ def strip_object_ids(output):
 def strip_migration_timestamps(output):
     return re.sub(r'00(\d\d)_auto_20\d{6}_\d{4}', r'00\1_auto_20XXXXXX_XXXX', output)
 
+
+def strip_session_ids(output):
+    return re.sub(r'^[a-z0-9]{32}$', r'xxx_session_id_xxx', output)
+
+
 def strip_git_hashes(output):
     fixed_indexes = re.sub(
         r"index .......\.\........ 100644",
@@ -241,7 +246,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def _cleanup_runserver(self):
-            self.run_server_command('pkill -f runserver', ignore_errors=True)
+        self.run_server_command('pkill -f runserver', ignore_errors=True)
 
 
     RUN_SERVER_PATH = os.path.abspath(
@@ -331,6 +336,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_mock_ids(actual_fixed)
         actual_fixed = strip_object_ids(actual_fixed)
         actual_fixed = strip_migration_timestamps(actual_fixed)
+        actual_fixed = strip_session_ids(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
@@ -342,6 +348,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_mock_ids(expected_fixed)
         expected_fixed = strip_object_ids(expected_fixed)
         expected_fixed = strip_migration_timestamps(expected_fixed)
+        expected_fixed = strip_session_ids(expected_fixed)
         expected_fixed = strip_screenshot_timestamps(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
 
