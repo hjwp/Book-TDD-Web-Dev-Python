@@ -388,7 +388,6 @@ class ChapterTest(unittest.TestCase):
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.sourcetree.run_command('tree -I *.pyc --noreport', cwd)
-        print('checking tree', expected_tree.encode('utf-8'))
         # special case for first listing:
         original_tree = expected_tree
         if expected_tree.startswith('superlists/'):

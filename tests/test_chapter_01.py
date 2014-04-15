@@ -42,8 +42,8 @@ class Chapter1Test(ChapterTest):
         self.run_command(self.listings[3], cwd=self.tempdir) # startproject
 
         # 4. tree
-        self.pos = 4
-        self.recognise_listing_and_process_it()
+        self.assert_directory_tree_correct(self.listings[4], cwd=self.tempdir)
+        self.pos = 5
 
         # 6. runserver
         self.recognise_listing_and_process_it()
