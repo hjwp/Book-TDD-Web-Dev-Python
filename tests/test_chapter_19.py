@@ -17,8 +17,8 @@ class Chapter19Test(ChapterTest):
 
         # skips
         self.skip_with_check(1, '# a branch')  # comment
-        self.skip_with_check(89, '# optional backup')  # comment
-        self.skip_with_check(92, '# reset master')  # comment
+        self.skip_with_check(109, '# optional backup')  # comment
+        self.skip_with_check(112, '# reset master')  # comment
 
         # prep
         self.sourcetree.start_with_checkout(self.chapter_no)
@@ -32,7 +32,7 @@ class Chapter19Test(ChapterTest):
             ))
 
         while self.pos < len(self.listings):
-            print(self.pos)
+            print(self.pos, self.listings[self.pos].type)
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)

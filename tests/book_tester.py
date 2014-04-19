@@ -218,7 +218,7 @@ class ChapterTest(unittest.TestCase):
         tf.close()
         print('patch:\n', codelisting.contents)
         patch_output = self.run_command(
-            Command('patch --no-backup-if-mismatch %s %s' % (codelisting.filename, tf.name))
+            Command('patch --fuzz=3 --no-backup-if-mismatch %s %s' % (codelisting.filename, tf.name))
         )
         print(patch_output)
         self.assertNotIn('malformed', patch_output)
