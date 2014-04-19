@@ -34,7 +34,6 @@ class Chapter5Test(ChapterTest):
         self.sourcetree.start_with_checkout(5)
         self.start_dev_server()
 
-
         restarted_after_migrate = False
         restarted_after_nutemplate = False
         while self.pos < len(self.listings):
