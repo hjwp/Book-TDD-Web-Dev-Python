@@ -720,8 +720,7 @@ This implementation depends on two classes from the model layer, `Item` and
 `List`.  So, what would a well isolated test look like?
 
 
-[role="sourcecode"]
-.lists/tests/test_forms.py (ch19l021)
+[role="skipme"]
 [source,python]
 ----
 class NewListFormTest(unittest.TestCase):
@@ -767,85 +766,68 @@ Yuck!  What an ugly test!
 Keep listening to your tests: removing ORM code from our application
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Again, these tests are trying to tell us something:  the Django ORM
+is hard to mock out, and our form class needs to know too much about
+how it works.  Programming by wishful thinking again, what would
+be a simpler API that our form could use?  How about something like
+this:
 
 
 
-Comparing isolated and integrated versions of the same test
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Compare this test to the old form save test in `ItemFormTest`:
-
-[role="sourcecode currentcontents"]
-.lists/tests/test_forms.py
-[source,python]
-----
-class ItemFormTest(TestCase):
-    [...]
-
-    def test_form_save_handles_saving_to_a_list(self):
-        list_ = List.objects.create()
-        form = ItemForm(data={'text': 'do me'})
-        new_item = form.save(for_list=list_)
-        self.assertEqual(new_item, Item.objects.first())
-        self.assertEqual(new_item.text, 'do me')
-        self.assertEqual(new_item.list, list_)
-----
-
-It seems much more straightforward!
-
-On the one hand, the isolated test is harder to read.  It takes a good deal
-of wrapping your head around, and it's very sensitive to slight changes in the
-way we use the model API (it will break if we use `Item.objects.create` instead
-of `Item()`, for example).
-
-On the other hand, the mocky test is a lot more clear about what the
-dependencies of our code are.  It's harder work, but it encourages us
-to keep clean separations between the layers of our code.
+    class NewListForm(object):
+        pass
 
 
-.Don't be put off by my bad example!
-*******************************************************************************
-I'm worried you'll come out of this chapter with the impression that isolated
-tests always look horrible and involve hundreds of unreadable mocks.  They
-really don't!  Particularly when you're working with code that's totally
-under your own control, well isolated tests can be just as easy to read
-and write as integrated tests.
 
-The trouble is that we're working on a very simple Django app, where almost
-every single code involves some external API that we don't control, like the
-Django ORM.  I wish I was able to demo some code that was totally independent
-of Django, but it was hard to fit in with our example project.
-
-So hold on to the benefits:  when dealing with more complex codebases, writing
-isolated tests will help you to test-drive better designed code, by identifying
-your dependencies clearly.  It will lead you to write code that's more modular,
-and less tightly coupled, and everything will be wonderful.
-
-But for smaller apps, they may not be worth the effort.  We'll come back to
-this in <<hot-lava-chapter>>.
-*******************************************************************************
+    def create_new_list():
+        pass
 
 
-If we step through the requirements of this tests, we should eventually get to
-code like this:
 
-[role="sourcecode"]
-.lists/forms.py (ch19l022)
-[source,python]
-----
-from lists.models import Item, List
-[...]
+    def save(self):
+        create_new_list(first_item_text=self.cleaned_data['text'])
 
-class NewListForm(object):
 
-    def save(self, owner):
-        list_ = List()
-        list_.save()
-        item = Item()
-        item.list = list_
-        item.text = self.cleaned_data['text']
-        item.save()
-----
+
+
+    @patch('lists.forms.create_new_list')
+    def test_save_creates_new_list_from_cleaned_data(
+        self, mock_create_new_list
+    ):
+        form = NewListForm()
+        form.cleaned_data = {'text': 'new item text'}
+        user = Mock(is_authenticated=lambda: False)
+
+        form.save(owner=user)
+
+        mock_create_new_list.assert_called_once_with(
+            first_item_text='new item text'
+        )
+
+
+Conditionally saving owners
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Here's where we implement our new functionality: the form should conditionally
+save the owner:
+
+
+    @patch('lists.forms.create_new_list')
+    def test_save_creates_list_with_owner_if_user_authenticated(
+        self, mock_create_new_list
+    ):
+        form = NewListForm()
+        form.cleaned_data = {'text': 'new item text'}
+        user = Mock(is_authenticated=lambda: True)
+
+        form.save(owner=user)
+
+        mock_create_new_list.assert_called_once_with(
+            first_item_text='new item text',
+            owner=user,
+        )
+
+
 
 But our form isn't a form yet!  Let's make it inherit from `ItemForm`,
 which will get us the css classes and validation for free:
@@ -855,7 +837,7 @@ which will get us the css classes and validation for free:
 .lists/tests/test_forms.py (ch19l023)
 [source,python]
 ----
-    def test_is_an_ItemForm(self, mockItem, mockList):
+    def test_is_an_ItemForm(self):
         self.assertIsInstance(NewListForm(), ItemForm)
 ----
 
@@ -870,72 +852,6 @@ So:
 ----
 
 
-Conditionally saving owners
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Here's where we implement our new functionality: the form should conditionally
-save the owner:
-
-[role="sourcecode"]
-.lists/tests/test_forms.py (ch19l025)
-[source,python]
-----
-    def test_save_saves_owner_if_authenticated(self, mockItem, mockList):
-        mock_list = mockList.return_value
-        mock_list.owner = None
-        user = Mock(is_authenticated=lambda: True)
-        form = NewListForm()
-        form.cleaned_data = {'text': 'new item text'}
-
-        form.save(owner=user)
-
-        self.assertEqual(mock_list.owner, user)
-
-
-    def test_does_not_save_owner_if_not_authenticated(self, mockItem, mockList):
-        mock_list = mockList.return_value
-        mock_list.owner = None
-        user = Mock(is_authenticated=lambda: False)
-        form = NewListForm()
-        form.cleaned_data = {'text': 'new item text'}
-
-        form.save(owner=user)
-
-        self.assertEqual(mock_list.owner, None)
-----
-
-
-One of those two will fail:
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test lists*]
-[...]
-AssertionError: None != <Mock id='140348870426896'>
-[...]
-Ran 46 tests in 0.172s
-FAILED (failures=1)
-----
-
-
-And that should take us to this:
-
-[role="sourcecode"]
-.lists/forms.py
-[source,python]
-----
-    def save(self, owner):
-        list_ = List()
-        if owner.is_authenticated():
-            list_.owner = owner
-        list_.save()
-        item = Item()
-        item.list = list_
-        item.text = self.cleaned_data['text']
-        item.save()
-----
-
 
 And passing tests.
 
@@ -946,6 +862,26 @@ OK
 
 Finally, moving down to the models layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+----
+class CreateNewListTest(TestCase):
+
+    def test_creates_list_and_item(self):
+        create_new_list(new_item_text='new item text')
+        new_item = Item.objects.first()
+        self.assertEqual(new_item.text, 'new item text')
+        new_list = List.objects.first()
+        self.assertEqual(new_item.list, new_list)
+----
+
+
+    def test_optionally_saves_owner(self):
+        user = User.objects.create()
+        create_new_list(first_item_text='new item text', owner=user)
+        new_list = List.objects.first()
+        self.assertEqual(new_list.owner, user)
+
 
 Notice that we've been able to drive all this design, and the models layer
 still doesn't actually implement lists having owners!  We can finally put that
@@ -996,6 +932,17 @@ class List(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
     [...]
 ----
+
+28 failures
+
+migrate
+
+
+2 failures.
+
+
+Back to views
+^^^^^^^^^^^^^
 
 And a migration, as usual...  takes us to failing integrated tests!  What's 
 happening?
