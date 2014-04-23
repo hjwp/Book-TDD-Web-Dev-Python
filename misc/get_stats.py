@@ -30,7 +30,7 @@ def get_wordcounts():
     docs = [f for f in os.listdir(BOOK_ROOT) if f.endswith('.asciidoc')]
     wordcounts = []
     for filename in docs:
-        with open(filename) as f:
+        with open(os.path.join(BOOK_ROOT, filename)) as f:
             contents = f.read()
         lines = len(contents.split('\n'))
         words = len(contents.split())
@@ -50,7 +50,7 @@ def main():
             all_wordcounts[commit] = get_wordcounts()
             filenames.update(set(wc.filename for wc in all_wordcounts[commit]))
 
-        with open('wordcounts.tsv', 'w') as csvfile:
+        with open(os.path.join(BOOK_ROOT, 'wordcounts.tsv'), 'w') as csvfile:
             fieldnames = ['date.{}'.format(thing) for thing in ['year', 'month', 'day', 'hour']]
             fieldnames += ['subject', 'hash', 'date']
             fieldnames.extend(sorted(filename + " (words)" for filename in filenames))
@@ -73,7 +73,6 @@ def main():
 
     finally:
         checkout_commit('master')
-
 
 
 
