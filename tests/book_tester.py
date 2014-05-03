@@ -177,7 +177,7 @@ class ChapterTest(unittest.TestCase):
             pass
         self.assertNotIn('fatal:', diff)
         start_marker = 'diff --git a/\n'
-        commit = Commit(start_marker + diff)
+        commit = Commit.from_diff(start_marker + diff)
         error = AssertionError('Final diff was not empty, was:\n{}'.format(diff))
 
         if ignore_secret_key:

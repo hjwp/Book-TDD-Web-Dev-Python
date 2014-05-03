@@ -25,6 +25,11 @@ class CodeListing(object):
         self.skip = False
         self.currentcontents = False
 
+
+    def is_diff(self):
+        return any(l.count('@@') > 1 for l in self.contents.split('\n'))
+
+
     @property
     def type(self):
         if self.is_server_listing:
@@ -33,7 +38,7 @@ class CodeListing(object):
             return 'code listing currentcontents'
         elif self.commit_ref:
             return 'code listing with git ref'
-        elif any(l.count('@@') > 1 for l in self.contents.split('\n')):
+        elif self.is_diff():
             return 'diff'
         else:
             return 'code listing'

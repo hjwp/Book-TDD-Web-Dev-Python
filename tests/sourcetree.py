@@ -20,42 +20,46 @@ def strip_comments(line):
 BOOTSTRAP_WGET = 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip'
 
 class Commit(object):
-    def __init__(self, commit_info):
-        self.info = commit_info
-        self.all_lines = self.info.split('\n')
 
-        self.lines_to_add = [
-            l[1:] for l in self.all_lines
+    @staticmethod
+    def from_diff(commit_info):
+        commit = Commit()
+        commit.info = commit_info
+        commit.all_lines = commit.info.split('\n')
+
+        commit.lines_to_add = [
+            l[1:] for l in commit.all_lines
             if l.startswith('+')
             and l[1:].strip()
             and not l[1] == '+'
         ]
-        self.lines_to_remove = [
-            l[1:] for l in self.all_lines
+        commit.lines_to_remove = [
+            l[1:] for l in commit.all_lines
             if l.startswith('-')
             and l[1:].strip()
             and not l[1] == '-'
         ]
-        self.moved_lines = [
-            l for l in self.lines_to_add if l in self.lines_to_remove
+        commit.moved_lines = [
+            l for l in commit.lines_to_add if l in commit.lines_to_remove
         ]
-        self.deleted_lines = [
-            l for l in self.lines_to_remove if l not in self.lines_to_add
+        commit.deleted_lines = [
+            l for l in commit.lines_to_remove if l not in commit.lines_to_add
         ]
-        self.new_lines = [
-            l for l in self.lines_to_add if l not in self.lines_to_remove
+        commit.new_lines = [
+            l for l in commit.lines_to_add if l not in commit.lines_to_remove
         ]
-        for pos, l in enumerate(self.all_lines):
+        for pos, l in enumerate(commit.all_lines):
             if l.strip().startswith('diff --git a/'):
-                self.first_non_metadata_line_pos = pos
-        self.other_lines = [
-            l for l in self.all_lines[self.first_non_metadata_line_pos:]
+                commit.first_non_metadata_line_pos = pos
+        commit.other_lines = [
+            l for l in commit.all_lines[commit.first_non_metadata_line_pos:]
             if l.strip()
             and l[1:].strip()
-            and not l[1:] in self.lines_to_remove
-            and not l[1:] in self.lines_to_add
+            and not l[1:] in commit.lines_to_remove
+            and not l[1:] in commit.lines_to_add
             #todo missing +++ lines
         ]
+        return commit
 
 
 
@@ -179,7 +183,7 @@ class SourceTree(object):
         commit_info = self.run_command('git show %s' % (commit_spec,))
         print('Applying listing from commit.\nListing:\n' + listing.contents)
 
-        commit = Commit(commit_info)
+        commit = Commit.from_diff(commit_info)
 
         files = self.get_files_from_commit_spec(commit_spec)
         if files != [listing.filename]:
@@ -188,51 +192,92 @@ class SourceTree(object):
                     listing.filename, files
                 )
             )
-
-        listing_lines = listing.contents.split('\n')
-        listing_lines = [strip_comments(l) for l in listing_lines]
-
-        stripped_listing_lines = [l.strip() for l in listing_lines]
-        for new_line in commit.new_lines:
-            if new_line.strip() not in stripped_listing_lines:
-                print('stripped_listing_lines', stripped_listing_lines)
-                raise ApplyCommitException(
-                    'could not find commit new line {0} in listing:\n{1}'.format(
-                        new_line, listing.contents
-                    )
-                )
         future_contents = self.show_future_version(commit_spec, listing.filename)
-        stripped_future_contents = [l.strip() for l in future_contents.split('\n')]
 
-        line_pos_in_commit = 0
-        for listing_pos, line in enumerate(listing_lines):
-            if not line or line.strip().startswith('[...'):
-                continue
-            if line in commit.lines_to_add:
-                if listing_lines.count(line) > commit.lines_to_add.count(line):
-                    if listing_pos == listing_lines.index(line):
-                        # arbitrarily skip first occurrence of dupe line
-                        # (no way of telling whether dupe is 1st or 2nd)
-                        continue
-                try:
-                    line_pos_in_commit = commit.lines_to_add[line_pos_in_commit:].index(line)
-                except ValueError:
-                    raise ApplyCommitException(
-                        'listing line {0} was in wrong order'.format(line)
-                    )
-                continue
-            if line.strip() in stripped_future_contents:
-                continue
-            if line in commit.all_lines: # probably a diff listing
-                continue
-            if line.strip() in [l.strip() for l in commit.deleted_lines]:
-                raise ApplyCommitException(
-                    'listing line {0} was to be deleted'.format(line)
-                )
-            raise ApplyCommitException('listing line not found:\n%s' % (line,))
+        check_listing_matches_commit(listing, commit, future_contents)
 
         self.patch_from_commit(listing.commit_ref, listing.filename)
         listing.was_written = True
         print('applied commit. new contents:')
         print(self.get_contents(listing.filename))
 
+
+
+def check_listing_matches_commit(listing, commit, future_contents):
+    if listing.is_diff():
+        diff = Commit.from_diff(listing.contents)
+        if diff.new_lines != commit.new_lines:
+            raise ApplyCommitException(
+                'diff new lines did not match.\n{}\n!=\n{}'.format(diff.new_lines, commit.new_lines)
+            )
+
+        if diff.deleted_lines != commit.deleted_lines:
+            raise ApplyCommitException(
+                'diff deleted lines did not match.\n{}\n!=\n{}'.format(diff.deleted_lines, commit.deleted_lines)
+            )
+        return
+
+    listing_lines = listing.contents.split('\n')
+    listing_lines = [strip_comments(l) for l in listing_lines]
+
+    stripped_listing_lines = [l.strip() for l in listing_lines]
+    for new_line in commit.new_lines:
+        if new_line.strip() not in stripped_listing_lines:
+            print('stripped_listing_lines', stripped_listing_lines)
+            raise ApplyCommitException(
+                'could not find commit new line {0} in listing:\n{1}'.format(
+                    new_line, listing.contents
+                )
+            )
+
+    future_lines = future_contents.split('\n')
+    stripped_future_lines = [l.strip() for l in future_lines]
+
+    check_indentation(listing_lines, future_lines)
+
+    line_pos_in_commit = 0
+    for listing_pos, line in enumerate(listing_lines):
+        if not line or line.strip().startswith('[...'):
+            continue
+        if line in commit.lines_to_add:
+            print('line {} in commit lines to add'.format(line))
+            if listing_lines.count(line) > commit.lines_to_add.count(line):
+                if listing_pos == listing_lines.index(line):
+                    # arbitrarily skip first occurrence of dupe line
+                    # (no way of telling whether dupe is 1st or 2nd)
+                    continue
+            try:
+                line_pos_in_commit = commit.lines_to_add[line_pos_in_commit:].index(line)
+            except ValueError:
+                raise ApplyCommitException(
+                    'listing line {0} was in wrong order'.format(line)
+                )
+            continue
+        if line.strip() in stripped_future_lines:
+            continue
+        if line.strip() in [l.strip() for l in commit.deleted_lines]:
+            raise ApplyCommitException(
+                'listing line {0} was to be deleted'.format(line)
+            )
+        raise ApplyCommitException('listing line not found:\n%s' % (line,))
+
+
+def get_offset(lines, future_lines):
+    for line in lines:
+        if line == '':
+            continue
+        if line in future_lines:
+            return ''
+        else:
+            for future_line in future_lines:
+                if future_line.endswith(line):
+                    return future_line[:-len(line)]
+
+
+def check_indentation(listing_lines, future_lines):
+    offset = get_offset(listing_lines, future_lines)
+    for listing_line in listing_lines:
+        if listing_line and not '[...]' in listing_line:
+            fixed_line = offset + listing_line
+            if fixed_line not in future_lines:
+                raise ApplyCommitException('Could not find {!r} in future contents {}'.format(fixed_line, future_lines))
