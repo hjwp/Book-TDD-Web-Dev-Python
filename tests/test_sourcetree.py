@@ -677,25 +677,6 @@ class CommitTest(unittest.TestCase):
             "    def test_POST_redirects_to_list_view(self):",
         ]
 
-        assert commit.first_non_metadata_line_pos == commit.all_lines.index(
-            "diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py"
-        )
-        assert commit.other_lines == [
-            "diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py",
-            "index 8e18d77..03fc675 100644",
-            "--- a/lists/tests/test_views.py",
-            "+++ b/lists/tests/test_views.py",
-            "@@ -55,36 +55,6 @@ class NewListTest(TestCase):",
-            " class ListViewTest(TestCase):",
-            "     def test_list_view_passes_list_to_list_template(self):",
-            "@@ -112,3 +82,29 @@ class ListViewTest(TestCase):",
-            "         self.assertNotContains(response, 'other list item 1')",
-            "         self.assertNotContains(response, 'other list item 2')",
-        ]
-
-        #     "class ListViewTest(TestCase):",
-        #     "    def test_list_view_passes_list_to_list_template(self):",
-        #]
 
 
 
