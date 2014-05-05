@@ -125,6 +125,9 @@ SQLITE_MESSAGES = {
 
     'django.db.utils.IntegrityError: columns list_id, text are not unique':
     'django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,\nlists_item.text',
+
+    'sqlite3.IntegrityError: columns list_id, text are not unique':
+    'sqlite3.IntegrityError: UNIQUE constraint failed: lists_item.list_id,\nlists_item.text'
 }
 
 
