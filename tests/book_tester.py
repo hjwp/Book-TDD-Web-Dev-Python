@@ -119,6 +119,21 @@ def strip_screenshot_timestamps(output):
     return fixed
 
 
+SQLITE_MESSAGES = {
+    'django.db.utils.IntegrityError: lists_item.list_id may not be NULL':
+    'django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id',
+
+    'django.db.utils.IntegrityError: columns list_id, text are not unique':
+    'django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,\nlists_item.text',
+}
+
+
+def fix_sqlite_messages(actual_text):
+    fixed_text = actual_text
+    for old_version, new_version in SQLITE_MESSAGES.items():
+        fixed_text = fixed_text.replace(old_version, new_version)
+    return fixed_text
+
 
 def fix_creating_database_line(actual_text):
     if "Creating test database for alias 'default'..." in actual_text:
@@ -338,6 +353,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_migration_timestamps(actual_fixed)
         actual_fixed = strip_session_ids(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
+        actual_fixed = fix_sqlite_messages(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
 
