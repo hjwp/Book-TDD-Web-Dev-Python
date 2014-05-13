@@ -8,9 +8,21 @@
                 xmlns:exsl="http://exslt.org/common"
                 exclude-result-prefixes="dc opf exsl">
 
-
 <!-- Placeholder xsl:import instruction -->
 <xsl:import href="DYNAMICALLY_UPDATED_PLACEHOLDER"/>
+
+<xsl:template match="programlisting|screen|synopsis" mode="class.value">
+  <xsl:param name="class" select="local-name(.)"/>
+  <xsl:choose>
+    <xsl:when test="@role">
+      <xsl:value-of select="concat($class, ' ', @role)"/>
+    </xsl:when>
+    <xsl:otherwise>
+      <xsl:value-of select="$class"/>
+    </xsl:otherwise>
+  </xsl:choose>
+</xsl:template>
+
 
 <xsl:template match="figure|table|example" mode="label.markup">
   <xsl:variable name="pchap"
