@@ -36,6 +36,7 @@ URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/apb.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/apc.html',
     'http://chimera.labs.oreilly.com/books/1234000000754/apd.html',
+    'http://chimera.labs.oreilly.com/books/1234000000754/ape.html',
 ]
 
 metadata_parser = re.compile(r'Comment by (.+) (\d+) (.+ ago)')
@@ -62,7 +63,7 @@ try:
             # print(parsed_metadata)
             by = parsed_metadata[0]
             date = parsed_metadata[1] + parsed_metadata[2]
-            if 'month' not in date:
+            if 'month' not in date and 'year' not in date:
                 comment = element.find_element_by_css_selector('.comment-body-bottom').text
                 print('%s\t%s\t%s\t%s' % (page, by, date, comment))
 
