@@ -63,7 +63,7 @@ def number_of_identical_chars(string1, string2):
     string1, string2 = string1.strip(), string2.strip()
     start_num = _number_of_identical_chars_at_beginning(string1, string2)
     end_num = _number_of_identical_chars_at_beginning(
-            reversed(string1), reversed(string2)
+        reversed(string1), reversed(string2)
     )
     return min(len(string1), start_num + end_num)
 
@@ -84,7 +84,7 @@ def _replace_lines_in(old_lines, new_lines):
         new_lines.pop(0)
     new_lines = dedent('\n'.join(new_lines)).split('\n')
     if len(new_lines) == 1:
-       return _replace_single_line(old_lines, new_lines)
+        return _replace_single_line(old_lines, new_lines)
 
     start_pos = source.find_start_line(new_lines)
     if start_pos is None:
@@ -141,7 +141,7 @@ def _find_last_line_for_class(source, classname):
     classes = [n for n in all_nodes if isinstance(n, ast.ClassDef)]
     our_class = next(c for c in classes if c.name == classname)
     last_line_in_our_class = max(
-            getattr(thing, 'lineno', 0) for thing in ast.walk(our_class)
+        getattr(thing, 'lineno', 0) for thing in ast.walk(our_class)
     )
     return last_line_in_our_class
 
@@ -184,6 +184,9 @@ def write_to_file(codelisting, cwd):
 
 def _write_to_file(path, new_contents):
     source = Source.from_path(path)
+    # strip callouts
+    new_contents = re.sub(r' +#$', '', new_contents, flags=re.MULTILINE)
+    new_contents = re.sub(r' +//$', '', new_contents, flags=re.MULTILINE)
 
     if not os.path.exists(path):
         dir = os.path.dirname(path)
@@ -194,10 +197,6 @@ def _write_to_file(path, new_contents):
         old_contents = source.contents
         old_lines = source.lines
         new_lines = new_contents.strip('\n').split('\n')
-        # strip callouts
-        new_lines = [re.sub(r' +#$', '', l) for l in new_lines]
-        new_lines = [re.sub(r' +//$', '', l) for l in new_lines]
-
         if new_contents.strip() in SPECIAL_CASES:
             to_replace = SPECIAL_CASES[new_contents.strip()]
             replace_with = r'\1' + new_contents.strip() + '\n'

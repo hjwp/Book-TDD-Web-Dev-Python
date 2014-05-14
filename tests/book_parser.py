@@ -25,6 +25,11 @@ class CodeListing(object):
         self.skip = False
         self.currentcontents = False
 
+
+    def is_diff(self):
+        return any(l.count('@@') > 1 for l in self.contents.split('\n'))
+
+
     @property
     def type(self):
         if self.is_server_listing:
@@ -33,7 +38,7 @@ class CodeListing(object):
             return 'code listing currentcontents'
         elif self.commit_ref:
             return 'code listing with git ref'
-        elif any(l.count('@@') > 1 for l in self.contents.split('\n')):
+        elif self.is_diff():
             return 'diff'
         else:
             return 'code listing'
@@ -61,6 +66,10 @@ class Command(str):
         if self.startswith('python') and 'test' in self:
             return 'test'
         if self == 'python3 manage.py syncdb':
+            return 'interactive manage.py'
+        if self == 'python3 manage.py migrate':
+            return 'interactive manage.py'
+        if self == 'python3 manage.py makemigrations':
             return 'interactive manage.py'
         if self == 'python3 manage.py collectstatic':
             return 'interactive manage.py'
@@ -92,6 +101,47 @@ class Output(str):
             return 'output'
 
 
+def fix_newlines(text):
+    if text is None:
+        return ''
+    return text.replace('\r\n', '\n').replace('\\\n', '').strip('\n')
+
+def parse_output(listing):
+    text = fix_newlines(listing.text_content().strip())
+
+    commands = listing.cssselect('pre code strong')
+    if not commands:
+        return [Output(text)]
+
+    outputs = []
+    output_before = listing.text
+    if output_before:
+        output_before = fix_newlines(output_before.strip())
+    else:
+        output_before = ''
+
+    for command in commands:
+        if '$' in output_before and '\n' in output_before:
+            last_cr = output_before.rfind('\n')
+            previous_lines = output_before[:last_cr]
+            if previous_lines:
+                outputs.append(Output(previous_lines))
+        elif output_before and not '$' in output_before:
+            outputs.append(Output(output_before))
+
+        command_text = fix_newlines(command.text)
+        if output_before.strip().startswith('(virtualenv)'):
+            command_text = 'source ../virtualenv/bin/activate && ' + command_text
+        outputs.append(Command(command_text))
+
+        output_before = fix_newlines(command.tail)
+
+    if output_before:
+        outputs.append(Output(output_before))
+
+    return outputs
+
+
 
 def parse_listing(listing):
     classes = listing.get('class').split()
@@ -120,43 +170,21 @@ def parse_listing(listing):
         output.dofirst = dofirst
         return [output]
 
-    else:
-        commands = get_commands(listing)
-        is_server_commands = False
-        caption = listing.cssselect('div.title')
-        if caption and caption[0].text_content().startswith('server command'):
-            is_server_commands = True
-            listing = listing.cssselect('div.content')[0]
-        lines = listing.text_content().strip(
-        ).replace('\r\n', '\n').replace('\\\n', '').split('\n')
+    if 'server-commands' in classes:
+        listing = listing.cssselect('div.content')[0]
 
-        outputs = []
-        output_after_command = ''
-        for line in lines:
-            line_start, hash, line_comments = line.partition(" #")
-            commands_in_this_line = list(filter(line_start.strip().endswith, commands))
-            if commands_in_this_line:
-                if output_after_command:
-                    outputs.append(Output(output_after_command.rstrip()))
-                output_after_command = (hash + line_comments).strip()
-                command = commands_in_this_line[0]
-                if line_start.startswith('(virtualenv)'):
-                    command = 'source ../virtualenv/bin/activate && ' + command
-                command = Command(command)
-                command.server_command = is_server_commands
-                outputs.append(command)
-            else:
-                output_after_command += line + '\n'
-        if output_after_command:
-            outputs.append(Output(output_after_command.rstrip()))
+    outputs = parse_output(listing)
+    if skip:
+        for listing in outputs:
+            listing.skip = True
+    if dofirst:
+        outputs[0].dofirst = dofirst
+    if 'server-commands' in classes:
+        for listing in outputs:
+            if isinstance(listing, Command):
+                listing.server_command = True
 
-        if skip:
-            for listing in outputs:
-                listing.skip = True
-        if dofirst:
-            outputs[0].dofirst = dofirst
-
-        return outputs
+    return outputs
 
 
 def get_commands(node):

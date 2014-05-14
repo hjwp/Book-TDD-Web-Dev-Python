@@ -23,14 +23,14 @@ class Chapter7Test(ChapterTest):
         # skips
         self.skip_with_check(25, 'the -b means ignore whitespace')
         self.skip_with_check(28, 'leave static, for now')
-        self.skip_with_check(49, 'will now show all the bootstrap')
+        self.skip_with_check(51, 'will now show all the bootstrap')
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 51
+            self.pos = 55
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch07l016')
+                self.sourcetree.get_commit_spec('ch07l018')
             ))
 
         while self.pos < len(self.listings):

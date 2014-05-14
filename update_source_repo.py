@@ -26,8 +26,10 @@ def fetch_if_possible(target_dir):
     if fetch.returncode:
         if 'Name or service not known' in stderr.decode():
             # no internet
-            return
+            print('No Internet')
+            return False
         raise Exception("Error running git fetch")
+    return True
 
 
 
@@ -43,7 +45,9 @@ def update_sources_for_chapter(chapter_no):
         ['git', 'log', '-n 1', '--format=%H'], cwd=target
     ).decode().strip()
     print('current commit', commit_specified_by_submodule)
-    fetch_if_possible(target)
+    connected = fetch_if_possible(target)
+    if not connected:
+        return
     if chapter_no > 1:
         subprocess.check_output(['git', 'checkout', chapter_before], cwd=target)
         subprocess.check_output(['git', 'reset', '--hard', 'origin/{}'.format(chapter_before)], cwd=target)

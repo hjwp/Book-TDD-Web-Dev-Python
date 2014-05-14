@@ -6,6 +6,7 @@ import os
 import stat
 import re
 import subprocess
+import time
 import tempfile
 from textwrap import wrap
 import unittest
@@ -44,11 +45,28 @@ def fix_test_dashes(output):
 
 
 def strip_mock_ids(output):
-    return re.sub(
-        r"Mock name='.+' id='(\d+)'>",
-        r"Mock name='.+' id='XX'>",
+    strip_mocks_with_names = re.sub(
+        r"Mock name='(.+)' id='(\d+)'>",
+        r"Mock name='\1' id='XX'>",
         output,
     )
+    strip_all_mocks = re.sub(
+        r"Mock id='(\d+)'>",
+        r"Mock id='XX'>",
+        strip_mocks_with_names,
+    )
+    return strip_all_mocks
+
+def strip_object_ids(output):
+    return re.sub('0x([0-9a-f]+)>', '0xXX>', output)
+
+
+def strip_migration_timestamps(output):
+    return re.sub(r'00(\d\d)_auto_20\d{6}_\d{4}', r'00\1_auto_20XXXXXX_XXXX', output)
+
+
+def strip_session_ids(output):
+    return re.sub(r'^[a-z0-9]{32}$', r'xxx_session_id_xxx', output)
 
 
 def strip_git_hashes(output):
@@ -58,11 +76,10 @@ def strip_git_hashes(output):
         output,
     )
     fixed_commit_numbers = re.sub(
-            r"^[a-f0-9]{7} ",
-            r"XXXXXXX ",
-            fixed_indexes,
-            flags=re.MULTILINE,
-
+        r"^[a-f0-9]{7} ",
+        r"XXXXXXX ",
+        fixed_indexes,
+        flags=re.MULTILINE,
     )
     return fixed_commit_numbers
 
@@ -83,6 +100,43 @@ def strip_test_speed(output):
         output,
     )
 
+def strip_js_test_speed(output):
+    return re.sub(
+        r"Took \d+ms to run (\d+) tests. (\d+) passed, (\d+) failed.",
+        r"Took XXms to run \1 tests. \2 passed, \3 failed.",
+        output,
+    )
+
+
+def strip_screenshot_timestamps(output):
+    fixed = re.sub(
+        r"window0-(201\d-\d\d-\d\dT\d\d\.\d\d\.\d?\d?)",
+        r"window0-201X-XX-XXTXX.XX",
+        output,
+    )
+    # this last is very specific to one listing in 19...
+    fixed = re.sub(r"^\d\d\.html$", "XX.html", fixed, flags=re.MULTILINE)
+    return fixed
+
+
+SQLITE_MESSAGES = {
+    'django.db.utils.IntegrityError: lists_item.list_id may not be NULL':
+    'django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id',
+
+    'django.db.utils.IntegrityError: columns list_id, text are not unique':
+    'django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,\nlists_item.text',
+
+    'sqlite3.IntegrityError: columns list_id, text are not unique':
+    'sqlite3.IntegrityError: UNIQUE constraint failed: lists_item.list_id,\nlists_item.text'
+}
+
+
+def fix_sqlite_messages(actual_text):
+    fixed_text = actual_text
+    for old_version, new_version in SQLITE_MESSAGES.items():
+        fixed_text = fixed_text.replace(old_version, new_version)
+    return fixed_text
+
 
 def fix_creating_database_line(actual_text):
     if "Creating test database for alias 'default'..." in actual_text:
@@ -92,6 +146,14 @@ def fix_creating_database_line(actual_text):
         actual_text = '\n'.join(actual_lines)
     return actual_text
 
+
+
+def fix_interactive_managepy_stuff(actual_text):
+    return actual_text.replace(
+        'Select an option: ', 'Select an option:\n',
+    ).replace(
+        '>>> ', '>>>\n',
+    )
 
 class ChapterTest(unittest.TestCase):
     maxDiff = None
@@ -119,16 +181,21 @@ class ChapterTest(unittest.TestCase):
         self.listings = [p for n in listings_nodes for p in parse_listing(n)]
 
 
-    def check_final_diff(self, chapter, ignore_moves=False, ignore_secret_key=False):
-        diff = self.run_command(Command(
-            'git diff -b repo/chapter_{0:02d}'.format(chapter)
-        ))
+    def check_final_diff(
+        self, chapter, ignore_moves=False, ignore_secret_key=False,
+        diff=None
+    ):
+        if diff is None:
+            diff = self.run_command(Command(
+                'git diff -b repo/chapter_{0:02d}'.format(chapter)
+            ))
         try:
             print('checking final diff', diff)
         except io.BlockingIOError:
             pass
+        self.assertNotIn('fatal:', diff)
         start_marker = 'diff --git a/\n'
-        commit = Commit(start_marker + diff)
+        commit = Commit.from_diff(start_marker + diff)
         error = AssertionError('Final diff was not empty, was:\n{}'.format(diff))
 
         if ignore_secret_key:
@@ -138,11 +205,14 @@ class ChapterTest(unittest.TestCase):
 
         elif ignore_moves:
             if commit.deleted_lines or commit.new_lines:
-                raise error
+                raise AssertionError(
+                    'Found lines to delete or add in diff.\nto delete:\n{}\n\nto add:\n{}'.format(
+                        '\n- '.join(commit.deleted_lines), '\n+'.join(commit.new_lines)
+                    )
+                )
 
         elif commit.lines_to_add or commit.lines_to_remove:
             raise error
-
 
 
     def write_to_file(self, codelisting):
@@ -166,7 +236,7 @@ class ChapterTest(unittest.TestCase):
         tf.close()
         print('patch:\n', codelisting.contents)
         patch_output = self.run_command(
-            Command('patch %s %s' % (codelisting.filename, tf.name))
+            Command('patch --fuzz=3 --no-backup-if-mismatch %s %s' % (codelisting.filename, tf.name))
         )
         print(patch_output)
         self.assertNotIn('malformed', patch_output)
@@ -179,19 +249,22 @@ class ChapterTest(unittest.TestCase):
         codelisting.was_written = True
 
 
-    def run_command(self, command, cwd=None, user_input=None):
+    def run_command(self, command, cwd=None, user_input=None, ignore_errors=False):
         self.assertEqual(
             type(command), Command,
             "passed a non-Command to run-command:\n%s" % (command,)
         )
+        if command == 'git push':
+            command.was_run = True
+            return
         print('running command', command)
-        output = self.sourcetree.run_command(command, cwd=cwd, user_input=user_input)
+        output = self.sourcetree.run_command(command, cwd=cwd, user_input=user_input, ignore_errors=ignore_errors)
         command.was_run = True
         return output
 
 
     def _cleanup_runserver(self):
-            self.run_server_command('pkill -f runserver', ignore_errors=True)
+        self.run_server_command('pkill -f runserver', ignore_errors=True)
 
 
     RUN_SERVER_PATH = os.path.abspath(
@@ -237,6 +310,10 @@ class ChapterTest(unittest.TestCase):
             )
 
 
+    def prep_database(self):
+        self.sourcetree.run_command('mkdir ../database')
+        self.sourcetree.run_command('python3 manage.py migrate --noinput')
+
 
     def write_file_on_server(self, target, contents):
         with tempfile.NamedTemporaryFile() as tf:
@@ -265,21 +342,33 @@ class ChapterTest(unittest.TestCase):
             actual = actual.replace(self.tempdir, '/workspace')
 
         if ls:
-            actual=actual.strip()
+            actual = actual.strip()
             self.assertCountEqual(actual.split('\n'), expected.split())
             expected.was_checked = True
             return
 
         actual_fixed = wrap_long_lines(actual)
         actual_fixed = strip_test_speed(actual_fixed)
+        actual_fixed = strip_js_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
         actual_fixed = strip_mock_ids(actual_fixed)
+        actual_fixed = strip_object_ids(actual_fixed)
+        actual_fixed = strip_migration_timestamps(actual_fixed)
+        actual_fixed = strip_session_ids(actual_fixed)
+        actual_fixed = strip_screenshot_timestamps(actual_fixed)
+        actual_fixed = fix_sqlite_messages(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
+        actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
 
         expected_fixed = fix_test_dashes(expected)
         expected_fixed = strip_test_speed(expected_fixed)
+        expected_fixed = strip_js_test_speed(expected_fixed)
         expected_fixed = strip_git_hashes(expected_fixed)
         expected_fixed = strip_mock_ids(expected_fixed)
+        expected_fixed = strip_object_ids(expected_fixed)
+        expected_fixed = strip_migration_timestamps(expected_fixed)
+        expected_fixed = strip_session_ids(expected_fixed)
+        expected_fixed = strip_screenshot_timestamps(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
 
         if '\t' in actual_fixed:
@@ -293,7 +382,7 @@ class ChapterTest(unittest.TestCase):
             if line.startswith('[...'):
                 continue
             if line.endswith('[...]'):
-                line = line.rsplit('[...]')[0]
+                line = line.rsplit('[...]')[0].rstrip()
                 self.assertLineIn(line, [l[:len(line)] for l in actual_lines])
             elif line.startswith(' '):
                 self.assertLineIn(line, actual_lines)
@@ -309,17 +398,22 @@ class ChapterTest(unittest.TestCase):
 
     def skip_with_check(self, pos, expected_content):
         listing = self.listings[pos]
+        error = 'Could not find {} in at pos {}: "{}". Listings were:\n{}'.format(
+            expected_content, pos, listing,
+            '\n'.join(str(t) for t in enumerate(self.listings))
+        )
         if hasattr(listing, 'contents'):
-            assert expected_content in listing.contents
+            if expected_content not in listing.contents:
+                raise Exception(error)
         else:
-            assert expected_content in listing
+            if expected_content not in listing:
+                raise Exception(error)
         listing.skip = True
 
 
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.sourcetree.run_command('tree -I *.pyc --noreport', cwd)
-        print('checking tree', expected_tree.encode('utf-8'))
         # special case for first listing:
         original_tree = expected_tree
         if expected_tree.startswith('superlists/'):
@@ -457,7 +551,7 @@ class ChapterTest(unittest.TestCase):
             )
 
         commit = self.run_command(self.listings[pos])
-        self.assertIn('insertion', commit)
+        assert 'insertion' in commit or 'changed' in commit
         self.pos += 1
 
 
@@ -465,7 +559,7 @@ class ChapterTest(unittest.TestCase):
         LIKELY_FILES = [
             'urls.py', 'tests.py', 'views.py', 'functional_tests.py',
             'settings.py', 'home.html', 'list.html', 'base.html',
-            'fabfile.py', 'tests/test_',
+            'fabfile.py', 'tests/test_', 'base.py', 'test_my_lists.py'
         ]
         self.assertTrue(
             'diff' in self.listings[pos] or 'status' in self.listings[pos]
@@ -502,6 +596,17 @@ class ChapterTest(unittest.TestCase):
     def start_dev_server(self):
         self.run_command(Command('python3 manage.py runserver'))
         self.dev_server_running = True
+        time.sleep(1)
+
+
+    def restart_dev_server(self):
+        print('restarting dev server')
+        self.run_command(Command('pkill -f runserver'))
+        time.sleep(1)
+        self.start_dev_server()
+        time.sleep(1)
+
+
 
 
     def run_unit_tests(self):
@@ -520,7 +625,7 @@ class ChapterTest(unittest.TestCase):
         listing = self.listings[self.pos]
         if listing.dofirst:
             print("DOFIRST", listing.dofirst)
-            self.sourcetree.checkout_file_from_commit_ref(
+            self.sourcetree.patch_from_commit(
                 listing.dofirst,
             )
         if listing.skip:
@@ -543,22 +648,67 @@ class ChapterTest(unittest.TestCase):
 
         elif listing.type == 'interactive manage.py':
             print("INTERACTIVE MANAGE.PY")
+            output_before = self.listings[self.pos + 1]
+            assert isinstance(output_before, Output)
+
+            LIKELY_INPUTS = ('yes', 'no', '1', '2', "''")
             user_input = self.listings[self.pos + 2]
-            assert isinstance(user_input, Command)
+            if isinstance(user_input, Command) and user_input in LIKELY_INPUTS:
+                if user_input == 'yes':
+                    print('yes case')
+                    # in this case there is moar output after the yes
+                    output_after = self.listings[self.pos + 3]
+                    assert isinstance(output_after, Output)
+                    expected_output = Output(wrap_long_lines(output_before + ' ' + output_after.lstrip()))
+                    next_output = None
+                elif user_input == '1':
+                    print('migrations 1 case')
+                    # in this case there is another hop
+                    output_after = self.listings[self.pos + 3]
+                    assert isinstance(output_after, Output)
+                    first_input = user_input
+                    next_input = self.listings[self.pos + 4]
+                    assert isinstance(next_input, Command)
+                    next_output = self.listings[self.pos + 5]
+                    expected_output = Output(wrap_long_lines(
+                        output_before + '\n' + output_after + '\n' + next_output
+                    ))
+                    user_input = Command(first_input + '\n' + next_input)
+                else:
+                    expected_output = output_before
+                    output_after = None
+                    next_output = None
+                if user_input == '2':
+                    ignore_errors = True
+                else:
+                    ignore_errors = False
 
-            expected_output_start = self.listings[self.pos + 1]
-            assert isinstance(expected_output_start, Output)
-            expected_output_end = self.listings[self.pos + 3]
-            assert isinstance(expected_output_end, Output)
-            expected_output = Output(wrap_long_lines(expected_output_start + ' ' + expected_output_end))
+            else:
+                user_input = None
+                expected_output = output_before
+                output_after = None
+                ignore_errors = False
+                next_output = None
 
-            output = self.run_command(listing, user_input=user_input)
+            output = self.run_command(listing, user_input=user_input, ignore_errors=ignore_errors)
             self.assert_console_output_correct(output, expected_output)
+
             listing.was_checked = True
-            user_input.was_run = True
-            self.listings[self.pos + 1].was_checked = True
-            self.listings[self.pos + 3].was_checked = True
-            self.pos += 4
+            output_before.was_checked = True
+            self.pos += 2
+            if user_input is not None:
+                user_input.was_run = True
+                self.pos += 1
+            if output_after is not None:
+                output_after.was_checked = True
+                self.pos += 1
+            if next_output is not None:
+                self.pos += 2
+                next_output.was_checked = True
+                first_input.was_run = True
+                next_input.was_run = True
+
+
 
         elif listing.type == 'tree':
             print("TREE")
@@ -604,16 +754,11 @@ class ChapterTest(unittest.TestCase):
                 listing.filename
             )
             print("CHECK CURRENT CONTENTS")
-            if '[...]' in listing.contents:
-                stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
-                for line in listing.contents.split('\n'):
-                    if line and not '[...]' in line:
-                        self.assertIn(line.strip(), stripped_actual_lines)
-            else:
-                self.assertEqual(
-                    listing.contents.strip(),
-                    actual_contents.strip(),
-                )
+            stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
+            listing_contents = re.sub(r' +#$', '', listing.contents, flags=re.MULTILINE)
+            for line in listing_contents.split('\n'):
+                if line and not '[...]' in line:
+                    self.assertIn(line.strip(), stripped_actual_lines)
             listing.was_written = True
             self.pos += 1
 
@@ -639,7 +784,7 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'output':
             self._strip_out_any_pycs()
             test_run = self.run_unit_tests()
-            if 'OK' in  test_run and not 'OK' in listing:
+            if 'OK' in test_run and not 'OK' in listing:
                 print('unit tests pass, must be an FT:\n', test_run)
                 test_run = self.run_fts()
             try:

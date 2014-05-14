@@ -9,6 +9,8 @@ from sourcetree import (
     BOOTSTRAP_WGET,
     ApplyCommitException,
     Commit, SourceTree,
+    check_indentation,
+    get_offset,
     strip_comments,
 )
 
@@ -90,6 +92,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
 
         self.sourcetree.apply_listing_from_commit(listing)
 
+
         with open(self.sourcetree.tempdir + '/superlists/file1.txt') as f:
             assert f.read() == dedent(
                 """
@@ -130,6 +133,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def _checkout_commit(self, commit):
+        commit_spec = self.sourcetree.get_commit_spec(commit)
+        self.sourcetree.run_command('git checkout ' + commit_spec)
+        self.sourcetree.run_command('git reset')
+
+
     def test_raises_if_too_many_files_in_commit(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """
@@ -139,6 +148,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
         )
         listing.commit_ref = 'ch17l023'
 
+        self._checkout_commit('ch17l022')
         with self.assertRaises(ApplyCommitException):
             self.sourcetree.apply_listing_from_commit(listing)
 
@@ -180,7 +190,48 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l027'
+        self._checkout_commit('ch17l026')
+
         self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_line_ordering_check_isnt_confused_by_new_lines_that_dupe_existing(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            some duplicate lines coming up...
+
+            hello
+
+            one more line at end
+            add a line with a dupe of existing
+            hello
+            goodbye
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l031'
+        self._checkout_commit('ch17l030')
+
+        self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_non_dupes_are_still_order_checked(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            some duplicate lines coming up...
+
+            hello
+
+            one more line at end
+            add a line with a dupe of existing
+            goodbye
+            hello
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l031'
+        self._checkout_commit('ch17l030')
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
 
 
     def test_raises_if_any_other_listing_lines_not_in_before_version(self):
@@ -210,6 +261,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l028'
+        self._checkout_commit('ch17l027')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
@@ -255,6 +307,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l029'
+        self._checkout_commit('ch17l028-1')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
@@ -268,6 +321,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l030'
+        self._checkout_commit('ch17l029')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
@@ -321,12 +375,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l024'
+        self._checkout_commit('ch17l023')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
 
     def test_handles_indents(self):
-        self.sourcetree.run_command('git checkout f70efb1')
         listing = CodeListing(filename='pythonfile.py', contents=dedent(
             """
             def method1(self):
@@ -337,12 +391,46 @@ class ApplyFromGitRefTest(unittest.TestCase):
             """).lstrip()
         )
         listing.commit_ref = 'ch17l026'
+        self._checkout_commit('ch17l025')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
 
-    def test_with_diff_listing(self):
-        self.sourcetree.run_command('git checkout ddae23f')
+    def test_over_indentation_differences_are_picked_up(self):
+        listing = CodeListing(filename='pythonfile.py', contents=dedent(
+            """
+            def method1(self):
+                    # amend method 1
+                return 2
+
+            [...]
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l026'
+        self._checkout_commit('ch17l025')
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_under_indentation_differences_are_picked_up(self):
+        listing = CodeListing(filename='pythonfile.py', contents=dedent(
+            """
+            def method1(self):
+            # amend method 1
+            return 2
+
+            [...]
+            """).lstrip()
+        )
+        listing.commit_ref = 'ch17l026'
+        self._checkout_commit('ch17l025')
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
+    def test_with_diff_listing_passing_case(self):
         listing = CodeListing(filename='file2.txt', contents=dedent(
             """
             diff --git a/file2.txt b/file2.txt
@@ -359,9 +447,33 @@ class ApplyFromGitRefTest(unittest.TestCase):
              """).lstrip()
         )
         listing.commit_ref = 'ch17l030'
+        self._checkout_commit('ch17l029')
 
         self.sourcetree.apply_listing_from_commit(listing)
 
+
+    def test_with_diff_listing_failure_case(self):
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            diff --git a/file2.txt b/file2.txt
+            index 93f054e..519d518 100644
+            --- a/file2.txt
+            +++ b/file2.txt
+            @@ -4,6 +4,5 @@ another line changed
+             some duplicate lines coming up...
+
+             hello
+            -hello
+            +something else
+
+             one more line at end
+             """).lstrip()
+        )
+        listing.commit_ref = 'ch17l030'
+        self._checkout_commit('ch17l029')
+
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
 
 
 
@@ -518,7 +630,7 @@ class CommitTest(unittest.TestCase):
             + """
         )
 
-        commit = Commit(example)
+        commit = Commit.from_diff(example)
 
         assert commit.info == example
 
@@ -565,26 +677,108 @@ class CommitTest(unittest.TestCase):
             "    def test_POST_redirects_to_list_view(self):",
         ]
 
-        assert commit.first_non_metadata_line_pos == commit.all_lines.index(
-            "diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py"
-        )
-        assert commit.other_lines == [
-            "diff --git a/lists/tests/test_views.py b/lists/tests/test_views.py",
-            "index 8e18d77..03fc675 100644",
-            "--- a/lists/tests/test_views.py",
-            "+++ b/lists/tests/test_views.py",
-            "@@ -55,36 +55,6 @@ class NewListTest(TestCase):",
-            " class ListViewTest(TestCase):",
-            "     def test_list_view_passes_list_to_list_template(self):",
-            "@@ -112,3 +82,29 @@ class ListViewTest(TestCase):",
-            "         self.assertNotContains(response, 'other list item 1')",
-            "         self.assertNotContains(response, 'other list item 2')",
+
+
+
+class CheckIndentationTest(unittest.TestCase):
+
+    def test_get_offset_when_none(self):
+        lines = [
+            "def method1(self):",
+            "    return 2",
         ]
+        future_lines = [
+            "def method1(self):",
+            "    return 2",
+        ]
+        assert get_offset(lines, future_lines) == ''
 
-        #     "class ListViewTest(TestCase):",
-        #     "    def test_list_view_passes_list_to_list_template(self):",
-        #]
+
+    def test_get_offset_when_some(self):
+        lines = [
+            "",
+            "def method1(self):",
+            "    return 2",
+        ]
+        future_lines = [
+            "    ",
+            "    def method1(self):",
+            "        return 2",
+        ]
+        assert get_offset(lines, future_lines) == '    '
 
 
+    def test_over_indentation_differences_are_picked_up(self):
+        lines = [
+            "def method1(self):",
+            "        # amend method 1",
+            "    return 2",
+        ]
+        future_lines = [
+            "    def method1(self):",
+            "        # amend method 1",
+            "        return 2",
+        ]
+        with self.assertRaises(ApplyCommitException):
+            check_indentation(lines, future_lines)
 
+
+    def test_under_indentation_differences_are_picked_up(self):
+        lines = [
+            "def method1(self):",
+            "# amend method 1",
+            "    return 2",
+        ]
+        future_lines = [
+            "    def method1(self):",
+            "        # amend method 1",
+            "        return 2",
+        ]
+        with self.assertRaises(ApplyCommitException):
+            check_indentation(lines, future_lines)
+
+
+    def test_passing_case(self):
+        lines = [
+            "def method1(self):",
+            "    # amend method 1",
+            "    return 2",
+        ]
+        future_lines = [
+            "    def method1(self):",
+            "        # amend method 1",
+            "        return 2",
+        ]
+        check_indentation(lines, future_lines) # should not raise
+
+
+    def test_blank_lines_in_listing_are_ignored(self):
+        lines = [
+            "def method1(self):",
+            "    # amend method 1",
+            "    return 2",
+            "",
+        ]
+        future_lines = [
+            "    def method1(self):",
+            "        # amend method 1",
+            "        return 2",
+        ]
+        check_indentation(lines, future_lines) # should not raise
+
+
+    def test_elipsis_lines_are_ignored(self):
+        lines = [
+            "def method1(self):",
+            "    # amend method 1",
+            "    return 2",
+            "[...]",
+        ]
+        future_lines = [
+            "    def method1(self):",
+            "        # amend method 1",
+            "        return 2",
+            "stuff",
+        ]
+        check_indentation(lines, future_lines) # should not raise
 

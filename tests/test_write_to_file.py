@@ -108,16 +108,18 @@ class WriteToFileTest(unittest.TestCase):
             self.assertMultiLineEqual(actual, expected_contents)
 
 
-    def test_strips_python_line_callouts(self):
-        contents = 'hello\nbla #'
-        self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
-        contents = 'hello\nbla  #'
-        self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
+    def test_strips_python_line_callouts_one_space(self):
+        contents = 'hello\nbla #\nstuff'
+        self.assert_write_to_file_gives('', contents, 'hello\nbla\nstuff\n')
+
+    def test_strips_python_line_callouts_two_spaces(self):
+        contents = 'hello\nbla  #\nstuff'
+        self.assert_write_to_file_gives('', contents, 'hello\nbla\nstuff\n')
 
 
     def test_strips_js_line_callouts(self):
-        contents = 'hello\nbla //'
-        self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
+        contents = 'hello\nbla //\nstuff'
+        self.assert_write_to_file_gives('', contents, 'hello\nbla\nstuff\n')
         contents = 'hello\nbla  //'
         self.assert_write_to_file_gives('', contents, 'hello\nbla\n')
 

@@ -20,11 +20,10 @@ class Chapter2Test(ChapterTest):
 
         self.sourcetree.start_with_checkout(self.chapter_no)
 
-        self.listings[1].skip = True # aside
-        self.listings[5].skip = True # aside
-        while self.pos < 13:
+        while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
+
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(self.chapter_no)
 

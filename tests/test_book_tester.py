@@ -119,7 +119,9 @@ class RunCommandTest(ChapterTest):
         cmd = Command('foo')
         output = self.run_command(cmd, cwd='bar', user_input='thing')
         assert output == self.sourcetree.run_command.return_value
-        self.sourcetree.run_command.assert_called_with('foo', cwd='bar', user_input='thing')
+        self.sourcetree.run_command.assert_called_with(
+            'foo', cwd='bar', user_input='thing', ignore_errors=False,
+        )
         assert cmd.was_run
 
 
@@ -137,7 +139,7 @@ class RunServerCommandTest(ChapterTest):
         result = self.run_server_command('foo bar')
         assert result == 'some bytes'
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'foo bar'],
+            ['python2.7', self.RUN_SERVER_PATH, 'foo bar'],
         )
 
 
@@ -219,7 +221,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_test_run_times_and_test_dashes(self):
-        actual =dedent("""
+        actual = dedent("""
             bla bla bla
 
             ----------------------------------------------------------------------
@@ -238,7 +240,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_handles_elipsis(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
             loads more stuff
@@ -254,8 +256,22 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_handles_elipsis_at_end_of_line_where_theres_actually_a_linebreak(self):
+        actual = dedent("""
+            bla bla bla
+            loads more stuff
+            """).strip()
+        expected = Output(dedent("""
+            bla bla bla [...]
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_with_start_elipsis_and_OK(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
 
             OK
@@ -273,7 +289,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_elipsis_finds_assertionerrors(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
                 self.assertSomething(burgle)
@@ -293,7 +309,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_start_elipsis_and_end_longline_elipsis(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
             loads more stuff
@@ -314,7 +330,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_start_elipsis_and_end_longline_elipsis_with_assertionerror(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
                 self.assertSomething(bla)
             AssertionError: a really long exception, which will eventually wrap into multiple lines, so much so that it gets boring after a while...
@@ -332,7 +348,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_for_short_expected_with_trailing_elipsis(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
                 self.assertSomething(burgle)
@@ -349,7 +365,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_elipsis_lines_still_checked(self):
-        actual =dedent("""
+        actual = dedent("""
             AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it changes and ends up saying something different from what was expected so we shoulf fail
             """
             ).strip()
@@ -364,7 +380,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_middle_elipsis(self):
-        actual =dedent("""
+        actual = dedent("""
             bla
             bla bla
             ERROR: the first line
@@ -410,7 +426,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_diff_indexes(self):
-        actual =dedent("""
+        actual = dedent("""
             diff --git a/functional_tests.py b/functional_tests.py
             index d333591..1f55409 100644
             --- a/functional_tests.py
@@ -427,7 +443,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_callouts(self):
-        actual =dedent("""
+        actual = dedent("""
             bla bla
             stuff
             """).strip()
@@ -449,7 +465,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_git_commit_numers_in_logs(self):
-        actual =dedent("""
+        actual = dedent("""
             ea82222 Basic view now returns minimal HTML
             7159049 First unit test and url mapping, dummy view
             edba758 Add app for lists, with deliberately failing unit test
@@ -464,7 +480,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-        actual =dedent("""
+        actual = dedent("""
             abc Basic view now returns minimal HTML
             123 First unit test and url mapping, dummy view
             """).strip()
@@ -479,17 +495,88 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_mock_ids(self):
-        actual =dedent("""
+        actual = dedent("""
                 self.assertEqual(user, mock_user)
             AssertionError: None != <Mock name='mock()' id='46962183546064'>
-            """
-        ).rstrip()
+            """).rstrip()
         expected = Output(dedent("""
                 self.assertEqual(user, mock_user)
             AssertionError: None != <Mock name='mock()' id='139758452629392'>
             """).rstrip()
         )
 
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+    def test_ignores_mock_ids_when_they_dont_have_names(self):
+        actual = dedent("""
+                self.assertEqual(user, mock_user)
+            AssertionError: None != <Mock id='46962183546064'>
+            """).rstrip()
+        expected = Output(dedent("""
+                self.assertEqual(user, mock_user)
+            AssertionError: None != <Mock id='139758452629392'>
+            """).rstrip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_ignores_phantomjs_run_times(self):
+        actual = "Took 24ms to run 2 tests. 2 passed, 0 failed."
+        expected = Output("Took 15ms to run 2 tests. 2 passed, 0 failed.")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_ignores_object_ids(self):
+        actual = "<AnonymousUser object at 0x2b3629047150>"
+        expected = Output("<AnonymousUser object at 0x7f364795ef90>")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_ignores_migration_timestamps(self):
+        actual = "  0005_auto_20140414_2038.py:"
+        expected = Output("  0005_auto_20140414_2108.py:")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_ignores_session_ids(self):
+        actual = "qnslckvp2aga7tm6xuivyb0ob1akzzwl"
+        expected = Output("jvhzc8kj2mkh06xooqq9iciptead20qq")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_only_ignores_exactly_32_char_strings_no_whitespace(self):
+        actual = "qnslckvp2aga7tm6xuivyb0ob1akzzwl"
+        expected = Output("jvhzc8kj2mkh06xooqq9iciptead20qq")
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(actual[:-1], expected[:-1])
+            self.assert_console_output_correct(actual + '1', expected + 'a')
+            self.assert_console_output_correct(' ' + actual, ' ' + expected)
+
+
+    def test_ignores_screenshot_times(self):
+        actual = (
+            'screenshotting to /workspace/superlists/functional_tests/screendumps/MyListsTes\n'
+            't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.38.\n'
+            'png\n'
+            'dumping page HTML to /workspace/superlists/functional_tests/screendumps/MyLists\n'
+            'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.\n'
+            '38.html\n'
+        )
+        expected = Output(
+            'screenshotting to /workspace/superlists/functional_tests/screendumps/MyListsTes\n'
+            't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2013-04-09T13.40.39.\n'
+            'png\n'
+            'dumping page HTML to /workspace/superlists/functional_tests/screendumps/MyLists\n'
+            'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-04-04T12.43.\n'
+            '42.html\n'
+        )
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
@@ -526,6 +613,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
+
 
     def test_handles_long_lines(self):
         actual = dedent("""
@@ -637,25 +725,25 @@ class DictOrderingTest(ChapterTest):
 class CheckQunitOuptutTest(ChapterTest):
 
     def test_partial_listing_passes(self):
-        self.chapter_no = 13
-        self.sourcetree.start_with_checkout(14)
+        self.chapter_no = 14
+        self.sourcetree.start_with_checkout(15)
         expected = Output("2 assertions of 2 passed, 0 failed.")
         self.check_qunit_output(expected) # should pass
         assert expected.was_checked
 
     def test_fails_if_lists_fail_and_no_accounts(self):
-        self.chapter_no = 13
-        self.sourcetree.start_with_checkout(14)
+        self.chapter_no = 14
+        self.sourcetree.start_with_checkout(15)
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output('arg'))
 
 
     def test_runs_phantomjs_runner_against_lists_tests(self):
-        self.chapter_no = 13
-        self.sourcetree.start_with_checkout(14)
+        self.chapter_no = 14
+        self.sourcetree.start_with_checkout(15)
         lists_tests = os.path.join(
             os.path.abspath(os.path.dirname(__file__)),
-            '../source/chapter_13/superlists/lists/static/tests/tests.html'
+            '../source/chapter_14/superlists/lists/static/tests/tests.html'
         )
 
         manual_run = subprocess.check_output(['phantomjs', PHANTOMJS_RUNNER, lists_tests])
@@ -664,8 +752,8 @@ class CheckQunitOuptutTest(ChapterTest):
 
 
     def DONTtest_runs_against_accounts_if_lists_pass(self):
-        self.chapter_no = 14
-        self.sourcetree.start_with_checkout(15)
+        self.chapter_no = 15
+        self.sourcetree.start_with_checkout(16)
         lists_tests = os.path.abspath(os.path.join(
             os.path.dirname(__file__),
             '../source/chapter_13/superlists/lists/static/tests/tests.html'

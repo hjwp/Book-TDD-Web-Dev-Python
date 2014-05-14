@@ -1,226 +1,577 @@
-Fast tests, slow tests: is the database Hot Lava?
--------------------------------------------------
-
-I've tried to distil what I've learned about testing in the past 4 years
-into this book.  It's meant to be a reflection, not just of my own
-experience, but of the collective wisdom of my colleagues, and the way of
-testing they built up over the last 10 years, building Resolver One and 
-PythonAnywhere. 
-
-But it's still just one perspective. It's time to let you in on a little secret
--- I've hinted at it a couple of times, but some of the ways I've written tests
-are frowned on by testing purists.  "Unit tests should never touch the
-database", they say.  https://www.youtube.com/watch?v=bsmFVb8guMU[The Database
-is Hot Lava!], in Casey Kinsey's memorable phrase.
-
-I've found that a pragmatic approach works for me, but that doesn't necessarily
-mean it's right for everyone. This chapter is my attempt to outline some of the
-issues of test speed, databases and other dependencies, and the "purist"
-approach to unit testing. 
-
-If you'll forgive me the pretentious philosophical terminology, I'm going to
-follow a Hegelian dialectical structure: 
-
-* The thesis: the case for "purist" unit tests that are fast
-
-* The antithesis: my worries about the pitfalls of "pure" unit tests
-
-* The synthesis: how to figure out what works for you, whether it's
-  "Functional Core, Imperative Shell" or a pragmatic approach.
+The Token Social Bit, the Page Pattern, and an Exercise for the Reader
+----------------------------------------------------------------------
 
 
 
-Thesis: Unit tests should be pure and fast
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Are jokes about how "everything has to be social now" slightly old hat?
+Everything has to be all A/B tested big data get-more-clicks lists of 10 Things
+This Inspiring Teacher Said That Will Make You Change Your Mind About Bla Bla
+now ... anyway. Lists, be they Inspirational or otherwise, are often better
+shared. Let's allow our users to collaborate on their lists with other users.
 
-Other things being equal, the faster your unit tests run, the better.  To a 
-lesser extent, the faster 'all' your tests run, the better.
+Along the way we'll improve our FTs by starting to implement the interact/wait
+Selenium pattern that we learned in the last chapter.  We'll also experiment
+with something called the Page Object pattern.
 
-
-Faster tests mean faster development
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-I've outlined the TDD test/code cycle in this book.  You've started to get a 
-feel for the TDD workflow, the way you flick between writing tiny amounts of
-code, and running your tests.  You end up running your unit tests several times
-a minute, and your functional tests several times a day. So, naturally, the
-longer they take, the more time you spend waiting for your tests, and that 
-will slow down your development.
+Then, rather than showing you explicitly what to do, I'm going to let you write
+your unit tests and application code by yourself.  Don't worry, you won't be
+totally on your own!  I'll give an outline of the steps to take, as well as
+some hints and tips.
 
 
-Slow tests don't get run as often, which causes bad code
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+An FT with Multiple Users, and addCleanup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The follow-up argument is that, if your test suite is slow, then running it
-becomes annoying.  As a developer, the danger is that you'll start to avoid
-running your tests, which may lead to bugs getting through, or it may lead
-to programmers being shy of refactoring the code, since they know that any
-refactor will mean having to wait ages while all the tests run. In either
-case, bad code can be the result.
+Let's get started--we'll need two users for this FT:
 
+[role="sourcecode"]
+functional_tests/test_sharing.py
 
-Good unit tests should be isolated
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The idealised unit test test exactly one thing -- this is why we strive to
-have a single assertion per test.  If your unit test actually has several
-dependencies, if the function under test calls other functions, and we end
-up relying on their effects, our unit tests are no longer isolated.
-
-Another way of thinking of it is: in the idealised unit test setup, introducing
-a bug should cause exactly one unit test to fail, and that unit test should 
-tell you exactly where the problem is.  If introducing a bug in a function
-causes several other unit tests to fail, because they rely on that function 
-indirectly, then it's harder to debug the problem.
-
-
-Don't take it from me
-^^^^^^^^^^^^^^^^^^^^^
-
-Gary Bernhardt, a man with far more experience of testing than me, put these
-points eloquently in a talk called
-https://www.youtube.com/watch?v=RAxiiRPHS9k[Fast Tests, Slow test]. I encourage
-you to watch it.  
-
-You should also check out his follow-up talk, 
-https://www.youtube.com/watch?v=eOYal8elnZk[Boundaries], in which he expands on
-the concepts of test isolation, and how it fits with trying to adopt
-a more functional paradigm in the core business logic of your application.
-
-
-The problems with "pure" unit tests
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-That all sounds convincing, right?  The problem, in my view, comes when
-striving for pure, fast unit tests leads to using a lot of mocks.
-
-Here's an illustration. Imagine our site does a bit of setup for each
-user: it makes a temp folder for them, and then sets a flag on their user
-profile:
-
-Imagine this:
-
+[role="small-code"]
 [source,python]
 ----
-def _setup_temp_storage(user):
-    os.makedirs('/tmp/' + user.username)
+from selenium import webdriver
+from .base import FunctionalTest
 
-def setup_user_environment(user):
-    _setup_temp_storage(user)
-    profile = user.get_profile()
-    profile.environment_setup = True
-    profile.save()
+def quit_if_possible(browser):
+    try: browser.quit()
+    except: pass
+
+
+class SharingTest(FunctionalTest):
+
+    def test_logged_in_users_lists_are_saved_as_my_lists(self):
+        # Edith is a logged-in user
+        self.create_pre_authenticated_session('edith@example.com')
+        edith_browser = self.browser
+        self.addCleanup(lambda: quit_if_possible(edith_browser))
+
+        # Her friend Oniciferous is also hanging out on the lists site
+        oni_browser = webdriver.Firefox()
+        self.addCleanup(lambda: quit_if_possible(oni_browser))
+        self.browser = oni_browser
+        self.create_pre_authenticated_session('oniciferous@example.com')
+
+        # Edith goes to the home page and starts a list
+        self.browser = edith_browser
+        self.browser.get(self.server_url)
+        self.get_item_input_box().send_keys('Get help\n')
+
+        # She notices a "Share this list" option
+        share_box = self.browser.find_element_by_css_selector('input[name=email]')
+        self.assertEqual(
+            share_box.get_attribute('placeholder'),
+            'your-friend@example.com'
+        )
+----
+//IDEA: rename Oni to Francis, as per ch. 6?
+
+The interesting feature to note about this section is the `addCleanup`
+function, whose documentation you can find 
+http://docs.python.org/3/library/unittest.html#unittest.TestCase.addCleanup[here].
+It can be used as an alternative to the `tearDown` function as a way of
+cleaning up resources used during the test.  It's most useful when the resource
+is only allocated halfway through a test, so you don't have to spend time in
+`tearDown` figuring out what does or doesn't need cleaning up.
+
+`addCleanup` is run after `tearDown`, which is why we need that `try/except`
+formulation for ++quit_if_possible++&mdash;whichever of `edith_browser` and 
+`oni_browser` is also assigned to `self.browser` at the point at which the 
+test ends will already have been quit by the `tearDown` function.
+
+We'll also need to move `create_pre_authenticated_session` from
+'test_my_lists.py' into 'base.py'.
+
+OK, let's see if that all works:
+
+[role="dofirst-ch21l002"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+[...]
+Traceback (most recent call last):
+  File "/workspace/superlists/functional_tests/test_sharing.py", line 29, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    share_box = self.browser.find_element_by_css_selector('input[name=email]')
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":"input[name=email]"}' ;
 ----
 
-Here's the kind of test I'm inclined to write:
+Great! It seems to have got through creating the two user sessions, and
+it gets onto an expected failure--there is no input for an email address
+of a person to share a list with on the page.
 
+Let's do a commit at this point, because we've got at least a placeholder 
+for our FT, we've got a useful modification of the
+`create_pre_authenticated_session` function, and we're about to embark on
+a bit of an FT refactor:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "New FT for sharing, move session creation stuff to base"*
+----
+
+
+Implementing the Selenium Interact/Wait Pattern
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before we continue, let's take a closer look at the interactions with the site
+which we have in our FT so far:
+
+[role="sourcecode currentcontents"]
+functional_tests/test_sharing.py
+
+[role="small-code"]
 [source,python]
 ----
-def test_sets_up_temp_storage_and_sets_flag_on_profile(self):
-    user = User.objects.create(username='jim')
-    setup_user_environment(user)
-    self.assertTrue(os.path.exists('/tmp/jim')
-    self.assertTrue(user.get_profile().environment_setup)
+    # Edith goes to the home page and starts a list
+    self.browser = edith_browser
+    self.browser.get(self.server_url)
+    self.get_item_input_box().send_keys('Get help\n')  #<1>
+
+    # She notices a "Share this list" option
+    share_box = self.browser.find_element_by_css_selector('input[name=email]')  #<2>
+    self.assertEqual(
+        share_box.get_attribute('placeholder'),
+        'your-friend@example.com'
+    )
 ----
 
-Clearly breaking all the rules of "pure" unit tests there -- my test touches
-not just the database, but the filesytem as well. Oh no!
+<1> Interaction with site
+
+<2> Assumption about updated state of page
+
+We learned in the last chapter that it's dangerous to assume too much about
+the state of the browser after we do an interaction (like `send_keys`). In
+theory, `implicitly_wait` will make sure that, if the call to
+`find_element_by_css_selector` doesn't find our `input[name=email]` at first,
+it will silently retry a few times.  But it can also go wrong--imagine if
+there was an input on the previous page, with the same `name=email`, but a
+different placeholder text?  We'd get a strange failure, because Selenium
+could theoretically pick up the element from the previous page while the
+new page is loading.  That tends to raise a `StaleElementException`.
+
+TIP: Unexpected `StaleElementException` errors from Selenium often mean you
+    have some kind of race condition.  You should probably specify an explicit
+    interaction/wait pattern.
+
+Instead, it's always prudent to follow the "wait-for" pattern whenever we
+want to check on the effects of an interaction that we've just triggered.
+Something like this:
 
 
-Mocky tests are harder to work with
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-But consider what happens when you try and right a "pure" unit tests, with
-mocks:
-
-
+[role="sourcecode skipme"]
+.functional_tests/test_sharing.py
 [source,python]
 ----
-def test_calls_setup_temp_storage_and_sets_flag_on_profile(self):
-    mock_user = Mock()
-    with patch('myapp._setup_temp_storage') as mock_setup_temp_storage:
-        setup_user_environment(mock_user)
-    mock_setup_temp_storage.assert_called_once_with(mock_user)
-    mock_profile = mock_user.get_profile.return_value
-    self.assertEqual(mock_profile.environment_setup, True)
+    self.get_item_input_box().send_keys('Get help\n')
+
+    # She notices a "Share this list" option
+    self.wait_for(
+        lambda:  self.assertEqual(
+            self.browser.find_element_by_css_selector(
+                'input[name=email]'
+            ).get_attribute('placeholder'),
+            'your-friend@example.com'
+        )
+    )
 ----
 
-Well, I would argue that, firstly, you have a much less readable test there,
-and it's also a test that's very closely coupled to the implementation.  It
-discourages refactoring, because something as simple as changing the name of
-the helper method `_setup_temp_storage` involves changing the test code in 4
-places -- three of which (eg `mock_setup_temp_storage`) won't be found by
-automated refactoring tools.
+
+The Page Pattern
+~~~~~~~~~~~~~~~~
+
+But do you know what would be even better?  This is an occasion for a "three
+strikes and refactor".  This test, and many others, all begin off with the user
+starting a new list.  What if we had a helper function called "start new list"
+that would do the `wait_for` as well as the list item input?  
+
+We've already seen how to use helper methods on the base `FunctionalTest`
+class, but if we continue using too many of them, it's going to get very
+crowded. I've worked on a base FT class that was over 1,500 lines long, and
+that got pretty unwieldy.
+
+One accepted pattern for splitting up your FT helper code is called the 
+http://www.seleniumhq.org/docs/06_test_design_considerations.jsp#page-object-design-pattern[Page
+pattern], and it involves having objects to represent the different pages on
+your site, and to be the single place to store information about how to 
+interact with them.
+
+Let's see how we would create Page objects for the home and lists pages. Here's one
+for the home page:
 
 
-The problem of the "disconnected" mocky test
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+class HomePage(object):
 
-But, secondly: imagine I change `_setup_temp_storage` to take a username instead
-of a user. I go and find its unit tests and change them, then change its
-implementation. What will happen next is that my "impure" unit test for
-`setup_user_environment` would break, because it uses the real function, and so
-that's my reminder to change the place it gets used. 
-
-In contrast, in the "fast" test, `setup_user_environment` is mocked, so 'that
-test will still pass', even though my code is broken.
+    def __init__(self, test):
+        self.test = test  #<1>
 
 
-Synthesis: Functional core, imperative shell... if it works for you
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you've watched Gary's second talk, called 
-"https://www.youtube.com/watch?v=eOYal8elnZk[Boundaries]",  you'll start to
-see a potential way out of our thesis/antithesis dilemma.
-
-The problem of choosing between "mocky" tests and "integrationey" tests 
-only really occurs at "boundaries" -- points of interaction between our
-code and external systems, like a database or a filesystem.
-
-The "Functional Core, Imperative Shell" solution is to try and create an
-architecture where the boundaries are kept as separate as possible from the
-core of our application.  We can judiciously use a combination of mocks and
-integration tests, maybe even functional tests, to test our code at the
-boundaries, but keep the "core" of our application -- the business logic --
-free of direct interactions with the database or the filesystem.
-
-Hexagonal architecture:
-
-http://blog.8thlight.com/uncle-bob/2012/08/13/the-clean-architecture.html
-
-http://alistair.cockburn.us/Hexagonal+architecture
+    def go_to_home_page(self):  #<2>
+        self.test.browser.get(self.test.server_url)
+        self.test.wait_for(self.get_item_input)
+        return self  #<3>
 
 
-In that perfect world, we can start to build tests that don't need any
-mocks, especially if we follow functional programming principles -- the
-less state there is in our code, the easier it is to test.
-
-The end result should be an application that's 80% core and 20% shell,
-80% unit tests and 20% integration/functional tests.
-
-All I can say is -- that sounds great, in theory.  In my own experience
-(and remember, it's a limited experience), I've found that the 
-projects I've worked on don't have a "core" that's big enough to be worth
-separating from any boundaries.  Simple Django apps are basically wrappers
-around a CRUD system for a database.  For those, trying to hide away the Django
-ORM feels like too much pain, to me.
-
-But I want to stress that this is a balance that you have to find for yourself.
-
-TODO: more discussion of how to make decisions about approach to take. look
-at level of boundaries.  discuss importance of CI, processes
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id('id_text')
 
 
-Starting your own journey
-~~~~~~~~~~~~~~~~~~~~~~~~~
+    def start_new_list(self, item_text):  #<4>
+        self.go_to_home_page()
+        inputbox = self.get_item_input()
+        inputbox.send_keys(item_text + '\n')
+        list_page = ListPage(self.test)  #<5>
+        list_page.wait_for_new_item_in_list(item_text, 1)  #<6>
+        return list_page  #<7>
+----
 
-* CI, CI, CI
-* google "speeding up django tests".  Find out which ones really need the 
-django test runner, database, django test client etc.
-* Do you need to FT everything?  
+<1> It's initialised with an object that represents the current test.  That
+    gives us the ability to make assertions, access the browser instance via
+    `self.test.browser`, and use the `wait_for` function.
+
+<2> Most Page objects have a "go to this page" function.  Notice that it
+    implements the interaction/wait pattern--first we `get` the page URL,
+    then we wait for an element that we know is on the home page.
+//IDEA: consider the fact that the lists page has that too...
+
+<3> Returning `self` is just a convenience. It enables 
+    https://en.wikipedia.org/wiki/Method_chaining[method chaining].
+
+<4> Here's our function that starts a new list.  It goes to the home page,
+    finds the input box, and sends the new item text to it, as well as a
+    carriage return.  Then it uses a wait to check that the interaction
+    has completed, but as you can see that wait is actually on a different
+    Page object:
+
+<5> The `ListPage`, which we'll see the code for shortly. It's initialised just
+    like a `HomePage`.
+
+<6> We use the `ListPage` to `wait_for_new_item_in_list`.  We specify the
+    expected text of the item, and its expected position in the list.
+
+<7> Finally, we return the `list_page` object to the caller, because they
+    will probably find it useful (as we'll see shortly).
 
 
-TODO: wrap up - back to the testing goat.  it's still hard, even after 4 years.
-discipline.  get green builds.  really test things.  seen code without tests,
-gets worse over time.
+
+Here's how `ListPage` looks:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py (ch21l006)
+[source,python]
+----
+[...]
+
+class ListPage(object):
+
+    def __init__(self, test):
+        self.test = test
+
+    def get_list_table_rows(self):
+        return self.test.browser.find_elements_by_css_selector(
+            '#id_list_table tr'
+        )
+
+    def wait_for_new_item_in_list(self, item_text, position):
+        expected_row = '{}: {}'.format(position, item_text)
+        self.test.wait_for(lambda: self.test.assertIn(
+            expected_row,
+            [row.text for row in self.get_list_table_rows()]
+        ))
+----
+
+NOTE: It's usually best to have a separate file for each Page object. 
+    In this case, `HomePage` and `ListPage` are so closely related it's
+    easier to keep them together.
+
+
+Let's see how to use it in our test:
+
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py (ch21l007)
+[source,python]
+----
+from .home_and_list_pages import HomePage
+[...]
+
+        # Edith goes to the home page and starts a list
+        self.browser = edith_browser
+        list_page = HomePage(self).start_new_list('Get help')
+----
+
+Let's continue rewriting our test, using the Page object whenever
+we want to access elements from the lists page:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py (ch21l008)
+[source,python]
+----
+        # She notices a "Share this list" option
+        share_box = list_page.get_share_box()
+        self.assertEqual(
+            share_box.get_attribute('placeholder'),
+            'your-friend@example.com'
+        )
+
+        # She shares her list.
+        # The page updates to say that it's shared with Oniciferous:
+        list_page.share_list_with('oniciferous@example.com')
+----
+
+We add the following three functions to our `ListPage`:
+
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py (ch21l009)
+[source,python]
+----
+    def get_share_box(self):
+        return self.test.browser.find_element_by_css_selector(
+            'input[name=email]'
+        )
+
+
+    def get_shared_with_list(self):
+        return self.test.browser.find_elements_by_css_selector(
+            '.list-sharee'
+        )
+
+
+    def share_list_with(self, email):
+        self.get_share_box().send_keys(email + '\n')
+        self.test.wait_for(lambda: self.test.assertIn(
+            email,
+            [item.text for item in self.get_shared_with_list()]
+        ))
+----
+
+The idea behind the Page pattern is that it should capture all the information
+about a particular page in your site, so that if, later, you want to go and
+make changes to that page--even just simple tweaks to its HTML layout for
+example--you have a single place to go and look for to adjust your functional
+tests, rather than having to dig through dozens of FTs.
+
+The next step would be to pursue the FT refactor through our other tests. I'm
+not going to show that here, but it's something you could do, for practice, 
+to get a feel for what the trade-offs between D.R.Y. and test readability
+are like...
+
+
+Extend the FT to a Second User, and the "My Lists" Page
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's spec out just a little more detail of what we want our sharing user
+story to be.  Edith has seen on her list page that the list is now "shared
+with" Oniciferous, and then we can have Oni log in and see the list on his "My
+Lists" page, maybe in a section called "lists shared with me".
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py (ch21l010)
+[source,python]
+----
+    [...]
+    list_page.share_list_with('oniciferous@example.com')
+
+    # Oniciferous now goes to the lists page with his browser
+    self.browser = oni_browser
+    HomePage(self).go_to_home_page().go_to_my_lists_page()
+
+    # He sees Edith's list in there!
+    self.browser.find_element_by_link_text('Get help').click()
+----
+
+That means another function in our `HomePage` class:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py (ch21l011)
+[source,python]
+----
+class HomePage(object):
+
+    [...]
+
+    def go_to_my_lists_page(self):
+        self.test.browser.find_element_by_link_text('My lists').click()
+        self.test.wait_for(lambda: self.test.assertEqual(
+            self.test.browser.find_element_by_tag_name('h1').text,
+            'My Lists'
+        ))
+----
+
+Once again, this is a function that would be good to carry across into
+'test_my_lists.py', along with maybe a `MyListsPage` object. Exercise
+for the reader!
+
+In the meantime, Oniciferous can also add things to the list:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py (ch21l012)
+[source,python]
+----
+    # On the list page, Oniciferous can see says that it's Edith's list
+    self.wait_for(lambda: self.assertEqual(
+        list_page.get_list_owner(),
+        'edith@example.com'
+    ))
+
+    # He adds an item to the list
+    list_page.add_new_item('Hi Edith!')
+
+    # When Edith refreshes the page, she sees Oniciferous's addition
+    self.browser = edith_browser
+    self.browser.refresh()
+    list_page.wait_for_new_item_in_list('Hi Edith!', 2)
+----
+
+That's a couple more additions to our Page object:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py (ch21l013)
+[source,python]
+----
+ITEM_INPUT_ID = 'id_text'
+[...]
+
+class HomePage(object):
+    [...]
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
+
+
+class ListPage(object):
+    [...]
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
+
+
+    def add_new_item(self, item_text):
+        current_pos = len(self.get_list_table_rows())
+        self.get_item_input().send_keys(item_text + '\n')
+        self.wait_for_new_item_in_list(item_text, current_pos + 1)
+
+
+    def get_list_owner(self):
+        return self.test.browser.find_element_by_id('id_list_owner').text
+----
+
+It's long past time to run the FT and check if all of this works!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_sharing*]
+
+    share_box = list_page.get_share_box()
+    [...]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"css selector","selector":"input[name=email]"}' ;
+----
+
+That's the expected failure; we don't have an input for email addresses
+of people to share with. Let's do a commit:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "Create Page objects for Home and List pages, use in sharing FT"*
+----
+
+
+An Exercise for the Reader
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here's an outline of the steps to take to get this new feature implemented:
+
+* We'll need a new section in 'list.html', with, at first, a form with an
+  input box for an email address.  That should get the FT one step further.
+
+* Next, we'll need a view for the form to submit to. Start by defining the
+  URL in the template, maybe something like 'lists/<list_id>/share'.
+  
+* Then, our first unit test. It can be just enough to get a placeholder view
+  in. We want the view to respond to POST requests, and it should respond with
+  a redirect back to the list page, so the test could be called something like
+  `ShareListTest.test_post_redirects_to_lists_page`.
+
+* We build out our placeholder view, as just a two-liner that finds a list and
+  redirects to it.
+
+* We can then write a new unit test which creates a user and a list,
+  does a POST with their email address, and checks the user is added to
+  `list_.shared_with.all()` (a similar ORM usage to "My Lists").  That
+  `shared_with` attribute won't exist yet, we're going outside-in.
+
+* So before we can get this test to pass, we have to move down to the model
+  layer.  The next test, in 'test_models.py', can check that a list has a
+  `shared_with.add` method, which can be called with a users' email address and
+  then check the lists' `shared_with.all()` queryset, which will subsequently
+  contain that user.  
+
+* You'll then need a `ManyToManyField`.  You'll probably see an error message
+  about a clashing `related_name`, which you'll find a solution to if you look
+  around the Django docs.
+
+* It will need a database migration.
+
+* That should get the model tests passing. Pop back up to fix the view test.
+
+* You may find the redirect view test fails, because it's not sending a valid
+  POST request.  You can either choose to ignore invalid inputs, or adjust the
+  test to send a valid POST.
+
+* Then back up to the template level; on the "My Lists" page we'll want a
+  `<ul>` with a for loop of the lists shared with the user. On the lists
+  page, we also want to show who the list is shared with, as well as
+  mention of who the list owner is. Look back at the FT for the correct classes
+  and IDs to use. You could have brief unit tests for each of these if you
+  like, as well.
+
+* You might find that spinning up the site with `runserver` will help you 
+  iron out any bugs, as well as fine-tune the layout and aesthetics.
+  If you use a private browser session, you'll be able to log multiple users
+  in.
+
+
+By the end, you might end up with something that looks like
+<<list-sharing-example>>.
+
+[[list-sharing-example]]
+.Sharing lists
+image::images/twdp_2101.png["Screenshot of list sharing UI"]
+
+
+.The Page Pattern, and the Real Exercise for the Reader
+*******************************************************************************
+
+Apply DRY to your functional tests::
+    Once your FT suite starts to grow, you'll find that different tests will
+    inevitably find themselves using similar parts of the UI. Try to avoid 
+    having constants, like the HTML IDs or classes of particular UI elements
+    duplicated between your FTs.
+
+The Page pattern::
+    Moving helper methods into a base `FunctionalTest` class can become 
+    unwieldy.  Consider using individual Page objects to hold all the
+    logic for dealing with particular parts of your site. 
+
+An exercise for the reader::
+    I hope you've actually tried this out!  Try to follow the "Outside-In"
+    method, and occasionally try things out manually if you get stuck. 
+    The real exercise for the reader, of course, is to apply TDD to your
+    next project.  I hope you'll enjoy it!
+
+*******************************************************************************
+
+In the next chapter, we'll wrap up with a discussion of testing "best
+practices".
 

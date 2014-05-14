@@ -3,19 +3,16 @@
 Provisioning with Ansible
 -------------------------
 
-WARNING: I'm not sure how or whether I'll include this in the final version of
-the book.  It's currently very light, not really finished. Comment welcomed.
-
 We used Fabric to automate deploying new versions of the source code to our
-servers.  But provisioning a fresh server, and updating the nginx and 
-gunicorn config files, was all left as a manual process.
+servers.  But provisioning a fresh server, and updating the Nginx and Gunicorn
+config files, was all left as a manual process.
 
 This is the kind of job that's increasingly given to tools called
 "Configuration Management" or "Continuous Deployment" tools.  Chef and Puppet
 were the first popular ones, and in the Python world there's Salt and Ansible.
 
 Of all of these, Ansible is the easiest to get started with.  We
-can get it working with just two files
+can get it working with just two files:
 
     pip install ansible  # Python 2 sadly
 
@@ -23,7 +20,9 @@ can get it working with just two files
 An "inventory file" at `deploy_tools/inventory.ansible` defines what servers we
 can run against:
 
+[role="sourcecode"]
 .deploy_tools/inventory.ansible
+[source,ini]
 ----
 [live]
 superlists.ottg.eu
@@ -35,18 +34,19 @@ superlists-staging.ottg.eu
 localhost ansible_ssh_port=6666 ansible_host=127.0.0.1
 ----
 
-(the local entry is just an example, in my case a Virtualbox VM, with port
-forwarding for ports 22 and 80 set up)
+(The local entry is just an example, in my case a Virtualbox VM, with port
+forwarding for ports 22 and 80 set up.)
 
 
-Installing system packages and nginx
+Installing System Packages and Nginx
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Next the Ansible "playbook", which defines what to do on the server.  This
 uses a syntax called YAML:
 
-[source,yaml]
+[role="sourcecode"]
 .deploy_tools/provision.ansible.yaml
+[source,yaml]
 ----
 ---
 
@@ -71,12 +71,14 @@ uses a syntax called YAML:
         line='\1server_names_hash_bucket_size 64;'
 
     - name: add nginx config to sites-available
-      template: src=./nginx.conf.j2 dest=/etc/nginx/sites-available/{{ host }}
+      template: src=./nginx.conf.j2 
+                dest=/etc/nginx/sites-available/{{ host }}
       notify:
           - restart nginx
 
     - name: add symlink in nginx sites-enabled
-      file: src=/etc/nginx/sites-available/{{ host }} dest=/etc/nginx/sites-enabled/{{ host }} state=link
+      file: src=/etc/nginx/sites-available/{{ host }} 
+            dest=/etc/nginx/sites-enabled/{{ host }} state=link
       notify:
           - restart nginx
 ----
@@ -87,13 +89,14 @@ from $inventory_hostname, which is the domain name of the server we're running
 against at the time.
 
 
-In this section, we install our required software using `apt`, tweak the nginx
+In this section, we install our required software using `apt`, tweak the Nginx
 config to allow long hostnames using a regular expression replacer, and then
-we write the nginx config file using a template.  This is a modified version
+we write the Nginx config file using a template.  This is a modified version
 of the template file we saved into 'deploy_tools/nginx.template.conf' in
-chapter 8, but it now uses a specific templating syntax -- Jinja2, which is 
+<<deployment-chapter>>, but it now uses a specific templating syntax--Jinja2, which is 
 actually a lot like the Django template syntax:
 
+[role="sourcecode"]
 .deploy_tools/nginx.conf.j2
 ----
 server {
@@ -111,18 +114,20 @@ server {
 }
 ----
 
-Configuring gunicorn, and using handlers to restart services
+
+Configuring Gunicorn, and Using Handlers to Restart Services
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 Here's the second half of our playbook:
 
-
-[source,yaml]
+[role="sourcecode"]
 .deploy_tools/provision.ansible.yaml
+[source,yaml]
 ----
     - name: write gunicorn init script
-      template: src=./gunicorn-upstart.conf.j2 dest=/etc/init/gunicorn-{{ host }}.conf
+      template: src=./gunicorn-upstart.conf.j2 
+                dest=/etc/init/gunicorn-{{ host }}.conf
       notify:
           - restart gunicorn
 
@@ -139,8 +144,11 @@ Here's the second half of our playbook:
       service:  name=gunicorn-{{ host }} state=restarted
 ----
 
-Once again we use a template for our gunicorn config:
+Once again we use a template for our Gunicorn config:
 
+[role="sourcecode"]
+.deploy_tools/gunicorn.upstart.conf.j2
+[source,bash]
 ----
 description "Gunicorn server for {{ host }}"
 
@@ -157,7 +165,7 @@ exec ../virtualenv/bin/gunicorn \
     superlists.wsgi:application
 ----
 
-Then we have two "handlers" to restart nginx and gunicorn.  Ansible is
+Then we have two "handlers" to restart Nginx and Gunicorn.  Ansible is
 clever, so if it sees multiple steps all call the same handlers, it 
 waits until the last one before calling it.
 
@@ -171,7 +179,35 @@ ansible-playbook -i ansible.inventory provision.ansible.yaml --limit=staging
 Lots more info in the http://www.ansibleworks.com/docs/[Ansible docs].
 
 
-TODO: comments on switching everything over from fabric?
+What to Do Next
+~~~~~~~~~~~~~~~
 
-TODO: mention (demo?) Vagrant as a way of spinning up servers + vms
+I've just given a little taster of what's possible with Ansible.  But the more
+you automate about your deployments, the more confidence you will have in 
+them.  Here's a few more things to look into.
+
+Move Deployment out of Fabric and into Ansible
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We've seen that Ansible can help with some aspects of provisioning, but it can
+also do pretty much all of our deployment for us.  See if you can extend the
+playbook to do everything that we currently do in our fabric deploy script,
+including notifying the restarts as required.
+
+
+Use Vagrant to Spin Up a Local VM 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Running tests against the staging site gives us the ultimate confidence that
+things are going to work when we go live, but we can also use a VM on our
+local machine.
+
+Download Vagrant and Virtualbox, and see if you can get Vagrant to build a
+dev server on your own PC, using our Ansible playbook to deploy code to it.
+Rewire the FT runner to be able to test against the local VM.
+
+Having a Vagrant config file is particularly helpful when working
+in a team--it helps new developers to spin up servers that look exactly
+like yours.
+
 

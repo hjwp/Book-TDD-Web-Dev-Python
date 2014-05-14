@@ -18,28 +18,28 @@ class Chapter6Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Command)
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
-
-        # other prep
-        self.run_command(Command('python3 manage.py syncdb --noinput'))
-
         # skips
         self.skip_with_check(15, 'msg eg') # git
-        self.skip_with_check(55, 'should show 4 changed files') # git
-        self.skip_with_check(60, 'add a message summarising') # git
-        self.skip_with_check(78, '5 changed files') # git
-        self.skip_with_check(80, 'forms x2') # git
-        self.skip_with_check(95, '3 changed files') # git
-        touch_pos = 46
+        self.skip_with_check(58, 'should show 4 changed files') # git
+        self.skip_with_check(63, 'add a message summarising') # git
+        self.skip_with_check(81, '5 changed files') # git
+        self.skip_with_check(83, 'forms x2') # git
+        self.skip_with_check(109, '3 changed files') # git
+        touch_pos = 49
         touch = self.listings[touch_pos]
         assert 'touch' in touch
+
+
+        # other prep
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.run_command(Command('python3 manage.py syncdb --noinput'))
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 59
+            self.pos = 93
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch06l021-1')
+                self.sourcetree.get_commit_spec('ch06l029-4')
             ))
 
         while self.pos < touch_pos:

@@ -1,774 +1,1886 @@
-Continuous Integration (CI)
----------------------------
+[[isolation-chapter]]
+Test Isolation, and "listening to your tests"
+---------------------------------------------
+
+In the last chapter, we made the decision to leave a unit test failing in
+the views layer while we proceeded to write more tests and more code at
+the models layer to get it to pass.
+
+We got away with it because our app was simple, but I should stress that,
+in a more complex application, this would be a dangerous decision. Proceeding
+to work on lower levels while you're not sure that the higher levels are
+'really' finished or not is a risky strategy.
+
+NOTE: I'm grateful to Gary Bernhardt, who took a look at an early draft of the
+previous chapter, and encouraged me to get into a longer discussion of test
+isolation.
+
+Ensuring isolation between layers does involve more effort (and more of the
+dreaded mocks!), but it can also help to drive out improved design, as we'll
+see in this chapter. 
 
 
-As our site grows, it takes longer and longer to run all of our Functional
-tests.  If this continues, the danger is that we're going to stop bothering.
+Revisiting our decision point: the views layer depends on unwritten models code
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Rather than let that happen, we can automate the running of functional tests
-by setting up a "Continuous Integration" or CI server.  That way, in day-to-day
-development, we can just run the FT that we're working on at that time, and
-rely on the CI server to run all the test automatically, and let us know if
-we've broken anything accidentally.  The unit tests should stay fast enough
-that we can keep running them every few seconds.
+Let's revisit the point we were at half-way through the last chapter, when we
+couldn't get the `new_list` view to work because lists didn't have the `.owner`
+attribute yet.  
 
-The CI server of choice these days is called Jenkins. It's a bit Java, a bit
-crashy, a bit ugly, but it's what everyone uses, and it has a great plugin
-ecosystem, so let's get it up and running.
+We'll actually go back in time and check out the old codebase, so that we can
+see how things would have worked if we'd used more isolated tests.
 
-
-Installing Jenkins
-~~~~~~~~~~~~~~~~~~
-
-There are several hosted-CI services out there that essentially provide you
-with a Jenkins server, ready to go.  I've come across Sauce Labs, Travis,
-Circle-CI, ShiningPanda, and there are probably lots more.  But I'm going to
-assume we're installing everything on a server we control.
-
-NOTE: It's not a good idea to install Jenkins on the same server as our
-staging or production servers.  Apart from anything else, we may want 
-Jenkins to be able to reboot the staging server!
-
-We'll install latest version from official jenkins apt repo, because the 
-Ubuntu default still has a few annoying bugs with locale/unicode support,
-and it also doesn't set itself up to listen on the public internet by default.
 
 [subs="specialcharacters,quotes"]
 ----
-# instructions taken from jenkins site
-user@server:$ *wget -q -O - http://pkg.jenkins-ci.org/debian/jenkins-ci.org.key | sudo apt-key add -*
-user@server:$ *echo deb http://pkg.jenkins-ci.org/debian binary/ | sudo tee \
-    /etc/apt/s*ources.list.d/jenkins.list*
-user@server:$ *sudo apt-get update*
-user@server:$ *sudo apt-get install jenkins*
+$ *git checkout -b more-isolation*  # a branch for this experiment
+$ *git reset --hard revisit_this_point_with_isolated_tests*
 ----
 
-While we're at we'll install a few other dependencies:
+Here's what our failing tests looks like:
 
-[subs="specialcharacters,quotes"]
-----
-user@server:$ *sudo apt-get install git firefox python3 python-virtualenv xvfb*
-----
 
-You should then be able to visit it at the URL for your server on port `8080`:
-
-.A butler! How quaint...
-image::images/jenkins_first_page.png["Jenkins' default welcome screen"]
-
-
-Configuring Jenkins security
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The first thing we'll do is set up some authentication, since our server is
-available on the public internet:
-
-* Manage Jenkins -> Configure Global Security -> Enable security
-* Choose "Jenkins' own user database", "Matrix-based security"
-* Disable all permissions for Anonymous
-* And add a user for yourself
-* The next screen offers you the option to create an account that matches that
-  username, and set a password
-
-.Locking it down...
-image::images/jenkins_security_config.png["Jenkins' default welcome screen"]
-
-
-
-Adding required plugins
-^^^^^^^^^^^^^^^^^^^^^^^
-
-Next we install a few plugins, to help us work with Git, Python, and virtual
-displays:
-
-* Manage Jenkins -> Manage Plugins -> Available
-* We'll want the plugins for:
-    * Git
-    * ShiningPanda
-    * Xvfb
-
-
-.Installing plugins...
-image::images/jenkins_installing_plugins.png["Jenkins installing plugins"]
-
-Restart afterwards - either using the tick-box on that last screen, or
-from the command-line with a `sudo restart jenkins`.
-
-
-Telling jenkins where to find Python 3
-++++++++++++++++++++++++++++++++++++++
-
-We need to tell the ShiningPanda plugin where Python 3 is installed 
-(usually `/usr/bin/python3`, but you can check with a `which python3`)
-
-* Manage Jenkins -> Configure System
-* Python -> Python installations -> Add Python 
-
-.Where did I leave that Python?
-image::images/jenkins_adding_python3.png["Adding Python 3"]
-
-
-
-Setting up our project
-~~~~~~~~~~~~~~~~~~~~~~
-
-Now we've got the basic Jenkins configured, let's set up our project.
-
-* New Job -> Build a free-style software project 
-
-* Add the Git repo
-
-.Get it from git
-image::images/jenkins_set_git_repo.png["Setting the git repo"]
-
-* Set it to poll every hour (check out the help text here --
-there are many other options for ways of triggering builds).
-
-.Poll Github for changes
-image::images/jenkins_poll_scm.png["Config polling github"]
-
-* Run the tests inside a Python 3 virtualenv
-
-* Run the unit tests and functional tests separately
-
-.Virtualenv build steps
-image::images/jenkins_build_in_virtualenv.png["Adding Python 3"]
-
-
-
-First build!
-~~~~~~~~~~~~
-
-Hit "Build Now!", then go and take a look at the "Console Output". You
-should see something like this:
-
-----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision d515acebf7e173f165ce713b30295a4a6ee17c07 (origin/master)
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7260707941304155464.sh
-+ pip install -r requirements.txt
-Requirement already satisfied (use --upgrade to upgrade): Django==1.6 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-(from -r requirements.txt (line 1))
-Downloading/unpacking South==0.8.2 (from -r requirements.txt (line 2))
-  Running setup.py egg_info for package South
-    
-Requirement already satisfied (use --upgrade to upgrade): gunicorn==17.5 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-(from -r requirements.txt (line 3))
-Downloading/unpacking requests==2.0.0 (from -r requirements.txt (line 4))
-  Running setup.py egg_info for package requests
-    
-Installing collected packages: South, requests
-  Running setup.py install for South
-    
-  Running setup.py install for requests
-    
-Successfully installed South requests
-Cleaning up...
-+ python manage.py test lists accounts
-...................................................
- ---------------------------------------------------------------------
-Ran 51 tests in 0.323s
-
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-+ python manage.py test functional_tests
-ImportError: No module named 'selenium'
-Build step 'Virtualenv Builder' marked build as failure
-----
-
-Ah.  We need selenium in our virtualenv.
-
-TIP: Some people like to use a file called 'test-requirements.txt' to specify 
-packages that are needed for the tests, but not the main app.
-
-Let's add a manual installation of selenium to our build steps:
-
-    pip install -r requirements.txt
-    pip install selenium
-    python manage.py test accounts lists
-    python manage.py test functional_tests
-
-Now what?
-
-----
-  File
-  "/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages/selenium/webdriver/firefox/firefox_binary.py",
-  line 100, in _wait_until_connectable
-    self._get_firefox_output())
-selenium.common.exceptions.WebDriverException: Message: 'The browser appears to
-have exited before we could connect. The output was: b"\\n(process:19757):
-GLib-CRITICAL **: g_slice_set_config: assertion \'sys_page_size == 0\'
-failed\\nError: no display specified\\n"' 
-----
-
-
-Setting up a virtual display so the FTs can run headless
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-As you can see from the traceback, Firefox is unable to start because the
-server doesn't have a display.
-
-There are two ways to deal with this problem. The first is to switch to using
-a headless browser, like PhantomJS or SlimerJS.  Those tools definitely have
-their place -- they're faster, for one thing -- but they also have
-disadvantages.  The first is that they're not "real" web browsers, so you can't
-be sure you're going to catch all the strange quirks and behaviours of the
-actual browsers your users use.  The second is that they behave quite
-differently inside Selenium, and will require substantial amounts of re-writing
-of FT code.
-
-TIP: I would look into using headless browsers as a "dev-only" tool, to speed
-up the running of FTs on the developer's machine, while the tests on the CI
-server use actual browsers.
-
-The alternative is to set up a virtual display:  we get the server to pretend
-it has a screen attached to it, so Firefox runs happily. There's a few tools
-out there to do this, we'll use one called "Xvfb" (X Virtual Framebuffer) 
-because it's easy to install and use, and because it has a convenient Jenkins
-plug-in
-
-TIP: Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
-as a way of controlling virtual displays from Python.
-
-We go back to our project and hit "Configure" again, then find the section
-called "Build Environment".  Using the virtual display is as simple as
-ticking the box marked "Start Xvfb before the build, and shut it down after.":
-
-.Sometimes config is easy
-image::images/jenkins_start_xvfb.png["Tickbox saying we want Xvfb"]
-
-
-The build does much better now,
-
-----
-[...]
-Xvfb starting$ /usr/bin/Xvfb :2 -screen 0 1024x768x24 -fbdir
-/var/lib/jenkins/2013-11-04_03-27-221510012427739470928xvfb
-[...]
-+ python manage.py test lists accounts
-...................................................
- ---------------------------------------------------------------------
-Ran 51 tests in 0.410s
-
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
-Cleaning up...
-
-+ python manage.py test functional_tests
-.....F.
-======================================================================
-FAIL: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File
-"/var/lib/jenkins/jobs/Superlists/workspace/functional_tests/test_my_lists.py",
-line 44, in test_logged_in_users_lists_are_saved_as_my_lists
-    self.assertEqual(self.browser.current_url, first_list_url)
-AssertionError: 'http://localhost:8081/accounts/edith@email.com/' != 'http://localhost:8081/lists/1/'
-- http://localhost:8081/accounts/edith@email.com/
-+ http://localhost:8081/lists/1/
-
- ---------------------------------------------------------------------
-Ran 7 tests in 89.275s
-
-FAILED (errors=1)
-Creating test database for alias 'default'...
-[{'secure': False, 'domain': 'localhost', 'name': 'sessionid', 'expiry':
-1920011311, 'path': '/', 'value': 'a8d8bbde33nreq6gihw8a7r1cc8bf02k'}]
-Destroying test database for alias 'default'...
-Build step 'Virtualenv Builder' marked build as failure
-Xvfb stopping
-Finished: FAILURE
-----
-
-Pretty close!  To debug that failure, we'll need screenshots though.
-
-NOTE: As we'll see, this error is due to a race condition, which means it's
-not always reproducible.  You may see a different error, or none at all. In
-any case, the tools below for taking screenshots and dealing with race
-conditions will come in useful. Read on!
-
-
-Taking screenshots
-~~~~~~~~~~~~~~~~~~
-
-To be able to debug unexpected failures that happen on a remote PC, it
-would be good to see a picture of the screen at the moment of the failure,
-and maybe also a dump of the HTML of the page.  We can do that using some
-custom logic in our FT class teardown. We have to do a bit of introspection of
-`unittest` internals, a private attribute called `_outcomeForDoCleanups`, but
-his will work:
-
-[role="sourcecode"]
-.functional_tests/base.py
+[role="sourcecode currentcontents"]
+.lists/tests/test_views.py
 [source,python]
 ----
-import os
-SCREEN_DUMP_LOCATION = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), 'screendumps')
-)
-[...]
-
-    def tearDown(self):
-        if not self._outcomeForDoCleanups.success:
-            if not os.path.exists(SCREEN_DUMP_LOCATION):
-                os.makedirs(SCREEN_DUMP_LOCATION)
-            for ix, handle in enumerate(self.browser.window_handles):
-                self._windowid = ix
-                self.take_screenshot()
-                self.dump_html()
-        self.browser.quit()
-        super().tearDown()
-----
-
-We first create a directory for our screenshots if necessary. Then we 
-iterate through all the open browser tabs and pages, and use some selenium
-methods, `get_screenshot_as_file` and `browser.page_source` for our image and
-HTML dumps:
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-    def take_screenshot(self):
-        filename = self._get_filename() + '.png'
-        print('screenshotting to', filename)
-        self.browser.get_screenshot_as_file(filename)
-
-
-    def dump_html(self):
-        filename = self._get_filename() + '.html'
-        print('dumping page HTML to', filename)
-        with open(filename, 'w') as f:
-            f.write(self.browser.page_source)
-----
-
-And finally here's a way of generating a unique filename identifier, which
-includes the name of the test and its class, as well as a timestamp:
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-    def _get_filename(self):
-        timestamp = datetime.now().isoformat().replace(':', '.')[:19]
-        return '{folder}/{classname}.{method}-window{windowid}-{timestamp}'.format(
-            folder=SCREEN_DUMP_LOCATION,
-            classname=self.__class__.__name__,
-            method=self._testMethodName,
-            windowid=self._windowid,
-            timestamp=timestamp
-        )
-----
-
-You can test this first by deliberately breaking one of the tests. Then,
-commit, push, and when we re-run the build on Jenkins, we see this:
-
-----
-screenshotting to /var/lib/jenkins/jobs/Superlists/workspace/functional_tests/
-screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.png
-dumping page HTML to /var/lib/jenkins/jobs/Superlists/workspace/functional_tests/
-screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.html
-----
-
-
-We can go and visit these in the "workspace", which is the folder which jenkins
-uses to store our source code and run the tests in:
-
-.Visiting the project workspace
-image::images/jenkins_workspace_with_screenshots.png["worspace files including screenshot"]
-
-And then we look at the screenshot:
-
-
-.Screenshot looking normal
-image::images/jenkins_screenshot_example.png["Screenshot of site page"]
-
-
-Well, that didn't help much
-
-
-A common Selenium problem: race conditions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Whenever you see an inexplicable failure in a Selenium test, one of the most
-likely explanations is a hidden race condition. Let's look at the line that
-failed:
-
-[source,python]
-----
-    # She sees that her list is in there, named according to its
-    # first list item
-    self.browser.find_element_by_link_text('Reticulate splines').click()
-    self.assertEqual(self.browser.current_url, first_list_url)
-----
-
-Immediately after we click the "Reticulate splines" link, we ask selenium
-to check whether the current URL matches the URL for our first list.  But
-it doesn't:
-
-----
-AssertionError: 'http://localhost:8081/accounts/edith@email.com/' !=
-'http://localhost:8081/lists/1/'
-----
-
-It looks like the current URL is still the URL of the "my lists" page.  What's
-going on?
-
-Do you remember that we set an `implicitly_wait` on the browser, way back in
-chapter 2?  Well, that implicitly_wait applies to any calls to any of the 
-Selenium `find_element_` calls, but it doesn't apply to `browser.current_url`.
-Selenium doesn't "wait" when you tell it to click an element, so what's happened
-is that the browser hasn't finished loading the new page yet, so `current_url`
-is still the old page.  We need to use some more wait code, like we did for the
-various Persona pages.
-
-At this point it's time for a "wait for" helper function. To see how this
-is going to work, it helps to see how I expect to use it:
-
-
-[role="sourcecode"]
-.functional_tests/test_my_lists.py
-[source,python]
-----
-    # She sees that her list is in there, named according to its
-    # first list item
-    self.browser.find_element_by_link_text('Reticulate splines').click()
-    self.wait_for(
-        lambda: self.assertEqual(self.browser.current_url, first_list_url)
-    )
-----
-
-We're going to take our `assertEqual` call and turn it into a lambda function,
-then pass it into our `wait_for` helper.
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-from selenium.common.exceptions import WebDriverException
-[...]
-
-    def wait_for(self, function_with_assertion, timeout=DEFAULT_WAIT):
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                return function_with_assertion()
-            except (AssertionError, WebDriverException):
-                pass
-        # one more try, which will raise any errors if they are outstanding
-        return function_with_assertion()
-----
-
-`wait_for` then tries to execute that function, but instead of letting the 
-test fail if the assertion fails, it catches the `AssertionError` that
-`assertEqual` would ordinarily raise, and loops around retrying it, until a
-given timeout.  It also catches any `WebDriverException` that
-might happen if, say, an element hasn't appeared on the page yet.  It tries
-one last time after the timeout has expired, this time without the try/except,
-so that if there really is still an AssertionError, the test will fail
-appropriately.
-
-NOTE: Selenium does provide `WebdriverWait` as a tool for doing waits, but
-it's a little restrictive.  This hand-rolled version lets us pass a function
-that does a unittest assertion, with all the benefits of the readable error
-messages that it gives us.
-
-I've added the timeout there as an optional argument, and I'm basing it on 
-a constant we'll add to 'base.py'.  We'll also use it in our original 
-`implicitly_wait`:
-
-
-[role="sourcecode"]
-.functional_tests/base.py
-[source,python]
-----
-[...]
-import time
-
-DEFAULT_WAIT = 3
-
-
-class FunctionalTest(LiveServerTestCase):
-
+class NewListTest(TestCase):
     [...]
 
-    def setUp(self):
-        self.browser = webdriver.Firefox()
-        self.browser.implicitly_wait(DEFAULT_WAIT)
+    def test_list_owner_is_saved_if_user_is_authenticated(self):
+        request = HttpRequest()
+        request.user = User.objects.create(email='a@b.com')
+        request.POST['text'] = 'new list item'
+        new_list(request)
+        list_ = List.objects.first()
+        self.assertEqual(list_.owner, request.user)
 ----
 
+And here's what our attempted solution looked like:
 
-Now we can re-run the test to confirm it still works:
+[role="sourcecode currentcontents"]
+.lists/views.py
+[source,python]
+----
+def new_list(request):
+    form = ItemForm(data=request.POST)
+    if form.is_valid():
+        list_ = List()
+        list_.owner = request.user
+        list_.save()
+        form.save(for_list=list_)
+        return redirect(list_)
+    else:
+        return render(request, 'home.html', {"form": form})
+----
+
+And at this point, the view test is failing because we don't have the model
+layer yet:
+
+----
+    self.assertEqual(list_.owner, request.user)
+AttributeError: 'List' object has no attribute 'owner'
+----
+
+NOTE: You won't see this error unless you actually check out the old code
+    and revert 'lists/models.py'.  You should definitely do this, part of
+    the objective of this chapter is to see whether we really can write 
+    tests for a models layer that doesn't exist yet.
+
+
+A first attempt at using mocks for isolation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Lists don't have owners yet, but we can let the views layer tests pretend they
+do by using a bit of mocking:
+
+
+//IDEA: rename all "mockList" to "mockListClass"...
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l003)
+[source,python]
+----
+from unittest.mock import Mock, patch
+
+from django.http import HttpRequest
+from django.test import TestCase
+[...]
+
+    @patch('lists.views.List')  #<1>
+    def test_list_owner_is_saved_if_user_is_authenticated(self, mockList):
+        mock_list = List.objects.create()  #<2>
+        mock_list.save = Mock()
+        mockList.return_value = mock_list
+        request = HttpRequest()
+        request.user = User.objects.create()  #<3>
+        request.POST['text'] = 'new list item'
+
+        new_list(request)
+
+        self.assertEqual(mock_list.owner, request.user)  #<4>
+----
+
+<1> We mock out the `List` function to be able to get access to any lists
+    that might be created by the view.
+
+<2> Then we create a real List object for the view to use.  It has
+    to be a real List object, otherwise the Item that the view is
+    trying to save will fail with a foreign key error (this is an indication
+    that the test is only partially isolated).
+
+<3> We set a real user on the request object.  
+
+<4> And now we can make assertions about whether the list has had
+    the `.owner` attribute set on it.  
+
+If we try to run this test now, it should pass.
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.MyListsTest*]
-Creating test database for alias 'default'...
-.
- ---------------------------------------------------------------------
-Ran 1 test in 9.594s
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 37 tests in 0.145s
+OK
 ----
 
-And, just to be sure, we'll deliberately break our test to see it fail
-too:
+If you don't see a pass, make sure that your views code in 'views.py' is
+exactly as I've shown it, using `List()`, not `List.objects.create`.  
 
+
+NOTE: Using mocks does tie you to specific ways of using an API.  This is one
+of the many trade-offs involved in the use of mock objects.
+
+
+Using mock side_effects to check the sequence of events
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The trouble with this test is that it can still let us get away with writing
+the wrong code by mistake.  Imagine if we accidentally call save before we
+we assign the owner:
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py
+.lists/views.py
 [source,python]
 ----
-    self.wait_for(
-        lambda: self.assertEqual(self.browser.current_url, 'barf')
-    )
+    if form.is_valid():
+        list_ = List()
+        list_.save()
+        list_.owner = request.user
+        form.save(for_list=list_)
+        return redirect(list_)
 ----
 
-Sure enough, that gives:
+The test, as it's written now, still passes:
 
 ----
-AssertionError: 'http://localhost:8081/lists/1/' != 'barf'
+OK
 ----
 
-And we see it pause on the page for 3 seconds.  Let's revert that last 
-change, and the commit our changes:
+So we actually need to check, not just that the owner is assigned, but that
+it's assigned 'before' we call save on our list object.
 
+Here's how we can test the sequence of events using mocks -- you can mock out
+a function, and use it as a spy to check on the state of the world at the
+moment it's called:
 
-[subs="specialcharacters,quotes"]
-----
-$ *git status*
-[...]
-#   modified:   functional_tests/base.py
-#   modified:   functional_tests/test_my_lists.py
-$ *git add Functional tests*
-$ *git diff --staged*
-$ *git commit -m"use wait_for function for URL checks in my_lists"*
-$ *git push* # send our changes up to github
-----
-
-Then we can re-run the build on Jenkins using "Build now", and confirm it now
-works:
-
-.The outlook is brighter
-image::images/jenkins_build_starting_to_look_better.png["Build showing a recent pass and sun-peeking-through-clouds logo"]
-
-Jenkins uses blue to indicate passing builds rather than green, which is a bit
-disappointing, but look at the sun peeking through the clouds!  That's cheery!
-It's an indicator of a moving average ratio of passing builds to failing
-builds.  Things are looking up!
-
-
-Running our Qunit JavaScript tests in Jenkins
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-There's a set of tests we almost forgot -- the JavaScript tests. Currently
-our "test runner" is an actual web browser.  To get Jenkins to run them, we
-need a command-line test runner.  Here's a chance to use PhantomJS.
-
-Installing node
-^^^^^^^^^^^^^^^
-
-It's time to stop pretending we're not in the JavaScript game.  We're doing
-web development.  That means we do JavaScript.  That means we're going to end
-up with node.js on our computers.  It's just the way it has to be.
-
-Follow the instructions on the http://nodejs.org/download/[node.js download
-page]. There are installers for Windows and Mac, and repositories for popular
-Linux distros.
-
-Once we have node, we can install phantom:
-
-[subs="specialcharacters,quotes"]
-----
-$ *npm install -g phantomjs*  # the -g means "system-wide". May need sudo.
-----
-
-Next we pull down the Qunit test runner.  You can either download it
-manually from https://github.com/jquery/qunit/tree/master/addons/phantomjs 
-or, if you feel like it, you can use another package manager called
-"Bower":
-
-----
-$ *npm install -g bower*  # bower is a front-end web-dev package manager
-$ *cd /tmp*
-$ *bower install qunit*
-bower qunit#*                   cached git://github.com/jquery/qunit.git#1.12.0
-bower qunit#*                 validate 1.12.0 against git://github.com/jquery/qunit.git#*
-bower qunit#~1.12.0            install qunit#1.12.0
-# bower puts everything into a folder called "bower_components".
-# we dig out our test runner from in there:
-$ *cp bower_components/qunit/addons/phantomjs/runner.js /workspace/superlists/superlists/static/tests/
-----
-
-I won't explain bower any further, but you should look into it if you find
-yourself using more than one or two front-end packages (like Bootstrap). In
-this case we just used it as a glorified download tool, but it can be much
-more.
-
-In any case, you should end up with this:
-
-[subs="specialcharacters,quotes"]
-----
-$ *tree superlists/static/tests/*
-superlists/static/tests/
-├── qunit.css
-├── qunit.js
-├── runner.js
-└── sinon.js
-----
-
-Now let's try it out:
-
-[subs="specialcharacters,quotes"]
-----
-$ *phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html*
-Took 24ms to run 2 tests. 2 passed, 0 failed.
-$ *phantomjs superlists/static/tests/runner.js accounts/static/tests/tests.html*
-Took 29ms to run 11 tests. 11 passed, 0 failed.
-----
-
-And just to be sure, let's deliberately break something:
 
 [role="sourcecode"]
-.lists/static/list.js
-[source,javascript]
+.lists/tests/test_views.py (ch19l005)
+[source,python]
 ----
-$('input').on('keypress', function () {
-    //$('.has-error').hide();
-});
-----
+    @patch('lists.views.List')
+    def test_list_owner_is_saved_if_user_is_authenticated(self, mockList):
+        mock_list = List.objects.create()
+        mock_list.save = Mock()
+        mockList.return_value = mock_list
+        request = HttpRequest()
+        request.user = Mock()
+        request.user.is_authenticated.return_value = True
+        request.POST['text'] = 'new list item'
 
-Sure enough:
+        def check_owner_assigned():  #<1>
+            self.assertEqual(mock_list.owner, request.user)  #<1>
+        mock_list.save.side_effect = check_owner_assigned  #<2>
 
-[subs="specialcharacters,quotes"]
-----
-$ *phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html*
-Test failed: undefined: errors should be hidden on keypress
-    Failed assertion: expected: false, but was: true
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:556
-    at file:///worskpace/superlists/lists/static/tests/tests.html:25
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:203
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:361
-    at process (file:///worskpace/superlists/superlists/static/tests/qunit.js:1453)
-    at file:///worskpace/superlists/superlists/static/tests/qunit.js:479
-Took 27ms to run 2 tests. 1 passed, 1 failed.
+        new_list(request)
+
+        mock_list.save.assert_called_once_with()  #<3>
 ----
 
-All right!  Let's unbreak that, commit and push the runner, and then add it to
-our Jenkins build:
 
-[subs="specialcharacters,quotes"]
-----
-$ *git checkout lists/static/list.js*
-$ *git add superlists/static/tests/runner.js*
-$ *git commit -m"Add phantomjs test runner for javascript tests"*
-$ *git push* 
-----
+<1> We define a function that makes the assertion about the thing we 
+    want to happen first: checking the list's owner has been set
 
-.Add a build step for our JavaScript unit tests
-image::images/jenkins_add_phantomjs_build_step.png["Jenkins' default welcome screen"]
+<2> We assign that check function as a `side_effect` to the thing we
+    want to check happened second.  When the view calls our mocked
+    save function, it will go through this assertion.  We make sure to
+    set this up before we actually call the function we're testing.
 
-You'll also need to install phantomjs on the server.
+<3> Finally, we make sure that the function with the `side_effect` was
+    actually triggered, ie we did `.save()`.  Otherwise our assertion
+    may actually never have been run.
 
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo add-apt-repository -y ppa:chris-lea/node.js*
-elspeth@server:$ *sudo apt-get update*
-elspeth@server:$ *sudo apt-get install nodejs*
-elspeth@server:$ *sudo npm install -g phantomjs*
-----
+TIP: Two common mistakes when using mock side-effects are:  assigning the
+side effect too late, i.e. 'after' you call the function under test, and
+forgetting to check that the side-effect function was actually called. And
+by common, I mean, "I made them both several times while writing this chapter".
 
-And there we are!  A complete CI build featuring all of our tests!
-
+At this point, if you've still got the "broken" code from above, where we
+assign the owner but call save in the wrong order, you should now see a 
+fail:
 
 ----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision 936a484038194b289312ff62f10d24e6a054fb29 (origin/chapter_17)
-Xvfb starting$ /usr/bin/Xvfb :1 -screen 0 1024x768x24 -fbdir /var/lib/jenkins/2013-11-06_11-08-026223733569337356081xvfb
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7092102504259037999.sh
+ERROR: test_list_owner_is_saved_if_user_is_authenticated
+(lists.tests.test_views.NewListTest)
+[...]
+  File "/workspace/superlists/lists/views.py", line 17, in new_list
+    list_.save()
+[...]
+  File "/workspace/superlists/lists/tests/test_views.py", line 84, in
+check_owner_assigned
+    self.assertEqual(mock_list.owner, request.user)
+AttributeError: 'List' object has no attribute 'owner'
+----
 
-+ pip install -r requirements.txt
+Notice how the failure happens when we try and save, and then go inside 
+our `side_effect` function.
+
+We can get it passing again like this:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+    if form.is_valid():
+        list_ = List()
+        list_.owner = request.user
+        list_.save()
+        form.save(for_list=list_)
+        return redirect(list_)
+----
+//006
+
+
+...
+
+----
+OK
+----
+
+But, boy, that's getting to be an ugly test!
+
+
+Listen to your tests: ugly tests signal a need to refactor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Whenever you find yourself having to write a test like this, and you're finding
+it hard work, it's likely that your tests are trying to tell you something.
+Nine lines of setup (three lines for the mock user, four more lines for
+the request object, and three for our side-effect function) is way too many.
+
+What this test is trying to tell us is that our view is doing too much work,
+dealing with creating a form, creating a new list object 'and' deciding whether
+or not to save an owner for the list.
+
+We've already seen that we can make our views simpler and easier to understand
+by pushing some of the work down to a form class. Why does the view need to 
+create the list object?  Perhaps our `ItemForm.save` could do that?  And why
+does the view need to make decisions about whether or not to save the
+`request.user`?  Again, the form could do that.
+
+While we're giving this form more responsibilities, it feels like it should
+probably get a new name too.  We could call `NewListForm` instead, since
+that's a better representation of what it does... something like this?
+
+[role="sourcecode skipme"]
+.lists/views.py
+[source,python]
+----
+# don't enter this code yet, we're only imagining it.
+
+def new_list(request):
+    form = NewListForm(data=request.POST)
+    if form.is_valid():
+        list_ = form.save(owner=request.user)  # creates both List and Item
+        return redirect(list_)
+    else:
+        return render(request, 'home.html', {"form": form})
+----
+
+That would be neater!  Let's see how we'd get to that state by using
+fully isolated tests
+
+
+Rewriting our tests for the view to be fully isolated
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Our first attempt at a test suite is for this view was highly 'integrated'.  It
+needed the database layer and the forms layer to be fully functional in order
+for it to pass.   We've started trying to make it more isolated, let's now go
+all the way.
+
+
+Keep the old integrated test suite around as a sanity-check
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Let's rename our old `NewListTest` class to `NewListViewIntegratedTest`,
+and throw away our attempt at a mocky test for saving the owner, puttting
+back the integrated version, with a skip on it for now:
+
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l008)
+[source,python]
+----
+import unittest
 [...]
 
-+ python manage.py test lists
-.................................
- ---------------------------------------------------------------------
-Ran 33 tests in 0.229s
+class NewListViewIntegratedTest(TestCase):
 
+    def test_saving_a_POST_request(self):
+        [...]
+
+    @unittest.skip
+    def test_list_owner_is_saved_if_user_is_authenticated(self):
+        request = HttpRequest()
+        request.user = User.objects.create(email='a@b.com')
+        request.POST['text'] = 'new list item'
+        new_list(request)
+        list_ = List.objects.first()
+        self.assertEqual(list_.owner, request.user)
+----
+
+TIP: Have you heard the term "integration test" and are wondering what the
+    difference is with an "integrated test"?  Go and take a peek at the
+    definitions box in <<hot-lava-chapter>>.
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 37 tests in 0.139s
 OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
+----
 
-+ python manage.py test accounts
-..................
- ---------------------------------------------------------------------
-Ran 18 tests in 0.078s
 
+A new test suite with full isolation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Let's start with a blank slate, and see if we can use isolated tests to drive
+a replacement of our `new_list` view.  We'll call it `new_list2`, build it 
+alongside the old view, and when we're ready, we can swap it in and see if
+the old integrated tests all still pass.
+
+
+[role="sourcecode"]
+.lists/views.py (ch19l009)
+[source,python]
+----
+def new_list(request):
+    [...]
+
+def new_list2(request):
+    pass
+----
+
+
+Thinking in terms of collaborators
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In order to rewrite our tests to be fully isolated, we need to throw out or old
+way of thinking about the tests in terms of the "real" effects of the view on
+things like the database, and instead think of it in terms of the objects it
+collaborates with, and how it interacts with them.  
+
+In the new world, the view's main collaborator will be a form object, so we
+mock that out in order to be able to fully control it, and in order to be able
+to define, by wishful thinking, the way we want our form to work.
+
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l010)
+[source,python]
+----
+from lists.views import new_list, new_list2
+[...]
+
+@patch('lists.views.NewListForm')  #<2>
+class NewListViewUnitTest(unittest.TestCase):  #<1>
+
+    def setUp(self):
+        self.request = HttpRequest()
+        self.request.POST['text'] = 'new list item'  #<3>
+
+    def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
+        new_list2(self.request)
+        mockNewListForm.assert_called_once_with(data=self.request.POST)  #<4>
+----
+
+<1> The Django `TestCase` class makes it too easy to write integrated tests.
+    As a way of making sure we're writing "pure", isolated unit tests, we'll
+    only use `unittest.TestCase`
+
+<2> We mock out the NewListForm class (which doesn't even exist yet). It's
+    going to be used in all the tests, so we mock it out at the class level.
+
+<3> We set up a basic POST request in `setUp`, building up the request by
+    hand rather than using the (overly integrated) Django Test Client.
+
+<4> And we check the first thing about our new view: it initialises its
+    collaborator, the `NewListForm`, with the correct constructor -- the
+    data from the request.
+
+That will start with a failure, saying we don't have a `NewListForm` in
+our view yet.  
+
+
+----
+AttributeError: <module 'lists.views' from
+'/workspace/superlists/lists/views.py'> does not have the attribute
+'NewListForm'
+----
+
+Let's create a placeholder for it:
+
+
+[role="sourcecode"]
+.lists/views.py (ch19l011)
+[source,python]
+----
+from lists.forms import ExistingListItemForm, ItemForm, NewListForm
+[...]
+----
+
+and:
+
+[role="sourcecode"]
+.lists/forms.py (ch19l012)
+[source,python]
+----
+class ItemForm(forms.models.ModelForm):
+    [...]
+
+class NewListForm(object):
+    pass
+
+class ExistingListItemForm(ItemForm):
+    [...]
+----
+
+Next we get a real failure:
+
+
+----
+AssertionError: Expected 'NewListForm' to be called once. Called 0 times.
+----
+
+And we implement like this:
+
+
+[role="sourcecode"]
+.lists/views.py (ch19l012-2)
+[source,python]
+----
+def new_list2(request):
+    NewListForm(data=request.POST)
+----
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 38 tests in 0.143s
 OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
+-----
 
-[workspace] $ /bin/sh -xe /tmp/hudson2967478575201471277.sh
-+ phantomjs superlists/static/tests/runner.js lists/static/tests/tests.html
-Took 32ms to run 2 tests. 2 passed, 0 failed.
-+ phantomjs superlists/static/tests/runner.js accounts/static/tests/tests.html
-Took 47ms to run 11 tests. 11 passed, 0 failed.
 
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7526089957247195819.sh
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in /var/lib/jenkins/shiningpanda/jobs/c14c656b/virtualenvs/d41d8cd9/lib/python3.3/site-packages
+Let's continue.  If the form is valid, we want to call save on it:
 
-Cleaning up...
-[workspace] $ /bin/sh -xe /tmp/shiningpanda2420240268202055029.sh
-+ python manage.py test functional_tests
-.......
- ---------------------------------------------------------------------
-Ran 7 tests in 76.804s
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l013)
+[source,python]
+----
+@patch('lists.views.NewListForm')
+class NewListViewUnitTest(unittest.TestCase):
+
+    def setUp(self):
+        self.request = HttpRequest()
+        self.request.POST['text'] = 'new list item' 
+        self.request.user = Mock() 
+
+
+    def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
+        new_list2(self.request)
+        mockNewListForm.assert_called_once_with(data=self.request.POST)
+
+
+    def test_saves_form_with_owner_if_form_valid(self, mockNewListForm):
+        mock_form = mockNewListForm.return_value
+        mock_form.is_valid.return_value = True
+        new_list2(self.request)
+        mock_form.save.assert_called_once_with(owner=self.request.user)
+----
+
+That takes us to this:
+
+[role="sourcecode"]
+.lists/views.py (ch19l014)
+[source,python]
+----
+def new_list2(request):
+    form = NewListForm(data=request.POST)
+    form.save(owner=request.user)
+----
+
+
+In the case where the form is valid, we want the view to return a redirect, 
+to send us to see the object that the form has just created.  So we mock out
+another of the view's collaborators, the `redirect` function:
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l015)
+[source,python]
+----
+    @patch('lists.views.redirect')  #<1>
+    def test_redirects_to_form_returned_object_if_form_valid(
+        self, mock_redirect, mockNewListForm  #<2>
+    ):
+        mock_form = mockNewListForm.return_value
+        mock_form.is_valid.return_value = True  #<3>
+
+        response = new_list2(self.request)
+
+        self.assertEqual(response, mock_redirect.return_value)  #<4>
+        mock_redirect.assert_called_once_with(mock_form.save.return_value)  #<5>
+----
+
+<1> We mock out the `redirect` function, this time at the method level
+
+<2> `patch` decorators are applied innermost first, so the new mock is injected
+    to our method as before the `mockNewListForm`.
+
+<3> We specify we're testing the case where the form is valid
+
+<4> We check that the response from the view is the result of the `redirect`
+    function.
+
+<5> And we check that the redirect function was called with the object that
+    the form returns on save.
+
+That takes us to here:
+
+[role="sourcecode"]
+.lists/views.py (ch19l016)
+[source,python]
+----
+def new_list2(request):
+    form = NewListForm(data=request.POST)
+    list_ = form.save(owner=request.user)
+    return redirect(list_)
+----
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 40 tests in 0.163s
+OK
+----
+
+And now the failure case -- if the form is invalid, we want to render
+the home page template, 
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l017)
+[source,python]
+----
+    @patch('lists.views.render')
+    def test_renders_home_template_with_form_if_form_invalid(
+        self, mock_render, mockNewListForm
+    ):
+        mock_form = mockNewListForm.return_value
+        mock_form.is_valid.return_value = False
+
+        response = new_list2(self.request)
+
+        self.assertEqual(response, mock_render.return_value)
+        mock_render.assert_called_once_with(
+            self.request, 'home.html', {'form': mock_form}
+        )
+----
+
+
+That gives us:
+
+----
+AssertionError: <django.http.response.HttpResponseRedirect object at
+0x7f8d3f338a50> != <MagicMock name='render()' id='140244627467408'>
+----
+
+TIP: When using assert methods on mocks, like `assert_called_` `once_with`,
+    it's doubly important to make sure you run the test and see it fail.
+    It's all too easy to make a typo in your assert function name and
+    end up calling a mock method that does nothing (mine was to write
+    `asssert_called_once_with` with three essses, try it!)
+
+
+We make a deliberate mistake, just to make sure our tests are comprehensive:
+
+
+[role="sourcecode"]
+.lists/views.py (ch19l018)
+[source,python]
+----
+def new_list2(request):
+    form = NewListForm(data=request.POST)
+    list_ = form.save(owner=request.user)
+    if form.is_valid():
+        return redirect(list_)
+    return render(request, 'home.html', {'form': form})
+----
+
+That passes but it shouldn't!  One more test then:
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l019)
+[source,python]
+----
+    def test_does_not_save_if_form_invalid(self, mockNewListForm):
+        mock_form = mockNewListForm.return_value
+        mock_form.is_valid.return_value = False
+        new_list2(self.request)
+        self.assertFalse(mock_form.save.called)
+----
+
+Which fails:
+
+----
+    self.assertFalse(mock_form.save.called)
+AssertionError: True is not false
+----
+
+And we get to to our neat, small finished view:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def new_list2(request):
+    form = NewListForm(data=request.POST)
+    if form.is_valid():
+        list_ = form.save(owner=request.user)
+        return redirect(list_)
+    return render(request, 'home.html', {'form': form})
+----
+
+...
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 42 tests in 0.163s
+OK
+----
+
+Moving down to the forms layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+So we've built up our view function based on a "wishful thinking" version
+of a form called `NewItemForm`, which doesn't even exist yet. 
+
+We'll need the form's save method to create a new list, and a new item based on
+the text from the form's validated POST data.  If we were to just dive in and
+use the ORM, the code might look something a bit like this:
+
+
+[role="skipme"]
+[source,python]
+----
+class NewListForm(models.Form):
+
+    def save(self, owner):
+        list_ = List()
+        if owner:
+            list_.owner owner
+        list_.save()
+        item = Item()
+        item.list = list_
+        item.text = self.cleaned_data['text']
+        item.save()
+----
+
+This implementation depends on two classes from the model layer, `Item` and
+`List`.  So, what would a well isolated test look like?
+
+
+[role="skipme"]
+[source,python]
+----
+class NewListFormTest(unittest.TestCase):
+
+    @patch('lists.forms.List')  #<1>
+    @patch('lists.forms.Item')  #<1>
+    def test_save_creates_new_list_and_item_from_post_data(
+        self, mockItem, mockList  #<1>
+    ):
+        mock_item = mockItem.return_value
+        mock_list = mockList.return_value
+        user = Mock()
+        form = NewListForm(data={'text': 'new item text'})
+        form.is_valid() #<2>
+
+        def check_item_text_and_list():
+            self.assertEqual(mock_item.text, 'new item text')
+            self.assertEqual(mock_item.list, mock_list)
+            self.assertTrue(mock_list.save.called)
+        mock_item.save.side_effect = check_item_text_and_list  #<3>
+
+        form.save(owner=user)
+
+        self.assertTrue(mock_item.save.called)  #<4>
+----
+
+<1> We mock out the two collaborators for our form from the models layer below 
+
+<2> We need to call `is_valid()` so that the form populates the `.cleaned_data` 
+    dictionary where it stores validated data.
+
+<3> We use the `side_effect` method to make sure that, when we save the new
+    item object, we're doing so with a saved List and with the correct item
+    text.
+
+<4> As always, we double-check that our side-effect function was actually called.
+
+Yuck!  What an ugly test!
+
+
+Keep listening to your tests: removing ORM code from our application
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Again, these tests are trying to tell us something:  the Django ORM
+is hard to mock out, and our form class needs to know too much about
+how it works.  Programming by wishful thinking again, what would
+be a simpler API that our form could use?  How about something like
+this:
+
+
+[role="skipme"]
+[source,python]
+----
+    def save(self):
+        List.create_new(first_item_text=self.cleaned_data['text'])
+----
+
+Our wishful thinking says: how about we had a helper method that
+would live on the List class
+footnote:[it could easily just be a standalone function, but hanging it on the
+model class is a nice way to keep track of where it lives, and gives a bit 
+more of a hint as to what it will do]
+and it will encapsulate all the logic of saving a new list object and
+its associated first item.
+
+So let's write a test for that instead:
+
+
+[role="sourcecode"]
+.lists/tests/test_forms.py (ch19l021)
+[source,python]
+----
+import unittest
+from unittest.mock import patch, Mock
+from django.test import TestCase
+
+from lists.forms import (
+    DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
+    ExistingListItemForm, ItemForm, NewListForm
+)
+from lists.models import Item, List
+[...]
+
+
+class NewListFormTest(unittest.TestCase):
+
+    @patch('lists.forms.List.create_new')
+    def test_save_creates_new_list_from_post_data_if_user_not_authenticated(
+        self, mock_List_create_new
+    ):
+        user = Mock(is_authenticated=lambda: False)
+        form = NewListForm(data={'text': 'new item text'})
+        form.is_valid()
+        form.save(owner=user)
+        mock_List_create_new.assert_called_once_with(
+            first_item_text='new item text'
+        )
+----
+
+And while we're at it we can test the case where the user is an authenticated
+user too:
+
+[role="sourcecode"]
+.lists/tests/test_forms.py (ch19l022)
+[source,python]
+----
+    @patch('lists.forms.List.create_new')
+    def test_save_creates_new_list_with_owner_if_user_authenticatd(
+        self, mock_List_create_new
+    ):
+        user = Mock(is_authenticated=lambda: True)
+        form = NewListForm(data={'text': 'new item text'})
+        form.is_valid()
+        form.save(owner=user)
+        mock_List_create_new.assert_called_once_with(
+            first_item_text='new item text', owner=user
+        )
+----
+
+You can see this is a much more readable test. Let's start implementing
+our new form.  We start with the import:
+
+[role="sourcecode"]
+.lists/forms.py (ch19l023)
+[source,python]
+----
+from lists.models import Item, List
+----
+
+Now mock tells us to create a placeholder for our `create_new` method:
+
+[subs="specialcharacters,macros"]
+----
+AttributeError: <class 'lists.models.List'> does not have the attribute
+'create_new'
+----
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+class List(models.Model):
+
+    def get_absolute_url(self):
+        return reverse('view_list', args=[self.id])
+
+    def create_new():
+        pass
+----
+//24
+
+
+And after a few steps, we should end up with a form save method like this:
+
+[role="sourcecode"]
+lists/forms.py (ch19l025)
+
+[role="small-code"]
+[source,python]
+----
+class NewListForm(ItemForm):
+
+    def save(self, owner):
+        if owner.is_authenticated():
+            List.create_new(first_item_text=self.cleaned_data['text'], owner=owner)
+        else:
+            List.create_new(first_item_text=self.cleaned_data['text'])
+----
+
+
+And passing tests:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+Ran 44 tests in 0.192s
 
 OK
 ----
 
-Nice to know that, no matter how lazy I get about running the full test suite
-on my own machine, the CI server will catch me.  Another one of the testing
-goat's agents in cyberspace, watching over us...
-
-
-.Tips on CI and Selenium best practices
+.Hiding ORM code behind helper methods
 *******************************************************************************
-Set up CI as soon as possible for your project::
-    As soon as your functional tests take more than a few seconds to run,
-    you'll find yourself avoiding running them all. Give this job to a CI
-    server, to make sure that all your tests are getting run somewhere.
+One of the techniques that emerged from our use of isolated tests was the
+"ORM helper method".
 
-Set up screenshots and HTML dumps for failures::
-    Debugging test failures is easier if you can see what the page looked
-    at when the failure occurs.  This is particularly useful for debugging
-    CI failures, but it's also very useful for tests that you run locally.
+Django's ORM lets you get things done quickly with a reasonably readable
+syntax (it's certainly much nicer than raw SQL!).  But some people like to
+try and minimise the amount of ORM code in the application -- particularly
+removing it from the views and forms layers.
 
-Use waits in Selenium tests::
-    Selenium's `implicitly_wait` only applies to uses of its `find_element` 
-    functions, and even that can be unreliable (it can find an element that's
-    still on the old page).  Build a `wait_for` helper function, and alternate
-    between actions on the site, and then some sort of wait to see that they've
-    taken effect.
+One reason is that it makes it much easier to test those layers.  But another
+is that it forces us to build helper functions that express our domain 
+logic more clearly. Compare:
+
+
+[role="skipme"]
+[source,python]
+----
+        list_ = List()
+        list_.save()
+        item = Item()
+        item.list = list_
+        item.text = self.cleaned_data['text']
+        item.save()
+----
+
+With:
+
+[role="skipme"]
+[source,python]
+----
+    List.create_new(first_item_text=self.cleaned_data['text'])
+----
+
+This also applies to read queries as well as write. Imagine something like
+this:
+
+[role="skipme"]
+[source,python]
+----
+    Book.objects.filter(in_print=True, pub_date__lte=datetime.today())
+----
+
+Versus a helper method, like:
+
+[role="skipme"]
+[source,python]
+----
+    Book.all_available_books()
+----
+
+When we build helper functions, we can give them names that express what we
+are doing in terms of the business domain, which can actually make our code
+more legible, as well as giving us the benefit of keeping all ORM calls at
+the model layer, and thus making our whole application more loosely coupled.
+
 *******************************************************************************
 
 
-TODO: Something about jUnit XML output using py.test?
+
+Finally, moving down to the models layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+At the models layer, we no longer need to write isolated tests - the whole
+point of the models layer is to integrate with the database, so it's appropriate
+to write integrated tests:
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch19l026)
+[source,python]
+----
+class ListModelTest(TestCase):
+
+    def test_get_absolute_url(self):
+        list_ = List.objects.create()
+        self.assertEqual(list_.get_absolute_url(), '/lists/%d/' % (list_.id,))
 
 
-TODO: discuss the fact that Persona sometimes gets stuck on Captchas.  Switch
-to mockmyid or similar?
+    def test_create_new_creates_list_and_first_item(self):
+        List.create_new(first_item_text='new item text')
+        new_item = Item.objects.first()
+        self.assertEqual(new_item.text, 'new item text')
+        new_list = List.objects.first()
+        self.assertEqual(new_item.list, new_list)
+----
+
+Which gives
+
+[subs="specialcharacters,macros"]
+----
+TypeError: create_new() got an unexpected keyword argument 'first_item_text'
+----
+
+And that will take us to a first cut implementation that looks like this:
+
+[role="sourcecode"]
+.lists/models.py (ch19l027)
+[source,python]
+----
+class List(models.Model):
+
+    def get_absolute_url(self):
+        return reverse('view_list', args=[self.id])
+
+    @staticmethod
+    def create_new(first_item_text):
+        list_ = List.objects.create()
+        Item.objects.create(text=first_item_text, list=list_)
+----
+
+Notice we've been able to get all the way down to the models layer,
+driving a nice design for the views and forms layers, and the List
+model still doesn't support having an owner!
+
+Now let's test the case where the list should have an owner, and
+add 
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch19l028)
+[source,python]
+----
+from django.contrib.auth import get_user_model
+User = get_user_model()
+[...]
+
+    def test_create_new_optionally_saves_owner(self):
+        user = User.objects.create()
+        List.create_new(first_item_text='new item text', owner=user)
+        new_list = List.objects.first()
+        self.assertEqual(new_list.owner, user)
+----
+
+And while we're at it, we can write the tests for the new owner attribute:
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch19l029)
+[source,python]
+----
+class ListModelTest(TestCase):
+
+    def test_lists_can_have_owners(self):
+        List(owner=User())  # should not raise
+
+
+    def test_list_owner_is_optional(self):
+        List().full_clean()  # should not raise
+----
+
+These two are almost exactly the same tests we used in the last chapter, 
+but I've re-written them slightly so they don't actually save objects -- just
+having them as in-memory objects is enough to for this test.
+
+TIP:  Use in-memory (unsaved) model objects in your tests whenever you can, it
+    makes your tests faster.
+
+That gives:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+ERROR: test_create_new_optionally_saves_owner
+TypeError: create_new() got an unexpected keyword argument 'owner'
+[...]
+ERROR: test_lists_can_have_owners (lists.tests.test_models.ListModelTest)
+TypeError: 'owner' is an invalid keyword argument for this function
+[...]
+Ran 48 tests in 0.204s
+FAILED (errors=2)
+----
+
+
+We implement, just like we did in the last chapter:
+
+[role="sourcecode"]
+.lists/models.py (ch19l030-1)
+[source,python]
+----
+from django.conf import settings
+[...]
+
+
+class List(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
+    [...]
+----
+
+That will give us all sorts of integrity failures, until we do a migration
+
+----
+django.db.utils.OperationalError: no such column: lists_list.owner_id
+
+FAILED (errors=28)
+----
+
+Building the migration will get us down to 3 failures
+
+[role="dofirst-ch19l030-2"]
+[subs="specialcharacters,macros"]
+----
+ERROR: test_create_new_optionally_saves_owner
+TypeError: create_new() got an unexpected keyword argument 'owner'
+[...]
+ValueError: Cannot assign "<SimpleLazyObject:
+<django.contrib.auth.models.AnonymousUser object at 0x7f5b2380b4e0>>":
+"List.owner" must be a "User" instance.
+ValueError: Cannot assign "<SimpleLazyObject:
+<django.contrib.auth.models.AnonymousUser object at 0x7f5b237a12e8>>":
+"List.owner" must be a "User" instance.
+----
+
+Let's deal with the first one, which is for our `create_new` method:
+
+[role="sourcecode"]
+.lists/models.py (ch19l030-3)
+[source,python]
+----
+    @staticmethod
+    def create_new(first_item_text, owner=None):
+        list_ = List.objects.create(owner=owner)
+        Item.objects.create(text=first_item_text, list=list_)
+----
+
+
+Back to views
+^^^^^^^^^^^^^
+
+Two of our old integrated tests for the views layer are failing. What's happening?
+
+----
+ValueError: Cannot assign "<SimpleLazyObject:
+<django.contrib.auth.models.AnonymousUser object at 0x7fbad1cb6c10>>":
+"List.owner" must be a "User" instance.
+----
+
+Ah, the old view isn't discerning enough about what it does with list
+owners yet:
+
+[role="sourcecode currentcontents"]
+.lists/views.py
+[source,python]
+----
+    if form.is_valid():
+        list_ = List()
+        list_.owner = request.user
+        list_.save()
+----
+
+
+This is the point at which we realise that our old code wasn't fit for purpose.
+Let's fix it to get all our tests passing:
+
+[role="sourcecode"]
+.lists/views.py (ch19l031)
+[source,python]
+----
+def new_list(request):
+    form = ItemForm(data=request.POST)
+    if form.is_valid():
+        list_ = List()
+        if request.user.is_authenticated():
+            list_.owner = request.user
+        list_.save()
+        form.save(for_list=list_)
+        return redirect(list_)
+    else:
+        return render(request, 'home.html', {"form": form})
+
+
+def new_list2(request):
+    [...]
+----
+
+NOTE:  One of the benefits of integrated tests is that they help you to catch
+    less predictable interactions like this.  We'd forgotten about to write a test
+    for the case where the user is not authenticated, but because the integrated
+    tests use the stack all the way down, errors from the model layer came up
+    to let us know we'd forgotten something,
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 48 tests in 0.175s
+OK
+----
+
+
+The moment of truth (and the risks of mocking)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+So let's try switching out our old view, and activating our new view. We
+can make the swap in 'urls.py':
+
+[role="sourcecode"]
+.lists/urls.py
+[source,python]
+----
+[...]
+    url(r'^new$', 'lists.views.new_list2', name='new_list'),
+----
+
+We should also remove the `unittest.skip` from our integrated test class,
+and make it point at our new view (`new_list2`), to see if our new code for
+list owners really works:
+
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l033)
+[source,python]
+----
+class NewListViewIntegratedTest(TestCase):
+
+    def test_saving_a_POST_request(self):
+        [...]
+
+    def test_list_owner_is_saved_if_user_is_authenticated(self):
+        request = HttpRequest()
+        request.user = User.objects.create(email='a@b.com')
+        request.POST['text'] = 'new list item'
+        new_list2(request)
+        list_ = List.objects.first()
+        self.assertEqual(list_.owner, request.user)
+----
+
+So what happens when we run our tests? Oh no!
+
+
+----
+ERROR: test_list_owner_is_saved_if_user_is_authenticated
+[...]
+ERROR: test_saving_a_POST_request
+[...]
+ERROR: test_redirects_after_POST
+(lists.tests.test_views.NewListViewIntegratedTest)
+  File "/workspace/superlists/lists/views.py", line 30, in new_list2
+    return redirect(list_)
+[...]
+TypeError: argument of type 'NoneType' is not iterable
+
+FAILED (errors=3)
+----
+
+
+Here's an important lesson to learn about test isolation: it might help you
+to drive out good design for individual layers, but it won't automatically 
+verify the integration 'between' your layers.
+
+What's happened here is that the view was expecting the form to return 
+a list item:
+
+[role="sourcecode currentcontents"]
+.lists/views.py
+[source,python]
+----
+        list_ = form.save(owner=request.user)
+        return redirect(list_)
+----
+
+But we forgot to make it return anything:
+
+[role="sourcecode currentcontents"]
+lists/forms.py
+
+[role="small-code"]
+[source,python]
+----
+    def save(self, owner):
+        if owner.is_authenticated():
+            List.create_new(first_item_text=self.cleaned_data['text'], owner=owner)
+        else:
+            List.create_new(first_item_text=self.cleaned_data['text'])
+----
+
+
+
+Thinking of interactions between layers as "contracts"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ultimately, even if we had been writing nothing but isolated unit tests, our
+functional tests would have picked up this particular slip-up.  But ideally
+we'd want our feedback cycle to be quicker -- functional tests may take a
+couple of minutes to run, or even a few hours once your app starts to grow.  Is
+there any way to avoid this sort of problem before it happens?
+
+Methodologically, the way to do it is to think about the interaction between
+your layers in terms of contracts.  Whenever we mock out the behaviour of one
+layer, we have to make a mental note that there is now an implicit contract
+between the layers, and that a mock on one layer should probably translate into
+a test at the layer below.
+
+Here's the part of the contract that we missed:
+
+[role="sourcecode currentcontents"]
+.lists/tests/test_views.py
+[source,python]
+----
+    @patch('lists.views.redirect')
+    def test_redirects_to_form_returned_object_if_form_valid(
+        self, mock_redirect, mockNewListForm
+    ):
+        mock_form = mockNewListForm.return_value
+        mock_form.is_valid.return_value = True
+
+        response = new_list2(self.request)
+
+        self.assertEqual(response, mock_redirect.return_value)
+        mock_redirect.assert_called_once_with(mock_form.save.return_value)  #<1>
+----
+
+<1> The mocked `form.save` function is returning an object, which we expect
+    our view to be able to use.
+
+
+Identifying implicit contracts
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+It's worth reviewing each of the tests in `NewListViewUnitTest` and seeing
+what each mock is saying about the implicit contract:
+
+[role="sourcecode currentcontents"]
+.lists/tests/test_views.py
+[source,python]
+----
+    def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
+        [...]
+        mockNewListForm.assert_called_once_with(data=self.request.POST)  #<1>
+
+
+    def test_saves_form_with_owner_if_form_valid(self, mockNewListForm):
+        mock_form = mockNewListForm.return_value
+        mock_form.is_valid.return_value = True  #<2>
+        new_list2(self.request)
+        mock_form.save.assert_called_once_with(owner=self.request.user)  #<3>
+
+
+    def test_does_not_save_if_form_invalid(self, mockNewListForm):
+        [...]
+        mock_form.is_valid.return_value = False  #<2>
+        [...]
+
+
+    @patch('lists.views.redirect')
+    def test_redirects_to_form_returned_object_if_form_valid(
+        self, mock_redirect, mockNewListForm
+    ):
+        [...]
+        mock_redirect.assert_called_once_with(mock_form.save.return_value)  #<4>
+
+    def test_renders_home_template_with_form_if_form_invalid(
+        [...]
+----
+
+<1> We need to be able to initialise our form by passing it a POST request
+    as data.
+
+<2> It should have an `is_valid()` function which returns True or False
+    appropriately, based on the input data.
+
+<3> The form should have a `.save` method which will accept a `request.user`,
+    which may or may not be a logged-in user, and deal with it appropriately.
+
+<4> The form's `.save` method should return a new list object, for our view
+    to redirect the user to.
+
+If we have a look through our form tests, we'll see that, actually, only item %3%
+is tested explicitly.  On items %1% and %2% we were lucky -- they're default 
+features of a Django `ModelForm`, and they are actually covered by our
+tests for the parent `ItemForm` class.  
+
+But contract clause number %4% managed to slip through the net.
+
+NOTE: When doing outside-in TDD with isolated tests, you need to keep track of
+    each test's implicit assumptions about the contract which the next layer
+    should implement, and remember to test each of those in turn later.  You
+    could use our scratchpad for this, or create a placeholder test with
+    a `self.fail`.
+
+
+Fixing the oversight
+^^^^^^^^^^^^^^^^^^^^
+
+Let's add a new test that our form should return the new saved list:
+
+[role="sourcecode"]
+.lists/tests/test_forms.py (ch19l038-1)
+[source,python]
+----
+    @patch('lists.forms.List.create_new')
+    def test_save_returns_new_list_object(self, mock_List_create_new):
+        user = Mock(is_authenticated=lambda: True)
+        form = NewListForm(data={'text': 'new item text'})
+        form.is_valid()
+        response = form.save(owner=user)
+        self.assertEqual(response, mock_List_create_new.return_value)
+----
+
+And, actually, this is a good example -- we have an implicit contract
+with the `List.create_new`, we want it to return the new list object.
+Let's add a placeholder test for that.
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch19l038-2)
+[source,python]
+----
+class ListModelTest(TestCase):
+    [...]
+
+    def test_create_returns_new_list_object(self):
+        self.fail()
+----
+
+So, we have one test failures that's telling us to fix the form save:
+
+----
+AssertionError: None != <MagicMock name='create_new()' id='139802647565536'>
+FAILED (failures=2, errors=3)
+----
+
+Like this:
+
+
+[role="sourcecode"]
+lists/forms.py (ch19l039-1)
+
+[role="small-code"]
+[source,python]
+----
+class NewListForm(ItemForm):
+
+    def save(self, owner):
+        if owner.is_authenticated():
+            return List.create_new(first_item_text=self.cleaned_data['text'], owner=owner)
+        else:
+            return List.create_new(first_item_text=self.cleaned_data['text'])
+----
+
+That's a start, now we should look at our placeholder test:
+
+----
+[...]
+FAIL: test_create_returns_new_list_object
+    self.fail()
+AssertionError: None
+
+FAILED (failures=1, errors=3)
+----
+
+We flesh it out:
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch19l039-2)
+[source,python]
+----
+    def test_create_returns_new_list_object(self):
+        returned = List.create_new(first_item_text='new item text')
+        new_list = List.objects.first()
+        self.assertEqual(returned, new_list)
+----
+
+...
+
+----
+AssertionError: None != <List: List object>
+----
+
+And we add our return value:
+
+[role="sourcecode"]
+.lists/models.py (ch19l039-3)
+[source,python]
+----
+    @staticmethod
+    def create_new(first_item_text, owner=None):
+        list_ = List.objects.create(owner=owner)
+        Item.objects.create(text=first_item_text, list=list_)
+        return list_
+----
+
+And that gets us to a fully passing test suite:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 50 tests in 0.169s
+
+OK
+----
+
+
+One more test
+~~~~~~~~~~~~~
+
+That's our code for saving list owners test-driven all the way down and 
+working.  But our functional test isn't passing quite yet:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"Reticulate splines"}' ; Stacktrace: 
+----
+
+
+It's because we have one last feature to implement, the `.name` attribute on list
+objects.  Again, we can grab the test and code from the last chapter:
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch19l040)
+[source,python]
+----
+    def test_list_name_is_first_item_text(self):
+        list_ = List.objects.create()
+        Item.objects.create(list=list_, text='first item')
+        Item.objects.create(list=list_, text='second item')
+        self.assertEqual(list_.name, 'first item')
+
+----
+
+(Again, since this is a model-layer test, it's OK to use the ORM. You could
+conceivable write this test using mocks, but there wouldn't be much point).
+
+[role="sourcecode"]
+.lists/models.py (ch19l041)
+[source,python]
+----
+    @property
+    def name(self):
+        return self.item_set.first().text
+----
+
+
+And that gets us to a passing FT!
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+
+Ran 1 test in 21.428s
+
+OK
+----
+
+
+Tidy-up: what to keep from our integrated test suite
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now everything is working, we can remove some redundant tests, and decide
+whether we want to keep any of our old integrated tests.
+
+
+Removing redundant code at the forms layer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We can get rid of the test for the old save method on the `ItemForm`:
+
+[role="sourcecode"]
+.lists/tests/test_forms.py
+[source,diff]
+----
+--- a/lists/tests/test_forms.py
++++ b/lists/tests/test_forms.py
+@@ -23,14 +23,6 @@ class ItemFormTest(TestCase):
+
+         self.assertEqual(form.errors['text'], [EMPTY_LIST_ERROR])
+ 
+ 
+-    def test_form_save_handles_saving_to_a_list(self):
+-        list_ = List.objects.create()
+-        form = ItemForm(data={'text': 'do me'})
+-        new_item = form.save(for_list=list_)
+-        self.assertEqual(new_item, Item.objects.first())
+-        self.assertEqual(new_item.text, 'do me')
+-        self.assertEqual(new_item.list, list_)
+-
+----
+
+
+And in our actual code, we can get rid of two redundant save methods in
+'forms.py':
+
+[role="sourcecode"]
+.lists/forms.py
+[source,diff]
+----
+--- a/lists/forms.py
++++ b/lists/forms.py
+@@ -22,11 +22,6 @@ class ItemForm(forms.models.ModelForm):
+
+         self.fields['text'].error_messages['required'] = EMPTY_LIST_ERROR
+ 
+ 
+-    def save(self, for_list):
+-        self.instance.list = for_list
+-        return super().save()
+-
+-
+ 
+ class NewListForm(ItemForm):
+ 
+@@ -52,8 +47,3 @@ class ExistingListItemForm(ItemForm):
+
+             e.error_dict = {'text': [DUPLICATE_ITEM_ERROR]}
+             self._update_errors(e)
+-
+-
+-    def save(self):
+-        return forms.models.ModelForm.save(self)
+-
+----
+
+
+Removing the old implementation of the view
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We can now completely remove the old `new_list` view, and rename `new_list2` to
+`new_list`:
+
+[role="sourcecode skipme"]
+.lists/tests/test_views.py
+[source,diff]
+----
+-from lists.views import new_list, new_list2
++from lists.views import new_list
+ 
+ 
+ class HomePageTest(TestCase):
+@@ -75,7 +75,7 @@ class NewListViewIntegratedTest(TestCase):
+         request = HttpRequest()
+         request.user = User.objects.create(email='a@b.com')
+         request.POST['text'] = 'new list item'
+-        new_list2(request)
++        new_list(request)
+         list_ = List.objects.first()
+         self.assertEqual(list_.owner, request.user)
+
+@@ -91,21 +91,21 @@ class NewListViewUnitTest(unittest.TestCase): #<1>
+ 
+     def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
+-        new_list2(self.request)
++        new_list(self.request)
+
+[.. several more]
+
+----
+
+[role="sourcecode dofirst-ch19l045"]
+.lists/urls.py
+[source,diff]
+----
+--- a/lists/urls.py
++++ b/lists/urls.py
+@@ -2,6 +2,6 @@ from django.conf.urls import patterns, url
+ 
+ urlpatterns = patterns('',
+     url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
+-    url(r'^new$', 'lists.views.new_list2', name='new_list'),
++    url(r'^new$', 'lists.views.new_list', name='new_list'),
+     url(r'^users/(.+)/$', 'lists.views.my_lists', name='my_lists'),
+ )
+----
+
+
+[role="sourcecode"]
+.lists/views.py (ch19l047)
+[source,python]
+----
+def new_list(request):
+    form = NewListForm(data=request.POST)
+    if form.is_valid():
+        list_ = form.save(owner=request.user)
+        [...]
+----
+
+
+And a quick check that all the tests still pass:
+
+----
+OK
+----
+
+
+Removing redundant code at the forms layer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Finally, we have to decide what (if anything) to keep from our integrated test
+suite.
+
+One option is to throw them all away, and decide that the FTs will pick up any
+integration problems.  That's perfectly valid.
+
+On the other hand, we saw how integrated tests can warn you when you've made
+small mistakes in integrated your layers.  We could keep just a couple of tests
+around as "sanity-checks", to give us a quicker feedback cycle. 
+
+How about these three:
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch19l048)
+[source,python]
+----
+class NewListViewIntegratedTest(TestCase):
+
+    def test_saving_a_POST_request(self):
+        self.client.post(
+            '/lists/new',
+            data={'text': 'A new list item'}
+        )
+        self.assertEqual(Item.objects.count(), 1)
+        new_item = Item.objects.first()
+        self.assertEqual(new_item.text, 'A new list item')
+
+
+    def test_for_invalid_input_doesnt_save_but_shows_errors(self):
+        response = self.client.post('/lists/new', data={'text': ''})
+        self.assertEqual(List.objects.count(), 0)
+        self.assertContains(response, escape(EMPTY_LIST_ERROR))
+
+
+    def test_saves_list_owner_if_user_logged_in(self):
+        request = HttpRequest()
+        request.user = User.objects.create(email='a@b.com')
+        request.POST['text'] = 'new list item'
+        new_list(request)
+        list_ = List.objects.first()
+        self.assertEqual(list_.owner, request.user)
+----
+
+If you're going to keep any intermediate-level tests at all,  I like these
+three because they feel like they're doing the most "integration" jobs:  they
+test the full stack, from the request down to the actual database, and they
+cover the three most important use cases of our view.
+
+
+Conclusions: When to write isolated vs integrated tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Django's testing tools make it very easy to quickly put together integrated
+tests.  The test runner helpfully creates a fast, in-memory version of your
+database and resets it for you in between each tests.  The `TestCase` class
+and the Test Client make it easy to test your views, from checking whether
+database objects are modified, confirming that your URL mappings work, and
+inspecting the rendering of the templates.  This lets you get started with
+testing very easily and get good coverage across your whole stack.
+
+On the other hand, these kinds of integrated tests won't necessarily deliver
+the full benefit that rigorous unit testing and outside-in TDD are meant to
+confer in terms of design.
+
+If we look at the example in this chapter, compare the code we had before and
+after:
+
+
+[role="sourcecode skipme"]
+.Before
+[source,python]
+----
+def new_list(request):
+    form = ItemForm(data=request.POST)
+    if form.is_valid():
+        list_ = List()
+        if not isinstance(request.user, AnonymousUser):
+            list_.owner = request.user
+        list_.save()
+        form.save(for_list=list_)
+        return redirect(list_)
+    else:
+        return render(request, 'home.html', {"form": form})
+----
+
+[role="sourcecode skipme"]
+.After
+[source,python]
+----
+def new_list(request):
+    form = NewListForm(data=request.POST)
+    if form.is_valid():
+        list_ = form.save(owner=request.user)
+        return redirect(list_)
+    return render(request, 'home.html', {'form': form})
+----
+
+
+If we hadn't bothered to go down the isolation route, would we have bothered to
+refactor the view function?  I know I didn't in the first draft of this book.
+I'd like to think I would have "in real life", but it's hard to be sure.  But
+writing isolated tests does make you very aware of where the complexities in
+your code lie.
+
+
+Let complexity be your guide
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+I'd say the point at which isolated tests start to become worth it is to do 
+with complexity.  The example in this book is extremely simple, so it's not
+often been worth it so far.  Even in the example in this chapter, I can
+convince myself I didn't really 'need' to write those isolated tests.
+
+But once an application gains a little more complexity -- if it starts growing
+any more layers between views and models, if you find yourself writing  helper
+methods, or your own classes, then you will probably gain from writing more 
+isolated tests.
+
+
+Should you do both?
+^^^^^^^^^^^^^^^^^^^
+
+We already have our suite of functional tests, which will serve the purpose
+of telling us if we ever make any mistakes in integrating the different parts
+of our code together.  Writing isolated tests can help us to drive out better
+design for our code, and to verify correctness in more fine detail.  Would a 
+middle layer of integration tests serve any additional purpose?
+
+I think the answer is potentially yes, if they can provide a faster feedback
+cycle, and help you identify more clearly what integration problems you suffer
+from -- their tracebacks may provide you with better debug information than you
+would get from a functional test, for example.
+
+There may even be a case for building them as a separate test suite -- you
+could have one suite of fast, isolated unit tests that don't even use
+`manage.py`, because they don't need any of the database cleanup and teardown
+that the Django test runner gives you, and then the intermediate layer that
+uses Django, and finally the functional tests layer that, say, talks to a
+staging server.  It may be worth it if each layer delivers incremental
+benefits.
+
+It's a judgement call.  I hope that, by going through this chapter, I've given
+you a feel for what the trade-offs are.
+
+
+Onwards!
+^^^^^^^^
+
+We're happy with our new version, so let's bring them across to master:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add .*
+$ *git commit -m"add list owners via forms. more isolated tests"*
+$ *git checkout master*
+$ *git checkout -b master-noforms-noisolation-bak* # optional backup
+$ *git checkout master*
+$ *git reset --hard more-isolation*  # reset master to our branch.
+----
+
+In the meantime -- those FTs are taking an annoyingly long time to run.  I
+wonder if there's something we can do about that?
+
+
+.On the pros and cons of different types of test, and decoupling ORM code
+*******************************************************************************
+
+Functional tests::
+    * Provide the best guarantee that your application really works correctly,
+    from the point of view of the user.
+    * But: it's a slower feedback cycle,
+    * And they don't necessarily help you write clean code.
+
+Integrated tests (reliant on, eg, the ORM or the Django Test Client)::
+    * Are quick to write,
+    * Easy to understand,
+    * Will warn you of any integration issues,
+    * But may not always drive good design (that's up to you!).
+    * And are usually slower than isolated tests
+
+Isolated ("mocky") tests::
+    * These involve the most hard work.
+    * They can be harder to read and understand,
+    * But: these are the best ones for guiding you towards better design.
+    * And they run the fastest.
+
+Decoupling our application from ORM code::
+    When striving to write isolated tests, one of the consequences is that we
+    find ourselves forced to remove ORM code from places like views and forms,
+    by hiding it behind helper functions or methods.  This can be beneficial in
+    terms of decoupling your application from the ORM, but also just because it
+    makes your code more readable. As with all things, it's a judgement call as
+    to whether the additional effort is worth it in particular circumstances.
+
+*******************************************************************************
 

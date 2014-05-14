@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
+import time
 
 from book_tester import (
     ChapterTest,
@@ -30,6 +31,7 @@ class Chapter4Test(ChapterTest):
 
         while self.pos < len(self.listings):
             print(self.pos, self.listings[self.pos].type)
+            time.sleep(0.5)  # let runserver fs watcher catch up
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)

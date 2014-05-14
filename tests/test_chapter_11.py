@@ -15,20 +15,19 @@ class Chapter11Test(ChapterTest):
         self.assertEqual(self.listings[1].type, 'code listing')
         self.assertEqual(self.listings[2].type, 'output')
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
-        # other prep
-        self.sourcetree.run_command('mkdir ../database')
-        self.sourcetree.run_command('python3 manage.py syncdb --noinput')
-
         # skips
-        self.skip_with_check(31, '# review changes') # diff
+        self.skip_with_check(34, '# review changes') # diff
+
+        # prep
+        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.prep_database()
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 50
+            self.pos = 49
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch11l023')
+                self.sourcetree.get_commit_spec('ch11l022')
             ))
 
 
@@ -37,7 +36,7 @@ class Chapter11Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no)
+        self.check_final_diff(self.chapter_no, ignore_moves=True)
 
 
 if __name__ == '__main__':

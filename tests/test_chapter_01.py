@@ -29,16 +29,24 @@ class Chapter1Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
-        self.write_to_file(self.listings[0])
+        self.skip_with_check(6, 'Validating models...') # after runserver
+        status_pos = 19
+        assert self.listings[status_pos] == 'git status'
+
+        # first code listing
+        self.recognise_listing_and_process_it()
+
+        # first couple of commands needs manual cwd-setting
         first_output = self.run_command(self.listings[1], cwd=self.tempdir)
         self.assert_console_output_correct(first_output, self.listings[2])
-
         self.run_command(self.listings[3], cwd=self.tempdir) # startproject
 
-        self.assert_directory_tree_correct(self.listings[4])
+        # 4. tree
+        self.assert_directory_tree_correct(self.listings[4], cwd=self.tempdir)
+        self.pos = 5
 
-        self.run_command(self.listings[5]) #runserver
-        self.skip_with_check(6, 'Validating models...')
+        # 6. runserver
+        self.recognise_listing_and_process_it()
 
         second_ft_run_output = self.run_command(self.listings[7], cwd=self.tempdir)
         self.assertFalse(second_ft_run_output)
@@ -51,39 +59,41 @@ class Chapter1Test(ChapterTest):
         )
         self.run_command(self.listings[11], cwd=self.tempdir) # mv
         self.run_command(self.listings[12], cwd=self.tempdir) # cd
-        git_init_output = self.run_command(self.listings[13])
-        self.assert_console_output_correct(git_init_output, self.listings[14])
 
-        ls_output = self.run_command(self.listings[15])
-        self.assert_console_output_correct(
-            ls_output, self.listings[16], ls=True
-        )
-        self.run_command(self.listings[17]) # git add
-        git_status_output = self.run_command(self.listings[18])
-        self.assert_console_output_correct(git_status_output, self.listings[19])
+        self.pos = 13
 
-        rm_cached_output = self.run_command(self.listings[20])
-        self.assert_console_output_correct(rm_cached_output, self.listings[21])
-        self.run_command(self.listings[22]) # ignore __pycache__
-        self.run_command(self.listings[23]) # ignore pycs
+        while self.pos < status_pos:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
 
-        git_status_output = self.run_command(self.listings[24])
-        self.assert_console_output_correct(git_status_output, self.listings[25])
+        status_output = self.run_command(self.listings[status_pos])
+        expected_output = self.listings[status_pos + 1]
+        self.assert_console_output_correct(status_output, expected_output)
+        self.pos = status_pos + 2
 
-        self.run_command(self.listings[26])
-        #self.run_command(self.listings[26]) #git commit, no am
-        commit = Command(self.listings[27] + ' -am"first commit"')
-        self.run_command(commit)
-        self.listings[27].was_run = True # TODO
-        local_repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../source/chapter_01/superlists'))
-        self.run_command(Command('git remote add repo "%s"' % (local_repo_path,)))
-        self.run_command(Command('git fetch repo'))
-        diff = self.run_command(Command('git diff -b repo/chapter_01'))
-        actual_diff_lines = diff.strip().split('\n')
-        print('actual diff lines', actual_diff_lines)
-        self.check_final_diff(1, ignore_secret_key=True)
+        while self.pos < len(self.listings):
+            print(self.pos)
+            self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
+
+        # manually add repo, we didn't do it at the beginning
+        local_repo_path = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '../source/chapter_01/superlists'
+        ))
+        self.sourcetree.run_command(
+            'git remote add repo "{}"'.format(local_repo_path)
+        )
+        self.sourcetree.run_command(
+            'git fetch repo'
+        )
+
+        # manual fix of dev settings docs links
+        self.sourcetree.run_command(
+            'sed -i "s:/dev/:/1.7/:g" superlists/settings.py'
+        )
+
+        self.check_final_diff(self.chapter_no, ignore_secret_key=True)
 
 
 if __name__ == '__main__':

@@ -1,17 +1,20 @@
-More advanced Forms 
+[[advanced-forms-chapter]]
+More Advanced Forms 
 -------------------
 
+
+
 Now let's look at some more advanced forms usage.  We've helped our users
-to avoid blank list items, let's help them avoid duplicate items.
+to avoid blank list items, now let's help them avoid duplicate items.
 
-NOTE: This chapter goes into more intricate details of Django's form
-validation, and you can consider it optional.  If you're still learning Django,
-there's good stuff in here.  If you want to skip ahead, that's OK too. Make
-sure you take a quick look at the aside on developer stupidity, and the recap
-on testing views at the end.
+This chapter goes into more intricate details of Django's form validation, and
+you can consider it optional if you already know all about customising Django
+forms.  If you're still learning Django, there's good stuff in here.  If you
+want to skip ahead, that's OK too. Make sure you take a quick look at the aside
+on developer stupidity, and the recap on testing views at the end.
 
 
-Another FT for duplicate items
+Another FT for Duplicate Items
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 We add a second test method to `ItemValidationTest`:
@@ -36,7 +39,7 @@ def test_cannot_add_duplicate_items(self):
 ----
 
 Why have two test methods rather than extending one, or having a new file
-and class?  It's a judgement call.  These two feel closely related, they're
+and class?  It's a judgement call.  These two feel closely related; they're
 both about validation on the same input field, so it feels right to
 keep them in the same file.  On the other hand, they're logically separate
 enough that it's practical to keep them in different methods.
@@ -52,36 +55,35 @@ element: {"method":"css selector","selector":".has-error"}' ; Stacktrace:
 Ran 2 tests in 9.613s
 ----
 
-OK, so we know the first of the two tests passes now, is there a way to run
-just the failing one, I hear you ask!  Why yes indeed:
+OK, so we know the first of the two tests passes now. Is there a way to run
+just the failing one, I hear you ask?  Why yes indeed:
 
-//TODO: unskip
-[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test \
-functional_tests.test_list_item_validation.ItemValidationTest.test_cannot_add_duplicate_items*] 
+$ pass:quotes[*python3 manage.py test functional_tests.\
+test_list_item_validation.ItemValidationTest.test_cannot_add_duplicate_items*] 
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
 element: {"method":"css selector","selector":".has-error"}' ; Stacktrace: 
 ----
 
 
-Preventing duplicates at the model layer
+Preventing Duplicates at the Model Layer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-We add another test to our model unit tests to check that duplicate items
-in the same list raise an error
+Here's what we really wanted to do.  It's a new test that checks that duplicate
+items in the same list raise an error:
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch09l028)
 [source,python]
 ----
-def test_cannot_save_duplicate_items(self):
-    list1 = List.objects.create()
-    Item.objects.create(list=list1, text='bla')
+def test_duplicate_items_are_invalid(self):
+    list_ = List.objects.create()
+    Item.objects.create(list=list_, text='bla')
     with self.assertRaises(ValidationError):
-        Item.objects.create(list=list1, text='bla')
+        item = Item(list=list_, text='bla')
+        item.full_clean()
 ----
 
 And, while it occurs to us, we add another test to make sure we don't 
@@ -96,11 +98,12 @@ def test_CAN_save_same_item_to_different_lists(self):
     list1 = List.objects.create()
     list2 = List.objects.create()
     Item.objects.create(list=list1, text='bla')
-    Item.objects.create(list=list2, text='bla') # should not raise
+    item = Item(list=list2, text='bla')
+    item.full_clean()  # should not raise
 ----
 
 I always like to put a little comment for tests which are checking 
-that a particular use case should 'not' raise an error, otherwise
+that a particular use case should 'not' raise an error; otherwise
 it can be hard to see what's being tested.
 
 ----
@@ -115,8 +118,8 @@ If we want to get it deliberately wrong, we can do this:
 [source,python]
 ----
 class Item(models.Model):
-    text = models.TextField(unique=True)
-    list = models.ForeignKey(List)
+    text = models.TextField(default='', unique=True)
+    list = models.ForeignKey(List, default=None)
 ----
 
 That lets us check that our second test really does pick up on this
@@ -124,15 +127,15 @@ problem:
 
 ----
 Traceback (most recent call last):
-  File "/workspace/superlists/lists/tests/test_models.py", line 60, in
+  File "/workspace/superlists/lists/tests/test_models.py", line 62, in
 test_CAN_save_same_item_to_different_lists
-    Item.objects.create(list=list2, text='bla') # should not raise
+    item.full_clean()  # should not raise
     [...]
 django.core.exceptions.ValidationError: {'text': ['Item with this Text already
 exists.']}
 ----
 
-.An aside on when to test for developer stupidity
+.An Aside on When to Test for Developer Stupidity
 *******************************************************************************
 One of the judgement calls in testing is when you should write tests that sound
 like "check we haven't done something stupid".  In general, you should be wary
@@ -163,50 +166,44 @@ screwey or perverse:
 ----
 def adder(a, b):
     # unlikely code!
-    if a = 3:
+    if a == 3:
         return 666
     else:
         return a + b
 ----
 
 One way of putting it is that you should trust yourself not to do something
-'deliberately' stupid, but not to do something 'accidentally' stupid.
+'deliberately' stupid, but not something 'accidentally' stupid.
 *******************************************************************************
 
-Just like ModelForms, models have a `class Meta`, and that's where we can
+Just like ++ModelForm++s, models have a `class Meta`, and that's where we can
 implement a constraint which says that that an item must be unique for a
-particular list, or in other words, that text and list must be unique together:
+particular list, or in other words, that `text` and `list` must be unique together:
 
 [role="sourcecode"]
 .lists/models.py (ch09l031)
 [source,python]
 ----
 class Item(models.Model):
-    text = models.TextField()
-    list = models.ForeignKey(List)
+    text = models.TextField(default='')
+    list = models.ForeignKey(List, default=None)
 
     class Meta:
         unique_together = ('list', 'text')
-
-
-    def save(self, *args, **kwargs):
-        [...]
 ----
 
 You might want to take a quick peek at the 
-https://docs.djangoproject.com/en/1.6/ref/models/options/[Django docs on model
-meta attributes] at this point.
+https://docs.djangoproject.com/en/1.7/ref/models/options/[Django docs on model
+`Meta` attributes] at this point.
 
 
-A little digression on Queryset ordering and string representations
+A Little Digression on Queryset Ordering and String Representations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
 When we run the tests they reveal an unexpected failure:
 
-TODO: Some users have reported they don't see this unexpected fail. Test on
-various platforms, amend if necessary.
-
+[role="skipme"]
 ----
 ======================================================================
 FAIL: test_saving_and_retrieving_items
@@ -221,10 +218,13 @@ AssertionError: 'Item the second' != 'The first (ever) list item'
 [...]
 ----
 
+NOTE: Depending on your platform and its SQLite installation, you may
+not see this error. You can follow along anyway; the code and tests are
+interesting in their own right.
+
 That's a bit of a puzzler. A bit of print-based debugging:
 
-[role="skipme"]
-[role="sourcecode"]
+[role="sourcecode skipme"]
 .lists/tests/test_models.py
 [source,python]
 ----
@@ -273,22 +273,21 @@ AssertionError: [<Item: Item object>, <Item: Item object>, <Item: Item object>]
 ----
 
 We need a better string representation for our objects.  Let's add another
-unit tests:
+unit test:
 
 
 NOTE: Ordinarily you would be wary of adding more failing tests when you
-already have some -- it makes reading test output that much more complicated,
+already have some--it makes reading test output that much more complicated,
 and just generally makes you nervous. Will we ever get back to a working
 state? In this case, they're all quite simple tests, so I'm not worried.
 
 [role="sourcecode"]
-.lists/tests/test_models.py (ch09l033)
+.lists/tests/test_models.py (ch12l008)
 [source,python]
 ----
 def test_string_representation(self):
-    list1 = List.objects.create() 
-    item1 = Item.objects.create(list=list1, text='some text')
-    self.assertEqual(str(item1), item1.text)
+    item = Item(text='some text')
+    self.assertEqual(str(item), 'some text')
 ----
 
 That gives us:
@@ -312,20 +311,21 @@ class Item(models.Model):
 ----
 
 NOTE: in Python 2.x versions of Django, the string representation method used
-to be __unicode__. Like much string handling, this is simplified in Python 3.
+to be `__unicode__`. Like much string handling, this is simplified in Python 3.
 See the
-https://docs.djangoproject.com/en/1.6/topics/python3/#str-and-unicode-methods[docs].
+https://docs.djangoproject.com/en/1.7/topics/python3/#str-and-unicode-methods[docs].
 
 
-Now we're down to 2 failures, and the ordering test has a more readable failure
+Now we're down to two failures, and the ordering test has a more readable failure
 message:
 
+[role="skipme"]
 ----
 AssertionError: [<Item: 3>, <Item: i1>, <Item: item 2>] != [<Item: i1>, <Item:
 item 2>, <Item: 3>]
 ----
 
-We can fix that in the class Meta:
+We can fix that in the `class Meta`:
 
 [role="sourcecode"]
 .lists/models.py (ch09l035)
@@ -343,12 +343,13 @@ AssertionError: [<Item: i1>, <Item: item 2>, <Item: 3>] != [<Item: i1>, <Item:
 item 2>, <Item: 3>]
 ----
 
-Urp?  It has worked, you can see the items 'are' in the same order, but the
-tests are confused.  I keep running into this problem actually -- Django
+Urp?  It has worked; you can see the items 'are' in the same order, but the
+tests are confused.  I keep running into this problem actually--Django
 querysets don't compare well with lists.  We can fix it by converting the
-queryset to a list in our test:
-
-TODO: investigate new Django test helper, "assertQuerySetEqual"?
+queryset to a listfootnote:[You could also check out `assertSequenceEqual` from `unittest`, and
+`assertQuerysetEqual` from Django's test tools, although I confess when I last
+looked at `assertQuerysetEqual` I was quite baffled...]
+in our test:
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch09l036)
@@ -360,65 +361,170 @@ TODO: investigate new Django test helper, "assertQuerySetEqual"?
     )
 ----
 
-That works, we get a fully passing test suite:
+That works; we get a fully passing test suite:
 
 ----
 OK
 ----
 
-Time for a commit!
+
+Rewriting the Old Model Test 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+That long-winded model test did serendipitously help us find an unexpected
+bug, but now it's time to rewrite it. I wrote it in a very verbose style to
+introduce the Django ORM, but in fact, now that we have the explicit test for
+ordering, we can get the same coverage from a couple of much shorter tests. 
+Delete `test_saving_and_retrieving_items` and replace with this:
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch12l010)
+[source,python]
+----
+class ListAndItemModelsTest(TestCase):
+
+    def test_default_text(self):
+        item = Item()
+        self.assertEqual(item.text, '')
+
+        
+    def test_item_is_related_to_list(self):
+        list_ = List.objects.create()
+        item = Item()
+        item.list = list_
+        item.save()
+        self.assertIn(item, list_.item_set.all())
+
+    [...]
+----
+ 
+That's more than enough really--a check of the default values of attributes
+on a freshly initialized model object is enough to sanity-check that we've
+probably set some fields up in 'models.py'.  The "item is related to list" test
+is a real "belt and braces" test to make sure that our foreign key relationship
+works.
+
+While we're at it, we can split this file out into tests for `Item` and tests
+for `List` (there's only one of the latter, `test_get_absolute_url`:
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch12l011)
+[source,python]
+----
+class ItemModelTest(TestCase):
+
+    def test_default_text(self):
+        [...]
 
 
+
+class ListModelTest(TestCase):
+
+    def test_get_absolute_url(self):
+        [...]
+----
+
+That's neater and tidier:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 29 tests in 0.092s
+
+OK
+----
+
+
+Some Integrity Errors Do Show Up on Save
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A final aside before we move on. Do you remember I mentioned in
+<<manual-validation-chapter>> that some data integrity errors 'are' picked up
+on save?  It all depends on whether the integrity constraint is actually being
+enforced by the database.
+
+Try running `makemigrations` and you'll see that Django wants to add the 
+`unique_together` constraint to the database itself, rather than just having
+it as an application-layer constraint:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'lists':
+  0005_auto_20140414_2038.py:
+    - Alter unique_together for item (1 constraints)
+----
+
+Now if we change our duplicates test to do a `.save` instead of a
+`.full_clean`...
+
+[role="sourcecode"]
+.lists/tests/test_models.py
+[source,python]
+----
+    def test_duplicate_items_are_invalid(self):
+        list_ = List.objects.create()
+        Item.objects.create(list=list_, text='bla')
+        with self.assertRaises(ValidationError):
+            item = Item(list=list_, text='bla')
+            # item.full_clean()
+            item.save()
+----
+
+It gives:
+
+----
+ERROR: test_duplicate_items_are_invalid (lists.tests.test_models.ItemModelTest)
+[...]
+    return Database.Cursor.execute(self, query, params)
+sqlite3.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
+lists_item.text
+[...]
+django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
+lists_item.text
+----
+
+You can see that the error bubbles up from SQLite, and it's a different
+error to the one we want, an `IntegrityError` instead of a `ValidationError`.
+
+
+Let's revert our changes to the test, and see them all passing again:
+
+[role="dofirst-ch12l013"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
+Ran 29 tests in 0.092s
+OK
+----
+
+And now it's time to commit our model-layer changes:
+
+[role="small-code"]
 [subs="specialcharacters,quotes"]
 ----
-$ *git diff*
+$ *git status* # should show changes to tests + models and new migration
+# let's give our new migration a better name
+$ @mv lists/migrations/0005_auto* lists/migrations/0005_list_item_unique_together.py@
+$ *git add lists*
+$ *git diff --staged*
 $ *git commit -am "Implement duplicate item validation at model layer"*
 ----
 
-The next task is to handle the validation error in the view. Before we do that,
-a quick aside, for the curious. Do you remember I mentioned earlier that some
-data integrity errors 'are' picked up on save?  Try temporarily disabling our
-`.full_clean` in the model save:
 
-[role="sourcecode"]
-.lists/models.py
-[source,python]
-----
-    def save(self, *args, **kwargs):
-        #self.full_clean()
-        super().save(*args, **kwargs)
-----
+Experimenting with Duplicate Item Validation at the Views Layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-That gives
+Let's try running our FT, just to see where we are:
 
-----
-ERROR: test_cannot_save_duplicate_items
-(lists.tests.test_models.ListAndItemModelsTest)
-    return Database.Cursor.execute(self, query, params)
-django.db.utils.IntegrityError: columns list_id, text are not unique
-
-[... and a bunch of other failures due to validation not working any more]
-----
-
-Note that it's a different error to the one we want, an `IntegrityError` 
-instead of a `ValidationError`.  
-
-
-Handling validation at the views layer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-Let's put our `full_clean` back, and try running our FT, just to see where we
-are:
-
-[role="dofirst-ch09l035"] 
 ----
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
 element: {"method":"id","selector":"id_list_table"}' ; Stacktrace: 
 ----
 
-In case you didn't see it as it flew past, the site is 500ing
-footnote:[It's showing a server error, code 500.  Gotta get with the jargon!].
+In case you didn't see it as it flew past, the site is 500ing.footnote:[It's showing a server error, code 500.  Gotta get with the jargon!]
 A quick unit test at the view level ought to clear this up:
 
 
@@ -426,7 +532,10 @@ A quick unit test at the view level ought to clear this up:
 .lists/tests/test_views.py (ch12l014)
 [source,python]
 ----
-    def test_invalid_input_renders_form_with_errors(self):
+class ListViewTest(TestCase):
+    [...]
+
+    def test_for_invalid_input_shows_error_on_page(self):
         [...]
 
 
@@ -438,74 +547,46 @@ A quick unit test at the view level ought to clear this up:
             data={'text': 'textey'}
         )
 
-        expected_error =  escape("You've already got this in your list")
+        expected_error = escape("You've already got this in your list")
         self.assertContains(response, expected_error)
         self.assertTemplateUsed(response, 'list.html')
         self.assertEqual(Item.objects.all().count(), 1)
 ----
 
-Gives
+Gives:
 
 ----
-django.core.exceptions.ValidationError: {'__all__': ['Item with this List and
-Text already exists.']}
+django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
+lists_item.text
 ----
 
-Here's one possible solution:
+We want to avoid integrity errors! Ideally, we want the call to `is_valid` to
+somehow notice the duplication error before we even try to save, but to do
+that, our form will need to know what list it's being used for, in advance.
+
+Let's put a skip on that test for now:
 
 [role="sourcecode"]
-.lists/views.py (ch12l015)
+.lists/tests/test_views.py (ch12l015)
 [source,python]
 ----
-from django.core.exceptions import ValidationError
+from unittest import skip
 [...]
 
-def view_list(request, list_id):
-[...]
-        try:
-            form.save(for_list=list_)
-            return redirect(list_)
-        except ValidationError:
-            form.errors.update(
-                {'text': "You've already got this in your list"}
-            )
-    return render(request, 'list.html', {'list': list_, "form": form})
-----
-
-OK, we know that's an ugly hack, we need to get the form to do this work,
-we did for new lists, but -- it will probably work. 
-
-----
-Ran 28 tests in 0.104s
-
-OK
-----
-
-----
-Ran 4 tests in 19.048s
-
-OK
-----
-
-What matters is that it gets us to 'Green'. We'll definitely do the 'Refactor'
-part very soon. First, a commit.
-
-[subs="specialcharacters,quotes"]
-----
-$ *git diff*
-$ *git commit -am"duplicate item validation hacked in at views level"*
+    @skip
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
 ----
 
 
-A more complex form to handle uniqueness validation
+A More Complex Form to Handle Uniqueness Validation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The form to create a new list only needs to know one thing, the new item text.
 A form which validates that list items are unique needs to know both.  Just
-like we overrode the save method on our ItemForm, this time we'll override
+like we overrode the save method on our `ItemForm`, this time we'll override
 the constructor on our new form class so that it knows what list it applies to.
 
-We duplicate up our tests for the previous form, tweaking them slightly:
+We duplicate our tests for the previous form, tweaking them slightly:
 
 [role="sourcecode"]
 [source,python]
@@ -541,8 +622,8 @@ class ExistingListItemFormTest(TestCase):
 ----
 
 We can iterate through a few TDD cycles (I won't show them all, but I'm sure
-you'll do them, right? Remember, the Goat sees all) until we get a form with a
-custom constructor, which just ignores its for_list argument:
+you'll do them, right? Remember, the Goat sees all.) until we get a form with a
+custom constructor, which just ignores its `for_list` argument:
 
 [role="sourcecode"]
 .lists/forms.py (ch09l071)
@@ -555,7 +636,7 @@ class ExistingListItemForm(forms.models.ModelForm):
         super().__init__(*args, **kwargs)
 ----
 
-Gives
+Gives:
 
 ----
 ValueError: ModelForm has no model class specified.
@@ -583,9 +664,9 @@ AssertionError: True is not false
 
 The next step requires a little knowledge of Django's internals, but you
 can read up on it in the Django docs on 
-https://docs.djangoproject.com/en/1.6/ref/models/instances/#validating-objects[Model
+https://docs.djangoproject.com/en/1.7/ref/models/instances/#validating-objects[model
 validation] and
-https://docs.djangoproject.com/en/1.6/ref/forms/validation/[Form validation].
+https://docs.djangoproject.com/en/1.7/ref/forms/validation/[form validation].
 
 Django uses a method called `validate_unique`, both on forms and models, and
 we can use both, in conjunction with the `instance` attribute:
@@ -614,9 +695,9 @@ class ExistingListItemForm(ItemForm):
 //ch10l018
 
 That's a bit of Django voodoo right there, but we basically take the validation
-error, adjust its error message, and then pass it back up to the form.
+error, adjust its error message, and then pass it back into the form.
 
-And we're there!  A quick commit
+And we're there!  A quick commit:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -625,12 +706,12 @@ $ *git commit -a*
 ----
 
 
-Using the existing lists item form in the list view
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using the Existing List Item Form in the List View
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Now let's see if we can put this form to work in our view.
 
-Let's start by using our constant, now that we've defined it. Tidy tidy!
+We remove the skip, and while we're at it, we can use our new constant. Tidy.
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch12l049)
@@ -644,38 +725,41 @@ from lists.forms import (
 
     def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
         [...]
-        expected_error =  escape(DUPLICATE_ITEM_ERROR)
+        expected_error = escape(DUPLICATE_ITEM_ERROR)
 ----
 
-----
-Ran 31 tests in 0.130s
+That brings back out integrity error:
 
-OK
+----
+django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
+lists_item.text
 ----
 
-Next -- let's find places where we should be using our new form class. There's
-two places in our view tests where we check the form, let's let's adjust them
-both:
+Our fix for this is to switch to using the new form class.  Before we implement
+it, let's find the tests where we check the form class, and adjust them:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch12l050)
 [source,python]
 ----
-def test_displays_item_form(self):
-    list_ = List.objects.create()
-    response = self.client.get('/lists/%d/' % (list_.id,))
-    self.assertIsInstance(response.context['form'], ExistingListItemForm)
+class ListViewTest(TestCase):
+[...]
 
+    def test_displays_item_form(self):
+        list_ = List.objects.create()
+        response = self.client.get('/lists/%d/' % (list_.id,))
+        self.assertIsInstance(response.context['form'], ExistingListItemForm)
+        self.assertContains(response, 'name="text"')
 
-def test_invalid_input_renders_form_with_errors(self):
-    response = self.post_invalid_input()
-    self.assertIsInstance(response.context['form'], ExistingListItemForm)
+    [...]
+
+    def test_for_invalid_input_passes_form_to_template(self):
+        response = self.post_invalid_input()
+        self.assertIsInstance(response.context['form'], ExistingListItemForm)
 ----
 
 That gives us:
 
-//TODO: unskip
-[role="skipme"]
 ----
 AssertionError: <lists.forms.ItemForm object at 0x7f767e4b7f90> is not an
 instance of <class 'lists.forms.ExistingListItemForm'>
@@ -696,12 +780,11 @@ def view_list(request, list_id):
         form = ExistingListItemForm(for_list=list_, data=request.POST)
         if form.is_valid():
             form.save()
-            return redirect(list_)
-    return render(request, 'list.html', {'list': list_, "form": form})
+            [...]
 ----
 
 
-And, oops, an unexpected fail:
+And that 'almost' fixes everything, except for an unexpected fail:
 
 ----
 TypeError: save() missing 1 required positional argument: 'for_list'
@@ -733,18 +816,18 @@ We can make our form call the grandparent save method:
 ----
 
 NOTE: Personal opinion here: I could have used `super`, but I prefer not to use
-`super()` when it requires arguments, eg to get a grandparent method. I find
+`super` when it requires arguments, eg to get a grandparent method. I find
 Python 3's `super()` with no args awesome to get the immediate parent. Anything
 else is too error-prone, and I find it ugly besides. YMMV.
 
 
-And we're there!  Unit tests pass!
+And we're there!  All the unit tests pass:
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test lists*]
 [...]
-Ran 32 tests in 0.082s
+Ran 34 tests in 0.082s
 
 OK
 ----
@@ -763,7 +846,7 @@ OK
 Destroying test database for alias 'default'...
 ----
 
-As a final check, we re-run 'all' the FTs:
+As a final check, we rerun 'all' the FTs:
 
 [subs="specialcharacters,macros"]
 ----
@@ -778,17 +861,17 @@ Destroying test database for alias 'default'...
 ----
 
 Hooray! Time for a final commit, and a wrap-up of what we've learned about
-testing views over the last few chapters:
+testing views over the last few chapters.
 
 
-Recap: what to test in views
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-//TODO: consider moving this into previous
+.Recap: What to Test in Views
+******************************************************************************
 
 [role="sourcecode skipme"]
+Partial listing showing all view tests and assertions
+
+[role="small-code"]
 [source,python]
-.Partial listing show all view test + assertions
 ----
 class ListViewTest(TestCase):
     def test_uses_list_template(self):
@@ -798,44 +881,53 @@ class ListViewTest(TestCase):
         self.assertEqual(response.context['list'], correct_list) #<3>
     def test_displays_item_form(self):
         self.assertIsInstance(response.context['form'], ExistingListItemForm) #<4>
-        self.assertContains(response, 'name="text"') #<7>
+        self.assertContains(response, 'name="text"')
     def test_displays_only_items_for_that_list(self):
         self.assertContains(response, 'itemey 1') #<5>
         self.assertContains(response, 'itemey 2') #<5>
         self.assertNotContains(response, 'other list item 1') #<5>
     def test_can_save_a_POST_request_to_an_existing_list(self):
-        self.assertEqual(Item.objects.all().count(), 1) #<6>
+        self.assertEqual(Item.objects.count(), 1) #<6>
         self.assertEqual(new_item.text, 'A new item for an existing list') #<6>
     def test_POST_redirects_to_list_view(self):
         self.assertRedirects(response, '/lists/%d/' % (correct_list.id,)) #<6>
-    def test_invalid_input_means_nothing_saved_to_db(self):
-        self.assertEqual(Item.objects.all().count(), 0) #<6>
-    def test_invalid_input_renders_list_template(self):
+    def test_for_invalid_input_nothing_saved_to_db(self):
+        self.assertEqual(Item.objects.count(), 0) #<6>
+    def test_for_invalid_input_renders_list_template(self):
+        self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'list.html') #<6>
-    def test_invalid_input_renders_form_with_errors(self):
+    def test_for_invalid_input_passes_form_to_template(self):
         self.assertIsInstance(response.context['form'], ExistingListItemForm) #<7>
+    def test_for_invalid_input_shows_error_on_page(self):
         self.assertContains(response, escape(EMPTY_LIST_ERROR)) #<7>
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+        self.assertContains(response, expected_error)
+        self.assertTemplateUsed(response, 'list.html')
+        self.assertEqual(Item.objects.all().count(), 1)
 ----
 
-<1> Use the Django Test Client
+<1> Use the Django test client.
 
-<2> Check the template used.  Then, check each item in the template context:
+<2> Check the template used.  Then, check each item in the template context.
 
-<3> Check any objects are the right ones, or Querysets have the
+<3> Check any objects are the right ones, or querysets have the
     correct items.
 
-<4> Check any forms are of the correct class
+<4> Check any forms are of the correct class.
 
-<5> Test any template logic:  any `for` or `if` should get a minimal test
+<5> Test any template logic:  any `for` or `if` should get a minimal test.
 
 <6> For views that handle POST requests, make sure you test both the valid
     case and the invalid case.
 
-<7> Sanity-check that your form is rendered, and its errors are displayed
+<7> Sanity-check that your form is rendered, and its errors are displayed.
 
-Why these points?  Skip ahead to <<appendix2,Appendix II>>, and I'll show how
+Why these points?  Skip ahead to <<appendix2>>, and I'll show how
 they are sufficient to ensure that our views are still correct if we refactor
-them to start using Class-Based Views.
+them to start using class-based views.
 
-Next: pushing our changes up to the server.
+******************************************************************************
+
+Next we'll try and make our data validation more friendly by using a bit
+of client-side code.  Uh-oh, you know what that means...
 

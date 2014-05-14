@@ -1,13 +1,73 @@
-Finishing "my lists": Outside-In TDD
+[[outside-in-chapter]]
+Finishing "My Lists": Outside-In TDD
 ------------------------------------
 
-In this chapter I'd like to talk about a technique called "outside-in" TDD.
-It's pretty much what we've been doing all along, but now I'll make it
-explicit, and talk about some of the common issues involved.
+
+
+In this chapter I'd like to talk about a technique called "Outside-In" TDD.
+It's pretty much what we've been doing all along. Our "double-loop" TDD
+process, in which we write the functional test first and then the unit tests,
+is already a manifestation of outside-in--we design the system from the
+outside, and build up our code in layers. Now I'll make it explicit, and talk
+about some of the common issues involved. 
+
+
+The Alternative: "Inside Out"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The alternative to "Outside In" is to work "Inside Out", which is the way most
+people intuitively work before they encounter TDD. After
+coming up with a design, the natural inclination is sometimes to implement it
+starting with the innermost, lowest-level components first.
+
+For example, when faced with our current problem, providing users with a
+"My Lists" page of saved lists, the temptation is to start by adding an "owner"
+attribute to the List model object, reasoning that an attribute like this is
+"obviously" going to be required. Once that's in place, we would modify the
+more peripheral layers of code, such as views and templates, taking advantage
+of the new attribute, and then finally add URL routing to point to the new
+view.
+
+It feels comfortable because it means you're never working on a bit of code
+that is dependent on something that hasn't yet been implemented. Each bit of
+work on the inside is a solid foundation on which to build the next layer out.
+
+But working inside-out like this also has some weaknesses.
+
+Why Prefer "Outside-In"?
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The most obvious problem with inside-out is that it requires us to stray from a
+TDD workflow. Our functional test's first failure might be due to missing URL
+routing, but we decide to ignore that and go off adding attributes to our
+database model objects instead.
+
+We might have ideas in our head about the new desired behaviour of our inner
+layers like database models, and often these ideas will be pretty good, but
+they are actually just speculation about what's really required, because
+we haven't yet built the outer layers that will use them.
+
+One problem that can result is to build inner components that are more
+general or more capable than we actually need, which is a waste of time,
+and an added source of complexity for your project. Another common problem
+is that you create inner components with an API which is convenient for their
+own internal design, but which later turns out to be inappropriate for the
+calls your outer layers would like to make ... worse still, you might end up
+with inner components which, you later realise, don't actually solve the
+problem that your outer layers need solved.
+
+In contrast, working outside-in in allows you to use each layer to imagine the
+most convenient API you could want from the layer beneath it. Let's see it in 
+action.
 
 
 The FT for "My Lists"
 ~~~~~~~~~~~~~~~~~~~~~
+
+As we work through the following functional test, we start with the most
+outward-facing (presentation layer), through to the view functions (or
+"controllers"), and lastly the innermost layers, which in this case will be
+model code.
 
 We know our `create_pre_authenticated_session` code works now, so we can just
 write our FT to look for a "My Lists" page:
@@ -19,7 +79,7 @@ write our FT to look for a "My Lists" page:
 ----
     def test_logged_in_users_lists_are_saved_as_my_lists(self):
         # Edith is a logged-in user
-        self.create_pre_authenticated_session()
+        self.create_pre_authenticated_session('edith@example.com')
 
         # She goes to the home page and starts a list
         self.browser.get(self.server_url)
@@ -61,33 +121,25 @@ element: {"method":"link text","selector":"My lists"}' ; Stacktrace:
 ----
 
 
-Outside-in TDD
-~~~~~~~~~~~~~~
-
-Our "double-loop" TDD process, in which we write the functional test first and
-then the unit tests, is already a manifestation of outside-in TDD - we design
-the system from the outside, and build up our code in layers. I'll point out
-how we start with the most outward-facing (presentation layer), through to the
-view functions (or "controllers"), and lastly the innermost layers, which in
-this case will be model code.
-
-
-The outside layer: presentation & templates
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The Outside Layer: Presentation and Templates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The test is currently failing saying that it can't find a link saying "My
-Lists". We can address that at the presentation layer, in 'home.html', in
+Lists". We can address that at the presentation layer, in 'base.html', in
 our navigation bar. Here's the minimal code change:
 
 [role="sourcecode"]
-.lists/templates/home.html (ch18002-1)
+lists/templates/base.html (ch18l002-1)
+
+[role="small-code"]
 [source,html]
 ----
 {% if user.email %}
     <ul class="nav navbar-nav">
         <li><a href="#">My lists</a></li>
     </ul>
-    <a class="btn navbar-btn navbar-right" id="id_logout" href="{% url 'logout' %}">Log out</a>
+    <a class="btn navbar-btn navbar-right" id="id_logout" href="{% url 'logout' %}">
+    Log out</a>
 [...]
 ----
 
@@ -96,12 +148,13 @@ the next failure:
 
 ----
     self.browser.find_element_by_link_text('Reticulate splines').click()
+[...]
 selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
-element: {"method":"link text","selector":"Reticulate splines"}' ; Stacktrace: 
+element: {"method":"link text","selector":"Reticulate splines"}' ; Stacktrace:
 ----
 
 Which is telling us we're going to have to build a page that lists all of a
-user's lists by title.  Let's start with the basics -- a URL and a placeholder
+user's lists by title.  Let's start with the basics--a URL and a placeholder
 template for it.
 
 Again, we can go outside-in, starting at the presentation layer with just the 
@@ -109,7 +162,7 @@ URL and nothing else:
 
 
 [role="sourcecode"]
-.lists/templates/home.html (ch18002-2)
+.lists/templates/base.html (ch18l002-2)
 [source,html]
 ----
     <ul class="nav navbar-nav">
@@ -118,16 +171,17 @@ URL and nothing else:
 ----
 
 
-Moving down one layer to view functions (the controller)
+Moving Down One Layer to View Functions (the Controller)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-That will cause a template error, so we can move in one step, from the
-presentation layer down to the controller layer, Django's view functions.
+That will cause a template error, so we'll start to move down from the
+presentation layer and URLs down to the controller layer, Django's view
+functions.
 
 As always, we start with a test:
 
 [role="sourcecode"]
-.lists/test_views.py (ch18l003)
+.lists/tests/test_views.py (ch18l003)
 [source,python]
 ----
 class MyListsTest(TestCase):
@@ -140,12 +194,10 @@ class MyListsTest(TestCase):
 That gives:
 
 ----
-AssertionError: False is not true : Template 'my_lists.html' was not a template
-used to render the response. Actual template(s) used: <Unknown Template>
+AssertionError: No templates used to render the response
 ----
 
-And we fix it, still at the views level, in 'urls.py', 'views.py', and by
-creating 'my_lists.html':
+And we fix it, still at the presentation level, in 'urls.py':
 
 
 [role="sourcecode"]
@@ -160,8 +212,16 @@ urlpatterns = patterns('',
 ----
 //004
 
+That gives us a test failure, which informs us of what we should do as we
+move down to the next level:
 
-Here's a minimal view:
+----
+django.core.exceptions.ViewDoesNotExist: Could not import lists.views.my_lists.
+View does not exist in module lists.views.
+----
+
+We move in from the presentation layer to the views layer, and create a
+minimal placeholder:
 
 [role="sourcecode"]
 .lists/views.py (ch18l005)
@@ -187,25 +247,26 @@ saying that the "My Lists" page doesn't yet show any lists.  It wants
 them to be clickable links named after the first item:
 
 ----
-selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate element: {"method":"link text","selector":"Reticulate splines"}' ; Stacktrace: 
+selenium.common.exceptions.NoSuchElementException: Message: 'Unable to locate
+element: {"method":"link text","selector":"Reticulate splines"}' ; Stacktrace: 
 ----
 
-Another pass, outside-in
+Another Pass, Outside-In
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 At each stage, we still let the FT drive what development we do.
 
-Starting again at the outside layer, in the template, we can start to
-write the template code we'd like to use to get the my lists page to
-work the  way we want it to. It forces us to think about the API we
-want our code to have, from the point of view of the things that use it, 
-rather than trying to work bottom-up.
+Starting again at the outside layer, in the template, we begin to
+write the template code we'd like to use to get the "My Lists" page to
+work the  way we want it to. As we do so, we start to specify the API
+we want from the code at the layers below.
 
-A quick re-structure of the template inheritance hierarchy
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A Quick Restructure of the Template Inheritance Hierarchy
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Currently there's no place in our base template for us to put any new
-content.  Also, the my lists page doesn't need the new item form, so
+content.  Also, the "My Lists" page doesn't need the new item form, so
 we'll put that into a block too, making it optional:
 
 [role="sourcecode"]
@@ -250,47 +311,15 @@ we'll put that into a block too, making it optional:
 
 </div>
 <script src="http://code.jquery.com/jquery.min.js"></script>
-----
-
-We haven't seen this feature of the Django template language yet: 'list.html'
-and 'home.html' now need to explicitly pull down the `list_form` block content
-using `{{ block.super }}` 
-
-[role="sourcecode"]
-.lists/templates/home.html
-[source,html]
-----
-{% extends 'base.html' %}
-
-{% block list_form %}{{ block.super }}{% endblock %}
-
-{% block header_text %}Start a new To-Do list{% endblock %}
-
-{% block form_action %}{% url 'new_list' %}{% endblock %}
+[...]
 ----
 
 
-[role="sourcecode"]
-.lists/templates/home.html
-[source,html]
-----
-{% extends 'base.html' %}
-
-{% block list_form %}{{ block.super }}{% endblock %}
-
-{% block header_text %}Your To-Do list{% endblock %}
-
-{% block form_action %}{% url 'view_list' list.id %}{% endblock %}
-
-{% block table %}
-    <table id="id_list_table">
-    [...]
-----
-
-Designing our API using the template
+Designing Our API Using the Template
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
+Meanwhile, in 'my_lists.html' we override the `list_form` and say it should
+be empty...
 
 [role="sourcecode"]
 .lists/templates/my_lists.html
@@ -300,11 +329,24 @@ Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
 
 {% block header_text %}My Lists{% endblock %}
 
+{% block list_form %}{% endblock %}
+----
+
+And then we can just work inside the `extra_content` block:
+
+[role="sourcecode"]
+.lists/templates/my_lists.html
+[source,html]
+----
+[...]
+
+{% block list_form %}{% endblock %}
+
 {% block extra_content %}
-    <h2>{{ owner.email }}'s lists</h2>
+    <h2>{{ owner.email }}'s lists</h2>  <1>
     <ul>
-        {% for list in owner.list_set.all %}
-            <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
+        {% for list in owner.list_set.all %}  <2>
+            <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>  <3>
         {% endfor %}
     </ul>
 {% endblock %}
@@ -313,16 +355,20 @@ Meanwhile, 'my_lists.html' can just work in the new `extra_content` block:
 We've made several design decisions in this template which are going
 to filter their way down through the code:
 
-* We want a variable called `owner` to represent the user in our template.
+<1> We want a variable called `owner` to represent the user in our template.
 
-* We want to be able to iterate through the lists created by the user using
-  `owner.list_set.all` (I happen to know we get this for free from the Django
-  ORM)
+<2> We want to be able to iterate through the lists created by the user using
+    `owner.list_set.all` (I happen to know we get this for free from the Django
+    ORM).
 
-* We want to use `list.name` to print out the "name" of the list, which is
-  currently specified as the text of its first element.
+<3> We want to use `list.name` to print out the "name" of the list, which is
+    currently specified as the text of its first element.
 
-We can re-run our FTs, to check we didn't break anything, and to see whether
+NOTE: Outside-In TDD is sometimes called "programming by wishful thinking",
+and you can see why.  We start writing code at the higher levels based on
+what we wish we had at the lower levels, even though it doesn't exist yet!
+
+We can rerun our FTs, to check we didn't break anything, and to see whether
 we've got any further:
 
 [subs="specialcharacters,macros"]
@@ -338,17 +384,17 @@ Ran 7 tests in 77.613s
 FAILED (errors=1)
 ----
 
-This is a good time for a commit
+Well, no further, but at least we didn't break anything. Time for a commit:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git add lists*
 $ *git diff --staged*
-$ *git commit -m "url, placeholder view, and first-cut templates for my_lists"
+$ *git commit -m "url, placeholder view, and first-cut templates for my_lists"*
 ----
 
 
-Moving down to the next layer: what the view passes to the template
+Moving Down to the Next Layer: What the View Passes to the Template
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 [role="sourcecode"]
@@ -358,11 +404,16 @@ Moving down to the next layer: what the view passes to the template
 from django.contrib.auth import get_user_model
 User = get_user_model()
 [...]
+class MyListsTest(TestCase):
 
-    def test_passes_owner_to_template(self):
-        user = User.objects.create(email='a@b.com')
+    def test_my_lists_url_renders_my_lists_template(self):
+        [...]
+
+    def test_passes_correct_owner_to_template(self):
+        User.objects.create(email='wrong@owner.com')
+        correct_user = User.objects.create(email='a@b.com')
         response = self.client.get('/lists/users/a@b.com/')
-        self.assertEqual(response.context['owner'], user)
+        self.assertEqual(response.context['owner'], correct_user)
 ----
 
 Gives
@@ -371,10 +422,10 @@ Gives
 KeyError: 'owner'
 ----
 
-so
+So:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch18l012)
 [source,python]
 ----
 from django.contrib.auth import get_user_model
@@ -386,9 +437,8 @@ def my_lists(request, email):
     return render(request, 'my_lists.html', {'owner': owner})
 ----
 
-We'll then get an error which will require adding a user
-to our other unit test
-
+That gets our new test passing, but we'll also see an error from
+the previous test. We just need to add a user for it as well:
 
 
 [role="sourcecode"]
@@ -400,24 +450,26 @@ to our other unit test
         [...]
 ----
 
-And we get to an OK
+And we get to an OK:
 
 ----
 OK
 ----
 
 
-The next "requirement" from the views layer
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The Next "Requirement" from the Views Layer: New Lists Should Record Owner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Before we move down to the model layer, there's another part of the code
 at the views layer that will need to use our model:  we need some way for
 newly created lists to be assigned to an owner, if the current user is 
-logged in to the site:
+logged in to the site.
+
+Here's a first crack at writing the test:
 
 
 [role="sourcecode"]
-.lists/tests.py (ch18l014)
+.lists/tests/test_views.py (ch18l014)
 [source,python]
 ----
 from django.http import HttpRequest
@@ -433,17 +485,19 @@ class NewListTest(TestCase):
         request.user = User.objects.create(email='a@b.com')
         request.POST['text'] = 'new list item'
         new_list(request)
-        list_ = List.objects.all()[0]
+        list_ = List.objects.first()
         self.assertEqual(list_.owner, request.user)
 ----
 
-footnote:[I've chosen to user the raw view function, and to manually construct
-an `HttpRequest`, rather than using the Django Test Client, because our custom
-authentication function module, since it relies on Persona, would need a mock
-to get the test to work. I think the non-mocky way is simpler, but, if you're
-curious, why not try and write it differently?]
+This test uses the raw view function, and manually constructs an
+`HttpRequest` because it's slightly easier to write the test that way.
+Although the Django test client does have a helper function called `login`, it 
+doesn't work well with external authentication services.  The alternative would
+be to manually create a session object (like we do in the functional tests), or
+to use mocks, and I think both of those would end up uglier than this version.
+If you're curious, you could have a go at writing it differently.
 
-That fails as follows:
+The test fails as follows:
 
 ----
 AttributeError: 'List' object has no attribute 'owner'
@@ -452,13 +506,13 @@ AttributeError: 'List' object has no attribute 'owner'
 To fix this, we can try writing code like this:
 
 [role="sourcecode"]
-.lists/views.py  
+.lists/views.py (ch18l015)
 [source,python]
 ----
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
-        list_ = List.objects.create()
+        list_ = List()
         list_.owner = request.user
         list_.save()
         form.save(for_list=list_)
@@ -468,86 +522,56 @@ def new_list(request):
 ----
 //015
 
-
-But it won't actually work until we go down to the next layer and 
-adjust the model.
-
-
-.A more purist approach involving mocks
-*******************************************************************************
-
-Is this "pure" outside-in TDD? No.  A purist approach to outside-in TDD would
-want you to use mocks at this point, and have unit tests that are more 
-isolated from one level to another.  Something like this:
-
-[role="sourcecode"]
-.lists/tests/test_views.py
-[source,python]
-----
-from unittest.mock import Mock, patch
-[...]
-
-    @patch('lists.views.ItemForm.save', Mock()) #<3>
-    @patch('lists.views.List.objects.create') #<1>
-    def test_list_owner_is_saved_mocky(self, mock_List_create):
-        request = HttpRequest()
-        request.user = Mock()
-        request.POST['text'] = 'new list item'
-        mock_list = mock_List_create.return_value
-        new_list(request)
-        self.assertEqual(mock_list.owner, request.user) #<2>
-----
-
-<1> We mock out the `List.objects.create` function to be able
-    to get access to the list that's going to be created by the view.
-
-<2> Then we can assert about the owner we assign to it
-
-<3> This is needed because otherwise the `form.save()` will complain
-    that it's not been passed a real List object.
-
-Try it!  You should find that it will pass, if you've added the
-`list_.owner =` bit to the view.  Try removing the owner assignment,
-and you'll see it fail:
+But it won't actually work, because we don't know how to save a list owner yet:
 
 ----
-AssertionError: <MagicMock name='create().owner' id='140176904220432'> != <Mock
-id='140176904185168'>
+    self.assertEqual(list_.owner, request.user)
+AttributeError: 'List' object has no attribute 'owner'
 ----
 
-Actually, 'strictly' speaking, you'd need another check that
-the list.owner gets assigned 'before' the save function is called, 
-making the test even more complicated:
 
-[role="sourcecode"]
-.lists/tests/test_views.py (ch18l016)
-[source,python]
+A Decision Point: Whether to Proceed to the Next Layer with a Failing Test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In order to get this test passing, as it's written now, we have to move
+down to the model layer.  However, it means doing more work with a failing
+test, which is not ideal.
+
+The alternative is to rewrite the test to make it more 'isolated' from the
+level below, using mocks.
+
+On the one hand, it's a lot more effort to use mocks, and it can lead to
+tests that are harder to read.  On the other hand, imagine if our app was more
+complex, and there were several more layers between the outside and the inside.
+Imagine leaving three or four or five layers of tests, all failing while we
+wait to get to the bottom layer to implement our critical feature.  While tests
+are failing, we're not sure that layer really works, on its own terms, or not.
+We have to wait until we get to the bottom layer.
+
+This is a decision point you're likely to run into in your own projects. Let's
+investigate both approaches.  We'll start by taking the shortcut, and leaving
+the test failing.  In the next chapter, we'll come back to this exact point,
+and investigate how things would have gone if we'd used more isolation.
+
+Let's do a commit, and then 'tag' the commit as a way of remembering our 
+position for the next chapter:
+
+[subs="specialcharacters,quotes"]
 ----
-        mock_list = mock_List_create.return_value
-        def check_owner_assigned_before_save():
-            self.assertEqual(mock_list.owner, request.user)
-        mock_list.save.side_effect = check_owner_assigned_before_save
-
-        new_list(request)
+$ *git commit -am"slightly more isolated tests at views layer"*
+$ *git tag revisit_this_point_with_isolated_tests*
 ----
 
-So, yes, it's a more purist approach, but it does leave you with much
-mockier, and less readable tests.  That's why I prefer a more pragmatic
-approach.  I think "purist" Outside-In TDD, sometimes called "London-Style
-TDD", isn't worth it when you're dealing with the Django ORM a lot -- it
-works better if you have code that has no external dependencies or 
-"boundaries". There's more discussion of this in the "Hot Lava" chapter.
 
-*******************************************************************************
+Moving Down to the Model Layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Our outside-in design has driven out two requirements for the model layer:
+we want to be able to assign an owner to a list using the attribute
+`.owner`, and we want to be able to access the list's owner with 
+the API `owner.list_set.all`.
 
-
-Moving down again: to the model layer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-Next we move down to the model layer, to get the owner.list_set.all API
-working:
+Let's write a test for that:
  
 
 [role="sourcecode"]
@@ -558,20 +582,33 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 [...]
 
-    def test_list_can_have_owners(self):
+class ListModelTest(TestCase):
+
+    def test_get_absolute_url(self):
+        [...]
+
+    def test_lists_can_have_owners(self):
         user = User.objects.create(email='a@b.com')
         list_ = List.objects.create(owner=user)
         self.assertIn(list_, user.list_set.all())
 ----
 
-TODO: separate tests out into two test classes, one broadly for lists,
-the other broadly for items.
+And that gives us a new unit test failure:
+
+----
+    list_ = List.objects.create(owner=user)
+    [...]
+TypeError: 'owner' is an invalid keyword argument for this function
+----
 
 The naive implementation would be this:
 
 [role="skipme"]
 [source,python]
 ----
+from django.conf import settings
+[...]
+
 class List(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL)
 ----
@@ -602,11 +639,11 @@ class List(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
 
     def get_absolute_url(self):
-        return resolve_url('view_list', self.id)
+        return reverse('view_list', args=[self.id])
 ----
 //21
 
-Now running the tests gives a database error
+Now running the tests gives the usual database error:
 
 ----
     return Database.Cursor.execute(self, query, params)
@@ -614,11 +651,14 @@ django.db.utils.OperationalError: table lists_list has no column named owner_id
 ----
 
 
-Because we need to do a schema migration
+Because we need to do make some migrations:
 
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *python3 manage.py schemamigration lists --auto
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'lists':
+  0006_list_owner.py:
+    - Add field owner to list
 ----
 //22
 
@@ -637,24 +677,24 @@ ValueError: Cannot assign "<SimpleLazyObject:
 "List.owner" must be a "User" instance.
 ----
 
-Notice that these are in the old test for the new_list view, when we
-haven't got a logged-in user.  We should only save the list owner
-when the user is actually logged in.  When they're not logged in,
-Django represents them using a class called `AnonymousUser`:
+We're moving back up to the views layer now, just doing a little 
+tidying up. Notice that these are in the old test for the `new_list` view, when
+we haven't got a logged-in user.  We should only save the list owner when the
+user is actually logged in.  The `.is_authenticated()` function we defined in
+<<python-mocks-chapter>> comes in useful now (when they're not logged in,
+Django represents users using a class called `AnonymousUser`, whose 
+`.is_authenticated()` always returns `False`):
 
 
-[role="sourcecode dofirst-ch18l022"]
-.lists/tests.py
+[role="sourcecode"]
+.lists/views.py (ch18l023)
 [source,python]
 ----
-from django.contrib.auth.models import AnonymousUser
-[...]
-
     if form.is_valid():
-        list_ = List.objects.create()
-        if not isinstance(request.user, AnonymousUser):
+        list_ = List()
+        if request.user.is_authenticated():
             list_.owner = request.user
-            list_.save()
+        list_.save()
         form.save(for_list=list_)
         [...]
 ----
@@ -665,11 +705,12 @@ And that gets us passing!
 ----
 $ pass:quotes[*python3 manage.py test lists*]
 Creating test database for alias 'default'...
-...................................
+.......................................
  ---------------------------------------------------------------------
-Ran 35 tests in 0.237s
+Ran 39 tests in 0.237s
 
 OK
+Destroying test database for alias 'default'...
 ----
 
 This is a good time for a commit:
@@ -682,7 +723,7 @@ $ *git commit -m"lists can have owners, which are saved on creation."*
 
 
 
-Final step: feeding through the .name API from the template
+Final Step: Feeding Through the .name API From the Template
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The last thing our outside-in design wanted came from the templates,
@@ -690,7 +731,7 @@ which wanted to be able to access a list "name" based on the text of
 its first item:
 
 [role="sourcecode"]
-.lists/tests/test_models.py (ch18l023)
+.lists/tests/test_models.py (ch18l024)
 [source,python]
 ----
     def test_list_name_is_first_item_text(self):
@@ -702,35 +743,79 @@ its first item:
 
 
 [role="sourcecode"]
-.lists/models.py (ch18l024)
+.lists/models.py (ch18l025)
 [source,python]
 ----
     @property
     def name(self):
-        return self.item_set.all()[0].text
+        return self.item_set.first().text
 ----
+
+.The @property Decorator in Python
+*******************************************************************************
+If you haven't seen it before, the `@property` decorator transforms a method
+on a class to make it appear to the outside world like an attribute.
+
+This is a powerful feature of the language, because it makes it easy to 
+implement "duck typing", to change the implementation of a property without
+changing the interface of the class.  In other words, if we decide to change
+`.name` into being a "real" attribute on the model, which is stored as text in
+the database, then we will be able to do so entirely transparently--as far as
+the rest of our code is concerned, they will still be able to just access
+`.name` and get the list name, without needing to know about the
+implementation.
+
+Of course, in the Django template language, `.name` would still call the method
+even if it didn't have `@property`, but that's a particularity of Django, and
+doesn't apply to Python in general...
+*******************************************************************************
 
 
 And that, believe it or not, actually gets us a passing test, 
-and a working "My Lists" page!
+and a working "My Lists" page (<<my-lists-page>>)!
 
-.The "My Lists" page, in all its glory
-image::images/my_lists_screenshot.png[Screenshot of new My Lists page]
+[[my-lists-page]]
+.The "My Lists" page, in all its glory (and proof I did test on Windows)
+image::images/twdp_1801.png[Screenshot of new My Lists page]
 
 
+[subs="specialcharacters,macros"]
 ----
-$ python3 manage.py test functional_tests
-Creating test database for alias 'default'...
-.......
- ---------------------------------------------------------------------
+$ pass:quotes[*python3 manage.py test functional_tests*]
+[...]
 Ran 7 tests in 93.819s
 
 OK
 ----
 
-I'll tell you what though, those FTs are taking an annoyingly long time to 
-run though.  I wonder if there's something we can do about that?
+But we know we cheated to get there.  The Testing Goat is eyeing us
+suspiciously.  We left a test failing at one layer while we implemented its
+dependencies at the lower layer. Let's see how things would play out if we were
+to use better test isolation...
 
 
-TODO: outside-in TDD wrap-up
+
+.Outside-In TDD
+*******************************************************************************
+
+Outside-In TDD::
+    A methodology for building code, driven by tests, which proceeds by
+    starting from the "outside" layers (presentation, GUI), and moving
+    "inwards" step by step, via view/controller layers, down towards 
+    the model layer.  The idea is to drive the design of your code from
+    the use to which it is going to be put, rather than trying to anticipate
+    requirements from the ground up.
+
+Programming by wishful thinking::
+    The outside-in process is sometimes called "programming by wishful
+    thinking".  Actually, any kind of TDD involves some wishful thinking. 
+    We're always writing tests for things that don't exist yet.
+
+The pitfalls of outside-in::
+    Outside-In isn't a silver bullet.  It encourages us to focus on things
+    that are immediately visible to the user, but it won't automatically 
+    remind us to write other critical tests that are less user-visible, 
+    things like security for example. You'll need to remember them yourself.
+
+*******************************************************************************
 
