@@ -984,26 +984,19 @@ OK
 
 
 
-Test the get_user Method by Mocking the Django ORM
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The get_user Method 
+^^^^^^^^^^^^^^^^^^^
 
-//IDEA: the use of mocks here is a bit superfluous now that we've got ch18/19?
 
 The next thing we have to build is a `get_user` method for our authentication
 backend.  This method's job is to retrieve a user based on their email address,
-or to return `None` if it can't find one.
+or to return `None` if it can't find one. (That last wasn't well documented at
+the time of writing, but that is the interface we have to comply with. See 
+https://github.com/django/django/blob/1.6c1/django/contrib/auth/backends.py#L66[the source] for details.)
 
-The simplest way to test this would be, as in the previous example, by creating
-actual objects in the database, and by letting the method use the ORM to find
-them, or not.
 
-But, since we're learning about mocks, I thought I'd show how to mock out the
-Django ORM.  As we'll see in <<outside-in-chapter>>, mocking out the ORM can be
-useful when you need to ensure isolation between layers of your stack. 
+Here's a couple of tests for those two requirements:
 
-So, by way of an educational exercise, here's how to avoid touching the
-database by mocking out the Django ORM. We'll also learn about how to use
-mocks to test exception handling, which will be useful.
 
 [role="sourcecode"]
 .accounts/tests/test_authentication.py (ch16l030)
@@ -1011,23 +1004,22 @@ mocks to test exception handling, which will be useful.
 ----
 class GetUserTest(TestCase):
 
-    @patch('accounts.authentication.User.objects.get')  #<1>
-    def test_gets_user_from_ORM_using_email(self, mock_User_get):
+    def test_gets_user_by_email(self):
         backend = PersonaAuthenticationBackend()
+        other_user = User(email='other@user.com')
+        other_user.username = 'otheruser'
+        other_user.save()
+        desired_user = User.objects.create(email='a@b.com')
         found_user = backend.get_user('a@b.com')
-        self.assertEqual(found_user, mock_User_get.return_value)  #<2>
-        mock_User_get.assert_called_once_with(email='a@b.com')  #<3>
+        self.assertEqual(found_user, desired_user)
 
+
+    def test_returns_none_if_no_user_with_that_email(self):
+        backend = PersonaAuthenticationBackend()
+        self.assertIsNone(
+            backend.get_user('a@b.com')
+        )
 ----
-
-<1> We patch out the `User` ORM class, so that we can check on any calls
-    our code will make to it.
-
-<2> We check that `get_user` gives us the return value from our mocked 
-    `User.objects.get`.
-
-<3> We also check that `User.objects.get` was called correctly, passing
-    in the email as an argument.
 
 Here's our first failure:
 
@@ -1072,25 +1064,26 @@ So:
 Next:
 
 ----
-    self.assertEqual(found_user, mock_User_get.return_value)
-AssertionError: None != <MagicMock name='get()' id='140631293381136'>
+    self.assertEqual(found_user, desired_user)
+AssertionError: None != <User: >
 ----
 
-And (step by step):
+And (step by step, just to see if our test fails the way we think it will):
 
 [role="sourcecode"]
 .accounts/authentication.py (ch16l033)
 [source,python]
 ----
     def get_user(self, email):
-        return User.objects.get()
+        return User.objects.first()
 ----
 
-That gets us past the first assertion, onto the mock check:
+That gets us past the first assertion, and onto 
 
 ----
-AssertionError: Expected call: get(email='a@b.com')
-Actual call: get()
+    self.assertEqual(found_user, desired_user)
+AssertionError: <User: otheruser> != <User: >
+
 ----
 
 And so we call `get` with the email as an argument:
@@ -1104,105 +1097,38 @@ And so we call `get` with the email as an argument:
         return User.objects.get(email=email)
 ----
 
-That gets us to passing tests:
+
+Now our test for the None case fails:
 
 ----
-OK
-----
-
-
-Testing Exception Handling
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The other thing we need to check is that our `get_user` function should return
-`None` if the user doesn't exist. (This wasn't well documented at the time of
-writing, but that is the interface we have to comply with. See 
-https://github.com/django/django/blob/1.6c1/django/contrib/auth/backends.py#L66[the source].)
-
-Ordinarily, if you do an ORM lookup and the user doesn't exist, it will 
-raise a `User.DoesNotExist` exception, as we saw earlier.  Since we're mocking
-out the ORM in these tests, we have to simulate that exception.  This is a good
-chance to learn about how to test exception handling with mocks. We do it by
-setting a special `mock` attribute called `side_effect`:
-
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py (ch16l035)
-[source,python]
-----
-class GetUserTest(TestCase):
-
-    @patch('accounts.authentication.User.objects.get')
-    def test_gets_user_from_ORM_using_email(self, mock_User_get):
-        [...]
-    
-    @patch('accounts.authentication.User.objects.get')
-    def test_returns_none_if_user_does_not_exist(self, mock_User_get):
-        def raise_no_user_error(*_, **__):  #<1>
-            raise User.DoesNotExist()
-        mock_User_get.side_effect = raise_no_user_error  #<2>
-        backend = PersonaAuthenticationBackend()
-
-        self.assertIsNone(backend.get_user('a@b.com'))
-----
-
-<1> We define a function whose only job is to raise an exception. If you've not
-    seen it before, I'm using the convention where variables named with
-    underscores signify variables we don't care about--it's the equivalent of 
-    `(*args, **kwargs)`, but we're just going to ignore what those args and
-    kwargs are.
-
-<2> We then assign that function as the "`side_effect`" of our mocked 
-    `User.objects.get` function. When our code tries to call it, it will
-    invoke our exception-raising function instead.footnote:[I actually recently found out that you can just assign
-`side_effect` to be an exception class and it will raise it for you.
-https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock.side_effect[Try it!]]
-
-You can actually trace the effect of our mocking in the traceback we get:
-
-----
-ERROR: test_returns_none_if_user_does_not_exist
+ERROR: test_returns_none_if_no_user_with_that_email
+(accounts.tests.test_authentication.GetUserTest)
 [...]
-  File "/workspace/superlists/accounts/tests/test_authentication.py", line 73,
-in test_returns_none_if_user_does_not_exist
-    self.assertIsNone(backend.get_user('a@b.com'))<1>
-  File "/workspace/superlists/accounts/authentication.py", line 25, in get_user
-    return User.objects.get(email=email)<2>
-  File "/usr/lib/python3.4/unittest/mock.py", line 885, in __call__
-    return _mock_self._mock_call(*args, **kwargs)<3>
-  File "/usr/lib/python3.4/unittest/mock.py", line 951, in _mock_call
-    ret_val = effect(*args, **kwargs)
-  File "/workspace/superlists/accounts/tests/test_authentication.py", line 69,
-in raise_no_user_error<4>
-    raise User.DoesNotExist()
-django.contrib.auth.models.DoesNotExist
+django.contrib.auth.models.DoesNotExist: User matching query does not exist.
 ----
 
-
-<1> We call `get_user`.
-
-<2> `get_user` calls `User.objects.get`.
-
-<3> Because `User.objects.get` is mocked out, the call is diverted into the
-    `mock` library's code.
-
-<4> `mock` calls our pre-prepared exception-raising function...
-
-
-As you can see, mocks are powerful, but they can be pretty mind-bending!
-That's why I always say you should avoid using them if you can.  In
-any case, here's our implementation:
+Which prompts us to finish the method like this:
 
 
 [role="sourcecode"]
-.accounts/authentication.py (ch16l036)
+.accounts/authentication.py (ch16l035)
 [source,python]
 ----
     def get_user(self, email):
         try:
             return User.objects.get(email=email)
         except User.DoesNotExist:
-            pass
+            return None #<1>
+----
+
+<1> You could just use `pass` here, and the function would return `None`
+    by default.  However, because we specifically need the function to return
+    `None`, explicit is better than implicit here.
+
+That gets us to passing tests:
+
+----
+OK
 ----
 
 
