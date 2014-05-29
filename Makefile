@@ -18,7 +18,7 @@ test: build
 
 test_chapter_%: chapter_%.html
 	python3 update_source_repo.py $(subst test_chapter_,,$@)
-	PYTHONHASHSEED=0 py.test -s ./tests/$@.py
+	PYTHONHASHSEED=0 py.test -s --tb=short ./tests/$@.py
 
 clean:
 	rm -v $(HTML_PAGES)
