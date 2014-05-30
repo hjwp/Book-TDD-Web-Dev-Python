@@ -227,7 +227,9 @@ def check_listing_matches_commit(listing, commit, future_contents):
 
     line_pos_in_commit = 0
     for listing_pos, line in enumerate(listing_lines):
-        if not line or line.strip().startswith('[...'):
+        if not line:
+            continue
+        if '[...]' in line:
             continue
         if line in commit.lines_to_add:
             print('line {} in commit lines to add'.format(line))
