@@ -229,7 +229,17 @@ def check_listing_matches_commit(listing, commit, future_contents):
     for listing_pos, line in enumerate(listing_lines):
         if not line:
             continue
-        if '[...]' in line:
+        if line.startswith('[...]'):
+            continue
+        if line.endswith('[...]'):
+            line_start = line.rstrip('[...]').strip()
+            if not any(l.startswith(line_start) for l in stripped_future_lines):
+                raise ApplyCommitException(
+                    'Could not find a line that started with {} in {}'.format(
+                        line_start, '\n'.join(stripped_future_lines)
+                    )
+                )
+
             continue
         if line in commit.lines_to_add:
             print('line {} in commit lines to add'.format(line))
