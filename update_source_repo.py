@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Update required checkouts in source repo (branch for chap. n-1)
-Does not affect working branch when username = harry
+Does not affect working branch when username != jenkins
 
 Usage:
   update_source_repo.py [<chapter_no>]
@@ -34,31 +34,35 @@ def fetch_if_possible(target_dir):
 
 
 def update_sources_for_chapter(chapter_no):
-    target = os.path.join(
+    source_dir = os.path.join(
         THIS_FOLDER, 'source', 'chapter_{0:02d}'.format(chapter_no), 'superlists'
     )
-    print('updating', target)
-    subprocess.check_output(['git', 'submodule', 'update', target])
+    print('updating', source_dir)
+    subprocess.check_output(['git', 'submodule', 'update', source_dir])
     current_chapter = 'chapter_{0:02d}'.format(chapter_no)
     chapter_before = 'chapter_{0:02d}'.format(chapter_no - 1)
     commit_specified_by_submodule = subprocess.check_output(
-        ['git', 'log', '-n 1', '--format=%H'], cwd=target
+        ['git', 'log', '-n 1', '--format=%H'], cwd=source_dir
     ).decode().strip()
     print('current commit', commit_specified_by_submodule)
-    connected = fetch_if_possible(target)
+    connected = fetch_if_possible(source_dir)
     if not connected:
         return
     if chapter_no > 1:
-        subprocess.check_output(['git', 'checkout', chapter_before], cwd=target)
-        subprocess.check_output(['git', 'reset', '--hard', 'origin/{}'.format(chapter_before)], cwd=target)
-    subprocess.check_output(['git', 'checkout', current_chapter], cwd=target)
-    if getpass.getuser() == 'harry':
-        print("skipping {} reset on harry's dev machine".format(current_chapter))
-    else:
+        # make sure branch for previous chapter is available to start tests
+        subprocess.check_output(['git', 'checkout', chapter_before], cwd=source_dir)
+        subprocess.check_output(['git', 'reset', '--hard', 'origin/{}'.format(chapter_before)], cwd=source_dir)
+    # check out current branch, local version, for final diff
+    subprocess.check_output(['git', 'checkout', current_chapter], cwd=source_dir)
+    if getpass.getuser() == 'jenkins':
+        # if in CI, we use the submodule commit, to check that the submodule
+        # config is up to date
         subprocess.check_output(
             ['git', 'reset', '--hard', commit_specified_by_submodule],
-            cwd=target
+            cwd=source_dir
         )
+    else:
+        print("skipping {} reset on dev machine".format(current_chapter))
 
 def main(arguments):
     subprocess.check_output(['git', 'submodule', 'init'])
@@ -76,6 +80,4 @@ def main(arguments):
 if __name__ == '__main__':
     arguments = docopt(__doc__)
     main(arguments)
-
-
 
