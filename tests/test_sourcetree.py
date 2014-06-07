@@ -340,6 +340,34 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
+    def DONTtest_listings_must_use_elipsis_to_indicate_skipped_lines(self):
+        # TODO!
+        lines = [
+            "file 1 line 1",
+            "file 1 line 2 amended",
+            "file 1 line 3",
+            "file 1 line 4 inserted",
+            "another line",
+        ]
+        listing = CodeListing(filename='file1.txt', contents='')
+        listing.commit_ref = 'ch17l022'
+        self._checkout_commit('ch17l021')
+
+        listing.contents = '\n'.join(lines)
+        self.sourcetree.apply_listing_from_commit(listing) # should not raise
+
+        lines[1] = "[...]"
+        listing.contents = '\n'.join(lines)
+        self.sourcetree.apply_listing_from_commit(listing) # should not raise
+
+        lines.pop(1)
+        listing.contents = '\n'.join(lines)
+        with self.assertRaises(ApplyCommitException):
+            self.sourcetree.apply_listing_from_commit(listing)
+
+
+
+
     def test_happy_with_python_callouts(self):
         listing = CodeListing(filename='file1.txt', contents=dedent(
             """
@@ -428,6 +456,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
 
         with self.assertRaises(ApplyCommitException):
             self.sourcetree.apply_listing_from_commit(listing)
+
 
 
     def test_with_diff_listing_passing_case(self):
