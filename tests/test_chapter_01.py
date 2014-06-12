@@ -30,8 +30,10 @@ class Chapter1Test(ChapterTest):
         self.assertEqual(type(self.listings[2]), Output)
 
         self.skip_with_check(6, 'Validating models...') # after runserver
-        status_pos = 19
-        assert self.listings[status_pos] == 'git status'
+        status1_pos = 19
+        assert self.listings[status1_pos] == 'git status'
+        status2_pos = 25
+        assert self.listings[status2_pos] == 'git status'
 
         # first code listing
         self.recognise_listing_and_process_it()
@@ -62,14 +64,23 @@ class Chapter1Test(ChapterTest):
 
         self.pos = 13
 
-        while self.pos < status_pos:
+        while self.pos < status1_pos:
             print(self.pos)
             self.recognise_listing_and_process_it()
 
-        status_output = self.run_command(self.listings[status_pos])
-        expected_output = self.listings[status_pos + 1]
-        self.assert_console_output_correct(status_output, expected_output)
-        self.pos = status_pos + 2
+        status1_output = self.run_command(self.listings[status1_pos])
+        expected_output = self.listings[status1_pos + 1]
+        self.assert_console_output_correct(status1_output, expected_output)
+        self.pos = status1_pos + 2
+
+        while self.pos < status2_pos:
+            print(self.pos)
+            self.recognise_listing_and_process_it()
+
+        status2_output = self.run_command(self.listings[status2_pos])
+        expected_output = self.listings[status2_pos + 1]
+        self.assert_console_output_correct(status2_output, expected_output)
+        self.pos = status2_pos + 2
 
         while self.pos < len(self.listings):
             print(self.pos)
