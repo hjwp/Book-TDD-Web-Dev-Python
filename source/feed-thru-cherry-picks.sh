@@ -3,7 +3,8 @@ set -e
 
 CHAP=$1
 PREV=$(($CHAP - 1))
-REPO=origin
+# assumes a git remote local pointing at a local bare repo...
+REPO=local
 
 if (($CHAP < 10)); then
     CHAP="chapter_0$CHAP"
