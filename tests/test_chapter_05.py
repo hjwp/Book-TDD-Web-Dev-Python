@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
-import time
 
 from book_tester import (
     ChapterTest,
@@ -29,7 +28,7 @@ class Chapter5Test(ChapterTest):
         assert self.listings[migrate_pos].type == 'interactive manage.py'
 
         # skips
-        self.skip_with_check(87, "3: Buy peacock feathers")
+        self.skip_with_check(86, "3: Buy peacock feathers")
 
         self.sourcetree.start_with_checkout(5)
         self.start_dev_server()
