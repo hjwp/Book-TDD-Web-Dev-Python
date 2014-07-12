@@ -28,7 +28,7 @@ class Chapter10Test(ChapterTest):
             ))
 
         while self.pos < len(self.listings):
-            print(self.pos)
+            print(self.pos, self.listings[self.pos].type)
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
