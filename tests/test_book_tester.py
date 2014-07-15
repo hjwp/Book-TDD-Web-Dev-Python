@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-from mock import Mock
+from unittest.mock import Mock
 from textwrap import dedent
 import unittest
 
