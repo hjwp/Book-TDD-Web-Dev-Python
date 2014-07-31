@@ -64,7 +64,7 @@ class Chapter8Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py syncdb --noinput')
 
         # skips
-        self.skip_with_check(41, 'replace the URL in the next line with')
+        self.skip_with_check(37, 'replace the URL in the next line with')
 
         #self.skip_with_check(70, 'installed Django') #TODO test this
         #self.skip_with_check(72, '0 errors found') #TODO test this
