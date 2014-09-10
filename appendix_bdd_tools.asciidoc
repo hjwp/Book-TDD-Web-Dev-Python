@@ -76,11 +76,12 @@ Feature: My Lists
         Then I will be on the "Reticulate Splines" list page
 ----
 
-
+When we run "behave", it helpfully tells us about all the steps we need to
+implement:
 
 [subs="specialcharacters,quotes"]
 ----
-behave bdd_tests
+$ *behave bdd_tests*
 Feature: My Lists # bdd_tests/features/my_lists.feature:1
 
   Scenario:                                                   # bdd_tests/features/my_lists.feature:2
@@ -118,33 +119,70 @@ def step_impl(context):
 def step_impl(context):
     assert False
 
-@when('I create a list with first item "Buy milk"')
-def step_impl(context):
-    assert False
-
-@then('I will see a link to "My lists"')
-def step_impl(context):
-    assert False
-
-@when('I click the link to "My lists"')
-def step_impl(context):
-    assert False
-
-@then('I will see a link to "Reticulate Splines"')
-def step_impl(context):
-    assert False
-
-@then('I will see a link to "Buy milk"')
-def step_impl(context):
-    assert False
-
-@when('I click the link to "Reticulate Splines"')
-def step_impl(context):
-    assert False
-
-@then('I will be on the "Reticulate Splines" list page')
-def step_impl(context):
-    assert False
+[...]
 ----
+
+So we can copy and paste that output into a file, and then 
+make a  bunch of changes...
+
+Here's a first stab at making a step for our "Given I am a logged-in user" step.
+I started by stealing the code for `create_pre_authenticated_session` from
+'functional_tests/test_my_lists.py', and adapting it slightly (removing the
+server-side version, for example, although it would be easy to re-add later).
+
+[role="sourcecode"]
+.bdd_tests/features/steps/my_lists.py
+[source,python]
+----
+from behave import given, when, then
+from functional_tests.management.commands.create_session import create_pre_authenticated_session
+from django.conf import settings
+
+
+@given('I am a logged-in user')
+def given_i_am_logged_in(context):
+    session_key = create_pre_authenticated_session(email='edith@example.com')
+    ## to set a cookie we need to first visit the domain.
+    ## 404 pages load the quickest!
+    context.browser.get(context.server_url + "/404_no_such_url/")
+    context.browser.add_cookie(dict(
+        name=settings.SESSION_COOKIE_NAME,
+        value=session_key,
+        path='/',
+    ))
+----
+
+The 'context' variable needs a little explaining -- it's a sort of global variable,
+in the sense that it's passed to each step that's executed, and it can be used to
+store information that we need to share between steps. Here we've assumed we'll
+be storing a browser object on it, and the `server_url` (so we're using it a lot
+like we used `self` when we were writing `unittest` FTs.
+
+Steps can make changes to state in the `context`, but the place to do preliminary
+set-up, the equivalent of `setUp`, is in a file called 'environment.py':
+
+
+[role="sourcecode"]
+.bdd_tests/features/environment.py
+[source,python]
+----
+from selenium import webdriver
+
+def before_all(context):
+    context.browser = webdriver.Firefox()
+    context.browser.implicitly_wait(2)
+    context.server_url = 'http://localhost:8081'
+
+def after_all(context):
+    context.browser.quit()
+
+def before_feature(context, feature):
+    pass
+----
+
+
+And now we switch to the django-behave test runner:
+
+    python manage.py test bdd_tests --testrunner=django_behave.runner.DjangoBehaveTestSuiteRunner
 
 
