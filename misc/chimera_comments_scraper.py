@@ -39,7 +39,7 @@ URLS = [
     'http://chimera.labs.oreilly.com/books/1234000000754/ape.html',
 ]
 
-metadata_parser = re.compile(r'Comment by (.+) (\d+) (.+ ago)')
+METADATA_PARSER = re.compile(r'Comment by (.+) (\d+) (.+ ago)')
 browser = webdriver.Firefox()
 wait = WebDriverWait(browser, 3)
 try:
@@ -59,11 +59,12 @@ try:
         for element in elements:
             metadata = element.find_element_by_css_selector('.comment-body-top').text.strip()
             # print(repr(metadata))
-            parsed_metadata = metadata_parser.search(metadata).groups()
+            parsed_metadata = METADATA_PARSER.search(metadata).groups()
             # print(parsed_metadata)
             by = parsed_metadata[0]
             date = parsed_metadata[1] + parsed_metadata[2]
-            if 'month' not in date and 'year' not in date:
+            # if 'month' not in date and 'year' not in date:
+            if 'year' not in date:
                 comment = element.find_element_by_css_selector('.comment-body-bottom').text
                 print('%s\t%s\t%s\t%s' % (page, by, date, comment))
 
