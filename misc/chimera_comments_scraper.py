@@ -63,8 +63,8 @@ try:
             # print(parsed_metadata)
             by = parsed_metadata[0]
             date = parsed_metadata[1] + parsed_metadata[2]
-            # if 'month' not in date and 'year' not in date:
-            if 'year' not in date:
+            if 'months' not in date and 'year' not in date:
+            # if 'year' not in date:
                 comment = element.find_element_by_css_selector('.comment-body-bottom').text
                 print('%s\t%s\t%s\t%s' % (page, by, date, comment))
 
