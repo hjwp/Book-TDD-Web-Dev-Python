@@ -29,7 +29,7 @@ class Chapter1Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
-        self.skip_with_check(6, 'Validating models...') # after runserver
+        self.skip_with_check(6, 'Performing system checks...') # after runserver
         status1_pos = 19
         assert self.listings[status1_pos] == 'git status'
         status2_pos = 25
