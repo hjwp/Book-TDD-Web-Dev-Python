@@ -11,6 +11,6 @@ fi
 
 cd $CHAP/superlists
 git push -f local $CHAP
-git push -f origin $CHAP
+# git push -f origin $CHAP
 
 cd ../..
