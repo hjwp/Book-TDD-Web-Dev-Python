@@ -687,7 +687,7 @@ class ChapterTest(unittest.TestCase):
                 user_input = None
                 expected_output = output_before
                 output_after = None
-                ignore_errors = False
+                ignore_errors = True
                 next_output = None
 
             output = self.run_command(listing, user_input=user_input, ignore_errors=ignore_errors)

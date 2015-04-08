@@ -178,7 +178,7 @@ urlpatterns = [
 .accounts/urls.py
 [source,python]
 ----
-from django.conf.urls import patterns, url
+from django.conf.urls import url
 
 urlpatterns = [
     url(r'^login$', 'accounts.views.persona_login', name='persona_login'),
@@ -333,7 +333,7 @@ from django.contrib.auth import get_user_model, SESSION_KEY
         user.backend = ''  # required for auth_login to work
         mock_authenticate.return_value = user
         self.client.post('/accounts/login', {'assertion': 'a'})
-        self.assertEqual(self.client.session[SESSION_KEY], user.pk)  #<1>
+        self.assertEqual(self.client.session[SESSION_KEY], str(user.pk))  #<1>
 
 
     @patch('accounts.views.authenticate')
@@ -422,7 +422,7 @@ That gives us two failures:
 ----
 $ pass:quotes[*python3 manage.py test accounts*]
 [...]
-    self.assertEqual(self.client.session[SESSION_KEY], user.pk)
+    self.assertEqual(self.client.session[SESSION_KEY], str(user.pk))
 KeyError: '_auth_user_id'
 
 [...]
@@ -1235,13 +1235,26 @@ AUTHENTICATION_BACKENDS = (
 )
 ----
 
-Now Django tells us off because it wants a couple of bits of metadata on any
-custom user model:
 
+The next error is a database error:
 
 ----
+django.db.utils.OperationalError: no such table: accounts_user
+----
+
+That prompts us, as usual, to do a migration... When we try, Django complains
+that our custom user model is missing a couple of bits of metadata:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+Traceback (most recent call last):
+[...]
+    if not isinstance(cls.REQUIRED_FIELDS, (list, tuple)):
 AttributeError: type object 'User' has no attribute 'REQUIRED_FIELDS'
 ----
+
 
 Sigh.  Come on, Django, it's only got one field, you should be able to figure
 out the answers to these questions for yourself.  Here you go:
@@ -1255,12 +1268,15 @@ class User(models.Model):
     REQUIRED_FIELDS = ()
 ----
 
-Next silly question?footnote:[You might ask, if I think Django is so silly, why don't I
-submit a pull request to fix it?  Should be quite a simple fix.  Well, I
-promise I will, as soon as I've finished writing the book.  For now, snarky
+Next silly question?footnote:[You might ask, if I think Django is so silly, why
+don't I submit a pull request to fix it?  Should be quite a simple fix.  Well,
+I promise I will, as soon as I've finished writing the book.  For now, snarky
 comments will have to suffice.]
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python3 manage.py makemigrations*]
+[...]
 AttributeError: type object 'User' has no attribute 'USERNAME_FIELD'
 ----
 
@@ -1277,13 +1293,6 @@ class User(models.Model):
 ----
 //41
 
-The next error is a database error:
-
-----
-django.db.utils.OperationalError: no such table: accounts_user
-----
-
-That prompts us, as usual, to do a migration:
 
 [subs="specialcharacters,macros"]
 ----
@@ -1355,24 +1364,18 @@ Migrations for 'accounts':
     - Create model User
 ----
 
-That gets the tests passing, although they are still giving us 
-some warnings:
+That gets the tests passing:
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test accounts*]
-[...]
-System check identified some issues:
-
-WARNINGS:
-accounts.User: (auth.W004) 'User.email' is named as the 'USERNAME_FIELD', but
-it is not unique.
 [...]
 
 Ran 12 tests in 0.041s
 
 OK
 ----
+
 
 Tests as Documentation
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -1492,6 +1495,7 @@ class User(models.Model):
 And that works:
 (((range="endofrange", startref="ix_authentusermodel")))
 (((range="endofrange", startref="ix_Djangousermodel")))
+
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test accounts*]
