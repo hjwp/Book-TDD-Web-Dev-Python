@@ -19,7 +19,7 @@ class Chapter14Test(ChapterTest):
         #self.skip_with_check(30, '# review changes') # diff
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 7
             self.sourcetree.run_command('git checkout {0}'.format(
