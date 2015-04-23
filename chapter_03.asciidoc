@@ -246,45 +246,63 @@ Django's workflow goes something like this:
 1. An HTTP 'request' comes in for a particular 'URL'.
 2. Django uses some rules to decide which 'view' function should deal with
   the request (this is referred to as 'resolving' the URL).
-3. The view function processes the request and returns an HTTP 'response'.
+3. The view function processes the request and returns an HTTP 'response',
+   usually containing some HTML to display in the users' browser.
 
-So we want to test two things:
+We'll look at resolving later.  Let's start by testing whether we can 
+build a view function that can produce the right kind of HTML
 
-* Can we resolve the URL for the root of the site (``/'') to a particular
-  view function we've made?
 
-* Can we make this view function return some HTML which will get the 
-  functional test to pass?
-
-Let's start with the first. Open up 'lists/tests.py', and change our silly
-test to something like this:
+Open up 'lists/tests.py', and change our silly test to something like
+this--I'll explain each step in turn:
 
 
 [role="sourcecode"]
 .lists/tests.py
 [source,python]
 ----
-from django.core.urlresolvers import resolve
 from django.test import TestCase
-from lists.views import home_page #<2>
+from django.http import HttpRequest
+
+from lists.views import home_page
+
 
 class HomePageTest(TestCase):
 
-    def test_root_url_resolves_to_home_page_view(self):
-        found = resolve('/')  #<1>
-        self.assertEqual(found.func, home_page)  #<1>
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()  #<1>
+        response = home_page(request)  #<2>
+        self.assertTrue(response.content.startswith(b'<html>'))  #<3>
+        self.assertIn(b'<title>To-Do lists</title>', response.content)  #<4>
+        self.assertTrue(response.content.endswith(b'</html>'))  #<3>
 ----
 
-What's going on here?
+What's going on in this new test?  
 
-<1> `resolve` is the function Django uses internally to resolve
-    URLs, and find what view function they should map to.  We're checking that
-    `resolve`, when called with ``/'', the root of the site, finds a function
-    called `home_page`.  
+<1> We create an `HttpRequest` object, which is what Django will see when
+    a user's browser asks for a page.
 
-<2> What function is that?  It's the view function we're going to
-    write next, which will actually return the HTML we want.  You can see from
-    the `import` that we're planning to store it in 'lists/views.py'.
+<2> We pass it to our `home_page` view, which gives us a response. You won't be
+    surprised to hear that this object is an instance of a class called
+    `HttpResponse`.
+    +
+    Then, we assert that the `.content` of the response--which is the HTML
+    that we send to the user--has certain properties. 
+
+<3> We want it to start with an `<html>` tag which gets closed at the end.
+    Notice that `response.content` is raw bytes, not a Python string, so we
+    have to use the `b''` syntax to compare them. More info is available in
+    Django's 
+    https://docs.djangoproject.com/en/1.8/topics/python3/[Porting to Python 3
+    docs].
+
+<4> And we want a `<title>` tag somewhere in the middle, with the words
+    "To-Do lists" in it--because that's what we specified in our functional
+    test.
+
+You can see that the unit test was driven by the functional test, but it's also
+much closer to the actual code--we're thinking like programmers now.
+
 
 So, what do you think will happen when we run the tests?
 
@@ -292,6 +310,23 @@ So, what do you think will happen when we run the tests?
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test*]
+Creating test database for alias 'default'...
+E
+======================================================================
+ERROR: lists.tests (unittest.loader.ModuleImportFailure)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+[...]
+  File "/workspace/superlists/lists/tests.py", line 4, in <module>
+    from lists.views import home_page
+ImportError: cannot import name 'home_page'
+
+
+ ---------------------------------------------------------------------
+Ran 1 test in 0.004s
+
+FAILED (errors=1)
+
 ImportError: cannot import name 'home_page'
 ----
 
@@ -333,321 +368,6 @@ about whether or not this is all taking it too far in a little while.  For now,
 let yourself follow along, even if it's with some exasperation, and see where
 it takes us.
 
-Let's run the tests again:
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test*]
-Creating test database for alias 'default'...
-E
-======================================================================
-ERROR: test_root_url_resolves_to_home_page_view (lists.tests.HomePageTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/workspace/superlists/lists/tests.py", line 8, in
-test_root_url_resolves_to_home_page_view
-    found = resolve('/')
-  File "/usr/local/lib/python3.4/dist-packages/django/core/urlresolvers.py",
-line 522, in resolve
-    return get_resolver(urlconf).resolve(path)
-  File "/usr/local/lib/python3.4/dist-packages/django/core/urlresolvers.py",
-line 388, in resolve
-    raise Resolver404({'tried': tried, 'path': new_path})
-django.core.urlresolvers.Resolver404: {'tried': [[<RegexURLResolver
-<RegexURLPattern list> (admin:admin) ^admin/>]], 'path': ''}
-
- ---------------------------------------------------------------------
-Ran 1 test in 0.002s
-
-FAILED (errors=1)
-Destroying test database for alias 'default'...
-((("tracebacks")))
-----
-
-
-.Reading Tracebacks
-*******************************************************************************
-
-Let's spend a moment talking about how to read tracebacks, since it's something
-we have to do a lot in TDD. You soon learn to scan through them and pick up
-relevant clues:
-
-----
-======================================================================
-ERROR: test_root_url_resolves_to_home_page_view (lists.tests.HomePageTest)<2>
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/workspace/superlists/lists/tests.py", line 8, in
-test_root_url_resolves_to_home_page_view
-    found = resolve('/')<3>
-  File "/usr/local/lib/python3.4/dist-packages/django/core/urlresolvers.py",
-line 522, in resolve
-    return get_resolver(urlconf).resolve(path)
-  File "/usr/local/lib/python3.4/dist-packages/django/core/urlresolvers.py",
-line 388, in resolve
-    raise Resolver404({'tried': tried, 'path': new_path})
-django.core.urlresolvers.Resolver404: {'tried': [[<RegexURLResolver<1>
-<RegexURLPattern list> (admin:admin) ^admin/>]], 'path': ''}<1>
- ---------------------------------------------------------------------
-[...]
-----
-
-<1> The first place you look is usually 'the error itself'. Sometimes that's
-    all you need to see, and it will let you identify the problem immediately.
-    But sometimes, like in this case, it's not quite self-evident.
-
-<2> The next thing to double-check is: 'which test is failing?' Is it
-    definitely the one we expected, ie, the one we just wrote?  In this case,
-    the answer is yes.
-
-<3> Then we look for the place in 'our test code' that kicked off the failure.
-    We work our way down from the top of the traceback, looking for the
-    filename of the tests file, to check which test function, and what line of
-    code, the failure is coming from.  In this case it's the line where we call
-    the `resolve` function for the "/" URL.
-
-There is ordinarily a fourth step, where we look further down for any
-of 'our own application code' which was involved with the problem.  In this
-case it's all Django code, but we'll see plenty of examples of this fourth step
-later in the book.
-
-Pulling it all together, we interpret the traceback as telling us that, when
-trying to resolve ``/'', Django raised a 404 error--in other words, Django
-can't find a URL mapping for ``/''.  Let's help it out.
-
-*******************************************************************************
-
-
-urls.py
-~~~~~~~
-
-((("urls.py", id="ix_ch03-asciidoc3", range="startofrange")))
-Django uses a file called 'urls.py' to define how URLs map to view functions. 
-There's a main 'urls.py' for the whole site in the
-'superlists/superlists' folder. Let's go take a look:
-
-
-[role="sourcecode currentcontents"]
-.superlists/urls.py
-[source,python]
-----
-from django.conf.urls import include, url
-from django.contrib import admin
-
-urlpatterns = [
-    # Examples:
-    # url(r'^$', 'superlists.views.home', name='home'),
-    # url(r'^blog/', include('blog.urls')),
-    url(r'^admin/', include(admin.site.urls)),
-]
-
-----
-
-As usual, lots of helpful comments and default suggestions from Django.
-
-A `url` entry starts with a regular expression that defines which URLs it
-applies to, and goes on to say where it should send those requests--either to
-a dot-notation encoded function like `superlists.views.home`, or maybe to
-another 'urls.py' file somewhere else using `include`.
-
-You can see there's one entry in there by default there for the admin site.
-We're not using that yet, so let's comment it out for now:
-
-
-[role="sourcecode"]
-.superlists/urls.py
-[source,python]
-----
-from django.conf.urls import include, url
-from django.contrib import admin
-
-urlpatterns = [
-    # Examples:
-    # url(r'^$', 'superlists.views.home', name='home'),
-    # url(r'^blog/', include('blog.urls')),
-    # url(r'^admin/', include(admin.site.urls)),
-]
-----
-
-The first entry in `urlpatterns` has the regular expression `^$`, which means
-an empty string--could this be the same as the root of our site, which we've
-been testing with ``/''?  Let's find out--what happens if we uncomment that
-line?
-
-NOTE: If you've never come across regular expressions, you can get away with
-just taking my word for it, for now--but you should make a mental note to
-go learn about them.
-
-++++
-<?hard-pagebreak?>
-++++
-
-[role="sourcecode"]
-.superlists/urls.py
-[source,python]
-----
-urlpatterns = [
-    # Examples:
-    url(r'^$', 'superlists.views.home', name='home'),
-    # url(r'^blog/', include('blog.urls')),
-    # url(r'^admin/', include(admin.site.urls)),
-]
-----
-
-Run the unit tests again, with *`python3 manage.py test`*:
-
-----
-ImportError: No module named 'superlists.views'
-[...]
-django.core.exceptions.ViewDoesNotExist: Could not import
-'superlists.views.home'. Parent module superlists.views does not exist.
-----
-
-That's progress!  We're no longer getting a 404; instead Django is complaining
-that the dot-notation `superlists.views.home` doesn't point to a real view.
-Let's fix that, by pointing it towards our placeholder `home_page` object,
-which is inside 'lists', not 'superlists':
-
-
-[role="sourcecode"]
-.superlists/urls.py
-[source,python]
-----
-urlpatterns = [
-    # Examples:
-    url(r'^$', 'lists.views.home_page', name='home'),
-----
-
-And run the tests again:
-
-----
-django.core.exceptions.ViewDoesNotExist: Could not import
-'lists.views.home_page'. View is not callable.
-----
-
-The unit tests have made the link between the URL '/' and the `home_page =
-None` in 'lists/views.py', and are now complaining that `home_page` isn't a
-callable; ie, it's not a function. Now we've got a justification for changing it
-from being `None` to being an actual function.  Every single code change is
-driven by the tests. Back in 'lists/views.py':
-
-
-[role="sourcecode"]
-.lists/views.py
-[source,python]
-----
-from django.shortcuts import render
-
-# Create your views here.
-def home_page():
-    pass
-----
-
-
-And now?
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test*]
-Creating test database for alias 'default'...
-.
- ---------------------------------------------------------------------
-Ran 1 test in 0.003s
-
-OK
-Destroying test database for alias 'default'...
-----
-
-Hooray! Our first ever unit test pass!  That's so momentous that I think it's
-worthy of a commit:
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *git diff*  # should show changes to urls.py, tests.py, and views.py
-$ *git commit -am "First unit test and url mapping, dummy view"*
-----
-
-((("commits")))
-That was the last variation on `git commit` I'll show, the `a` and `m` flags
-together, which adds all changes to tracked files and uses the commit message
-from the command line. 
-(((range="endofrange", startref="ix_ch03-asciidoc1")))
-(((range="endofrange", startref="ix_ch03-asciidoc2")))
-(((range="endofrange", startref="ix_ch03-asciidoc3")))
-
-
-WARNING: `git commit -am` is the quickest formulation, but also gives you the
-    least feedback about what's being committed, so make sure you've done a
-    `git status` and a `git diff` beforehand, and are clear on what changes are
-    about to go in.
-
-
-Unit Testing a View
-~~~~~~~~~~~~~~~~~~~
-
-On to writing a test for our view, so that it can be something more than a 
-do-nothing function, and instead be a function that returns a real response
-with HTML to the browser. Open up 'lists/tests.py', and add a new
-'test method'. I'll explain each bit:
-
-
-[role="sourcecode"]
-.lists/tests.py
-[source,python]
-----
-from django.core.urlresolvers import resolve
-from django.test import TestCase
-from django.http import HttpRequest
-
-from lists.views import home_page
-
-
-class HomePageTest(TestCase):
-
-    def test_root_url_resolves_to_home_page_view(self):
-        found = resolve('/')
-        self.assertEqual(found.func, home_page)
-
-
-    def test_home_page_returns_correct_html(self):
-        request = HttpRequest()  #<1>
-        response = home_page(request)  #<2>
-        self.assertTrue(response.content.startswith(b'<html>'))  #<3>
-        self.assertIn(b'<title>To-Do lists</title>', response.content)  #<4>
-        self.assertTrue(response.content.endswith(b'</html>'))  #<3>
-----
-
-What's going on in this new test?  
-
-<1> We create an `HttpRequest` object, which is what Django will see when
-    a user's browser asks for a page.
-
-<2> We pass it to our `home_page` view, which gives us a response. You won't be
-    surprised to hear that this object is an instance of a class called `HttpResponse`.
-    +
-    Then, we assert that the `.content` of the response--which is the HTML
-    that we send to the user--has certain properties. 
-
-<3> We want it to start with an `<html>` tag which gets closed at the end.
-    Notice that `response.content` is raw bytes, not a Python string, so we
-    have to use the `b''` syntax to compare them. More info is available in Django's 
-    https://docs.djangoproject.com/en/1.8/topics/python3/[Porting to Python 3
-    docs].
-
-<4> And we want a `<title>` tag somewhere in the middle, with the words
-    "To-Do lists" in it--because that's what we specified in our functional test.
-
-Once again, the unit test is driven by the functional test, but it's also
-much closer to the actual code--we're thinking like programmers now.
-
-Let's run the unit tests now and see how we get on:
-
-----
-TypeError: home_page() takes 0 positional arguments but 1 was given
-----
 
 The Unit-Test/Code Cycle
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -666,6 +386,30 @@ bit of code is justified by a test. It may seem laborious, but once you get
 into the swing of things, it really moves quite fast--so much so that,
 at work, we usually keep our code changes microscopic even when we're
 confident we could skip ahead.
+
+
+Let's run the tests again:
+
+----
+TypeError: 'NoneType' object is not callable
+----
+
+OK, so let's make `home_page` into some kind of function.
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def home_page(request):
+    pass
+----
+
+
+What's next? Running the unit tests again gives us:
+
+----
+TypeError: home_page() takes 0 positional arguments but 1 was given
+----
 
 Let's see how fast we can get this cycle going:
 
@@ -694,7 +438,6 @@ AttributeError: 'NoneType' object has no attribute 'content'
 ----
 from django.http import HttpResponse
 
-# Create your views here.
 def home_page(request):
     return HttpResponse()
 ----
@@ -754,25 +497,93 @@ def home_page(request):
 
 * Surely?
 
+
+
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test*]
 Creating test database for alias 'default'...
-..
+.
  ---------------------------------------------------------------------
-Ran 2 tests in 0.001s
+Ran 1 test in 0.003s
 
 OK
 Destroying test database for alias 'default'...
 ----
 
-Yes!  Now, let's run our functional tests.  Don't forget to spin up the dev
+Hooray! Our first ever unit test pass!
+
+
+Now, let's run our functional tests.  Don't forget to spin up the dev
 server again, if it's not still running. It feels like the final heat
 of the race here, surely this is it ... could it be?
 
-++++
-<?hard-pagebreak?>
-++++
+----
+FAIL: test_can_start_a_list_and_retrieve_it_later (__main__.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "functional_tests.py", line 19, in test_can_start_a_list_and_retrieve_it_later
+    self.assertIn('To-Do', self.browser.title)
+AssertionError: 'To-Do' not found in 'Welcome to Django'
+----
+
+
+nope.
+
+
+this is why we need fts and unit tests
+
+
+wire up urls.py  (yes, you could unit test this too. but we won't)
+
+[role="sourcecode currentcontents"]
+.superlists/urls.py
+[source,python]
+----
+"""superlists URL Configuration
+
+The `urlpatterns` list routes URLs to views. For more information please see:
+    https://docs.djangoproject.com/en/1.8/topics/http/urls/
+Examples:
+Function views
+    1. Add an import:  from my_app import views
+    2. Add a URL to urlpatterns:  url(r'^$', views.home, name='home')
+Class-based views
+    1. Add an import:  from other_app.views import Home
+    2. Add a URL to urlpatterns:  url(r'^$', Home.as_view(), name='home')
+Including another URLconf
+    1. Add an import:  from blog import urls as blog_urls
+    2. Add a URL to urlpatterns:  url(r'^blog/', include(blog_urls))
+"""
+from django.conf.urls import include, url
+from django.contrib import admin
+
+urlpatterns = [
+    url(r'^admin/', include(admin.site.urls)),
+]
+----
+
+Let's follow those instructions.  We're using function-based views (because I still find class-based views a little weird.  Check out the appendix for more info)
+
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+from django.conf.urls import include, url
+from django.contrib import admin
+
+from lists import views
+
+urlpatterns = [
+    url(r'^$', views.home_page, name='home'),
+    url(r'^admin/', include(admin.site.urls)),
+]
+----
+
+
+and now run the Ft again:
+
 
 [subs="specialcharacters,macros"]
 ----
@@ -802,23 +613,36 @@ excitement near the end there.
 
 Just a little commit to calm down, and reflect on what we've covered:
 
+
+
+
 [subs="specialcharacters,quotes"]
 ----
-$ *git diff*  # should show our new test in tests.py, and the view in views.py
-$ *git commit -am "Basic view now returns minimal HTML"*
+$ *git diff*  # should show changes to tests.py, views.py and urls.py
+$ *git commit -am "First unit test and view function"*
 ----
 
+((("commits")))
+That was the last variation on `git commit` I'll show, the `a` and `m` flags
+together, which adds all changes to tracked files and uses the commit message
+from the command line. 
+(((range="endofrange", startref="ix_ch03-asciidoc1")))
+(((range="endofrange", startref="ix_ch03-asciidoc2")))
+(((range="endofrange", startref="ix_ch03-asciidoc3")))
 
-That was quite a chapter! Why not try typing `git log`, possibly using the
-`--oneline` flag, for a reminder of what we got up to:
+
+WARNING: `git commit -am` is the quickest formulation, but also gives you the
+    least feedback about what's being committed, so make sure you've done a
+    `git status` and a `git diff` beforehand, and are clear on what changes are
+    about to go in.
 
 
+Let's recap on what we got up to
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git log --oneline*
 a6e6cc9 Basic view now returns minimal HTML
-450c0f3 First unit test and url mapping, dummy view 
 ea2b037 Add app for lists, with deliberately failing unit test
 [...]
 ----
@@ -828,9 +652,9 @@ Not bad--we covered:
 * Starting a Django app
 * The Django unit test runner
 * The difference between FTs and unit tests
-* Django URL resolving and 'urls.py'
 * Django view functions, request and response objects
-* And returning basic HTML
+* Returning basic HTML
+* And Django URL resolving in 'urls.py'
 (((range="endofrange", startref="ix_ch03-asciidoc0")))
 (((range="endofrange", startref="ix_ch03-asciidoc4")))
 
