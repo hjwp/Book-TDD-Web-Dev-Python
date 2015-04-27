@@ -17,7 +17,8 @@ def strip_comments(line):
     return line
 
 
-BOOTSTRAP_WGET = 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip'
+BOOTSTRAP_WGET = 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/releases/download/v3.3.4/bootstrap-3.3.4-dist.zip'
+
 
 class Commit(object):
 
