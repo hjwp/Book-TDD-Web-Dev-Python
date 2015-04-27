@@ -24,7 +24,7 @@ def fetch_if_possible(target_dir):
     stdout, stderr = fetch.communicate()
     print(stdout.decode(), stderr.decode())
     if fetch.returncode:
-        if 'Name or service not known' in stderr.decode():
+        if 'Name or service not known' in stderr.decode() or 'Could not resolve' in stderr.decode():
             # no internet
             print('No Internet')
             return False
