@@ -24,7 +24,7 @@ def fetch_if_possible(target_dir):
     stdout, stderr = fetch.communicate()
     print(stdout.decode(), stderr.decode())
     if fetch.returncode:
-        if 'Name or service not known' in stderr.decode():
+        if 'Name or service not known' in stderr.decode() or 'Could not resolve' in stderr.decode():
             # no internet
             print('No Internet')
             return False
@@ -51,7 +51,7 @@ def update_sources_for_chapter(chapter_no):
     if chapter_no > 1:
         # make sure branch for previous chapter is available to start tests
         subprocess.check_output(['git', 'checkout', chapter_before], cwd=source_dir)
-        subprocess.check_output(['git', 'reset', '--hard', 'origin/{}'.format(chapter_before)], cwd=source_dir)
+        subprocess.check_output(['git', 'reset', '--hard', 'local/{}'.format(chapter_before)], cwd=source_dir)
     # check out current branch, local version, for final diff
     subprocess.check_output(['git', 'checkout', current_chapter], cwd=source_dir)
     if getpass.getuser() == 'jenkins':

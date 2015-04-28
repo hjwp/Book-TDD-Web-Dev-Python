@@ -683,26 +683,24 @@ Our singleton list URL doesn't exist yet.  We fix that in 'superlists/urls.py'.
 TIP: Watch out for trailing slashes in URLs, both here in the tests and in
 %%urls.py%%&mdash;They're a common source of bugs.
 
-[role="sourcecode"]
+[role="sourcecode small-code"]
 .superlists/urls.py
 [source,python]
 ----
-urlpatterns = patterns('',
+urlpatterns = [
     url(r'^$', 'lists.views.home_page', name='home'),
-    url(r'^lists/the-only-list-in-the-world/$', 'lists.views.view_list',
-        name='view_list'
-    ),
+    url(r'^lists/the-only-list-in-the-world/$', views.view_list, name='view_list'),
     # url(r'^admin/', include(admin.site.urls)),
-)
+]
 ----
+
 
 Running the tests again, we get:
 
 ----
 AttributeError: 'module' object has no attribute 'view_list'
 [...]
-django.core.exceptions.ViewDoesNotExist: Could not import
-lists.views.view_list. View does not exist in module lists.views.
+FAILED (errors=4)
 ----
 
 A New View Function
@@ -710,7 +708,8 @@ A New View Function
 
 ((("Django", "view functions in")))
 ((("view functions, in Django")))
-Nicely self-explanatory.  Let's create a dummy view function in 'lists/views.py':
+Nicely self-explanatory.  Let's create a dummy view function in
+'lists/views.py':
 
 [role="sourcecode"]
 .lists/views.py
@@ -1084,17 +1083,15 @@ Let's build our new URL now:
 .superlists/urls.py
 [source,python]
 ----
-urlpatterns = patterns('',
+urlpatterns = [
     url(r'^$', 'lists.views.home_page', name='home'),
-    url(r'^lists/the-only-list-in-the-world/$', 'lists.views.view_list',
-        name='view_list'
-    ),
-    url(r'^lists/new$', 'lists.views.new_list', name='new_list'),
+    url(r'^lists/new$', views.new_list, name='new_list'),
+    url(r'^lists/the-only-list-in-the-world/$', views.view_list, name='view_list'),
     # url(r'^admin/', include(admin.site.urls)),
-)
+]
 ----
 
-Next we get a `ViewDoesNotExist`, so let's fix that, in 'lists/views.py':
+Next we get a `no attribute 'new_list'`, so let's fix that, in 'lists/views.py':
 
 [role="sourcecode"]
 .lists/views.py
@@ -1665,12 +1662,12 @@ It's time to learn how we can pass parameters from URLs to views:
 .superlists/urls.py
 [source,python]
 ----
-urlpatterns = patterns('',
+urlpatterns = [
     url(r'^$', 'lists.views.home_page', name='home'),
-    url(r'^lists/(.+)/$', 'lists.views.view_list', name='view_list'),
     url(r'^lists/new$', 'lists.views.new_list', name='new_list'),
+    url(r'^lists/(.+)/$', 'lists.views.view_list', name='view_list'),
     # url(r'^admin/', include(admin.site.urls)),
-)
+]
 ----
 
 We adjust the regular expression for our URL to include a 'capture group',
@@ -1891,7 +1888,7 @@ digits, by using the regular expression `\d`:
 .superlists/urls.py
 [source,python]
 ----
-    url(r'^lists/(\d+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^lists/(\d+)/$', views.view_list, name='view_list'),
 ----
 
 That gives:
@@ -1915,13 +1912,13 @@ existing lists:
 .superlists/urls.py
 [source,python]
 ----
-urlpatterns = patterns('',
-    url(r'^$', 'lists.views.home_page', name='home'),
-    url(r'^lists/(\d+)/$', 'lists.views.view_list', name='view_list'),
-    url(r'^lists/(\d+)/add_item$', 'lists.views.add_item', name='add_item'),
-    url(r'^lists/new$', 'lists.views.new_list', name='new_list'),
+urlpatterns = [
+    url(r'^$', views.home_page, name='home'),
+    url(r'^lists/new$', views.new_list, name='new_list'),
+    url(r'^lists/(\d+)/$', views.view_list, name='view_list'),
+    url(r'^lists/(\d+)/add_item$', views.add_item, name='add_item'),
     # url(r'^admin/', include(admin.site.urls)),
-)
+]
 ----
 
 Three very similar-looking URLs there.  Let's make a note on our
@@ -1938,11 +1935,10 @@ to-do list; they look like good candidates for a refactoring.
 *****
 
 
-Back to the tests, we now get:
+Back to the tests, we get the usual missing module objects:
 
 ----
-django.core.exceptions.ViewDoesNotExist: Could not import lists.views.add_item.
-View does not exist in module lists.views.
+AttributeError: 'module' object has no attribute 'add_item'
 ----
 
 
@@ -2191,31 +2187,39 @@ as well as giving our code a better structure):
 .superlists/urls.py
 [source,python]
 ----
-urlpatterns = patterns('',
-    url(r'^$', 'lists.views.home_page', name='home'),
-    url(r'^lists/', include('lists.urls')),
+from django.conf.urls import include, url
+from lists import views as list_views  #<1>
+from lists import urls as list_urls  #<1>
+
+urlpatterns = [
+    url(r'^$', list_views.home_page, name='home'),
+    url(r'^lists/', include(list_urls)),
     # url(r'^admin/', include(admin.site.urls)),
-)
+]
 ----
 
-And 'lists/urls.py' we can trim down to only include the latter part
+<1> While we're at it, we use the `import x as y` syntax
+    to alias `views` and `urls`.  This is good practice
+    in your top-level 'urls.py', because it will let us
+    import views and urls from multiple apps if we need
+    to--and indeed we will need to later on in the book.
+
+
+Back in 'lists/urls.py' we can trim down to only include the latter part
 of our three URLs, and none of the other stuff from the parent 'urls.py':
 
-++++
-<?hard-pagebreak?>
-++++
 
 [role="sourcecode"]
 .lists/urls.py (ch06l045)
 [source,python]
 ----
-from django.conf.urls import patterns, url
+from django.conf.urls import url
 
-urlpatterns = patterns('',
-    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
-    url(r'^(\d+)/add_item$', 'lists.views.add_item', name='add_item'),
-    url(r'^new$', 'lists.views.new_list', name='new_list'),
-)
+urlpatterns = [
+    url(r'^new$', views.new_list, name='new_list'),
+    url(r'^(\d+)/$', views.view_list, name='view_list'),
+    url(r'^(\d+)/add_item$', views.add_item, name='add_item'),
+]
 ----
 
 Rerun the unit tests to check everything worked.  When I did it, I

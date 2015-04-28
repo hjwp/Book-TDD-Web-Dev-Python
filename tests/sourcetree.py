@@ -17,7 +17,8 @@ def strip_comments(line):
     return line
 
 
-BOOTSTRAP_WGET = 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/archive/v3.0.0.zip'
+BOOTSTRAP_WGET = 'wget -O bootstrap.zip https://github.com/twbs/bootstrap/releases/download/v3.3.4/bootstrap-3.3.4-dist.zip'
+
 
 class Commit(object):
 
@@ -84,7 +85,7 @@ class SourceTree(object):
 
         if command == BOOTSTRAP_WGET:
             shutil.copy(
-                os.path.join(os.path.dirname(__file__), '../downloads/bootstrap-3.0.zip'),
+                os.path.join(os.path.dirname(__file__), '../downloads/bootstrap.zip'),
                 os.path.join(cwd, 'bootstrap.zip')
             )
             return
