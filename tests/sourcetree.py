@@ -85,7 +85,7 @@ class SourceTree(object):
 
         if command == BOOTSTRAP_WGET:
             shutil.copy(
-                os.path.join(os.path.dirname(__file__), '../downloads/bootstrap-3.0.zip'),
+                os.path.join(os.path.dirname(__file__), '../downloads/bootstrap.zip'),
                 os.path.join(cwd, 'bootstrap.zip')
             )
             return
