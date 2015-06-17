@@ -33,7 +33,17 @@ class Chapter19Test(ChapterTest):
 
         while self.pos < len(self.listings):
             print(self.pos, self.listings[self.pos].type)
+            listing = self.listings[self.pos]
+            if 'command' in listing.type and 'reset --hard' in listing:
+                check_head = True
+            else:
+                check_head = False
             self.recognise_listing_and_process_it()
+            if check_head:
+                print('checking chapter started from correct tag')
+                revision = self.sourcetree.run_command('git rev-parse HEAD')
+                assert "fb32e0d7ae5ee5" in revision
+                print('OK')
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(self.chapter_no, ignore_moves=True)
