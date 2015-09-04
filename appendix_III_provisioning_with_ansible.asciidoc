@@ -56,9 +56,6 @@ uses a syntax called YAML:
 
   sudo: yes
 
-  vars: 
-      host: $inventory_hostname
-
   tasks:
     - name: make sure required packages are installed
       apt: pkg=nginx,git,python3,python3-pip state=present
@@ -74,24 +71,20 @@ uses a syntax called YAML:
 
     - name: add nginx config to sites-available
       template: src=./nginx.conf.j2 
-                dest=/etc/nginx/sites-available/{{ host }}
+                dest=/etc/nginx/sites-available/{{ inventory_hostname }}
       notify:
           - restart nginx
 
     - name: add symlink in nginx sites-enabled
-      file: src=/etc/nginx/sites-available/{{ host }} 
-            dest=/etc/nginx/sites-enabled/{{ host }} state=link
+      file: src=/etc/nginx/sites-available/{{ inventory_hostname }} 
+            dest=/etc/nginx/sites-enabled/{{ inventory_hostname }} state=link
       notify:
           - restart nginx
 ----
 
-The vars section defines a variable "host" for convenience, which we can then
-use in the various filenames and pass to the config files themselves.  It comes
-from +$inventory_hostname+, which is the domain name of the server we're running
-against at the time.
-
 
 ((("Nginx")))
+The `inventory_hostname` variable is the domain name of the server we're running against.
 In this section, we install our required software using `apt`, tweak the Nginx
 config to allow long hostnames using a regular expression replacer, and then
 we write the Nginx config file using a template.  This is a modified version
@@ -104,15 +97,15 @@ actually a lot like the Django template syntax:
 ----
 server {
     listen 80;
-    server_name {{ host }};
+    server_name {{ inventory_hostname }};
 
     location /static {
-        alias /home/harry/sites/{{ host }}/static;
+        alias /home/harry/sites/{{ inventory_hostname }}/static;
     }
 
     location / {
-        proxy_set_header Host $host;
-        proxy_pass http://unix:/tmp/{{ host }}.socket;
+        proxy_set_header Host {{ inventory_hostname }};
+        proxy_pass http://unix:/tmp/{{ inventory_hostname }}.socket;
     }
 }
 ----
@@ -130,21 +123,21 @@ Here's the second half of our playbook:
 ----
     - name: write gunicorn init script
       template: src=./gunicorn-upstart.conf.j2 
-                dest=/etc/init/gunicorn-{{ host }}.conf
+                dest=/etc/init/gunicorn-{{ inventory_hostname }}.conf
       notify:
           - restart gunicorn
 
     - name: make sure nginx is running
       service: name=nginx state=running
     - name: make sure gunicorn is running
-      service: name=gunicorn-{{ host }} state=running
+      service: name=gunicorn-{{ inventory_hostname }} state=running
 
   handlers:
     - name: restart nginx
       service:  name=nginx state=restarted
 
     - name: restart gunicorn
-      service:  name=gunicorn-{{ host }} state=restarted
+      service:  name=gunicorn-{{ inventory_hostname }} state=restarted
 ----
 
 ((("Gunicorn")))
@@ -154,16 +147,16 @@ Once again we use a template for our Gunicorn config:
 .deploy_tools/gunicorn-upstart.conf.j2
 [source,bash]
 ----
-description "Gunicorn server for {{ host }}"
+description "Gunicorn server for {{ inventory_hostname }}"
 
 start on net-device-up
 stop on shutdown
 
 respawn
 
-chdir /home/harry/sites/{{ host }}/source
+chdir /home/harry/sites/{{ inventory_hostname }}/source
 exec ../virtualenv/bin/gunicorn \
-    --bind unix:/tmp/{{ host }}.socket \
+    --bind unix:/tmp/{{ inventory_hostname }}.socket \
     --access-logfile ../access.log \
     --error-logfile ../error.log \
     superlists.wsgi:application
