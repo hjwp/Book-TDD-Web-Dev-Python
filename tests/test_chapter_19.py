@@ -34,7 +34,7 @@ class Chapter19Test(ChapterTest):
         while self.pos < len(self.listings):
             print(self.pos, self.listings[self.pos].type)
             listing = self.listings[self.pos]
-            if 'command' in listing.type and 'reset --hard' in listing:
+            if 'command' in listing.type and 'reset --hard revisit_this_point_with_isolated_tests' in listing:
                 check_head = True
             else:
                 check_head = False
