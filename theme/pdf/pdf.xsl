@@ -48,12 +48,4 @@
    </xsl:otherwise>
   </xsl:choose>
 </xsl:template>
-
-<!-- Remove width attribute from tables in ebook formats -->
-
-<!-- Add title heading elements for different admonition types that do not already have headings in markup -->
-<xsl:param name="add.title.heading.for.admonitions" select="1"/>  
-
-<!-- Drop @width attributes from table headers if present -->
-<xsl:template match="h:th/@width"/>
 </xsl:stylesheet>
