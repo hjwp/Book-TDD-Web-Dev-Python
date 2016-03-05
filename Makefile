@@ -1,7 +1,7 @@
 SOURCES := $(wildcard chapter_*.asciidoc)
 CHAPTER_TESTS := $(wildcard tests/test_chapter_*.py)
 HTML_PAGES := $(patsubst %.asciidoc, %.html, ${SOURCES})
-RUN_ASCIIDOC = python2.7 `which asciidoc` 
+RUN_ASCIIDOC = asciidoctor
 
 
 book.html: $(SOURCES)
