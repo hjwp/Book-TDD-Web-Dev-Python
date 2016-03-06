@@ -109,7 +109,7 @@ def fix_newlines(text):
 def parse_output(listing):
     text = fix_newlines(listing.text_content().strip())
 
-    commands = listing.cssselect('pre code strong')
+    commands = listing.cssselect('pre strong')
     if not commands:
         return [Output(text)]
 
@@ -142,6 +142,9 @@ def parse_output(listing):
     return outputs
 
 
+def _strip_callouts(content):
+    return re.sub(r'  \(\d+\)$', '', content, flags=re.MULTILINE)
+
 
 def parse_listing(listing):
     classes = listing.get('class').split()
@@ -155,6 +158,7 @@ def parse_listing(listing):
     if 'sourcecode' in classes:
         filename = listing.cssselect('.title')[0].text_content().strip()
         contents = listing.cssselect('.content')[0].text_content().replace('\r\n', '\n').strip('\n')
+        contents = _strip_callouts(contents)
         listing = CodeListing(filename, contents)
         listing.skip = skip
         listing.dofirst = dofirst

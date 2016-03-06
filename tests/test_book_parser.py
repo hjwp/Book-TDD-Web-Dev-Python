@@ -11,6 +11,7 @@ from book_parser import (
     Output,
     get_commands,
     parse_listing,
+    _strip_callouts,
 )
 from examples import (
     CODE_LISTING_WITH_CAPTION,
@@ -351,6 +352,31 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertTrue(
             parsed_listings[1].endswith('Select an option: ')
         )
+
+
+    def test_strips_asciidoctor_callouts(self):
+        self.assertEqual(
+            _strip_callouts('foo  (1)\n  bar  (66)'),
+            'foo\n  bar'
+        )
+        self.assertEqual(
+            _strip_callouts('foo  (1)\n  bar  (66)\n'),
+            'foo\n  bar\n'
+        )
+
+        self.assertEqual(
+            _strip_callouts('foo  (hi)'),
+            'foo  (hi)',
+        )
+        self.assertEqual(
+            _strip_callouts('this  (4) foo'),
+            'this  (4) foo',
+        )
+        self.assertEqual(
+            _strip_callouts('foo(1)'),
+            'foo(1)',
+        )
+
 
 
 

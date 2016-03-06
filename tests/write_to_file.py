@@ -185,8 +185,8 @@ def write_to_file(codelisting, cwd):
 def _write_to_file(path, new_contents):
     source = Source.from_path(path)
     # strip callouts
-    new_contents = re.sub(r' +#$', '', new_contents, flags=re.MULTILINE)
-    new_contents = re.sub(r' +//$', '', new_contents, flags=re.MULTILINE)
+    # new_contents = re.sub(r' +#$', '', new_contents, flags=re.MULTILINE)
+    # new_contents = re.sub(r' +//$', '', new_contents, flags=re.MULTILINE)
 
     if not os.path.exists(path):
         dir = os.path.dirname(path)
