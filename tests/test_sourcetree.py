@@ -597,7 +597,7 @@ class SourceTreeRunCommandTest(unittest.TestCase):
             assert not mock_subprocess.Popen.called
         assert os.path.exists(os.path.join(sourcetree.tempdir, 'superlists', 'bootstrap.zip'))
         diff = sourcetree.run_command('diff %s bootstrap.zip' % (
-            os.path.join(os.path.dirname(__file__), '..', 'downloads', 'bootstrap-3.0.zip'))
+            os.path.join(os.path.dirname(__file__), '..', 'downloads', 'bootstrap.zip'))
         )
         assert diff == ''
 
