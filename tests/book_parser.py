@@ -148,7 +148,6 @@ def _strip_callouts(content):
     while re.search(callout_at_end, content, re.MULTILINE):
         content = re.sub(callout_at_end, '', content, flags=re.MULTILINE)
         counts += 1
-    print('stripped', counts)
     return content
 
 
