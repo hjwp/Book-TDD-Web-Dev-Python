@@ -13,20 +13,7 @@ from book_parser import (
     parse_listing,
     _strip_callouts,
 )
-from examples import (
-    CODE_LISTING_WITH_CAPTION,
-    CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF,
-    CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF,
-    CODE_LISTING_WITH_SKIPME,
-    OUTPUT_QUNIT,
-    OUTPUTS_WITH_CURRENTCONTENTS,
-    OUTPUT_WITH_SKIPME,
-    OUTPUTS_WITH_DOFIRST,
-    COMMAND_MADE_WITH_ATS,
-    SERVER_COMMAND,
-    COMMANDS_WITH_VIRTUALENV,
-    OUTPUT_WITH_COMMANDS_INLINE,
-)
+import examples
 
 
 class CodeListingTest(unittest.TestCase):
@@ -64,7 +51,7 @@ class CommitRefFinderTest(unittest.TestCase):
 class ParseCodeListingTest(unittest.TestCase):
 
     def test_recognises_code_listings(self):
-        code_html = CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
+        code_html = examples.CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         self.assertEqual(len(listings), 1)
@@ -89,7 +76,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_git_commit_refs(self):
-        code_html = CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF.replace('\n', '\r\n')
+        code_html = examples.CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         self.assertEqual(len(listings), 1)
@@ -101,7 +88,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_git_commit_refs_even_if_formatted_as_diffs(self):
-        code_html = CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF.replace('\n', '\r\n')
+        code_html = examples.CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         self.assertEqual(len(listings), 1)
@@ -113,7 +100,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_skipme_tag_on_unmarked_code_listing(self):
-        code_html = OUTPUT_WITH_SKIPME.replace('\n', '\r\n')
+        code_html = examples.OUTPUT_WITH_SKIPME.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         self.assertEqual(len(listings), 1)
@@ -122,7 +109,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_skipme_tag_on_code_listing(self):
-        code_html = CODE_LISTING_WITH_SKIPME.replace('\n', '\r\n')
+        code_html = examples.CODE_LISTING_WITH_SKIPME.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         self.assertEqual(len(listings), 1)
@@ -131,7 +118,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_currentcontents_tag(self):
-        code_html = OUTPUTS_WITH_CURRENTCONTENTS.replace('\n', '\r\n')
+        code_html = examples.OUTPUTS_WITH_CURRENTCONTENTS.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         self.assertEqual(len(listings), 1)
@@ -141,7 +128,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_dofirst_tag(self):
-        code_html = OUTPUTS_WITH_DOFIRST.replace('\n', '\r\n')
+        code_html = examples.OUTPUTS_WITH_DOFIRST.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         listing = listings[0]
@@ -150,7 +137,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_qunit_tag(self):
-        code_html = OUTPUT_QUNIT.replace('\n', '\r\n')
+        code_html = examples.OUTPUT_QUNIT.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         self.assertEqual(len(listings), 1)
@@ -162,7 +149,7 @@ class ParseCodeListingTest(unittest.TestCase):
         )
 
     def test_recognises_server_commands(self):
-        code_html = SERVER_COMMAND.replace('\n', '\r\n')
+        code_html = examples.SERVER_COMMAND.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         print(listings)
@@ -173,7 +160,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_virtualenv_commands(self):
-        code_html = COMMANDS_WITH_VIRTUALENV.replace('\n', '\r\n')
+        code_html = examples.COMMANDS_WITH_VIRTUALENV.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         print(listings)
@@ -183,7 +170,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_recognises_command_with_ats(self):
-        code_html = COMMAND_MADE_WITH_ATS.replace('\n', '\r\n')
+        code_html = examples.COMMAND_MADE_WITH_ATS.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
         print(listings)
@@ -330,7 +317,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_handles_inline_inputs(self):
-        listing = html.fromstring(OUTPUT_WITH_COMMANDS_INLINE)
+        listing = html.fromstring(examples.OUTPUT_WITH_COMMANDS_INLINE)
         commands = get_commands(listing)
         self.assertEqual(
             [str(c) for c in commands],
@@ -355,12 +342,35 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
     def test_strips_asciidoctor_callouts(self):
+        code_html = examples.CODE_LISTING_WITH_ASCIIDOCTOR_CALLOUTS.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        listings = parse_listing(node)
+        listing = listings[0]
+        self.assertEqual(type(listing), CodeListing)
+        self.assertNotIn('(1)', listing.contents)
+        self.assertNotIn('(2)', listing.contents)
+        self.assertNotIn('(7)', listing.contents)
+
+
+    def test_strip_callouts_helper(self):
         self.assertEqual(
-            _strip_callouts('foo  (1)\n  bar  (66)'),
+            _strip_callouts('foo  (1)'),
+            'foo'
+        )
+        self.assertEqual(
+            _strip_callouts('foo  (112)'),
+            'foo'
+        )
+        self.assertEqual(
+            _strip_callouts('foo  (ya know)  (2)'),
+            'foo  (ya know)'
+        )
+        self.assertEqual(
+            _strip_callouts('foo  (1)\n  bar  (7)'),
             'foo\n  bar'
         )
         self.assertEqual(
-            _strip_callouts('foo  (1)\n  bar  (66)\n'),
+            _strip_callouts('foo  (1)\n  bar  (7)\n'),
             'foo\n  bar\n'
         )
 

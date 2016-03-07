@@ -157,3 +157,37 @@ Migrations for 'lists':
     - Add field list to item</code></pre>
 </div></div>
 """
+
+
+CODE_LISTING_WITH_ASCIIDOCTOR_CALLOUTS = """
+<div class="listingblock sourcecode">
+<div class="title">functional_tests.py</div>
+<div class="content">
+<pre class="pygments highlight"><code data-lang="python"><span class="tok-kn">from</span> <span class="tok-nn">selenium</span> <span class="tok-kn">import</span> <span class="tok-n">webdriver</span>
+<span class="tok-kn">import</span> <span class="tok-nn">unittest</span>
+
+<span class="tok-k">class</span> <span class="tok-nc">NewVisitorTest</span><span class="tok-p">(</span><span class="tok-n">unittest</span><span class="tok-o">.</span><span class="tok-n">TestCase</span><span class="tok-p">):</span>  <i class="conum" data-value="1"></i><b>(1)</b>
+
+    <span class="tok-k">def</span> <span class="tok-nf">setUp</span><span class="tok-p">(</span><span class="tok-bp">self</span><span class="tok-p">):</span>  <i class="conum" data-value="3"></i><b>(3)</b>
+        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">browser</span> <span class="tok-o">=</span> <span class="tok-n">webdriver</span><span class="tok-o">.</span><span class="tok-n">Firefox</span><span class="tok-p">()</span>
+
+    <span class="tok-k">def</span> <span class="tok-nf">tearDown</span><span class="tok-p">(</span><span class="tok-bp">self</span><span class="tok-p">):</span>  <i class="conum" data-value="3"></i><b>(3)</b>
+        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">browser</span><span class="tok-o">.</span><span class="tok-n">quit</span><span class="tok-p">()</span>
+
+    <span class="tok-k">def</span> <span class="tok-nf">test_can_start_a_list_and_retrieve_it_later</span><span class="tok-p">(</span><span class="tok-bp">self</span><span class="tok-p">):</span>  <i class="conum" data-value="2"></i><b>(2)</b>
+        <span class="tok-c"># Edith has heard about a cool new online to-do app. She goes</span>
+        <span class="tok-c"># to check out its homepage</span>
+        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">browser</span><span class="tok-o">.</span><span class="tok-n">get</span><span class="tok-p">(</span><span class="tok-s">&#39;http://localhost:8000&#39;</span><span class="tok-p">)</span>
+
+        <span class="tok-c"># She notices the page title and header mention to-do lists</span>
+        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">assertIn</span><span class="tok-p">(</span><span class="tok-s">&#39;To-Do&#39;</span><span class="tok-p">,</span> <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">browser</span><span class="tok-o">.</span><span class="tok-n">title</span><span class="tok-p">)</span>  <i class="conum" data-value="4"></i><b>(4)</b>
+        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">fail</span><span class="tok-p">(</span><span class="tok-s">&#39;Finish the test!&#39;</span><span class="tok-p">)</span>  <i class="conum" data-value="5"></i><b>(5)</b>
+
+        <span class="tok-c"># She is invited to enter a to-do item straight away</span>
+        <span class="tok-p">[</span><span class="tok-o">...</span><span class="tok-n">rest</span> <span class="tok-n">of</span> <span class="tok-n">comments</span> <span class="tok-k">as</span> <span class="tok-n">before</span><span class="tok-p">]</span>
+
+<span class="tok-k">if</span> <span class="tok-n">__name__</span> <span class="tok-o">==</span> <span class="tok-s">&#39;__main__&#39;</span><span class="tok-p">:</span>  <i class="conum" data-value="6"></i><b>(6)</b>
+    <span class="tok-n">unittest</span><span class="tok-o">.</span><span class="tok-n">main</span><span class="tok-p">(</span><span class="tok-n">warnings</span><span class="tok-o">=</span><span class="tok-s">&#39;ignore&#39;</span><span class="tok-p">)</span>  <i class="conum" data-value="7"></i><b>(7)</b></code></pre>
+</div>
+</div>
+"""
