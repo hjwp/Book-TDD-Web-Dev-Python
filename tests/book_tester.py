@@ -85,11 +85,24 @@ def strip_git_hashes(output):
 
 
 def strip_callouts(output):
-    return re.sub(
+    minus_old_callouts = re.sub(
         r"^(.+)( ?<\d+>)$",
         r"\1",
         output,
         flags=re.MULTILINE,
+    )
+    minus_new_callouts = re.sub(
+        r"^(.+)  \(\d+\)$",
+        r"\1",
+        minus_old_callouts,
+        flags=re.MULTILINE,
+    )
+    return minus_new_callouts
+
+
+def standardise_library_paths(output):
+    return re.sub(
+        r'(File ").+packages/', r'\1.../', output, flags=re.MULTILINE,
     )
 
 
@@ -347,7 +360,8 @@ class ChapterTest(unittest.TestCase):
             expected.was_checked = True
             return
 
-        actual_fixed = wrap_long_lines(actual)
+        actual_fixed = standardise_library_paths(actual)
+        actual_fixed = wrap_long_lines(actual_fixed)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_js_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
@@ -360,7 +374,8 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
 
-        expected_fixed = fix_test_dashes(expected)
+        expected_fixed = standardise_library_paths(expected)
+        expected_fixed = fix_test_dashes(expected_fixed)
         expected_fixed = strip_test_speed(expected_fixed)
         expected_fixed = strip_js_test_speed(expected_fixed)
         expected_fixed = strip_git_hashes(expected_fixed)

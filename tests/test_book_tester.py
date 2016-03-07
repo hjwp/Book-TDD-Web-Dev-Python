@@ -464,6 +464,28 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
 
 
+    def test_ignores_asciidoctor_callouts(self):
+        actual = dedent("""
+            bla bla
+            stuff
+            """).strip()
+        expected = Output(dedent("""
+            bla bla  (1)
+            stuff
+            """).strip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+        expected2 = Output(dedent("""
+            bla bla <11>
+            stuff
+            """).strip()
+        )
+        self.assert_console_output_correct(actual, expected)
+
+
     def test_ignores_git_commit_numers_in_logs(self):
         actual = dedent("""
             ea82222 Basic view now returns minimal HTML
@@ -581,6 +603,43 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_matches_system_vs_virtualenv_install_paths(self):
+        actual = dedent(
+            """
+              File "/home/harry/.virtualenvs/Book/lib/python3.4/site-packages/django/core/urlresolvers.py", line 521, in resolve
+                return get_resolver(urlconf).resolve(path)
+            """
+        ).rstrip()
+        expected = Output(dedent(
+            """
+              File "...-packages/django/core/urlresolvers.py", line 521, in resolve
+                return get_resolver(urlconf).resolve(path)
+            """
+        ).rstrip())
+
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+        incorrect_actual = dedent(
+            """
+              File "/home/harry/.virtualenvs/Book/lib/python3.4/site-packages/django/core/urlresolvers.py", line 522, in resolve
+                return get_resolver(urlconf).resolve(path)
+            """
+        ).rstrip()
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(incorrect_actual, expected)
+        incorrect_actual = dedent(
+            """
+              File "/home/harry/.virtualenvs/Book/lib/python3.4/site-packages/django/core/another_file.py", line 521, in resolve
+                return get_resolver(urlconf).resolve(path)
+            """
+        ).rstrip()
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(incorrect_actual, expected)
+
+
+
+
     def test_fixes_stdout_stderr_for_creating_db(self):
         actual = dedent("""
             ======================================================================
@@ -674,30 +733,22 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             [... lots and lots of traceback]
 
             Traceback (most recent call last):
-              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-            259, in __call__
+              File "[...]-packages/django/test/testcases.py", line 259, in __call__
                 self._pre_setup()
-              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-            479, in _pre_setup
+              File "[...]-packages/django/test/testcases.py", line 479, in _pre_setup
                 self._fixture_setup()
-              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-            829, in _fixture_setup
+              File "[...]-packages/django/test/testcases.py", line 829, in _fixture_setup
                 if not connections_support_transactions():
-              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-            816, in connections_support_transactions
+              File "[...]-packages/django/test/testcases.py", line 816, in
+            connections_support_transactions
                 for conn in connections.all())
-              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-            816, in <genexpr>
+              File "[...]-packages/django/test/testcases.py", line 816, in <genexpr>
                 for conn in connections.all())
-              File "/usr/local/lib/python2.7/dist-packages/django/utils/functional.py",
-            line 43, in __get__
+              File "[...]-packages/django/utils/functional.py", line 43, in __get__
                 res = instance.__dict__[self.func.__name__] = self.func(instance)
-              File "/usr/local/lib/python2.7/dist-packages/django/db/backends/__init__.py",
-            line 442, in supports_transactions
+              File "[...]-packages/django/db/backends/__init__.py", line 442, in supports_transactions
                 self.connection.enter_transaction_management()
-              File
-            "/usr/local/lib/python2.7/dist-packages/django/db/backends/dummy/base.py", line
-            15, in complain
+              File "[...]-packages/django/db/backends/dummy/base.py", line 15, in complain
                 raise ImproperlyConfigured("settings.DATABASES is improperly configured. "
             ImproperlyConfigured: settings.DATABASES is improperly configured. Please
             supply the ENGINE value. Check settings documentation for more details.
