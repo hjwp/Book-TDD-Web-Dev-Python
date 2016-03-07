@@ -671,43 +671,43 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         with open(os.path.join(os.path.dirname(__file__), "actual_manage_py_test.output")) as f:
             actual = f.read().strip()
         expected = Output(dedent("""
-[... lots and lots of traceback]
+            [... lots and lots of traceback]
 
-Traceback (most recent call last):
-  File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-259, in __call__
-    self._pre_setup()
-  File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-479, in _pre_setup
-    self._fixture_setup()
-  File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-829, in _fixture_setup
-    if not connections_support_transactions():
-  File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-816, in connections_support_transactions
-    for conn in connections.all())
-  File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
-816, in <genexpr>
-    for conn in connections.all())
-  File "/usr/local/lib/python2.7/dist-packages/django/utils/functional.py",
-line 43, in __get__
-    res = instance.__dict__[self.func.__name__] = self.func(instance)
-  File "/usr/local/lib/python2.7/dist-packages/django/db/backends/__init__.py",
-line 442, in supports_transactions
-    self.connection.enter_transaction_management()
-  File
-"/usr/local/lib/python2.7/dist-packages/django/db/backends/dummy/base.py", line
-15, in complain
-    raise ImproperlyConfigured("settings.DATABASES is improperly configured. "
-ImproperlyConfigured: settings.DATABASES is improperly configured. Please
-supply the ENGINE value. Check settings documentation for more details.
+            Traceback (most recent call last):
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
+            259, in __call__
+                self._pre_setup()
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
+            479, in _pre_setup
+                self._fixture_setup()
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
+            829, in _fixture_setup
+                if not connections_support_transactions():
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
+            816, in connections_support_transactions
+                for conn in connections.all())
+              File "/usr/local/lib/python2.7/dist-packages/django/test/testcases.py", line
+            816, in <genexpr>
+                for conn in connections.all())
+              File "/usr/local/lib/python2.7/dist-packages/django/utils/functional.py",
+            line 43, in __get__
+                res = instance.__dict__[self.func.__name__] = self.func(instance)
+              File "/usr/local/lib/python2.7/dist-packages/django/db/backends/__init__.py",
+            line 442, in supports_transactions
+                self.connection.enter_transaction_management()
+              File
+            "/usr/local/lib/python2.7/dist-packages/django/db/backends/dummy/base.py", line
+            15, in complain
+                raise ImproperlyConfigured("settings.DATABASES is improperly configured. "
+            ImproperlyConfigured: settings.DATABASES is improperly configured. Please
+            supply the ENGINE value. Check settings documentation for more details.
 
- ---------------------------------------------------------------------
-Ran 85 tests in 0.788s
+             ---------------------------------------------------------------------
+            Ran 85 tests in 0.788s
 
-FAILED (errors=404, skipped=1)
-AttributeError: _original_allowed_hosts
-""").strip()
+            FAILED (errors=404, skipped=1)
+            AttributeError: _original_allowed_hosts
+            """).strip()
         )
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)

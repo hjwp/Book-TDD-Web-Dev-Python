@@ -536,8 +536,9 @@ class SourceTreeRunCommandTest(unittest.TestCase):
 
     def test_environment_variables(self):
         sourcetree = SourceTree()
-        output = sourcetree.run_command('echo $PIP_DOWNLOAD_CACHE', cwd=sourcetree.tempdir)
-        assert output == '/home/harry/.pip-download-cache\n'
+        os.environ['TEHFOO'] = 'baz'
+        output = sourcetree.run_command('echo $TEHFOO', cwd=sourcetree.tempdir)
+        assert output.strip() == 'baz'
 
 
     def test_doesnt_raise_for_some_things_where_a_return_code_is_ok(self):
