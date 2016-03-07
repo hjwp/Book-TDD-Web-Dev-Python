@@ -349,6 +349,8 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(type(listing), CodeListing)
         self.assertNotIn('(1)', listing.contents)
         self.assertNotIn('(2)', listing.contents)
+        self.assertNotIn('(3)', listing.contents)
+        self.assertNotIn('(4)', listing.contents)
         self.assertNotIn('(7)', listing.contents)
 
 
@@ -358,8 +360,16 @@ class ParseCodeListingTest(unittest.TestCase):
             'foo'
         )
         self.assertEqual(
-            _strip_callouts('foo  (112)'),
+            _strip_callouts('foo (1)'),
             'foo'
+        )
+        self.assertEqual(
+            _strip_callouts('foo (112)'),
+            'foo'
+        )
+        self.assertEqual(
+            _strip_callouts('line1\nline2 (2)\nline3'),
+            'line1\nline2\nline3'
         )
         self.assertEqual(
             _strip_callouts('foo  (ya know)  (2)'),
@@ -386,7 +396,14 @@ class ParseCodeListingTest(unittest.TestCase):
             _strip_callouts('foo(1)'),
             'foo(1)',
         )
-
+        self.assertEqual(
+            _strip_callouts('foo  (1) (2)'),
+            'foo'
+        )
+        self.assertEqual(
+            _strip_callouts('<form>  (1)'),
+            '<form>'
+        )
 
 
 

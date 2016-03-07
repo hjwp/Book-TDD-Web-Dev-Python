@@ -143,7 +143,13 @@ def parse_output(listing):
 
 
 def _strip_callouts(content):
-    return re.sub(r'  \(\d+\)$', '', content, flags=re.MULTILINE)
+    callout_at_end = r'\s+\(\d+\)$'
+    counts = 0
+    while re.search(callout_at_end, content, re.MULTILINE):
+        content = re.sub(callout_at_end, '', content, flags=re.MULTILINE)
+        counts += 1
+    print('stripped', counts)
+    return content
 
 
 def parse_listing(listing):

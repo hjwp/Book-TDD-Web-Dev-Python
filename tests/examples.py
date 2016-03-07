@@ -161,33 +161,27 @@ Migrations for 'lists':
 
 CODE_LISTING_WITH_ASCIIDOCTOR_CALLOUTS = """
 <div class="listingblock sourcecode">
-<div class="title">functional_tests.py</div>
+<div class="title">lists/static/tests/tests.html</div>
 <div class="content">
-<pre class="pygments highlight"><code data-lang="python"><span class="tok-kn">from</span> <span class="tok-nn">selenium</span> <span class="tok-kn">import</span> <span class="tok-n">webdriver</span>
-<span class="tok-kn">import</span> <span class="tok-nn">unittest</span>
+<pre class="CodeRay highlight"><code data-lang="html">    <span class="tag">&lt;div</span> <span class="attribute-name">id</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">qunit-fixture</span><span class="delimiter">&quot;</span></span><span class="tag">&gt;</span><span class="tag">&lt;/div&gt;</span>
 
-<span class="tok-k">class</span> <span class="tok-nc">NewVisitorTest</span><span class="tok-p">(</span><span class="tok-n">unittest</span><span class="tok-o">.</span><span class="tok-n">TestCase</span><span class="tok-p">):</span>  <i class="conum" data-value="1"></i><b>(1)</b>
+    <span class="tag">&lt;form&gt;</span>  <i class="conum" data-value="1"></i><b>(1)</b>
+        <span class="tag">&lt;input</span> <span class="attribute-name">name</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">text</span><span class="delimiter">&quot;</span></span> <span class="tag">/&gt;</span>
+        <span class="tag">&lt;div</span> <span class="attribute-name">class</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">has-error</span><span class="delimiter">&quot;</span></span><span class="tag">&gt;</span>Error text<span class="tag">&lt;/div&gt;</span>
+    <span class="tag">&lt;/form&gt;</span>
 
-    <span class="tok-k">def</span> <span class="tok-nf">setUp</span><span class="tok-p">(</span><span class="tok-bp">self</span><span class="tok-p">):</span>  <i class="conum" data-value="3"></i><b>(3)</b>
-        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">browser</span> <span class="tok-o">=</span> <span class="tok-n">webdriver</span><span class="tok-o">.</span><span class="tok-n">Firefox</span><span class="tok-p">()</span>
+    <span class="tag">&lt;script</span> <span class="attribute-name">src</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">http://code.jquery.com/jquery.min.js</span><span class="delimiter">&quot;</span></span><span class="tag">&gt;</span><span class="tag">&lt;/script&gt;</span>
+    <span class="tag">&lt;script</span> <span class="attribute-name">src</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">qunit.js</span><span class="delimiter">&quot;</span></span><span class="tag">&gt;</span><span class="tag">&lt;/script&gt;</span>
+    <span class="tag">&lt;script&gt;</span>
+<span class="inline"><span class="comment">/*global $, test, equal */</span>
 
-    <span class="tok-k">def</span> <span class="tok-nf">tearDown</span><span class="tok-p">(</span><span class="tok-bp">self</span><span class="tok-p">):</span>  <i class="conum" data-value="3"></i><b>(3)</b>
-        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">browser</span><span class="tok-o">.</span><span class="tok-n">quit</span><span class="tok-p">()</span>
+test(<span class="string"><span class="delimiter">&quot;</span><span class="content">smoke test</span><span class="delimiter">&quot;</span></span>, <span class="keyword">function</span> () {
+    equal(<span class="predefined">$</span>(<span class="string"><span class="delimiter">'</span><span class="content">.has-error</span><span class="delimiter">'</span></span>).is(<span class="string"><span class="delimiter">'</span><span class="content">:visible</span><span class="delimiter">'</span></span>), <span class="predefined-constant">true</span>);  <i class="conum" data-value="2"></i><b>(2)</b> <i class="conum" data-value="3"></i><b>(3)</b>
+    <span class="predefined">$</span>(<span class="string"><span class="delimiter">'</span><span class="content">.has-error</span><span class="delimiter">'</span></span>).hide();  <i class="conum" data-value="4"></i><b>(4)</b>
+    equal(<span class="predefined">$</span>(<span class="string"><span class="delimiter">'</span><span class="content">.has-error</span><span class="delimiter">'</span></span>).is(<span class="string"><span class="delimiter">'</span><span class="content">:visible</span><span class="delimiter">'</span></span>), <span class="predefined-constant">false</span>);  <i class="conum" data-value="5"></i><b>(5)</b>
+});</span>
 
-    <span class="tok-k">def</span> <span class="tok-nf">test_can_start_a_list_and_retrieve_it_later</span><span class="tok-p">(</span><span class="tok-bp">self</span><span class="tok-p">):</span>  <i class="conum" data-value="2"></i><b>(2)</b>
-        <span class="tok-c"># Edith has heard about a cool new online to-do app. She goes</span>
-        <span class="tok-c"># to check out its homepage</span>
-        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">browser</span><span class="tok-o">.</span><span class="tok-n">get</span><span class="tok-p">(</span><span class="tok-s">&#39;http://localhost:8000&#39;</span><span class="tok-p">)</span>
-
-        <span class="tok-c"># She notices the page title and header mention to-do lists</span>
-        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">assertIn</span><span class="tok-p">(</span><span class="tok-s">&#39;To-Do&#39;</span><span class="tok-p">,</span> <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">browser</span><span class="tok-o">.</span><span class="tok-n">title</span><span class="tok-p">)</span>  <i class="conum" data-value="4"></i><b>(4)</b>
-        <span class="tok-bp">self</span><span class="tok-o">.</span><span class="tok-n">fail</span><span class="tok-p">(</span><span class="tok-s">&#39;Finish the test!&#39;</span><span class="tok-p">)</span>  <i class="conum" data-value="5"></i><b>(5)</b>
-
-        <span class="tok-c"># She is invited to enter a to-do item straight away</span>
-        <span class="tok-p">[</span><span class="tok-o">...</span><span class="tok-n">rest</span> <span class="tok-n">of</span> <span class="tok-n">comments</span> <span class="tok-k">as</span> <span class="tok-n">before</span><span class="tok-p">]</span>
-
-<span class="tok-k">if</span> <span class="tok-n">__name__</span> <span class="tok-o">==</span> <span class="tok-s">&#39;__main__&#39;</span><span class="tok-p">:</span>  <i class="conum" data-value="6"></i><b>(6)</b>
-    <span class="tok-n">unittest</span><span class="tok-o">.</span><span class="tok-n">main</span><span class="tok-p">(</span><span class="tok-n">warnings</span><span class="tok-o">=</span><span class="tok-s">&#39;ignore&#39;</span><span class="tok-p">)</span>  <i class="conum" data-value="7"></i><b>(7)</b></code></pre>
+    <span class="tag">&lt;/script&gt;</span></code></pre>
 </div>
 </div>
 """
