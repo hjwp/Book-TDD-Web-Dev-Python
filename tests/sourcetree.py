@@ -163,7 +163,7 @@ class SourceTree(object):
         commit_spec = self.get_commit_spec(commit_ref)
         self.run_command(
             #'git diff {commit}^ {commit} | patch'.format(commit=commit_spec)
-            'git show -M {commit} | patch -p1 --fuzz=3 --no-backup-if-mismatch'.format(commit=commit_spec)
+            'git show -p {commit} | patch -p1 --fuzz=3 --no-backup-if-mismatch'.format(commit=commit_spec)
         )
         #self.run_command('git reset')
 
