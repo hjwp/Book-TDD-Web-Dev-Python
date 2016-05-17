@@ -7,18 +7,33 @@
 
 # Outline
 
-* Intro (10m, t=0)
-* Our example app - tour (5m, t=10)
-* Codebase tour (10m, t=20)
-* Double-loop TDD demo (10m, t=30)
-* Coding challenge 1:  building the "my lists" feature (40m, t=40)
-* Outside-In TDD.  Examples + discussion (20m, t=1h20)
-* Break (10m, t=1h40)
-* Next challenge: redo it with a more "purist" approach (35m, t=1h50)
-* Mocks and "Listen to your tests" discussion. (30m, t=2h25)
-* The pitfalls of mocking (15m, t=2h55)
-* Recap + discussion:  the pros and cons of different types of test (10m, t=3h10)
+* Intro and installations (15m, t=0)
+* Our example app - tour (5m, t=15)
+* Codebase tour (5m, t=20)
+* Double-loop TDD demo (10m, t=25)
+* Coding challenge 1:  building the "my lists" feature (45m, t=35)
+* Outside-In TDD.  Examples + discussion (20m, t=1h15)
+* Break (15m, t=1h35)
+* Mocks demo: (10m, t=1h50)
+* Next challenge: redo it with a more "purist" approach (25m, t=2h00)
+* Mocks and "Listen to your tests" discussion. (25m, t=2h25)
+* The pitfalls of mocking (15m, t=2h50)
+* Recap + discussion:  the pros and cons of different types of test (15m, t=3h05)
 * end (t=3h20)
+
+
+
+# notes from live session
+- need a good example much better planned for double-loop tdd demo. 
+- got to beginning of first exercise in 40 mins with 6ppl (5 mins behind)
+- got to end of outside-in discussion after 2h10 (35 mins behind)
+- have a better process for outside-in live code bit
+- slides worked well for that bit
+- and for the mocks bit
+- live-coding was fine for mocks intro
+
+ideas-
+could use .name attribute for demo?
 
 
 
