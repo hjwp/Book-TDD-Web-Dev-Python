@@ -1,6 +1,89 @@
+
+
+
+
+
+
+
+# Outline
+
+* Intro (10m, t=0)
+* Our example app - tour (5m, t=10)
+* Codebase tour (10m, t=20)
+* Double-loop TDD demo (10m, t=30)
+* Coding challenge 1:  building the "my lists" feature (40m, t=40)
+* Outside-In TDD.  Examples + discussion (20m, t=1h20)
+* Break (10m, t=1h40)
+* Next challenge: redo it with a more "purist" approach (35m, t=1h50)
+* Mocks and "Listen to your tests" discussion. (30m, t=2h25)
+* The pitfalls of mocking (15m, t=2h55)
+* Recap + discussion:  the pros and cons of different types of test (10m, t=3h10)
+* end (t=3h20)
+
+
+
+
+# Welcome to the Intermediate TDD with Django Workshop
+
+Wifi: "CodeNode" password: "welovecode"
+
+```installation instructions:
+git clone https://github.com/hjwp/book-example/ tdd-workshop
+cd tdd-workshop
+git checkout intermediate-workshop-start
+mkvirtualenv --python=python3 tdd-workshop  # or however you like to create virtualenvs
+pip install -r requirements.txt
+
+# Take a look around the site  with:
+mkdir ../database
+python manage.py migrate
+python manage.py runserver
+
+# Run the test suite and check everything passes:
+pip install selenium
+python manage.py test  # all but one should pass
+```
+
+If the functional tests give you any trouble, You can try switching from
+`webdriver.Firefox()` to `webdriver.Chrome()`.  You will need to download a
+thing called "chromedriver" (google it) and have it on the path (in the main
+repo folder might also work)
+
+
+color: apprentice? colorful? beachcomber? ironman?
+
+
+
+
+
+
+
+
+
+
 # Intro
 
 * pair up: beginners to sit next to more experienced people
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8,6 +91,26 @@
 
 * Current state, demo
 * Desired state, demo
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -33,6 +136,16 @@ class Item(models.Model):
 
 
 
+
+
+
+
+
+
+
+
+
+
 **Views**:
 
 * home page
@@ -44,6 +157,16 @@ class Item(models.Model):
 def home_page(request):
     return render(request, 'home.html', {'form': ItemForm()})
 ```
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -77,8 +200,21 @@ def view_list(request, list_id):
 
 
 
-* forms deal with validation and creating new objects, they live in *lists/forms.py*.  We don't need them for the first part of this workshop.
-* login/logout etc are handled by the accounts module, which we won't need to look at today.
+* forms deal with validation and creating new objects, they live in
+  *lists/forms.py*.  We don't need them for the first part of this workshop.
+
+* login/logout etc are handled by the accounts module, which we won't need to
+  look at today.
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -93,10 +229,25 @@ def view_list(request, list_id):
 
 
 
+
+
+
+
+
+
+
+
+
+
 # Coding challenge 1:  building the "my lists" feature
 
-Ideally: using TDD. Add some unit tests, in *test_models.py* and *test_views.py*.  Get the FT to pass.
+ie: Get this FT to pass:
 
+```
+python manage.py test functional_tests.test_my_lists
+```
+
+Ideally: using TDD. Add some unit tests, in *test_models.py* and *test_views.py*.  Get the FT to pass.
 
 Tips:
 
@@ -106,7 +257,23 @@ Tips:
 * you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it
 * you will need to associate the creation of a new list with the current user, if they're logged in
 
-* if the FTs are being weird, try switching from `webdriver.Firefox()` to `webdriver.Chrome()`.  You will need to download a thing called "chromedriver" and have it on the path (in the main repo folder is probably fine)
+* if the FTs are being weird, try switching from `webdriver.Firefox()` to `webdriver.Chrome()`.  You will need to download a thing called "chromedriver" and have it on the path
+
+**Help**: Grab my version of the "my lists" template. it will tell you what you need your views to do
+
+```
+git checkout intermediate-tdd-workshop-end -- lists/templates/my_lists.html
+```
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -147,6 +314,16 @@ Additional illustrations
 * at the models layer, we need to implement saving owners for lists
 
 
+
+
+
+
+
+
+
+
+
+
 ```python lists/tests/test_views.py
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
@@ -156,8 +333,6 @@ Additional illustrations
         list_ = List.objects.first()
         self.assertEqual(list_.owner, user)
 ```
-
-
 
 
 ```python lists/views.py
@@ -177,6 +352,15 @@ def new_list(request):
 
 
 
+
+
+
+
+
+
+
+
+
 ```
 ======================================================================
 ERROR: test_list_owner_is_saved_if_user_is_authenticated (lists.tests.test_views.NewListTest)
@@ -189,6 +373,20 @@ AttributeError: 'List' object has no attribute 'owner'
 ----------------------------------------------------------------------
 ```
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+So we move down to the models layer:
 
 
 ``` python lists/tests/test_models.py
@@ -209,6 +407,21 @@ class List(models.Model):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+Maybe we think everything should work now, we pop back up to run the FT:
+
+
+
 ```
 ======================================================================
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
@@ -226,7 +439,19 @@ element: {"method":"link text","selector":"First list 1st item"}
 ```
 
 
+Oh no!  what's happening?
+
   firefox ~/Dropbox/Book/images/intermediate-ws-ft-fail-ss1.png 
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -235,6 +460,22 @@ element: {"method":"link text","selector":"First list 1st item"}
           <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Lists need a name attribute (what we'd programmed by wishful thinking)
+
 
 
 
@@ -260,9 +501,50 @@ class List(models.Model):
 
 
 
+
+
+
+
+
+
+
+
+
+
 # Discussion
 
-# Break
+
+* benefits of outside-in vs bottom-up
+* when might it not work?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Break (if you want!)
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -271,7 +553,9 @@ class List(models.Model):
 * how many people have never used mocks?
 
 
+```
 git checkout intermediate-workshop-part2
+```
 
 * Objective: get this test to pass *before* we move onto the models layer
 
@@ -352,6 +636,16 @@ def new_list(request):
 
 
 
+
+
+
+
+
+
+
+
+
+
 What if it was easier?
 
 
@@ -404,6 +698,16 @@ of course if we're going to go the whole way, we would rewrite all the tests:
 ```
 
 
+
+
+
+
+
+
+
+
+
+
 Same story at the forms layer:
 
 
@@ -412,7 +716,7 @@ class NewListForm(models.Form):
 
     def save(self, owner):
         list_ = List()
-        if owner:
+        if owner.is_authenticated():
             list_.owner = owner
         list_.save()
         item = Item()
@@ -520,11 +824,52 @@ Can you figure out what went wrong?
     * They can be harder to read and understand,
     * But: these are the best ones for guiding you towards better design.
     * And they run the fastest.
-    ((("isolated tests", "pros and cons")))
+
+
+
+
+
+
+
+
+
+
+
+
+
+# THE END!
+
+
+www.obeythetestinggoat.com
+
+DISCOUNT CODE for oreilly.com: "AUTHD"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 # misc notes
 
 color: apprentice? colorful? beachcomber?
+
 
