@@ -3,6 +3,7 @@
 * pair up: beginners to sit next to more experienced people
 
 
+
 # Our example app - tour
 
 * Current state, demo
@@ -10,10 +11,11 @@
 
 
 
+
 # Codebase tour
 
 
-Models:  a list has many items:
+**Models**:  a list has many items:
 
 
 ```python: lists/models.py
@@ -31,7 +33,7 @@ class Item(models.Model):
 
 
 
-Views:
+**Views**:
 
 * home page
 * create new list (and show errors back on home page if necessary)
@@ -75,8 +77,8 @@ def view_list(request, list_id):
 
 
 
-* forms deal with validation and creating new objects, they live in *lists/forms.py*
-* details of accounts module don't matter today
+* forms deal with validation and creating new objects, they live in *lists/forms.py*.  We don't need them for the first part of this workshop.
+* login/logout etc are handled by the accounts module, which we won't need to look at today.
 
 
 
@@ -465,9 +467,9 @@ class NewListForm(ItemForm):
 
     def save(self, owner):
         if owner.is_authenticated():
-            return List.create_new(first_item=self.cleaned_data['text'], owner=owner)
+            List.create_new(first_item=self.cleaned_data['text'], owner=owner)
         else:
-            return List.create_new(first_item=self.cleaned_data['text'])
+            List.create_new(first_item=self.cleaned_data['text'])
 ```
 
 
@@ -481,8 +483,48 @@ End result:
 
 
 
-But: pitfalls!
 
+# The pitfalls of mocking
+
+
+git checkout intermediate-workshop-part3
+
+
+Can you figure out what went wrong?
+
+
+
+* lesson:  mocking requires clear identification of contracts, and testing same.
+
+
+
+# Recap + discussion:  the pros and cons of different types of test
+
+
+
+**Functional tests:**
+    * Provide the best guarantee that your application really works correctly,
+    from the point of view of the user.
+    * But: it's a slower feedback cycle,
+    * And they don't necessarily help you write clean code.
+
+* **Integrated tests** (reliant on, e.g., the ORM or the Django Test Client):
+    * Are quick to write,
+    * Easy to understand,
+    * Will warn you of any integration issues,
+    * But may not always drive good design (that's up to you!).
+    * And are usually slower than isolated tests
+
+**Isolated ("mocky") tests:**
+    * These involve the most hard work.
+    * They can be harder to read and understand,
+    * But: these are the best ones for guiding you towards better design.
+    * And they run the fastest.
+    ((("isolated tests", "pros and cons")))
+
+
+
+# misc notes
 
 color: apprentice? colorful? beachcomber?
 
