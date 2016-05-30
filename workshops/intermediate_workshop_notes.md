@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 # Outline
 
 * Intro and installations (15m, t=0)
@@ -15,11 +8,11 @@
 * Outside-In TDD.  Examples + discussion (20m, t=1h15)
 * Break (15m, t=1h35)
 * Mocks demo: (10m, t=1h50)
-* Next challenge: redo it with a more "purist" approach (25m, t=2h00)
-* Mocks and "Listen to your tests" discussion. (25m, t=2h25)
-* The pitfalls of mocking (15m, t=2h50)
-* Recap + discussion:  the pros and cons of different types of test (15m, t=3h05)
-* end (t=3h20)
+* Next challenge: redo it with a more "purist" approach (15m, t=2h00)
+* Mocks and "Listen to your tests" discussion. (25m, t=2h15)
+* The pitfalls of mocking (15m, t=2h35)
+* Recap + discussion:  the pros and cons of different types of test (15m, t=2h50)
+* end (t=3h00)
 
 
 
@@ -32,15 +25,42 @@
 - and for the mocks bit
 - live-coding was fine for mocks intro
 
-ideas-
-could use .name attribute for demo?
 
+
+
+# notes from prep
+
+live code demo 1:
+git checkout intermediate-workshop-start-harry
+add url #, navbar-left, re-run ft
+move down to test views
+client.get /lists/my_lists/
+assert 200 as well as template
+add url
+create placeholder view
+render home instead of my lists
+add my_lists template
+inherit from base
+add block content, h1
+
+live code demo 2:
+git checkout end-of-live-code
+my_lists.html
+user.list_set.all
+mention other possibilities
+list.name
+then examples back in main prezzo
+
+
+live code demo 3:
+mockListClass
+see problem with form
+mockItemForm
+passes but not saving.  hand over
 
 
 
 # Welcome to the Intermediate TDD with Django Workshop
-
-Wifi: "CodeNode" password: "welovecode"
 
 ```installation instructions:
 git clone https://github.com/hjwp/book-example/ tdd-workshop
@@ -271,6 +291,9 @@ Tips:
 * `list.get_absolute_url()` will give you a url you can use in an <a> tag for the lists page
 * you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it
 * you will need to associate the creation of a new list with the current user, if they're logged in
+* if you need a views test to have a logged-in user, you have two choices
+  - `self.client.force_login(user)`
+  - or, import and call the view function directly with an HttpRequest instance whose .user attribute is set.
 
 * if the FTs are being weird, try switching from `webdriver.Firefox()` to `webdriver.Chrome()`.  You will need to download a thing called "chromedriver" and have it on the path
 
@@ -296,21 +319,20 @@ git checkout intermediate-tdd-workshop-end -- lists/templates/my_lists.html
 # Outside-In TDD.  Examples + discussion
 
 
-Live code demo
+Live code demo - programming by wishful thinking in the template
 
-```
-* 1775d23 add do-nothing my lists url to template
-* 84f167c my lists link tries to use an actual url
-* d344699 test for my lists url and template. --ch18l003--
-* 9b58a31 URL for my lists. --ch18l004--
-* d3ff996 minimal view for my_lists, just renders template. --ch18l005--
-* edaf1d5 minimal my_lists.html template. --ch18l006--
-* aee7c2e start outside-in in my lists template: we want the owner
-* 9406a7f flesh out my_lists.html. --ch18l010--
-* 377aaa0 test passes owner to my_lists template. --ch18l011--
-* 193549d view passes owner to my_lists template. --ch18l012--
 
-```
+
+
+
+
+
+
+
+
+
+
+
 
 * we can work incrementally, small steps
 
@@ -344,7 +366,9 @@ Additional illustrations
     def test_list_owner_is_saved_if_user_is_authenticated(self):
         user = User.objects.create(email='a@b.com')
         self.client.force_login(user)
+
         self.client.post('/lists/new', data={'text': 'new item'})
+
         list_ = List.objects.first()
         self.assertEqual(list_.owner, user)
 ```
@@ -549,7 +573,7 @@ class List(models.Model):
 
 
 
-# Break (if you want!)
+# Break
 
 
 
@@ -567,29 +591,32 @@ class List(models.Model):
 
 * how many people have never used mocks?
 
+* live demo of mocks
+
+
 
 ```
 git checkout intermediate-workshop-part2
 ```
-
 * Objective: get this test to pass *before* we move onto the models layer
 
-
 Tips:
-
 * Test will probably need re-writing to use mocks
 
 * `new_list` view has two "collaborators", 
   - `ItemForm` 
   - the `List` class
-
 you will probably need to mock one or both of these
   - you need to check a list object is created
   - you need to check it has the owner assigned to it
-  - either inside the `objects.create()` call, or *before* calling `list_.save()`
+  - either inside the `objects.create()` call,
+  - or *before* calling `list_.save()`
 
+  self.assertEqual(mock_list.save.called, True)
 
 * No need to use mocks once you get to the models layer!
+
+(for bonus points: testing that things happen in a particular order involves an advanced mocking technique involving custom `side_effect` functions. Look these up in the docs and try and use them, if you finish early)
 
 
 Think about:
@@ -803,8 +830,7 @@ End result:
 
 
 
-# The pitfalls of mocking
-
+# The pitfalls of mocking: debugging challenge!
 
 git checkout intermediate-workshop-part3
 
