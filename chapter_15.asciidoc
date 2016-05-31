@@ -1,6 +1,6 @@
 [[Persona-clientside-chapter]]
-User Authentication, Integrating Third-Party Plugins, and Mocking with JavaScript
----------------------------------------------------------------------------------
+User Authentication, Spiking and Mocking
+----------------------------------------
 
 ((("authentication")))
 ((("user authentication", see="authentication")))
@@ -19,8 +19,8 @@ account on the site.  So, without further ado, let's dive into authentication.
 
 Naturally we're not going to mess about with remembering passwords
 ourselves--besides being 'so' '90s, secure storage of user passwords is a
-security nightmare we'd rather leave to someone else.  We'll use a federated
-authentication system instead.
+security nightmare we'd rather leave to someone else.  We'll use something
+fun called passwordless auth instead.
 
 (If you 'insist' on storing your own passwords, Django's default auth
 module is ready and waiting for you. It's nice and straightforward, and I'll
@@ -31,61 +31,60 @@ leave it to you to discover on your own.)
 In this chapter, we're going to get pretty deep into a testing
 technique called "mocking". Personally, I know it took me a few weeks to
 really get my head around mocking, so don't worry if it's confusing at first.
-In this chapter we do a lot of mocking in JavaScript.  In the next chapter
-we'll do some mocking with Python, which you might find a little easier to 
-grasp.  I would recommend reading both of them through together, and just
-letting the whole concept wash over you; then come back and do them again,
-and see if you understand all of the steps a little better on the second round.
 
-NOTE: Do let me know via obeythetestinggoat@gmail.com if you feel there's
+NOTE: This chapter has been substantially rewritten for the new edition, so
+let me know via obeythetestinggoat@gmail.com if you feel there's
 any particular sections where I don't explain things well, or where I'm 
 going too fast.
 
 
-Mozilla Persona (BrowserID)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Passwordless Auth
+~~~~~~~~~~~~~~~~~
 
-((("Mozilla Persona")))
-((("Persona")))
-((("authentication", "Mozilla Persona")))
-But which federated authentication system to use?  Oauth?  Openid?  "Login with
-Facebook"?   Ugh.  In my book those all have unacceptable creepy overtones;
-why should Google or Facebook know what sites you're logging into and when?
-Thankfully there are still some techno-hippy-idealists out there, and the
-lovely people at Mozilla have cooked up a privacy-friendly auth mechanism
-they call "Persona", or sometimes pass:[<span class="keep-together">"BrowserID".</span>]
+((("Passwordless")))
+((("authentication", "Passwordless")))
+What authentication system could we use to avoid storing passwords ourselves?
+Oauth?  Openid?  "Login with Facebook"?   Ugh.  For me those all have
+unacceptable creepy overtones; why should Google or Facebook know what sites
+you're logging into and when?
 
-The theory goes that your web browser acts as a third party between the
-website that wants to check your ID, and the website that you will use
-as a guarantor of your ID.  The latter may be Google or Facebook or whomever,
-but a clever protocol means that they never need know which website you were
-logging into or when.
+In the first edition I used an experimental project called "Persona",
+cooked up by a few remaining techno-hippy-idealists at Mozilla, but sadly
+that project was discontinued.
 
-Ultimately, Persona may never take off as an authentication platform, but
-the main lessons from the next couple of chapters should be relevant no matter
-what third-party auth system you want to integrate:
+Instead I've found a fun approach to authentication that goes by the name
+of "Passwordless", but you might call it "just use email".
 
-* Don't test other people's code or APIs.
-* But, test that you've integrated them correctly into your own code.
-* Check that everything works from the point of view of the user.
-* Test that your system degrades gracefully if the third party is down.
-//TODO: except I don't actually go into that last, do I?
+The system was invented by someone who was annoyed at having to create
+new passwords for so many websites, and found himself just using random,
+throwaway passwords, not even trying to remember them, and using the
+"forgot my password" feature whenever he needed to log in again. You can
+https://TODO-insert-link-here[read all about it here]
+
+So the concept is:  just use email to verify someone's identity.  If you're
+going to have a "forgot my password" feature, then you're trusting email
+anyway, so why not just go the whole hog?  Whenever someone wants to log in,
+we generate a unique URL for them to use, email it to them, and they then
+click through that to get into the site.
+
+It's by no means a perfect system, and in fact there are lots of subtleties
+to be thought through before it would really make a good login solution for
+a production website, but this is just a fun toy project so let's give it a go.
+
 
 
 Exploratory Coding, aka "Spiking"
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("JavaScript", "spiking with", seealso="spiking", id="ix_javaspiking", range="startofrange")))
-((("spiking", "with JavaScript", id="ix_spikingjava", range="startofrange")))
 ((("spiking", id="ix_spiking", range="startofrange")))
 ((("exploratory coding", seealso="spiking")))
-Before I wrote this chapter all I'd seen of Persona was a talk at PyCon by Dan
-Callahan, in which he promised it could be implemented in 30 lines of code, and
-magic'd his way through a demo--in other words, I knew it not at all.
+Before I wrote this chapter all I knew about passwordless auth was the outline
+I'd read above.  I'd never seen any code for it, and didn't really know where
+to start in building it.
 
-In <<manual-validation-chapter>> and <<simple-form-chapter>> we saw that you can
-use a unit test as a way of exploring a
-new API, but sometimes you just want to hack something together without any
+In <<manual-validation-chapter>> and <<simple-form-chapter>> we saw that you
+can use a unit test as a way of exploring a new API or tool, but sometimes you
+just want to hack something together without any
 tests at all, just to see if it works, to learn it or get a feel for it.
 That's absolutely fine.  When learning a new tool or exploring a new possible
 solution, it's often appropriate to leave the rigorous TDD process to one side,
@@ -97,18 +96,15 @@ http://stackoverflow.com/questions/249969/why-are-tdd-spikes-called-spikes[reaso
 best known].
 
 ((("Django-BrowserID")))
-The first thing I did was take a look at an existing  Django-Persona
-integration called
-https://github.com/mozilla/django-browserid[Django-BrowserID], but
-unfortunately it didn't really support Python 3.  I'm sure it will by the time
-you read this, but I was quietly relieved since I was rather looking forward to
-writing my own code for this! 
+The first thing I did was take a look at existing Python and Django authentication
+packages, like https://TODO-another-url[django-social-auth] and
+https://TODO-another-other-URL[python-social-auth], but both of them looked
+overcomplicated for this stage (and I was quietly relieved since I was rather
+looking forward to writing my own code for this!)
 
-It took me about three hours of hacking about, using a combination of code stolen
-from Dan's talk and the example code on the
-https://developer.mozilla.org/en-US/docs/Mozilla/Persona[Persona site], but by
-the end I had something which just about works.  I'll take you on a tour,
-and then we'll go through and "de-spike" the implementation.  
+from Dan's talk and the example code on the, but by the end I had something
+which just about works.  I'll take you on a tour, and then we'll go through and
+"de-spike" the implementation.  
 
 You should go ahead and add this code to your own site too, and then you can
 have a play with it, try logging in with your own email address, and convince
