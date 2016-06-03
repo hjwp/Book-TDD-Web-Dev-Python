@@ -125,209 +125,178 @@ $ *git checkout -b persona-spike*
 ----
 
 
-Frontend and JavaScript Code
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Front-end Log in UI
+^^^^^^^^^^^^^^^^^^^
 
-((("spiking", "frontend and JavaScript code")))
-Let's start with the frontend.  I was able to cut and paste code from the
-Persona site and Dan's slides with minimal modification:
-
-
-[role="sourcecode small-code"]
-.lists/templates/base.html (ch15l001)
-[source,html]
-----
-<script src="http://code.jquery.com/jquery.min.js"></script>
-<script src="/static/list.js"></script>
-<script src="https://login.persona.org/include.js"></script>
-<script>
-$(document).ready(function() {
-
-var loginLink = document.getElementById('login');
-if (loginLink) {
-  loginLink.onclick = function() { navigator.id.request(); };
-}
-
-var logoutLink = document.getElementById('logout');
-if (logoutLink) {
-  logoutLink.onclick = function() { navigator.id.logout(); };
-}
-
-var currentUser = '{{ user.email }}' || null;
-var csrf_token = '{{ csrf_token }}';
-console.log(currentUser);
-
-navigator.id.watch({
-  loggedInUser: currentUser,
-  onlogin: function(assertion) {
-    $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token})
-    .done(function() { window.location.reload(); })
-    .fail(function() { navigator.id.logout();});
-  },
-  onlogout: function() {
-    $.post('/accounts/logout', {csrfmiddlewaretoken: csrf_token})
-    .always(function() { window.location.reload(); });
-  }
-});
-
-});
-</script>
-----
-
-The Persona JavaScript library gives us a special `navigator.id` object.
-We bind its `request` method to our link called "login" (which I've put
-in any old where at the top of the page), and similarly a "logout" link 
-gets bound to a `logout` function:
+((("spiking", "frontend")))
+Let's start with the front-end, just some log in and log out
+links...
 
 [role="sourcecode"]
-.lists/templates/base.html (ch15l002)
+.lists/templates/base.html (ch15l001)
 [source,html]
 ----
 <body>
 <div class="container">
 
     <div class="navbar">
-        {% if user.email %}
+        {% if user.is_authenticated %}
             <p>Logged in as {{ user.email}}</p>
-            <p><a id="logout" href="{% url 'logout' %}">Sign out</a></p>
+            <p><a id="id_logout" href="{% url 'logout' %}">Log out</a></p>
         {% else %}
-            <a href="#" id="login">Sign in</a>
+          <form method="POST" action ="{% url 'send_login_email' %}">
+            Enter email to log in: <input name="email" type="text" />
+            {% csrf_token %}
+          </form>
         {% endif %}
-        <p>User: {{user}}</p>
     </div>
 
     <div class="row">
     [...]
 ----
 
-The Browser-ID Protocol
-^^^^^^^^^^^^^^^^^^^^^^^
 
-((("spiking", "browser-ID protocol")))
-Persona will now pop up its authentication dialog box if users
-click the log in link. What happens next is the clever part of the Persona
-protocol:  the user enters an email address, and the browser takes care
-of validating that email address, by taking the user to the email provider
-(Google, Yahoo, or whoever), and validating it with them. 
+Sending emails from Django
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Let's say it's Google: Google asks the user to confirm their username and
-password, and maybe even does some two-factor auth wizardry, and is then
-prepared to confirm to your browser that you are who you say you are.  Google
-then passes a certificate back to the browser, which is cryptographically
-signed to prove it's from Google, and which contains the user's email address.
+The login theory will be something like this:
 
-At this point the browser can trust that you do own that email address, and
-it can incidentally reuse that certificate for any other websites that use
-Persona.
+- when someone wants to log in, we generate a unique secret token for them,
+    store it in the database linked to their email, and email it to them
 
-Now it combines the certificate with the domain name of the website
-you want to log into in to a blob called an "assertion", and sends them on
-to our site for validation.
+- they then check their email, which will have a link to a url that includes 
+    that token
 
-This is the point between the `navigator.id.request` and the
-`navigator.id.watch` callback for ``onlogin``&mdash;we send the assertion via
-POST to the login URL on our site, which I've put at 'accounts/login'.
+- when they click on that link, we check whether the token exists in database,
+    and if so, they are logged in as the associated user.
 
-On the server, we now have the job of verifying the assertion: is it really
-proof that the user owns that email address?  Our server can check, because
-Google has signed part of the assertion with its public key.  We can either
-write code to do the crypto for this step ourselves, or we can use a public
-service from Mozilla to do it for us.
-
-NOTE: Yes, letting Mozilla do it for us totally defeats the whole privacy
-point, but it's the 'principle'. We could do it ourselves if we wanted to.
-It's left as an exercise for the reader!  There are more details on the 
-https://developer.mozilla.org/en-US/docs/Mozilla/Persona/Protocol_Overview[Mozilla
-site], including all the clever public key crypto that keeps Google from 
-knowing what site you want to log in to, but also stops replay attacks and
-so on. Smart.
-
-
-The Server Side: Custom Authentication
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ((("spiking", "server-side authentication", id="ix_spikingssa", range="startofrange")))
 ((("authentication","customising", id="ix_authcust", range="startofrange")))
 ((("Django", "authentication in", id="ix_Djangoauth", range="startofrange")))
-Next we prep an app for our accounts stuff:
+First we prep an app for our accounts stuff:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *python3 manage.py startapp accounts*
 ----
 
-Here's the view that handles the POST to 'accounts/login':
+Here's the view that's in charge of creating a token associated with the email
+address a user puts in our login form:
 
-[role="sourcecode small-code"]
-.accounts/views.py
+[role="sourcecode"]
+.accounts/views.py (ch15l001)
 [source,python]
 ----
 import sys
-from django.contrib.auth import authenticate
-from django.contrib.auth import login as auth_login
-from django.shortcuts import redirect
+from accounts.models import Token
+from django.shortcuts import render
+from django.core.mail import send_mail
 
-def login(request):
+
+def send_login_email(request):
     print('login view', file=sys.stderr)
-    # user = PersonaAuthenticationBackend().authenticate(request.POST['assertion'])
-    user = authenticate(assertion=request.POST['assertion'])
-    if user is not None:
-        auth_login(request, user)
-    return redirect('/')
+    email = request.POST['email']
+    token = Token.objects.create(email=email)
+    url = 'http://localhost/accounts/login/{token}/'.format(token=token.uid))
+    send_mail(
+        'Your login link for Superlists',
+        'Use this link to log into the site:\n\n {url}\n'.format(url=url),
+        'noreply@superlists',
+        [email],
+    )
+    return render('login_email_sent.html')
 ----
 
-You can see that it's clearly "spike" code from things like the commented-out
-line, evidence of an early experiment that failed.
 
-Here's the `authenticate` function, which is implemented as a custom
-Django "authentication backend". (We could have done it inline in the view,
-but using a backend is the Django recommended way.  It would let us reuse the
-authentication system in the admin site, for example.)
+For that to work we'll need a placeholder message confirming the email was
+sent:
 
-[role="sourcecode small-code"]
-.accounts/authentication.py
+[role="sourcecode"]
+.accounts/templates/login_email_sent.html
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Email sent</h1>
+
+<p>Check your email, you'll find a message with a link that will log you into the site.</p>
+
+{% endblock %}
+----
+
+More importantly, for the Django `send_mail` function to work, 
+we need to tell Django our email server address.  I'm just
+using my gmail account for now.  You can use any email provider you like,
+as long as they support SMTP.
+
+[role="sourcecode"]
+.superlists/settings.py
 [source,python]
 ----
-import requests
-import sys
-from accounts.models import ListUser
 
-class PersonaAuthenticationBackend(object):
-
-    def authenticate(self, assertion):
-        # Send the assertion to Mozilla's verifier service.
-        data = {'assertion': assertion, 'audience': 'localhost'}
-        print('sending to mozilla', data, file=sys.stderr)
-        resp = requests.post('https://verifier.login.persona.org/verify', data=data)
-        print('got', resp.content, file=sys.stderr)
-
-        # Did the verifier respond?
-        if resp.ok:
-            # Parse the response
-            verification_data = resp.json()
-
-            # Check if the assertion was valid
-            if verification_data['status'] == 'okay':
-                email = verification_data['email']
-                try:
-                    return self.get_user(email)
-                except ListUser.DoesNotExist:
-                    return ListUser.objects.create(email=email)
-
-
-    def get_user(self, email):
-        return ListUser.objects.get(email=email)
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_HOST_USER = 'obeythetestinggoat@gmail.com'
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD')
+EMAIL_USE_TLS = True
 ----
 
-This code is copy-pasted directly from the Mozilla site, as you can see from
-the explanatory comments.  
 
-You'll need to `pip install requests` into your virtualenv.  If you've never
-used it before, http://docs.python-requests.org/[Requests] is a great
-alternative to the Python standard library tools for HTTP requests.
+Using environment variables to avoid secrets in source code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To finish off the job of customising authentication in Django, we just need a
-custom user model:
+Sooner or later every project needs to figure out a way to deal with 
+"secrets", things like email passwords or API keys that you don't want
+to share with the whole wide world.  If your repo is private, it might
+be fine to just store it in git, but often that's not the case.  This
+also intersects with the need to have different settings in dev and in
+production (remember how we dealt with the django SECRET_KEY setting 
+in <<deployment_chapter>>?)
+
+A common pattern is to use environment variables for this sort of
+configuration setting, which is what I'm doing with the `os.environ.get`.
+
+TODO: link to 12-factor page on env vars?
+
+To get this to work, I need to set the environment variable in the shell
+that's running my dev server.
+
+[subs="specialcharacters,quotes"]
+----
+$ *export EMAIL_PASSWORD="sekrit"*
+----
+
+Later we'll see about adding that to the staging server as well.
+
+
+Custom authentication models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We'll need a model to store our tokens in the database -- they link an
+email address with a unique id.  The Python standard library's `uuid` module is
+useful here:
+
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+import uuid
+from django.db import models
+
+class Token(models.Model):
+    email = models.EmailField()
+    uid = models.CharField(max_length=36, default=uuid.uuid4)
+----
+
+TIP: the `default` argument accepts a value or a function. If you
+pass it a function, then it'll call it each time we create a new
+instance, which means the value can change for each instance. That's
+why I didn't put `uuid.uuid4()`.
+
+
+While we're messing about with models, let's build a user model.
 
 [role="sourcecode"]
 .accounts/models.py
@@ -356,7 +325,7 @@ That's what I call a minimal user model!  One field, none of this
 firstname/lastname/username nonsense, and, pointedly, no password! 
 Somebody else's problem!   But, again, you can see that this code isn't ready
 for production, from the commented-out lines to the hardcoded harry
-email address.
+email address.  We'll neaten this up when we de-spike.
 
 NOTE: At this point I'd recommend a little browse through the 
 https://docs.djangoproject.com/en/1.8/topics/auth/customizing/[Django 
@@ -379,7 +348,65 @@ class ListUserManager(BaseUserManager):
         self.create_user(email)
 ----
 
-A logout view:
+
+Finishing the custom Django auth
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Here's the view that handles the POST to 'accounts/login':
+
+[role="sourcecode small-code"]
+.accounts/views.py
+[source,python]
+----
+import sys
+from django.contrib.auth import authenticate
+from django.contrib.auth import login as auth_login
+from django.shortcuts import redirect
+
+def login(request, uid):
+    print('login view', file=sys.stderr)
+    user = authenticate(uid=uid)
+    if user is not None:
+        auth_login(request, user)
+    return redirect('/')
+
+----
+
+
+The "authenticate" function invokes Django's authentication framework, which
+we configure using a "custom authentication backend",
+whose job it is to validate the uid and return a user with the right email.
+
+We could have done this stuff directly in the view, but we may as well
+structure things the way Django expects.  It makes for a reasonably neat
+separation of concerns.
+
+
+[role="sourcecode small-code"]
+.accounts/authentication.py
+[source,python]
+----
+import sys
+from accounts.models import ListUser, Token
+
+class PasswordlessAuthenticationBackend(object):
+
+    def authenticate(self, uid):
+        if not Token.objects.filter(uid=uid).exists():
+            return None
+        token = Token.objects.get(uid=uid)
+        try:
+            return self.get_user(token.email)
+        except ListUser.DoesNotExist:
+            return ListUser.objects.create(email=token.email)
+
+
+    def get_user(self, email):
+        return ListUser.objects.get(email=email)
+----
+
+
+Finally, a logout view:
 
 
 [role="sourcecode"]
@@ -394,40 +421,22 @@ def logout(request):
     return redirect('/')
 ----
 
-Some URLs for our two views:
+Some URLs for our three views:
 
 [role="sourcecode"]
-.superlists/urls.py (ch15l008)
+.accounts/urls.py (ch15l008)
 [source,python]
 ----
-from accounts import urls as account_urls
+from django.conf.urls import url
+from accounts import views
 
 urlpatterns = [
-    url(r'^$', list_views.home_page, name='home'),
-    url(r'^lists/', include(list_urls)),
-    url(r'^accounts/', include(account_urls)),
-    # url(r'^admin/', include(admin.site.urls)),
+    url(r'^send_email$', views.send_login_email, name='send_login_email'),
+    url(r'^login/(.+)/$', views.login, name='login'),
+    url(r'^logout$', views.logout, name='logout'),
 ]
 ----
 
-and
-
-[role="sourcecode"]
-.accounts/urls.py
-[source,python]
-----
-from django.conf.urls import patterns, url
-
-urlpatterns = [
-    url(r'^login$', 'accounts.views.login', name='login'),
-    url(r'^logout$', 'accounts.views.logout', name='logout'),
-]
-----
-
-
-(((range="endofrange", startref="ix_spikingssa")))
-(((range="endofrange", startref="ix_authcust")))
-(((range="endofrange", startref="ix_Djangoauth")))
 Almost there. We switch on the auth backend and our new accounts app in
 'settings.py':
 
@@ -455,7 +464,7 @@ MIDDLEWARE_CLASSES = (
 [...]
 ----
 
-And a quick `makemigrations` to make the new user model real:
+A quick `makemigrations` to make the new user model real:
 
 [subs="specialcharacters,macros"]
 ----
@@ -463,6 +472,7 @@ $ pass:quotes[*python3 manage.py makemigrations*]
 Migrations for 'accounts':
   0001_initial.py:
     - Create model ListUser
+    - Create model Token
 ----
 
 And a `migrate` to build the database:
@@ -476,31 +486,25 @@ Running migrations:
 ----
 
 And we should be all done! Why not spin up a dev server with `runserver` and
-see how it all looks (<<persona-login-working>>)?
+see how it all looks (<<todo-login-working>>)?
 
-[[persona-login-working]]
+[[todo-login-working]]
 .It works! It works! Mwahahahaha.
 image::images/twdp_1501.png["The Persona login screen"]
 
 
-((("debugging", "Ajax")))
+(((range="endofrange", startref="ix_spikingssa")))
+(((range="endofrange", startref="ix_authcust")))
+(((range="endofrange", startref="ix_Djangoauth")))
 That's pretty much it! Along the way, I had to fight pretty hard, including
-debugging Ajax requests by hand in the Firefox console (see
-<<debugging-ajax>>), catching infinite page-refresh loops, stumbling over
+clicking around the gmail account security UI for a while, stumbling over
 several missing attributes on my custom user model (because I didn't read the
 docs properly), and even one point switching to the dev version of Django to
 overcome a bug, which thankfully turned out to be irrelevant.
 ((("Ajax")))
 ((("debugging")))
 
-[[debugging-ajax]]
-.Debugging Ajax requests in the Firefox network console
-image::images/twdp_1502.png["Shows the Firefox debug console open on the network tab"]
 
-
-TIP: If it's not working when you try it manually, and you see "audience
-mismatch" errors in the console, make sure you're visiting the site
-via 'http://localhost:8000', and not '127.0.0.1'.
 ((("spiking", "logging")))
 
 .Aside: Logging to stderr
