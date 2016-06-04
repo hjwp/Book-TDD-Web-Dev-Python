@@ -178,34 +178,68 @@ First we prep an app for our accounts stuff:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python3 manage.py startapp accounts*
+$ *python manage.py startapp accounts*
+----
+
+And we'll wire up 'urls.py' with at least one URL.  In the top-level 'superlists/urls.py'...
+
+[role="sourcecode"]
+.superlists/urls.py (ch15l003)
+[source,python]
+----
+from django.conf.urls import include, url
+from lists import views as list_views
+from lists import urls as list_urls
+from accounts import urls as accounts_urls
+
+urlpatterns = [
+    url(r'^$', list_views.home_page, name='home'),
+    url(r'^lists/', include(list_urls)),
+    url(r'^accounts/', include(accounts_urls)),
+]
+----
+
+And in the accounts module's 'urls.py':
+
+[role="sourcecode"]
+.accounts/urls.py (ch15l004)
+[source,python]
+----
+from django.conf.urls import url
+from accounts import views
+
+urlpatterns = [
+    url(r'^send_email$', views.send_login_email, name='send_login_email'),
+]
 ----
 
 Here's the view that's in charge of creating a token associated with the email
 address a user puts in our login form:
 
 [role="sourcecode"]
-.accounts/views.py (ch15l001)
+.accounts/views.py (ch15l005)
 [source,python]
 ----
 import sys
+import uuid
 from accounts.models import Token
 from django.shortcuts import render
 from django.core.mail import send_mail
 
 
 def send_login_email(request):
-    print('login view', file=sys.stderr)
+    print('sending email', file=sys.stderr)
     email = request.POST['email']
-    token = Token.objects.create(email=email)
-    url = 'http://localhost/accounts/login/{token}/'.format(token=token.uid))
+    uid = str(uuid.uuid4())
+    Token.objects.create(email=email, uid=uid)
+    url = 'http://localhost:8000/accounts/login?uid={uid}'.format(uid=uid)
     send_mail(
         'Your login link for Superlists',
-        'Use this link to log into the site:\n\n {url}\n'.format(url=url),
+        'login link: {url}'.format(url=url),
         'noreply@superlists',
         [email],
     )
-    return render('login_email_sent.html')
+    return render(request, 'login_email_sent.html')
 ----
 
 
@@ -213,26 +247,27 @@ For that to work we'll need a placeholder message confirming the email was
 sent:
 
 [role="sourcecode"]
-.accounts/templates/login_email_sent.html
+.accounts/templates/login_email_sent.html (ch15l006)
 [source,html]
 ----
-{% extends 'base.html' %}
-
-{% block content %}
+<html>
 <h1>Email sent</h1>
 
-<p>Check your email, you'll find a message with a link that will log you into the site.</p>
+<p>Check your email, you'll find a message with a link that will log you into
+the site.</p>
 
-{% endblock %}
+</html>
 ----
 
-More importantly, for the Django `send_mail` function to work, 
-we need to tell Django our email server address.  I'm just
-using my gmail account for now.  You can use any email provider you like,
-as long as they support SMTP.
+(You can see how hacky this code is -- we'd want to integrate this template
+with our 'base.html' in the real version)
+
+More importantly, for the Django `send_mail` function to work, we need to tell
+Django our email server address.  I'm just using my gmail account for now.  You
+can use any email provider you like, as long as they support SMTP.
 
 [role="sourcecode"]
-.superlists/settings.py
+.superlists/settings.py (ch15l007)
 [source,python]
 ----
 
@@ -241,6 +276,12 @@ EMAIL_HOST_USER = 'obeythetestinggoat@gmail.com'
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD')
 EMAIL_USE_TLS = True
 ----
+
+TIP: If you want to use gmail as well, you'll probably have to visit your
+    google account security settings page.  If you're using two-factor auth,
+    you'll want to set up an "app-specific password".  Even if you're not,
+    google might reject SMTP requests it doesn't recognise, until you mark
+    them as authorised.
 
 
 Using environment variables to avoid secrets in source code
@@ -274,36 +315,31 @@ Custom authentication models
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 We'll need a model to store our tokens in the database -- they link an
-email address with a unique id.  The Python standard library's `uuid` module is
-useful here:
+email address with a unique id.  Pretty simple.
 
 
 [role="sourcecode"]
-.accounts/models.py
+.accounts/models.py (ch15l008)
 [source,python]
 ----
-import uuid
 from django.db import models
 
 class Token(models.Model):
     email = models.EmailField()
-    uid = models.CharField(max_length=36, default=uuid.uuid4)
+    uid = models.CharField(max_length=255)
 ----
-
-TIP: the `default` argument accepts a value or a function. If you
-pass it a function, then it'll call it each time we create a new
-instance, which means the value can change for each instance. That's
-why I didn't put `uuid.uuid4()`.
 
 
 While we're messing about with models, let's build a user model.
 
 [role="sourcecode"]
-.accounts/models.py
+.accounts/models.py (ch15l009)
 [source,python]
 ----
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
-from django.db import models
+[..]
+from django.contrib.auth.models import (
+    AbstractBaseUser, BaseUserManager, PermissionsMixin
+)
 
 class ListUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(primary_key=True)
@@ -334,7 +370,7 @@ auth documentation].
 Aside from that, you need a model manager for the user:
 
 [role="sourcecode small-code"]
-.accounts/models.py (ch15l006)
+.accounts/models.py (ch15l010)
 [source,python]
 ----
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
@@ -349,27 +385,31 @@ class ListUserManager(BaseUserManager):
 ----
 
 
+
 Finishing the custom Django auth
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Here's the view that handles the POST to 'accounts/login':
 
 [role="sourcecode small-code"]
-.accounts/views.py
+.accounts/views.py (ch15l011)
 [source,python]
 ----
+import uuid
 import sys
+from django.core.mail import send_mail
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as auth_login
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
+[...]
 
-def login(request, uid):
+def login(request):
     print('login view', file=sys.stderr)
+    uid = request.GET.get('uid')
     user = authenticate(uid=uid)
     if user is not None:
         auth_login(request, user)
     return redirect('/')
-
 ----
 
 
@@ -383,7 +423,7 @@ separation of concerns.
 
 
 [role="sourcecode small-code"]
-.accounts/authentication.py
+.accounts/authentication.py (ch15l012)
 [source,python]
 ----
 import sys
@@ -392,12 +432,18 @@ from accounts.models import ListUser, Token
 class PasswordlessAuthenticationBackend(object):
 
     def authenticate(self, uid):
+        print('uid', uid, file=sys.stderr)
         if not Token.objects.filter(uid=uid).exists():
+            print('no token found', file=sys.stderr)
             return None
         token = Token.objects.get(uid=uid)
+        print('got token', file=sys.stderr)
         try:
-            return self.get_user(token.email)
+            user = ListUser.objects.get(email=token.email)
+            print('got user', file=sys.stderr)
+            return user
         except ListUser.DoesNotExist:
+            print('new user', file=sys.stderr)
             return ListUser.objects.create(email=token.email)
 
 
@@ -406,11 +452,15 @@ class PasswordlessAuthenticationBackend(object):
 ----
 
 
+Again, lots of debug prints in there, and some duplicated code, not something
+we'd want in production, but it works...
+
+
 Finally, a logout view:
 
 
 [role="sourcecode"]
-.accounts/views.py (ch15l007)
+.accounts/views.py (ch15l013)
 [source,python]
 ----
 from django.contrib.auth import login as auth_login, logout as auth_logout
@@ -421,10 +471,10 @@ def logout(request):
     return redirect('/')
 ----
 
-Some URLs for our three views:
+Add login and logout to our urls.py...
 
 [role="sourcecode"]
-.accounts/urls.py (ch15l008)
+.accounts/urls.py (ch15l004)
 [source,python]
 ----
 from django.conf.urls import url
@@ -432,7 +482,7 @@ from accounts import views
 
 urlpatterns = [
     url(r'^send_email$', views.send_login_email, name='send_login_email'),
-    url(r'^login/(.+)/$', views.login, name='login'),
+    url(r'^login$', views.login, name='login'),
     url(r'^logout$', views.logout, name='logout'),
 ]
 ----
@@ -441,7 +491,7 @@ Almost there. We switch on the auth backend and our new accounts app in
 'settings.py':
 
 [role="sourcecode"]
-.superlists/settings.py
+.superlists/settings.py (ch15l014)
 [source,python]
 ----
 INSTALLED_APPS = (
@@ -457,14 +507,14 @@ INSTALLED_APPS = (
 
 AUTH_USER_MODEL = 'accounts.ListUser'
 AUTHENTICATION_BACKENDS = (
-    'accounts.authentication.PersonaAuthenticationBackend',
+    'accounts.authentication.PasswordlessAuthenticationBackend',
 )
 
 MIDDLEWARE_CLASSES = (
 [...]
 ----
 
-A quick `makemigrations` to make the new user model real:
+A quick `makemigrations` to make the token and user models real:
 
 [subs="specialcharacters,macros"]
 ----
@@ -490,7 +540,11 @@ see how it all looks (<<todo-login-working>>)?
 
 [[todo-login-working]]
 .It works! It works! Mwahahahaha.
-image::images/twdp_1501.png["The Persona login screen"]
+image::images/tbc.png["successful login"]
+
+TIP: if you get a `SMTPSenderRefused` error message, don't forget to set
+    the `EMAIL_PASSWORD` environment variable in the shell that's running
+    `runserver`
 
 
 (((range="endofrange", startref="ix_spikingssa")))
@@ -505,6 +559,7 @@ overcome a bug, which thankfully turned out to be irrelevant.
 ((("debugging")))
 
 
+//TODO: check if this is still needed? in 1.9?
 ((("spiking", "logging")))
 
 .Aside: Logging to stderr
@@ -548,7 +603,7 @@ But we now have a working solution!  Let's commit it on our spike branch:
 ----
 $ *git status*
 $ *git add accounts*
-$ *git commit -am "spiked in custom auth backend with persona"*
+$ *git commit -am "spiked in custom passwordless auth backend"*
 ----
 
 Time to de-spike!
