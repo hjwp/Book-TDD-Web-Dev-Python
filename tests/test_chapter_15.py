@@ -10,14 +10,14 @@ class Chapter15Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'other command')
+        # self.assertEqual(self.listings[0].type, 'other command')
         self.assertEqual(self.listings[1].type, 'code listing with git ref')
-        self.assertEqual(self.listings[2].type, 'code listing with git ref')
+        self.assertEqual(self.listings[2].type, 'other command')
         #self.assertTrue(self.listings[88].dofirst)
 
         # skips
-        self.skip_with_check(26, 'switch back to master') # comment
-        self.skip_with_check(28, 'remove any trace') # comment
+        self.skip_with_check(29, 'switch back to master') # comment
+        self.skip_with_check(31, 'remove any trace') # comment
 
         # prep
         self.sourcetree.start_with_checkout(self.chapter_no)
