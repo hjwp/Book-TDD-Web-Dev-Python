@@ -220,11 +220,12 @@ address a user puts in our login form:
 .accounts/views.py (ch15l005)
 [source,python]
 ----
-import sys
 import uuid
-from accounts.models import Token
+import sys
 from django.shortcuts import render
 from django.core.mail import send_mail
+
+from accounts.models import Token
 
 
 def send_login_email(request):
@@ -235,7 +236,7 @@ def send_login_email(request):
     url = 'http://localhost:8000/accounts/login?uid={uid}'.format(uid=uid)
     send_mail(
         'Your login link for Superlists',
-        'login link: {url}'.format(url=url),
+        'Use this link to log in:\n\n{url}'.format(url=url),
         'noreply@superlists',
         [email],
     )
@@ -336,10 +337,11 @@ While we're messing about with models, let's build a user model.
 .accounts/models.py (ch15l009)
 [source,python]
 ----
-[..]
+[...]
 from django.contrib.auth.models import (
     AbstractBaseUser, BaseUserManager, PermissionsMixin
 )
+
 
 class ListUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(primary_key=True)
@@ -373,8 +375,7 @@ Aside from that, you need a model manager for the user:
 .accounts/models.py (ch15l010)
 [source,python]
 ----
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-
+[...]
 class ListUserManager(BaseUserManager):
 
     def create_user(self, email):
@@ -397,9 +398,9 @@ Here's the view that handles the POST to 'accounts/login':
 ----
 import uuid
 import sys
-from django.core.mail import send_mail
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as auth_login
+from django.core.mail import send_mail
 from django.shortcuts import redirect, render
 [...]
 
@@ -474,7 +475,7 @@ def logout(request):
 Add login and logout to our urls.py...
 
 [role="sourcecode"]
-.accounts/urls.py (ch15l004)
+.accounts/urls.py (ch15l014)
 [source,python]
 ----
 from django.conf.urls import url
@@ -491,7 +492,7 @@ Almost there. We switch on the auth backend and our new accounts app in
 'settings.py':
 
 [role="sourcecode"]
-.superlists/settings.py (ch15l014)
+.superlists/settings.py (ch15l015)
 [source,python]
 ----
 INSTALLED_APPS = (
@@ -570,7 +571,7 @@ terminal by default, but you can make it do so with a variable called `LOGGING`
 in 'settings.py':
 
 [role="sourcecode"]
-.superlists/settings.py (ch15l011)
+.superlists/settings.py (ch15l017)
 [source,python]
 ----
 LOGGING = {
@@ -622,161 +623,65 @@ information to "do it properly".  So what's the first step?  An FT of course!
 We'll stay on the spike branch for now, to see our FT pass against our spiked
 code.  Then we'll go back to master, and commit just the FT.
 
-Here's the basic outline:
+Here's a first, simple version of the FT
 
+//l018
 [role="sourcecode"]
 .functional_tests/test_login.py
 [source,python]
 ----
+import re
+from django.core import mail
+
 from .base import FunctionalTest
+
+TEST_EMAIL = 'edith@example.com'
+SUBJECT = 'Your login link for Superlists'
+
 
 class LoginTest(FunctionalTest):
 
-    def test_login_with_persona(self):
+    def test_can_get_email_link_to_log_in(self):
         # Edith goes to the awesome superlists site
-        # and notices a "Sign in" link for the first time.
+        # and notices a "Log in" section in the navbar for the first time
+        # It's telling her to enter her email address, so she does
+
         self.browser.get(self.server_url)
-        self.browser.find_element_by_id('login').click()
-
-        # A Persona login box appears
-        self.switch_to_new_window('Mozilla Persona')  #<1>
-
-        # Edith logs in with her email address
-        ## Use mockmyid.com for test email
-        self.browser.find_element_by_id(
-            'authentication_email'  #<2>
-        ).send_keys('edith@mockmyid.com') #<3>
-        self.browser.find_element_by_tag_name('button').click()
-
-        # The Persona window closes
-        self.switch_to_new_window('To-Do')
-
-        # She can see that she is logged in
-        self.wait_for_element_with_id('logout')  #<1>
-        navbar = self.browser.find_element_by_css_selector('.navbar')
-        self.assertIn('edith@mockmyid.com', navbar.text)
-----
-
-<1> The FT needs a couple of helper functions, both of which do something
-    that's very common in Selenium testing:  they wait for something to happen.
-    Listings for them follow.
-
-<2> I found the ID of the Persona login box by opening the site manually,
-    and using the Firefox debug toolbar (Ctrl+Shift+I). See
-    <<firefox-debug-persona>>.
-
-<3> Rather than using a "real" email address and having to click through 
-    their authentication screens, we use a "fake" provider.
-    http://mockmyid.com[MockMyID] is one; you can also check out
-    http://personatestuser.org[Persona Test User].
-    ((("MockMyID")))
-    ((("Persona")))
-
-
-
-.Evaluate Third-Party Systems' Test Infrastructure
-*******************************************************************************
-
-((("evaluating third-party systems")))
-((("payment systems, testing for")))
-Testing should be part of how you evaluate third-party systems.  When you
-integrate with an external service, you're going to have to think through how
-you're going to work with it in your functional tests.
-
-Often you can just use the same service in your tests and in "real life".  But
-sometimes you're going to want to run against a "test" version of the third-party service.  In the case of this integration with Persona, we could have
-used a "real" email address; when I first wrote this chapter, I actually had an
-FT that clicked through to Yahoo.com, and logged in with a throwaway account
-I'd created. The problem is that it made the FT totally reliant on particular
-details of Yahoo's email login screens, which can change at any time.
-
-Instead, MockMyID and PersonaTestUser are both linked to from the Persona
-documentation, and they work very smoothly, letting us test just the important
-parts of the integration.
-
-Perhaps more critically, think about payment systems.  If you start integrating
-payments, they're going to be one of the most important parts of your site, and
-you're going to want to make sure they're tested thoroughly...but you don't
-want to be putting actual transactions on real credit cards through, every time
-you run an FT!  So most providers will provide a "test" version of their
-payments API. These vary in quality (naming no names), so make sure you
-investigate them thoroughly.
-
-*******************************************************************************
-
-[[firefox-debug-persona]]
-.Using the Debug toolbar to find locators
-image::images/twdp_1503.png["The Firefox debug toolbar open on the Persona screen"]
-
-
-A Common Selenium Technique: Explicit Waits
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("Selenium", "wait patterns")))
-((("waits")))
-((("explicit waits")))
-Here's the first of the two "wait" helper functions:
-
-[role="dofirst-ch15l013 sourcecode"]
-.functional_tests/test_login.py (ch15l014)
-[source,python]
-----
-import time
-[...]
-
-    def switch_to_new_window(self, text_in_title):
-        retries = 60
-        while retries > 0:
-            for handle in self.browser.window_handles:
-                self.browser.switch_to_window(handle)
-                if text_in_title in self.browser.title:
-                    return
-            retries -= 1
-            time.sleep(0.5)
-        self.fail('could not find window')
-----
-
-In this one we've "rolled our own" wait--we iterate through all the
-current browser windows, looking for one with a particular title. If
-we can't find it, we do a short wait, and try again, decrementing a retry
-counter.
-
-This is such a common pattern in Selenium tests that the team created an API
-for waiting--it doesn't quite handle all use cases though, so that's why we 
-had to roll our own the first time around.  When doing something simpler like
-waiting for an element with a given ID to appear on the page, we can use the
-`WebDriverWait` class:
-
-
-[role="sourcecode"]
-.functional_tests/test_login.py (ch15l015)
-[source,python]
-----
-from selenium.webdriver.support.ui import WebDriverWait
-[...]
-
-    def wait_for_element_with_id(self, element_id):
-        WebDriverWait(self.browser, timeout=30).until(
-            lambda b: b.find_element_by_id(element_id)
+        self.browser.find_element_by_name('email').send_keys(
+            TEST_EMAIL + '\n'
         )
+
+        # A message appears telling her an email has been sent
+        body = self.browser.find_element_by_tag_name('body')
+        self.assertIn('Check your email', body.text)
+
+        # She checks her email and finds a message
+        email = mail.outbox[0]  #<1>
+        self.assertIn(TEST_EMAIL, email.to)
+        self.assertEqual(email.subject, SUBJECT)
+
+        # It has a url link in it
+        self.assertIn('Use this link to log in', email.body)
+        url_search = re.search(r'http://.+/.+$', email.body)
+        if not url_search:
+            self.fail(
+                'Could not find url in email body:\n{}'.format(email.body)
+            )
+        url = url_search.group(0)
+        self.assertIn(self.server_url, url)
+
+        # she clicks it
+        self.browser.get(url)
+
+        # she is logged in!
+        self.browser.find_element_by_link_text('Log out')
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertIn(TEST_EMAIL, navbar.text)
 ----
 
-This is what Selenium calls an "explicit wait".  If you remember, we
-already defined an "implicit wait" in `FunctionalTest.setUp`.  We set that
-to just three seconds, which is fine in most cases, but when we're waiting
-for an external service like Persona, we sometimes need to bump that default
-timeout.
+<1> When running tests, Django gives us access to any emails the server tries
+    to send via the `mail.outbox` attribute.
 
-There are more examples in the 
-http://docs.seleniumhq.org/docs/04_webdriver_advanced.jsp[Selenium docs], but I
-actually found reading the 
-http://code.google.com/p/selenium/source/browse/py/selenium/webdriver/support/wait.py[source
-code] more instructive--there are good docstrings!
-
-TIP: `implicitly_wait` is unreliable, especially once JavaScript is involved. 
-    Prefer the "wait-for" pattern in your FT whenever you need to check for
-    asynchronous interactions on your pages.  We'll see this again in
-    <<CI-chapter>>.
 
 And if we run the FT, it works!
 
@@ -785,16 +690,15 @@ And if we run the FT, it works!
 $ pass:quotes[*python3 manage.py test functional_tests.test_login*]
 Creating test database for alias 'default'...
 Not Found: /favicon.ico
+saving uid [...]
 login view
-sending to mozilla {'assertion': [...]
-[...]
-
-got b'{"audience":"localhost","expires":[...]
-[...]
+uid [...]
+got token
+new user
 
 .
  ---------------------------------------------------------------------
-Ran 1 test in 32.222s
+Ran 1 test in 3.729s
 
 OK
 Destroying test database for alias 'default'...
