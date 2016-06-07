@@ -521,7 +521,7 @@ A quick `makemigrations` to make the token and user models real:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py makemigrations*]
+$ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'accounts':
   0001_initial.py:
     - Create model ListUser
@@ -532,7 +532,7 @@ And a `migrate` to build the database:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python3 manage.py migrate*
+$ *python manage.py migrate*
 [...]
 Running migrations:
   Applying accounts.0001_initial... OK
@@ -691,7 +691,7 @@ And if we run the FT, it works!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+$ pass:quotes[*python manage.py test functional_tests.test_login*]
 Creating test database for alias 'default'...
 Not Found: /favicon.ico
 saving uid [...]
@@ -729,7 +729,7 @@ Now we rerun the FT and let it drive our development:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+$ pass:quotes[*python manage.py test functional_tests.test_login*]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: {"method":"name","selector":"email"}
 [...]
@@ -745,6 +745,7 @@ navigation bars, so we'll use them:
 [source,html]
 ----
 <div class="container">
+
   <nav class="navbar navbar-default" role="navigation">
     <a class="navbar-brand" href="/">Superlists</a>
     <form class="navbar-form navbar-right" method="POST" action="#">
@@ -762,7 +763,10 @@ navigation bars, so we'll use them:
 
 Now our FT fails because the login form doesn't actually do anything:
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python manage.py test functional_tests.test_login*]
+[...]
 AssertionError: 'Check your email' not found in 'Superlists\nEnter email to log
 in:\nStart a new To-Do list'
 ----
@@ -778,7 +782,7 @@ related to login.
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python3 manage.py startapp accounts*
+$ *python manage.py startapp accounts*
 ----
 
 You could even do a commit just for that, to be able to distinguish the
@@ -796,16 +800,302 @@ the purpose of these unit tests, we'll pretend that this nice Django shortcut
 doesn't exist.
 
 
+Before we start: getting the basic plumbing in
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Let's just get a basic view and url set up first.  We can do so with a simple
+test that our new URL for sending the login email should eventually redirect
+back to the home page:
+
+
+//ch15l025
+[role="sourcecode dofirst-ch15l022"]
+.accounts/tests/test_views.py
+[source,python]
+----
+from django.test import TestCase
+
+
+class SendLoginEmailViewTest(TestCase):
+
+    def test_redirects_to_home_page(self):
+        response = self.client.post('/accounts/send_login_email', data={
+            'email': 'edith@example.com'
+        })
+        self.assertRedirects(response, '/')
+----
+
+By now I'm sure you can manage to create the tests folder and its `__init__py`,
+and then wire up the `include` in 'superlists/urls.py', plus the url to
+'accounts/urls.py', and get the test passing with something a bit like this:
+
+
+[role="sourcecode dofirst-ch15l023"]
+.accounts/views.py
+[source,python]
+----
+from django.core.mail import send_mail
+from django.shortcuts import redirect
+
+def send_login_email(request):
+    return redirect('/')
+----
+//ch15l026
+
+I've added the import of the `send_mail` function as a placeholder for now.
+
+[role="dofirst-ch15l024"]
+[subs="specialcharacters,quotes"]
+----
+$ *python manage.py test accounts*
+[...]
+Ran 1 test in 0.015s
+
+OK
+----
+
+
+
+Mocking in Python
+^^^^^^^^^^^^^^^^^
+
+
 When we call `send_mail` in real life we expect Django to be making a
 connection to our email provider, and sending an actual email across
-the public internet.  That's not something we want to happen in our tests.
+the public Internet.  That's not something we want to happen in our tests.
 It's a similar problem whenever you have code that has external side-effects
 -- calling an API, sending out a tweet or an SMS or whatever it may be. In
 our unit tests, we don't want to be sending out real tweets or API calls across
 the internet.  But we would still like a way of testing that our code is
-correct. Mocks are the answer.
+correct. Mocksfootnote:[I'm using the generic term "mock", but testing enthusiasts
+like to distinguish other types of a general class of test tools called "Test
+Doubles", including spies, fakes and stubs.  The differences don't really
+matter for this book, but if you want to get into the nitty-gritty, check out
+this article by Martin Fowler:
+http://martinfowler.com/articles/mocksArentStubs.html#TheDifferenceBetweenMocksAndStubs["Mocks aren't stubs"]]
+are the answer.
 
 
+
+Mocking manually, aka monkey-patching
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Actually one of the great things about Python is that its dynamic nature makes
+it very easy to do things like mocking, or what's sometimes called
+monkey-patching.  Let's suppose that, as a first step,
+we want to get to some code that invokes `send_mail` with the right subject
+line, from address, and to address.  That would look something like this:
+
+
+[role="sourcecode skipme"]
+.accounts/views.py
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST['email']
+    send_mail(
+        'Your login link for Superlists',
+        'body text tbc',
+        'noreply@superlists',
+        [email],
+    )
+    return redirect('/')
+----
+
+
+How can we test this, without calling the 'real' `send_mail` function?  The
+answer is that we can tell Python to replace the `send_mail` function with
+a fake version of it, at runtime, before we invoke the `send_login_email` view.
+Check this out:
+
+
+[role="sourcecode"]
+.accounts/tests/test_views.py (ch15l027)
+[source,python]
+----
+from django.test import TestCase
+import accounts  #<2>
+
+class SendLoginEmailViewTest(TestCase):
+    [...]
+
+    def test_sends_mail_to_address_from_post(self):
+        self.send_mail_called = False
+
+        def fake_send_mail(subject, body, from_email, to_list):  #<1>
+            self.send_mail_called = True
+            self.subject = subject
+            self.body = body
+            self.from_email = from_email
+            self.to_list = to_list
+
+        accounts.views.send_mail = fake_send_mail  # <2>
+
+        self.client.post('/accounts/send_login_email', data={
+            'email': 'edith@example.com'
+        })
+
+
+        self.assertTrue(self.send_mail_called)
+        self.assertEqual(self.subject, 'Your login link for Superlists')
+        self.assertEqual(self.from_email, 'noreply@superlists')
+        self.assertEqual(self.to_list, ['edith@example.com'])
+----
+
+<1> We define a `fake_send_mail` function, which looks like the real
+    `send_mail` function, but all it does is save some information
+    about how it was called, using some variables on `self`.
+
+
+<2> Then, before we execute the code under test by doing the `self.client.post`,
+    we swap out the real `accounts.views.send_mail` with our fake version --
+    it's as simple as just assigning it.  
+
+
+That may take a little time to sink in.  See if you can convince yourself that
+it's not all totally crazy, before reading a couple of bits of further detail.
+
+* Why do we use `self` as a way of passing information around? It's just a 
+    convenient variable that's available both inside the scope of the
+    `fake_send_mail` function and outside of it.   We could use any mutable
+    object, like a list or a dictionary, as long as we are making in-place 
+    changes to an existing variable that exists outside our fake function.
+    (feel free to have a play around with different ways of doing this, if
+    you're curious, and see what works and doesn't work.)
+    
+* The "before" is critical! I can't tell you how many times I've sat
+    there, wondering why a mock isn't working, only to realise that I didn't
+    mock before I called the code under test.
+
+
+It's important to notice that there isn't really anything magical going on here,
+we're just taking advantage of Python's dynamic nature and scoping rules.
+
+Up until we actually invoke a piece of code, we can modify the variables it has
+access to, as long as we get into the right namespace (that's why we import the
+top-level accounts module, to be able to get down to the `acccounts.views` module,
+which is the scope that the `accounts.views.send_login_email` function will run
+in).
+
+This isn't even something that only works inside unit tests.  You can do this
+kind of "monkey-patching" in any kind of Python code.
+
+
+Let's see if our hand-rolled mock object will let us test-drive some code:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python manage.py test accounts*
+[...]
+    self.assertTrue(self.send_mail_called)
+AssertionError: False is not true
+----
+
+So let's call send_mail, naively:
+
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def send_login_email(request):
+    send_mail()
+    return redirect('/')
+----
+
+
+That gives:
+
+[subs="specialcharacters,macros"]
+----
+TypeError: fake_send_mail() missing 4 required positional arguments: 'subject',
+'body', 'from_email', and 'to_list'
+----
+
+Looks like our mock is working!  We've called `send_mail`, and it's gone into
+our `fake_send_mail` function, which wants more arguments.  Let's try this:
+
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def send_login_email(request):
+    send_mail('subject', 'body', 'from_email', ['to email'])
+    return redirect('/')
+----
+
+That gives:
+
+----
+    self.assertEqual(self.subject, 'Your login link for Superlists')
+AssertionError: 'subject' != 'Your login link for Superlists'
+----
+
+That's working pretty well.  And now we can work all the way through to
+something like this:
+
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST['email']
+    send_mail(
+        'Your login link for Superlists',
+        'body text tbc',
+        'noreply@superlists',
+        [email]
+    )
+    return redirect('/')
+----
+
+
+and passing tests!
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test accounts*]
+
+Ran 2 tests in 0.016s
+
+OK
+----
+
+
+
+The Python Mock Library
+^^^^^^^^^^^^^^^^^^^^^^^
+((("mocks/mocking", "in Python", sortas="python", id="ix_mockingpython", range="startofrange")))
+The popular 'mock' package was added to the standard library as part of Python
+3.3.footnote:[If you're using Python 3.2, upgrade!  Or if you're stuck with it,
+`pip3 install mock`, and use `from mock` instead of `from unittest.mock`.]
+It provides a magical object called a `Mock`, which is a bit like the Sinon
+mock objects we saw in the last chapter, only much cooler.  Check this out:
+
+
+[role='skipme']
+----
+>>> from unittest.mock import Mock
+>>> m = Mock()
+>>> m.any_attribute
+<Mock name='mock.any_attribute' id='140716305179152'>
+>>> m.foo
+<Mock name='mock.foo' id='140716297764112'>
+>>> m.any_method()
+<Mock name='mock.any_method()' id='140716331211856'>
+>>> m.foo()
+<Mock name='mock.foo()' id='140716331251600'>
+>>> m.called
+False
+>>> m.foo.called
+True
+>>> m.bar.return_value = 1
+>>> m.bar()
+1
+----
 ...
 
 
