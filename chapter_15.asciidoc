@@ -795,6 +795,187 @@ $ *python manage.py startapp accounts*
 You could even do a commit just for that, to be able to distinguish the
 placeholder app files from our modifications.
 
+Next let's rebuild our minimal user model, with tests this time, and see
+if it turns out neater than it did in the spike.
+
+
+
+A Minimal Custom User Model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("authentication", "minimum custom user model", id="ix_authentusermodel", range="startofrange")))
+((("Django", "custom user model", id="ix_Djangousermodel", range="startofrange")))
+Django's built-in user model makes all sorts of assumptions about what
+information you want to track about users, from explicitly recording
+first name and last name, to forcing you to use a username.   I'm a great
+believer in not storing information about users unless you absolutely must,
+so a user model that records an email address and nothing else sounds good to
+me!
+
+[role="sourcecode dofirst-ch15l022"]
+.accounts/tests/test_models.py
+[source,python]
+----
+from django.test import TestCase
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class UserModelTest(TestCase):
+
+    def test_user_is_valid_with_email_only(self):
+        user = User(email='a@b.com')
+        user.full_clean()  # should not raise
+----
+//24
+
+
+That gives us an expected failure:
+
+[role="sourcecode dofirst-ch15l023"]
+----
+django.core.exceptions.ValidationError: {'username': ['This field cannot be
+blank.'], 'password': ['This field cannot be blank.']}
+----
+
+Password?  Username?  Bah!  How about this?
+
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+from django.db import models
+
+class User(models.Model):
+    email = models.EmailField()
+----
+//25
+
+
+And we wire it up inside 'settings.py', adding `accounts` to `INSTALLED_APPS`
+and a variable called `AUTH_USER_MODEL`: 
+
+[role="sourcecode"]
+.superlists/settings.py (ch15l026)
+[source,python]
+----
+INSTALLED_APPS = (
+    #'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'lists',
+    'accounts',
+)
+
+AUTH_USER_MODEL = 'accounts.User'
+
+----
+
+
+The next error is a database error:
+
+----
+django.db.utils.OperationalError: no such table: accounts_user
+----
+
+That prompts us, as usual, to do a migration... When we try, Django complains
+that our custom user model is missing a couple of bits of metadata:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+Traceback (most recent call last):
+[...]
+    if not isinstance(cls.REQUIRED_FIELDS, (list, tuple)):
+AttributeError: type object 'User' has no attribute 'REQUIRED_FIELDS'
+----
+
+
+Sigh.  Come on, Django, it's only got one field, you should be able to figure
+out the answers to these questions for yourself.  Here you go:
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+class User(models.Model):
+    email = models.EmailField()
+    REQUIRED_FIELDS = ()
+----
+
+Next silly question?footnote:[You might ask, if I think Django is so silly, why
+don't I submit a pull request to fix it?  Should be quite a simple fix.  Well,
+I promise I will, as soon as I've finished writing the book.  For now, snarky
+comments will have to suffice.]
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+[...]
+AttributeError: type object 'User' has no attribute 'USERNAME_FIELD'
+----
+
+So:
+
+[role="sourcecode"]
+.accounts/models.py
+[source,python]
+----
+class User(models.Model):
+    email = models.EmailField()
+    REQUIRED_FIELDS = ()
+    USERNAME_FIELD = 'email'
+----
+//27
+
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py makemigrations*]
+SystemCheckError: System check identified some issues:
+
+ERRORS:
+accounts.User: (auth.E003) 'User.email' must be unique because it is named as
+the 'USERNAME_FIELD'.
+----
+
+
+OK then, let's go the whole hog and make email the primary key:
+
+[role="sourcecode"]
+.accounts/models.py (ch15l028)
+[source,python]
+----
+    email = models.EmailField(primary_key=True)
+----
+
+
+And finally we can get a migration that works
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*rm accounts/migrations/0001_initial.py*]
+$ pass:quotes[*python3 manage.py makemigrations*]
+Migrations for 'accounts':
+  0001_initial.py:
+    - Create model User
+----
+
+
+TODO: token model
+
+
+
+
+(((range="endofrange", startref="ix_authentusermodel")))
+(((range="endofrange", startref="ix_Djangousermodel")))
 
 
 Testing external dependencies using mocks
@@ -815,8 +996,7 @@ test that our new URL for sending the login email should eventually redirect
 back to the home page:
 
 
-//ch15l025
-[role="sourcecode dofirst-ch15l022"]
+//ch15l035
 .accounts/tests/test_views.py
 [source,python]
 ----
@@ -837,7 +1017,6 @@ and then wire up the `include` in 'superlists/urls.py', plus the url to
 'accounts/urls.py', and get the test passing with something a bit like this:
 
 
-[role="sourcecode dofirst-ch15l023"]
 .accounts/views.py
 [source,python]
 ----
@@ -847,11 +1026,11 @@ from django.shortcuts import redirect
 def send_login_email(request):
     return redirect('/')
 ----
-//ch15l026
+//ch15l036
 
 I've added the import of the `send_mail` function as a placeholder for now.
 
-[role="dofirst-ch15l024"]
+[role="dofirst-ch15l034"]
 [subs="specialcharacters,quotes"]
 ----
 $ *python manage.py test accounts*
@@ -920,7 +1099,7 @@ Check this out:
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch15l027)
+.accounts/tests/test_views.py (ch15l037)
 [source,python]
 ----
 from django.test import TestCase
@@ -1123,7 +1302,7 @@ by hand earlier.
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch15l029)
+.accounts/tests/test_views.py (ch15l039)
 [source,python]
 ----
 from django.test import TestCase
@@ -1151,7 +1330,7 @@ break it just to see:
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch15l030)
+.accounts/tests/test_views.py (ch15l040)
 [source,python]
 ----
         self.assertEqual(to_list, ['schmedith@example.com'])
@@ -1160,7 +1339,7 @@ break it just to see:
 And let's add a little debug print to our view
 
 [role="sourcecode"]
-.accounts/views.py (ch15l031)
+.accounts/views.py (ch15l041)
 [source,python]
 ----
 def send_login_email(request):
@@ -1200,8 +1379,8 @@ test we're seeing a mock object.
 
 Let's reset our code back to where it was and do a little recap:
 
-[role="dofirst-ch15l032"]
-.accounts/tests/test_views.py (ch15l033)
+[role="dofirst-ch15l042"]
+.accounts/tests/test_views.py (ch15l043)
 [source,python]
 ----
 @patch('accounts.views.send_mail')  #<1>
@@ -1235,10 +1414,15 @@ def test_sends_mail_to_address_from_post(self, mock_send_mail):  #<2>
     real `send_mail` object, it'll be seeing `mock_send_mail` instead.
 
 <4> And we can now make assertions about what happened to that mock object
-    during the test.  We can see it was called (see note).
+    during the test.  We can see it was called...
 
 <5> And we can also unpack its various positional and keyword call arguments,
     and examine what it was called with.
+
+
+All crystal-clear? No? Let's do a couple more tests with mocks, to see if they
+start to make more sense as we use them more.
+
 
 
 
