@@ -812,6 +812,9 @@ believer in not storing information about users unless you absolutely must,
 so a user model that records an email address and nothing else sounds good to
 me!
 
+By now I'm sure you can manage to create the tests folder and its `__init__py`,
+remove *tests.py* and then add a *test_models.py* to say:
+
 [role="sourcecode dofirst-ch15l022"]
 .accounts/tests/test_models.py
 [source,python]
@@ -967,15 +970,131 @@ Migrations for 'accounts':
   0001_initial.py:
     - Create model User
 ----
-
-
-TODO: token model
-
-
-
-
+//029
 (((range="endofrange", startref="ix_authentusermodel")))
 (((range="endofrange", startref="ix_Djangousermodel")))
+
+
+
+
+A Token model to link emails with a unqiue id
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Next let's build a token model.  Here's a short unit test
+that captures the essence -- you should be able to link an
+email to a unique id, and that id shouldn't be the same two
+times in a row:
+
+[role="sourcecode"]
+.accounts/tests/test_models.py (ch15l030)
+[source,python]
+----
+from accounts.models import Token
+[...]
+
+
+class TokenModelTest(TestCase):
+
+    def test_links_user_with_auto_generated_uid(self):
+        token1 = Token.objects.create(email='a@b.com')
+        token2 = Token.objects.create(email='a@b.com')
+        self.assertNotEqual(token1.uid, token2.uid)
+----
+
+Driving django models with basic TDD involves jumping
+through a few hoops because of the migration, so we'll
+see a few iterations like this -- minimal code change,
+make migrations, get new error, delete migrations, 
+recreate new migrations, another code change, and so on...
+
+
+
+[role="dofirst-ch15l031"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py makemigrations*]
+Migrations for 'accounts':
+  0002_token.py:
+    - Create model Token
+$ *python manage.py test accounts*
+[...]
+TypeError: 'email' is an invalid keyword argument for this function
+----
+
+I'll trust you to go through these conscientiously -- remember, 
+I may not be able to see you, but the Testing Goat can!
+
+
+[role="dofirst-ch15l032"]
+----
+$ *rm accounts/migrations/0002_token.py*
+$ *python manage.py makemigrations*
+Migrations for 'accounts':
+  0002_token.py:
+    - Create model Token
+$ *python manage.py test accounts*
+AttributeError: 'Token' object has no attribute 'uid'
+----
+
+
+Eventually you should get to this code...
+
+[role="sourcecode"]
+.accounts/models.py (ch15l033)
+[source,python]
+----
+class Token(models.Model):
+    email = models.EmailField()
+    uid = models.CharField(max_length=40)
+----
+
+And this error:
+
+[role="dofirst-ch15l034"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test accounts*]
+[...]
+
+    self.assertNotEqual(token1.uid, token2.uid)
+AssertionError: '' == ''
+----
+
+And here we have to decide how to generate our random unique id field.  We
+could use the `random` module, but Python actually comes with another module
+specifically designed for generating unique IDs called "uuid" (for "universally
+unique id").
+
+We can use that like this:
+
+
+[role="sourcecode"]
+.accounts/model.py (ch15l045)
+[source,python]
+----
+import uuid
+[...]
+
+class Token(models.Model):
+    email = models.EmailField()
+    uid = models.CharField(default=uuid.uuid4, max_length=40)
+----
+
+
+And, with a bit more wrangling of migrations, that should get us to passing
+tests:
+
+
+[role="dofirst-ch15l036"]
+[subs="specialcharacters,quotes"]
+----
+$ *python manage.py test accounts*
+[...]
+Ran 1 test in 0.015s
+
+OK
+----
+
 
 
 Testing external dependencies using mocks
@@ -1012,8 +1131,8 @@ class SendLoginEmailViewTest(TestCase):
         self.assertRedirects(response, '/')
 ----
 
-By now I'm sure you can manage to create the tests folder and its `__init__py`,
-and then wire up the `include` in 'superlists/urls.py', plus the url to
+
+Wire up the `include` in 'superlists/urls.py', plus the url to
 'accounts/urls.py', and get the test passing with something a bit like this:
 
 
