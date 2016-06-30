@@ -299,6 +299,7 @@ in a Python shell:
 
 
 [role='skipme']
+[source,python]
 ----
 >>> from unittest.mock import Mock
 >>> m = Mock()
@@ -451,7 +452,8 @@ def test_sends_mail_to_address_from_post(self, mock_send_mail):  #<2>
     during the test.  We can see it was called...
 
 <5> And we can also unpack its various positional and keyword call arguments,
-    and examine what it was called with.
+    and examine what it was called with. (We'll discuss call_args in a bit
+    more detail later).
 
 
 All crystal-clear? No? Don't worry, we'll do a couple more tests with mocks, to
@@ -466,7 +468,7 @@ First let's get back to our FT and see where it's failing.
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+$ pass:quotes[*python manage.py test functional_tests.test_login*]
 [...]
 AssertionError: 'Check your email' not found in 'Superlists\nEnter email to log in:\nStart a new To-Do list'
 ----
@@ -532,7 +534,7 @@ That gives:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test accounts*]
+$ pass:quotes[*python manage.py test accounts*]
 [...]
     message = list(response.context['messages'])[0]
 IndexError: list index out of range
@@ -593,13 +595,13 @@ Now do we get a little further?  Yes!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test accounts*]
+$ pass:quotes[*python manage.py test accounts*]
 [...]
 Ran 5 tests in 0.023s
 
 OK
 
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+$ pass:quotes[*python manage.py test functional_tests.test_login*]
 [...]
 AssertionError: 'Use this link to log in' not found in 'body text tbc'
 ----
@@ -629,7 +631,7 @@ That gets the FT a little further,
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+$ pass:quotes[*python manage.py test functional_tests.test_login*]
 [...]
 AssertionError: Could not find url in email body:
 Use this link to log in
@@ -775,7 +777,6 @@ of our email:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test accounts*]
 [...]
 AssertionError:
 'http://testserver/accounts/login?token=2fa6b817-cefa-4e8e-b757-df3a2bdd511c'
@@ -861,6 +862,7 @@ Decoding this:
 * We return None if it doesn't
 * If it does exist, we extract an email address, and either find an existing
     user with that address, or create a new one.
+
 
 
 1 if = 1 More Test
@@ -977,7 +979,7 @@ That gets one test passing but breaks another one:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test accounts*]
+$ pass:quotes[*python manage.py test accounts*]
 ERROR: test_returns_None_if_no_such_token
 (accounts.tests.test_authentication.AuthenticateTest)
 
@@ -1008,9 +1010,6 @@ That gets us down to one failure
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-$ pass:quotes[*python3 manage.py test accounts*]
 ERROR: test_returns_new_user_with_correct_email_if_token_exists
 (accounts.tests.test_authentication.AuthenticateTest)
 [...]
@@ -1039,442 +1038,13 @@ And we can handle the final case like this:
 That's turned out neater than our spike!
 
 
-Using our auth backend in the login view
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Final step is to use the backend in our login view.  First we add it 
-to 'settings.py':
-
-
-[role="sourcecode"]
-.superlists/settings.py (ch16l029)
-[source,python]
-----
-AUTH_USER_MODEL = 'accounts.User'
-AUTHENTICATION_BACKENDS = (
-    'accounts.authentication.PasswordlessAuthenticationBackend',
-)
-
-[...]
-----
-
-
-
-
-At this point we'll need to:
-
-[role="dofirst-ch16l018"]
-[subs="specialcharacters,quotes"]
-----
-(virtualenv)$ *pip install requests*
-----
-
-
-NOTE: Don't forget to add `requests` to 'requirements.txt' too, or the 
-next deploy won't work...
-
-//IDEA: consider making all tests (virtualenv) ones?
-
-Then let's see how the tests get on!
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-AssertionError: Expected 'post' to be called once. Called 0 times.
-----
-
-And we can get that to passing in three steps (make sure the Goat sees you doing each
-one individually!):
-
-[role="sourcecode"]
-.accounts/authentication.py
-[source,python]
-----
-    def authenticate(self, assertion):
-        requests.post(
-            PERSONA_VERIFY_URL,
-            data={'assertion': assertion, 'audience': DOMAIN}
-        )
-----
-
-
-Grand:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-
-Ran 5 tests in 0.023s
-
-OK
-----
-
-Next let's check that `authenticate` should return `None` if it sees an error from
-the request:
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py (ch16l020)
-[source,python]
-----
-    @patch('accounts.authentication.requests.post')
-    def test_returns_none_if_response_errors(self, mock_post):
-        mock_post.return_value.ok = False
-        backend = PersonaAuthenticationBackend()
-
-        user = backend.authenticate('an assertion')
-        self.assertIsNone(user)
-----
-
-And that passes straight away--we currently return `None` in all cases! 
-
-
-Patching at the Class Level
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("patching")))
-Next we want to check that the response JSON has `status=okay`. Adding this
-test would involve a bit of duplication--let's apply the "three strikes"
-rule:
-
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py (ch16l021)
-[source,python]
-----
-@patch('accounts.authentication.requests.post')  #<1>
-class AuthenticateTest(TestCase):
-
-    def setUp(self):
-        self.backend = PersonaAuthenticationBackend()  #<2>
-
-
-    def test_sends_assertion_to_mozilla_with_domain(self, mock_post):
-        self.backend.authenticate('an assertion')
-        mock_post.assert_called_once_with(
-            PERSONA_VERIFY_URL,
-            data={'assertion': 'an assertion', 'audience': DOMAIN}
-        )
-
-
-    def test_returns_none_if_response_errors(self, mock_post):
-        mock_post.return_value.ok = False  #<3>
-        user = self.backend.authenticate('an assertion')
-        self.assertIsNone(user)
-
-
-    def test_returns_none_if_status_not_okay(self, mock_post):
-        mock_post.return_value.json.return_value = {'status': 'not okay!'}  #<3>
-        user = self.backend.authenticate('an assertion')
-        self.assertIsNone(user)
-----
-
-<1> You can apply a `patch` at the class level as well, and that has the effect
-    that every test method in the class will have the patch applied, and the
-    mock injected.
-
-<2> We can now use the `setUp` function to prepare any useful variables which
-    we're going to use in all of our tests.  
-
-<3> Now each test is only adjusting the setup variables 'it' needs, rather than
-    setting up a load of duplicated boilerplate--it's more readable.
-
-
-And that's all very well, but everything still passes!  
-
-----
-OK
-----
-
-Time to test for the positive case where `authenticate` should return a user
-object. We expect this to fail:
-
-
-[role="sourcecode small-code"]
-.accounts/tests/test_authentication.py (ch16l022-1)
-[source,python]
-----
-from django.contrib.auth import get_user_model
-User = get_user_model()
-[...]
-
-    def test_finds_existing_user_with_email(self, mock_post):
-        mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
-        actual_user = User.objects.create(email='a@b.com')
-        found_user = self.backend.authenticate('an assertion')
-        self.assertEqual(found_user, actual_user)
-----
-
-Indeed, a fail:
-
-----
-AssertionError: None != <User: >
-----
-
-Let's code. We'll start with a "cheating" implementation, where we just get
-the first user we find in the database:
-
-[role="sourcecode"]
-.accounts/authentication.py (ch16l023)
-[source,python]
-----
-import requests
-from django.contrib.auth import get_user_model
-User = get_user_model()
-[...]
-
-    def authenticate(self, assertion):
-        requests.post(
-            PERSONA_VERIFY_URL,
-            data={'assertion': assertion, 'audience': DOMAIN}
-        )
-        return User.objects.first()
-----
-
-That gets our new test passing, but still, none of the other tests
-are failing:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-
-Ran 8 tests in 0.030s
-
-OK
-----
-
-They're passing because `objects.first()` returns `None` if there are
-no users in the database.  Let's make our other cases more realistic,
-by making sure there's always at least one user in the database for all
-our tests:
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py (ch16l022-2)
-[source,python]
-----
-    def setUp(self):
-        self.backend = PersonaAuthenticationBackend()
-        user = User(email='other@user.com')
-        user.username = 'otheruser'  #<1> 
-        user.save()
-----
-
-<1> By default, Django's users have a `username` attribute, which has to
-    be unique, so this value is just a placeholder to allow us to create
-    multiple users. Later on, we'll get rid of usernames in favour of using
-    emails as the primary key.  
-
-That gives us three failures:
-
-----
-FAIL: test_finds_existing_user_with_email
-AssertionError: <User: otheruser> != <User: >
-[...]
-FAIL: test_returns_none_if_response_errors
-AssertionError: <User: otheruser> is not None
-[...]
-FAIL: test_returns_none_if_status_not_okay
-AssertionError: <User: otheruser> is not None
-----
-
-Let's start building our guards for cases where authentication should fail--if
-the response errors, or if the status is not `okay`.  Suppose we start with this:
-
-[role="sourcecode"]
-.accounts/authentication.py (ch16l024-1)
-[source,python]
-----
-def authenticate(self, assertion):
-    response = requests.post(
-        PERSONA_VERIFY_URL,
-        data={'assertion': assertion, 'audience': DOMAIN}
-    )
-    if response.json()['status'] == 'okay':
-        return User.objects.first()
-----
-
-That actually fixes two of the tests, slightly surprisingly:
-
-----
-AssertionError: <User: otheruser> != <User: >
-
-FAILED (failures=1)
-----
-
-Let's get the final test passing by retrieving the right user, and then we'll
-have a look at that surprise pass:
-
-
-[role="sourcecode"]
-.accounts/authentication.py (ch16l024-2)
-[source,python]
-----
-    if response.json()['status'] == 'okay':
-        return User.objects.get(email=response.json()['email'])
-----
-
-...
-
-----
-OK
-----
-
-
-Beware of Mocks in Boolean Comparisons
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-So how come our `test_returns_none_if_response_errors` isn't failing?  
-
-Because we've mocked out `requests.post`, the `response` is a Mock object,
-which as you remember, returns all attributes and properties as more
-Mocks.footnote:[Actually, this is only happening because we're using the `patch` 
-decorator, which returns a `MagicMock`, an even mockier version of `mock` that
-can also behave like a dictionary. More info in the
-https://docs.python.org/3/library/unittest.mock-magicmethods.html[docs].] So, when we do: 
-
-[role="sourcecode currentcontents"]
-.accounts/authentication.py
-[source,python]
-----
-    if response.json()['status'] == 'okay':
-----
-
-`response` is actually a mock, `response.json()` is a mock, and 
-`response.json()['status']` is a mock too! We end up comparing a mock with the
-string "okay", which evaluates to False, and so we return None by default.
-Let's make our test more explicit, by saying that the response JSON will 
-be an empty dict:
-
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py (ch16l025)
-[source,python]
-----
-    def test_returns_none_if_response_errors(self, mock_post):
-        mock_post.return_value.ok = False
-        mock_post.return_value.json.return_value = {}
-        user = self.backend.authenticate('an assertion')
-        self.assertIsNone(user)
-----
-
-That gives:
-
-----
-    if response.json()['status'] == 'okay':
-KeyError: 'status'
-----
-
-And we can fix it like this:
-
-
-[role="sourcecode"]
-.accounts/authentication.py (ch16l026)
-[source,python]
-----
-    if response.ok and response.json()['status'] == 'okay':
-        return User.objects.get(email=response.json()['email'])
-----
-
-...
-
-----
-OK
-----
-
-Great!  Our `authenticate` function is now working the way we want it to.
-
-
-Creating a User if Necessary
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("user creation")))
-Next we should check that, if our `authenticate` function has
-a valid assertion from Persona, but we don't have a user record for
-that person in our database, we should create one.  Here's the test
-for that:
-
-
-[role="sourcecode small-code"]
-.accounts/tests/test_authentication.py (ch16l027)
-[source,python]
-----
-def test_creates_new_user_if_necessary_for_valid_assertion(self, mock_post):
-    mock_post.return_value.json.return_value = {'status': 'okay', 'email': 'a@b.com'}
-    found_user = self.backend.authenticate('an assertion')
-    new_user = User.objects.get(email='a@b.com')
-    self.assertEqual(found_user, new_user)
-----
-
-That fails in our application code when we try find an existing user
-with that email:
-
-----
-    return User.objects.get(email=response.json()['email'])
-django.contrib.auth.models.DoesNotExist: User matching query does not exist.
-----
-
-So we add a `try/except`, returning an "empty" user at first:
-
-
-[role="sourcecode"]
-.accounts/authentication.py (ch16l028)
-[source,python]
-----
-    if response.ok and response.json()['status'] == 'okay':
-        try:
-            return User.objects.get(email=response.json()['email'])
-        except User.DoesNotExist:
-            return User.objects.create()
-----
-
-And that fails, but this time it fails when the 'test' tries to find the
-new user by email:
-
-----
-    new_user = User.objects.get(email='a@b.com')
-django.contrib.auth.models.DoesNotExist: User matching query does not exist.
-----
-
-And so we fix it by assigning the correct email addresss:
-
-
-[role="sourcecode"]
-.accounts/authentication.py (ch16l029)
-[source,python]
-----
-    if response.ok and response.json()['status'] == 'okay':
-        email = response.json()['email']
-        try:
-            return User.objects.get(email=email)
-        except User.DoesNotExist:
-            return User.objects.create(email=email)
-----
-
-That gets us to passing tests:
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-Ran 9 tests in 0.019s
-OK
-----
-
-
-
 The get_user Method 
 ^^^^^^^^^^^^^^^^^^^
-
 
 ((("get_user")))
 The next thing we have to build is a `get_user` method for our authentication
 backend.  This method's job is to retrieve a user based on their email address,
-or to return `None` if it can't find one. (That last wasn't well documented at
-the time of writing, but that is the interface we have to comply with. See 
-http://bit.ly/SuECDa[the source] for details.)
+or to return `None` if it can't find one. 
 
 
 Here's a couple of tests for those two requirements:
@@ -1487,20 +1057,19 @@ Here's a couple of tests for those two requirements:
 class GetUserTest(TestCase):
 
     def test_gets_user_by_email(self):
-        backend = PersonaAuthenticationBackend()
-        other_user = User(email='other@user.com')
-        other_user.username = 'otheruser'
-        other_user.save()
-        desired_user = User.objects.create(email='a@b.com')
-        found_user = backend.get_user('a@b.com')
+        User.objects.create(email='another@example.com')
+        desired_user = User.objects.create(email='edith@example.com')
+        found_user = PasswordlessAuthenticationBackend().get_user(
+            'edith@example.com'
+        )
         self.assertEqual(found_user, desired_user)
 
 
-    def test_returns_none_if_no_user_with_that_email(self):
-        backend = PersonaAuthenticationBackend()
+    def test_returns_None_if_no_user_with_that_email(self):
         self.assertIsNone(
-            backend.get_user('a@b.com')
+            PasswordlessAuthenticationBackend().get_user('edith@example.com')
         )
+
 ----
 
 Here's our first failure:
@@ -1522,7 +1091,7 @@ class PersonaAuthenticationBackend(object):
     def authenticate(self, assertion):
         [...]
 
-    def get_user(self):
+    def get_user(self, email):
         pass
 ----
 
@@ -1530,24 +1099,8 @@ Now we get:
 
 
 ----
-TypeError: get_user() takes 1 positional argument but 2 were given
-----
-
-So:
-
-[role="sourcecode"]
-.accounts/authentication.py (ch16l032)
-[source,python]
-----
-    def get_user(self, email):
-        pass
-----
-
-Next:
-
-----
     self.assertEqual(found_user, desired_user)
-AssertionError: None != <User: >
+AssertionError: None != <User: User object>
 ----
 
 And (step by step, just to see if our test fails the way we think it will):
@@ -1564,8 +1117,7 @@ That gets us past the first assertion, and onto
 
 ----
     self.assertEqual(found_user, desired_user)
-AssertionError: <User: otheruser> != <User: >
-
+AssertionError: <User: User object> != <User: User object>
 ----
 
 And so we call `get` with the email as an argument:
@@ -1579,7 +1131,6 @@ And so we call `get` with the email as an argument:
         return User.objects.get(email=email)
 ----
 
-That gets us to passing tests:
 
 Now our test for the None case fails:
 
@@ -1616,179 +1167,411 @@ OK
 
 And we have a working authentication backend!
 
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-Ran 11 tests in 0.020s
-OK
-----
-
-Now we can define our custom user model.
-(((range="endofrange", startref="ix_mockinternet")))
-(((range="endofrange", startref="ix_despiking")))
-(((range="endofrange", startref="ix_authbackend")))
 
 
+Using our auth backend in the login view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-
-old content follows...
-# TODO - merge up stuff from old 16 to new one
-
-
-Checking the View Actually Logs the User In
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("authentication", "login view", id="ix_authenticationlogin", range="startofrange")))
-But our `authenticate` view also needs to actually log the user in by
-calling the Django `auth.login` function, if `authenticate` returns a user. 
-Then it needs to return something other than an empty response--since this is
-an Ajax view, it doesn't need to return HTML, just an "OK" string will do:
+Final step is to use the backend in our login view.  First we add it 
+to 'settings.py':
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch16l011)
+.superlists/settings.py (ch16l036)
 [source,python]
 ----
-from django.contrib.auth import get_user_model
-from django.test import TestCase
-from unittest.mock import patch
-User = get_user_model()  #<1>
+AUTH_USER_MODEL = 'accounts.User'
+AUTHENTICATION_BACKENDS = (
+    'accounts.authentication.PasswordlessAuthenticationBackend',
+)
 
-
-class LoginViewTest(TestCase):
-    @patch('accounts.views.authenticate')
-    def test_calls_authenticate_with_assertion_from_post(
-        [...]
-
-    @patch('accounts.views.authenticate')
-    def test_returns_OK_when_user_found(
-        self, mock_authenticate
-    ):
-        user = User.objects.create(email='a@b.com')
-        user.backend = ''  # required for auth_login to work
-        mock_authenticate.return_value = user
-        response = self.client.post('/accounts/login', {'assertion': 'a'})
-        self.assertEqual(response.content.decode(), 'OK')
+[...]
 ----
 
-<1> I should explain this use of `get_user_model` from `django.contrib.auth`.
-    Its job is to find the project's user model, and it works whether you're
-    using the standard user model or a custom one (like we will be).
 
-That test covers the desired response.  Now test that the user actually gets
-logged in correctly.  We can do that by inspecting the Django test client, to
-see if the session cookie has been set correctly.
+Next let's write some tests for what should happen in our view. Looking
+back at the spike:
+
+
+[role="sourcecode skipme"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    print('login view', file=sys.stderr)
+    uid = request.GET.get('uid')
+    user = auth.authenticate(uid=uid)
+    if user is not None:
+        auth.login(request, user)
+    return redirect('/')
+----
+
+We need the view to call `django.contrib.auth.authenticate`, and then,
+if it returns a user, we call `django.contrib.auth.login`.
 
 TIP: Check out the 
 https://docs.djangoproject.com/en/1.8/topics/auth/default/#how-to-log-a-user-in[Django 
 docs on authentication] at this point.
 
 
-[role="sourcecode"]
-.accounts/tests/test_views.py (ch16l012)
+Mocking out a whole module
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Since this is the chapter all about mocks, let's test it with mocks!  It'll
+be good for us to get more practice with them.  Here's a first test:
+
+[role="sourcecode small-code"]
+.accounts/tests/test_views.py (ch16l038)
 [source,python]
 ----
-from django.contrib.auth import get_user_model, SESSION_KEY
+from unittest.mock import patch, call
 [...]
 
-    @patch('accounts.views.authenticate')
-    def test_gets_logged_in_session_if_authenticate_returns_a_user(
-        self, mock_authenticate
-    ):
-        user = User.objects.create(email='a@b.com')
-        user.backend = ''  # required for auth_login to work
-        mock_authenticate.return_value = user
-        self.client.post('/accounts/login', {'assertion': 'a'})
-        self.assertEqual(self.client.session[SESSION_KEY], str(user.pk))  #<1>
-
-
-    @patch('accounts.views.authenticate')
-    def test_does_not_get_logged_in_if_authenticate_returns_None(
-        self, mock_authenticate
-    ):
-        mock_authenticate.return_value = None
-        self.client.post('/accounts/login', {'assertion': 'a'})
-        self.assertNotIn(SESSION_KEY, self.client.session)  #<2>
+    @patch('accounts.views.auth')  #<1>
+    def test_calls_authenticate_with_uid_from_get_request(self, mock_auth):  #<2>
+        self.client.get('/accounts/login?token=abcd123')
+        self.assertEqual(
+            mock_auth.authenticate.call_args,  #<3>
+            call(uid='abcd123')  #<4>
+        )
 ----
 
-<1> The Django test client keeps track of the session for its user.  For
-    the case where the user gets authenticated successfully, we check that
-    their user ID (the primary key, or pk) is associated with their session.
+<1> We expect to be using the `django.contrib.auth` module in 'views.py',
+    and we mock it out here.  Note that this time, we're not mocking out
+    a function, we're mocking out a whole module, and thus implicitly
+    mocking out all the functions (and any other objects) that module contains.
 
-<2> In the case where the user should not be authenticated, the `SESSION_KEY`
-    should not appear in their session.
+<2> As usual, the mocked object is injected into our test method.
+
+<3> This time, we've mocked out a module rather than a function. So we examine
+    the `call_args` not of the `mock_auth` module, but of the
+    `mock_auth.authenticate` function.  Because all the attributes of a mock
+    are more mocks, that's a mock too.  You can start to see why Mock objects
+    are so convenient, compared to trying to build your own.
+
+<4> Now, instead of "unpacking" the call args, we use the `call` function
+    for a neater way of saying what it should have been called with, ie,
+    the token from the GET request. (see sidebar).
 
 
-.Django Sessions: How a User's Cookies Tell the Server She Is pass:[<span class="keep-together">Authenticated</span>]
-**********************************************************************
+.On mock call_args
+**************************************************
 
-'Being an attempt to explain sessions, cookies, and authentication in Django.'
-((("sessions")))
-((("cookies")))
-((("authentication","in Django", sortas="Django")))
-((("Django", "authentication in")))
+The `call_args` property on a mock represents the positional and keyword
+arguments that the mock was called with.  It's a special "call" object type,
+which is essentially a tuple of `(positional_args, keyword_args)`.  The
+`positional_args` is itself a tuple, consisting of the set of positional
+arguments.  The keyword_args is a dictionary.
 
-Because HTTP is stateless, servers need a way of recognising different clients
-with 'every single request'. IP addresses can be shared, so the usual
-solution is to give each client a unique session ID, which it will store in a
-cookie, and submit with every request.  The server will store that ID somewhere
-(by default, in the database), and then it can recognise each request that
-comes in as being from a particular client.
+[role="small-code skipme"]
+[source,python]
+----
+>>> from unittest.mock import Mock, call
+>>> m = Mock()
+>>> m(42, 43, 'positional arg 3', key='val', other_kwarg=666)
+<Mock name='mock()' id='139909729163528'>
 
-If you log in to the site using the dev server, you can actually take a look at
-your session ID by hand if you like.  It's stored under the key `sessionid` by
-default. See <<session-cookie-screenshot>>.
+>>> m.call_args
+call(42, 43, 'positional arg 3', key='val', other_kwarg=666)
 
-[[session-cookie-screenshot]]
-.Examining the session cookie in the Debug toolbar
-image::images/twdp_1601.png[scale="80"]
+>>> m.call_args == ((42, 43, 'positional arg 3'), {'key': 'val', 'other_kwarg': 666})
+True
+>>> m.call_args == call(42, 43, 'positional arg 3', key='val', other_kwarg=666)
+True
+----
 
-These session cookies are set for all visitors to a Django site, whether
-they're logged in or not.
+So in our test,  we could have done this instead:
 
-When we want to recognise a client as being a logged-in and authenticated user,
-again, rather asking the client to send their username and password with every
-single request, the server can actually just mark that client's session as
-being an authenticated session, and associate it with a user ID in its
-database.
+[role="sourcecode skipme"]
+[source,python]
+----
+    self.assertEqual(
+        mock_auth.authenticate.call_args,
+        ((,), {'uid': 'abcd123'})
+    )
+    # or this
+    args, kwargs = mock_auth.authenticate.call_args
+    self.assertEqual(args, (,))
+    self.assertEqual(kwargs, {'uid': 'abcd123')
+----
 
-A session is a dictionary-like data structure, and the user ID is stored under
-the key given by `django.contrib.auth.SESSION_KEY`.  You can check this out
-in a `manage.py` console if you like:
+But you can see how using the `call` helper is nicer.
 
-[role="skipme small-code"]
+**************************************************
+
+
+What happens when we run the test?   The first error is this:
+
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py shell*]
+$ pass:quotes[*python manage.py test accounts*]
 [...]
-In [1]: from django.contrib.sessions.models import Session
-
-# substitute your session id from your browser cookie here
-In [2]: session = Session.objects.get(
-    session_key="8u0pygdy9blo696g3n4o078ygt6l8y0y"
-)
-
-In [3]: print(session.get_decoded())
-{'_auth_user_id': 'harry@mockmyid.com', '_auth_user_backend':
-'accounts.authentication.PersonaAuthenticationBackend'}
+AttributeError: <module 'accounts.views' from '/home/harry/Dropbox/Book/source/chapter_16/superlists/accounts/views.py'> does not have the attribute 'auth'
 ----
 
-You can also store any other information you like on a user's session,
-as a way of temporarily keeping track of some state. This works for
-non-logged-in users too.  Just use `request.session` inside any
-view, and it works as a dict. There's more information in the 
-https://docs.djangoproject.com/en/1.8/topics/http/sessions/[Django docs on
-sessions].
+TIP: `module xyz does not have the attribute abc` is a common first failure
+    in a test that uses mocks.  It's telling you that you're trying to mock
+    out something that doesn't yet exist in the target module.
 
-**********************************************************************
+Once we import `django.contrib.auth`, the error changes:
+
+
+[role="sourcecode"]
+.accounts/views.py (ch16l038)
+[source,python]
+----
+from django.contrib import auth, messages
+[...]
+----
+
+Now we get:
+
+
+[subs="specialcharacters,macros"]
+----
+AssertionError: None != call(uid='abcd123')
+----
+
+Now it's telling us that the view doesn't call the `auth.authenticate`
+function.  Let's fix that, but get it deliberately wrong, just to
+see:
+
+
+[role="sourcecode"]
+.accounts/views.py (ch16l039)
+[source,python]
+----
+def login(request):
+    auth.authenticate('bang!')
+    return redirect('/')
+----
+
+
+Bang indeed!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test accounts*]
+[...]
+TypeError: authenticate() takes 0 positional arguments but 1 was given
+[...]
+AssertionError: call('bang!') != call(uid='abcd123')
+[...]
+FAILED (failures=1, errors=1)
+----
+
+Let's give `authenticate` the arguments it expects then:
+
+
+[role="sourcecode"]
+.accounts/views.py (ch16l040)
+[source,python]
+----
+def login(request):
+    auth.authenticate(uid=request.GET.get('token'))
+    return redirect('/')
+----
+
+That gets us to passing tests
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test accounts*]
+[...]
+Ran 14 tests in 0.041s
+
+OK
+----
+
+
+Using mock.return_value
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Next we want to check that if the authenticate function returns a user,
+we pass that into `auth.login`.  Let's see how that test looks:
+
+
+[role="sourcecode"]
+.accounts/tests/test_views.py (ch16l041)
+[source,python]
+----
+@patch('accounts.views.auth')  #<1>
+def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):
+    response = self.client.get('/accounts/login?token=abcd123')
+    self.assertEqual(
+        mock_auth.login.call_args,  #<2>
+        call(response.wsgi_request, mock_auth.authenticate.return_value)  #<3>
+    )
+----
+
+
+<1> We mock the `contrib.auth` module again
+
+<2> This time we examine the call args for the `auth.login` function
+
+<3> We check that it's called with the request object that the view sees,
+    and the "user" object that the `authenticate` function returns.  Because
+    `authenticate` is also mocked out, we can use its special "return_value"
+    attribute
+
+When you call a mock, you get another mock.  But you can also get a copy
+of that returned mock from the original mock that you called.  Boy, it
+sure is hard to explain this stuff without saying "mock" a lot! Another little
+console illustration might help here:
+
+[role="small-code skipme"]
+[source,python]
+----
+>>> m = Mock()
+>>> thing = m()
+>>> thing
+<Mock name='mock()' id='140652722034952'>
+>>> m.return_value
+<Mock name='mock()' id='140652722034952'>
+>>> thing == m.return_value
+True
+----
+
+In any case, what do we get from running the test?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test accounts*]
+[...]
+    call(response.wsgi_request, mock_auth.authenticate.return_value)
+AssertionError: None != call(<WSGIRequest: GET '/accounts/login?t[71 chars]92'>)
+----
+
+Sure enough, it's telling us that we're not calling `auth.login` at all
+yet.  Let's try doing that.  Deliberately wrong as usual first!
+
+
+[role="sourcecode"]
+.accounts/views.py (ch16l042)
+[source,python]
+----
+def login(request):
+    auth.authenticate(uid=request.GET.get('token'))
+    auth.login('ack!')
+    return redirect('/')
+----
+
+
+Ack indeed!
+
+[subs="specialcharacters,macros"]
+----
+TypeError: login() missing 1 required positional argument: 'user'
+[...]
+AssertionError: call('ack!') != call(<WSGIRequest: GET '/accounts/login?token=[66 chars]68'>)
+----
+
+Let's fix that:
+
+[role="sourcecode"]
+.accounts/views.py (ch16l043)
+[source,python]
+----
+def login(request):
+    user = auth.authenticate(uid=request.GET.get('token'))
+    auth.login(request, user)
+    return redirect('/')
+----
+
+
+Now we get this unexpected complaint:
+
+[subs="specialcharacters,macros"]
+----
+ERROR: test_redirects_to_home_page (accounts.tests.test_views.LoginViewTest)
+[...]
+AttributeError: 'AnonymousUser' object has no attribute '_meta'
+----
+
+It's because we're still calling `auth.login` indiscriminately on any kind
+of user, and that's causing problems back in our original test for the
+redirect, which isn't currently mocking out `auth.login`.  We need to add an
+`if` (and therefore another test), and while we're at it we'll learn about
+patching at the class level.
+
+
+Patching at the class level
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We want to add another test, with another `@patch('accounts.views.auth')`,
+and that's starting to get repetitive.  We use the "three strikes" rule,
+and we can move the patch decorator to the class level.  This will have
+the effect of mocking out `accounts.views.auth` in every single test
+method in that class.  That also means our original redirect test will
+now also have the `mock_auth` variable injected:
+
+
+
+[role="sourcecode"]
+.accounts/tests/test_views.py (ch16l044)
+[source,python]
+----
+@patch('accounts.views.auth')  #<1>
+class LoginViewTest(TestCase):
+
+    def test_redirects_to_home_page(self, mock_auth):  #<2>
+        [...]
+
+    def test_calls_authenticate_with_uid_from_get_request(self, mock_auth):  #<3>
+        [...]
+
+    def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):  #<3>
+        [...]
+
+
+    def test_does_not_login_if_user_is_not_authenticated(self, mock_auth):
+        mock_auth.authenticate.return_value = None  #<4>
+        self.client.get('/accounts/login?token=abcd123')
+        self.assertEqual(mock_auth.login.called, False)  #<5>
+----
+
+<1> We move the patch to the class level...
+
+<2> which means we get an extra argument injected into our first test method...
+
+<3> And we can remove the decorators from all the other tests.
+
+<4> In our new test, we explicitly set the `return_value` on the
+    `auth.authenticate` mock, 'before' we call the `self.client.get`.
+
+<5> We assert that, if `authenticate` returns `None`, we should not
+    call `auth.login` at all.
+
+
+That cleans up the spurious failure, and gives us a specific, expected failure
+to work on:
+
+[subs="specialcharacters,macros"]
+----
+    self.assertEqual(mock_auth.login.called, False)
+AssertionError: True != False
+----
+
+And we get it passing like this:
+
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+def login(request):
+    user = auth.authenticate(uid=request.GET.get('token'))
+    if user:
+        auth.login(request, user)
+    return redirect('/')
+----
+
 
 That gives us two failures:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test accounts*]
+$ pass:quotes[*python manage.py test accounts*]
 [...]
     self.assertEqual(self.client.session[SESSION_KEY], str(user.pk))
 KeyError: '_auth_user_id'
@@ -1827,43 +1610,6 @@ We now have a working login view.
 (((range="endofrange", startref="ix_mockingpython")))
 (((range="endofrange", startref="ix_authenticationlogin")))
 
-.Testing Login with Mocks
-**********************************************************************
-((("mocks/mocking", "testing Django login")))
-An alternative way of testing that the Django login function was called
-correctly would be to mock it out too:
-
-[role="sourcecode skipme"]
-.accounts/tests/test_views.py
-[source,python]
-----
-from django.http import HttpRequest
-from accounts.views import persona_login
-[...]
-
-    @patch('accounts.views.login')
-    @patch('accounts.views.authenticate')
-    def test_calls_auth_login_if_authenticate_returns_a_user(
-        self, mock_authenticate, mock_login
-    ):
-        request = HttpRequest()
-        request.POST['assertion'] = 'asserted'
-        mock_user = mock_authenticate.return_value
-        persona_login(request)
-        mock_login.assert_called_once_with(request, mock_user)
-----
-
-The upside of this version of the test is that it doesn't need to
-rely on the magic of the Django test client, and it doesn't need to
-know anything about how Django sessions work--all you need to know
-is the name of the function you're supposed to call.
-
-Its downside is that it is very much testing implementation, rather
-than testing behaviour--it's tightly coupled to the particular
-name of the Django login function and its API.  
-
-**********************************************************************
-
 
 A Slight Disappointment
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -1872,7 +1618,7 @@ Meanwhile, we have a couple of weird unexpected failures:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test accounts*]
+$ pass:quotes[*python manage.py test accounts*]
 [...]
 ERROR: test_gets_logged_in_session_if_authenticate_returns_a_user
 [...]
@@ -1909,7 +1655,7 @@ re-create it:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*rm accounts/migrations/0001_initial.py*]
-$ pass:quotes[*python3 manage.py makemigrations*]
+$ pass:quotes[*python manage.py makemigrations*]
 System check identified some issues:
 [...]
 Migrations for 'accounts':
@@ -2284,6 +2030,7 @@ Ran 54 tests in 78.124s
 OK
 ----
 //54
+(((range="endofrange", startref="ix_despiking")))
 
 NOTE: I'm actually glossing over a small problem here.  You may notice, if you
     test the site manually, that Persona sometimes re-logs you in automatically
@@ -2375,3 +2122,100 @@ strip out email from qs?
 
 pros: lesson about piping first, and about not just testing happy path
 cons: longer
+
+
+Old content we might want to re-use
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Beware of Mocks in Boolean Comparisons
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+So how come our `test_returns_none_if_response_errors` isn't failing?  
+
+Because we've mocked out `requests.post`, the `response` is a Mock object,
+which as you remember, returns all attributes and properties as more
+Mocks.footnote:[Actually, this is only happening because we're using the `patch` 
+decorator, which returns a `MagicMock`, an even mockier version of `mock` that
+can also behave like a dictionary. More info in the
+https://docs.python.org/3/library/unittest.mock-magicmethods.html[docs].] So, when we do: 
+
+[role="sourcecode currentcontents"]
+.accounts/authentication.py
+[source,python]
+----
+    if response.json()['status'] == 'okay':
+----
+
+`response` is actually a mock, `response.json()` is a mock, and 
+`response.json()['status']` is a mock too! We end up comparing a mock with the
+string "okay", which evaluates to False, and so we return None by default.
+Let's make our test more explicit, by saying that the response JSON will 
+be an empty dict:
+
+
+[role="sourcecode"]
+
+.Django Sessions: How a User's Cookies Tell the Server She Is pass:[<span class="keep-together">Authenticated</span>]
+**********************************************************************
+
+'Being an attempt to explain sessions, cookies, and authentication in Django.'
+((("sessions")))
+((("cookies")))
+((("authentication","in Django", sortas="Django")))
+((("Django", "authentication in")))
+
+Because HTTP is stateless, servers need a way of recognising different clients
+with 'every single request'. IP addresses can be shared, so the usual
+solution is to give each client a unique session ID, which it will store in a
+cookie, and submit with every request.  The server will store that ID somewhere
+(by default, in the database), and then it can recognise each request that
+comes in as being from a particular client.
+
+If you log in to the site using the dev server, you can actually take a look at
+your session ID by hand if you like.  It's stored under the key `sessionid` by
+default. See <<session-cookie-screenshot>>.
+
+[[session-cookie-screenshot]]
+.Examining the session cookie in the Debug toolbar
+image::images/twdp_1601.png[scale="80"]
+
+These session cookies are set for all visitors to a Django site, whether
+they're logged in or not.
+
+When we want to recognise a client as being a logged-in and authenticated user,
+again, rather asking the client to send their username and password with every
+single request, the server can actually just mark that client's session as
+being an authenticated session, and associate it with a user ID in its
+database.
+
+A session is a dictionary-like data structure, and the user ID is stored under
+the key given by `django.contrib.auth.SESSION_KEY`.  You can check this out
+in a `manage.py` console if you like:
+
+[role="skipme small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py shell*]
+[...]
+In [1]: from django.contrib.sessions.models import Session
+
+# substitute your session id from your browser cookie here
+In [2]: session = Session.objects.get(
+    session_key="8u0pygdy9blo696g3n4o078ygt6l8y0y"
+)
+
+In [3]: print(session.get_decoded())
+{'_auth_user_id': 'harry@mockmyid.com', '_auth_user_backend':
+'accounts.authentication.PersonaAuthenticationBackend'}
+----
+
+You can also store any other information you like on a user's session,
+as a way of temporarily keeping track of some state. This works for
+non-logged-in users too.  Just use `request.session` inside any
+view, and it works as a dict. There's more information in the 
+https://docs.djangoproject.com/en/1.8/topics/http/sessions/[Django docs on
+sessions].
+
+**********************************************************************
+
