@@ -1703,6 +1703,18 @@ Wow!  Can you believe it?  I scarcely can!  Time for a manual look around.
 
 
 
+----
+Internal Server Error: /accounts/send_login_email
+Traceback (most recent call last):
+  File "/workspace/superlists/accounts/views.py", line 20, in send_login_email
+
+ConnectionRefusedError: [Errno 111] Connection refused
+----
+
+TODO: fix up settings.py for manual stuff to work
+
+
+
 
 Woohoo!
 
@@ -1729,45 +1741,6 @@ Finishing Off Our FT, Testing Logout
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("authentication", "testing logout")))
-We'll extend our FT to check that the logged-in status persists, ie it's 
-not just something we set in JavaScript on the client side, but the server
-knows about it too and will maintain the logged-in state if she refreshes
-the page. We'll also test that she can log out.
-
-I started off writing code a bit like this:
-
-[role="sourcecode skipme"]
-.functional_tests/test_login.py
-[source,python]
-----
-    # Refreshing the page, she sees it's a real session login,
-    # not just a one-off for that page
-    self.browser.refresh()
-    self.wait_for_element_with_id('id_logout')
-    navbar = self.browser.find_element_by_css_selector('.navbar')
-    self.assertIn('edith@mockmyid.com', navbar.text)
-----
-//49
-
-And, after four repetitions of very similar code, a couple of helper functions
-suggested themselves:
-
-
-[role="sourcecode"]
-.functional_tests/test_login.py (ch16l050)
-[source,python]
-----
-    def wait_to_be_logged_in(self):
-        self.wait_for_element_with_id('id_logout')
-        navbar = self.browser.find_element_by_css_selector('.navbar')
-        self.assertIn('edith@mockmyid.com', navbar.text)
-
-    def wait_to_be_logged_out(self):
-        self.wait_for_element_with_id('id_login')
-        navbar = self.browser.find_element_by_css_selector('.navbar')
-        self.assertNotIn('edith@mockmyid.com', navbar.text)
-----
-//50
 
 And I extended the FT like this:
 
@@ -1776,60 +1749,29 @@ And I extended the FT like this:
 [source,python]
 ----
         [...]
-        # The Persona window closes
-        self.switch_to_new_window('To-Do')
+        # she is logged in!
+        self.browser.find_element_by_link_text('Log out')
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertIn(TEST_EMAIL, navbar.text)
 
-        # She can see that she is logged in
-        self.wait_to_be_logged_in()
+        # Now she logs out
+        self.browser.find_element_by_link_text('Log out').click()
 
-        # Refreshing the page, she sees it's a real session login,
-        # not just a one-off for that page
-        self.browser.refresh()
-        self.wait_to_be_logged_in()
-
-        # Terrified of this new feature, she reflexively clicks "logout"
-        self.browser.find_element_by_id('id_logout').click()
-        self.wait_to_be_logged_out()
-
-        # The "logged out" status also persists after a refresh
-        self.browser.refresh()
-        self.wait_to_be_logged_out()
+        # She is logged out
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertNotIn(TEST_EMAIL, navbar.text)
+        self.browser.find_element_by_name('email')
 ----
-
-I also found that improving the failure message in the
-`wait_for_element_with_id` function helped to see what was going on:
-
-
-[role="sourcecode"]
-.functional_tests/test_login.py
-[source,python]
-----
-    def wait_for_element_with_id(self, element_id):
-        WebDriverWait(self.browser, timeout=30).until(
-            lambda b: b.find_element_by_id(element_id),
-            'Could not find element with id {}. Page text was:\n{}'.format(
-                element_id, self.browser.find_element_by_tag_name('body').text
-            )
-        )
-----
-//52
-
 
 With that, we can see that the test is failing because the logout button
 doesn't work:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python3 manage.py test functional_tests.test_login*
-  File "/workspace/superlists/functional_tests/test_login.py", line 36, in
+$ *python manage.py test functional_tests.test_login*
 wait_to_be_logged_out
 [...]
-selenium.common.exceptions.TimeoutException: Message: Could not find element
-with id id_login. Page text was:
-Superlists
-Log out
-Logged in as edith@mockmyid.com
-Start a new To-Do list
+AssertionError: 'edith@example.com' unexpectedly found in 'Superlists\nLogged in as edith@example.com\nLog out'
 ----
 
 Implementing a logout button is actually very simple:  we can use Django's 
@@ -1877,12 +1819,6 @@ OK
 //54
 (((range="endofrange", startref="ix_despiking")))
 
-NOTE: I'm actually glossing over a small problem here.  You may notice, if you
-    test the site manually, that Persona sometimes re-logs you in automatically
-    after you hit logout. Many thanks to Daniel G who finally prompted me with
-    a fix for this. You can find it
-    https://github.com/hjwp/book-example/commits/chapter_16_fix_auto_relogin_bug[here]
-    if you're curious.
 
 In the next chapter, we'll start trying to put our login system to good use.
 In the meantime, do a commit, and enjoy this recap:
