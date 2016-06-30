@@ -1565,302 +1565,144 @@ def login(request):
         auth.login(request, user)
     return redirect('/')
 ----
+//45
 
 
-That gives us two failures:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test accounts*]
-[...]
-    self.assertEqual(self.client.session[SESSION_KEY], str(user.pk))
-KeyError: '_auth_user_id'
-
-[...]
-AssertionError: '' != 'OK'
-+ OK
-----
-
-The Django function that takes care of logging in a user, by marking their
-session, is available at `django.contrib.auth.login`. So we go through another
-couple of TDD cycles, until:
-
-[role="sourcecode"]
-.accounts/views.py
-[source,python]
-----
-from django.contrib.auth import authenticate, login
-from django.http import HttpResponse
-
-def persona_login(request):
-    user = authenticate(assertion=request.POST['assertion'])
-    if user:
-        login(request, user)
-    return HttpResponse('OK')
-----
-//ch16l015
-
-...
-
-----
-OK
-----
-
-We now have a working login view.
-(((range="endofrange", startref="ix_mockingpython")))
-(((range="endofrange", startref="ix_authenticationlogin")))
-
-
-A Slight Disappointment
-^^^^^^^^^^^^^^^^^^^^^^^
-
-Meanwhile, we have a couple of weird unexpected failures:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test accounts*]
-[...]
-ERROR: test_gets_logged_in_session_if_authenticate_returns_a_user
-[...]
-ERROR: test_returns_OK_when_user_found
-[...]
-    user.save(update_fields=['last_login'])
-[...]
-ValueError: The following fields do not exist in this model or are m2m fields:
-last_login
-
-----
-
-It looks like Django is going to insist on us having a `last_login` field on
-our user model too.  Oh well.  My pristine, single-field user model is
-despoiled. I still love it though.
-
-[role="sourcecode"]
-.accounts/models.py
-[source,python]
-----
-from django.db import models
-from django.utils import timezone
-
-class User(models.Model):
-    email = models.EmailField()
-    last_login = models.DateTimeField(default=timezone.now)
-    REQUIRED_FIELDS = ()
-    USERNAME_FIELD = 'email'
-----
-//42
-
-We get another database error, so let's clear down the migration and 
-re-create it:
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*rm accounts/migrations/0001_initial.py*]
-$ pass:quotes[*python manage.py makemigrations*]
-System check identified some issues:
-[...]
-Migrations for 'accounts':
-  0001_initial.py:
-    - Create model User
-----
-
-That gets the tests passing:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-
-Ran 12 tests in 0.041s
-
-OK
-----
-
-
-Tests as Documentation
-^^^^^^^^^^^^^^^^^^^^^^
-
-((("tests, as documentation")))
-((("authentication", "tests as documentation")))
-((("documentation, tests as")))
-Let's go all the way and make the email field into the primary
-keyfootnote:[Emails may not be the perfect primary key IRL. One reader, clearly
-deeply emotionally scarred, wrote me a tearful email about how much they've
-suffered for over a decade from trying to deal with the effects email primary
-keys, due to their making multi-user account management impossible. So, as
-ever, YMMV.],
-and thus implicitly remove the auto-generated `id` column.
-
-Although that warning is probably enough of a justification to go ahead
-and make the change, it would be better to have a specific test:
-
-[role="sourcecode"]
-.accounts/tests/test_models.py (ch16l043)
-[source,python]
-----
-    def test_email_is_primary_key(self):
-        user = User()
-        self.assertFalse(hasattr(user, 'id'))
-----
-
-It'll help us remember if we ever come back and look at the code again
-in future.
-
-----
-    self.assertFalse(hasattr(user, 'id'))
-AssertionError: True is not false
-----
-
-NOTE: Your tests can be are a form of documentation for your code--they
-express what your requirements are of a particular class or function.
-Sometimes, if you forget why you've done something a particular way, going back
-and looking at the tests will give you the answer.  That's why it's important
-to give your tests explicit, verbose method names.
-
-And here's the implementation (feel free to check what happens with
-`unique=True` first):
-
-[role="sourcecode"]
-.accounts/models.py (ch16l044)
-[source,python]
-----
-    email = models.EmailField(primary_key=True)
-----
-
-That works:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-Ran 13 tests in 0.021s
-OK
-----
-
-
-One final cleanup of migrations to make sure we've got everything there:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*rm accounts/migrations/0001_initial.py*]
-$ pass:quotes[*python3 manage.py makemigrations*]
-Migrations for 'accounts':
-  0001_initial.py:
-    - Create model User
-----
-
-No warnings now!
-
-
-Users Are Authenticated
-^^^^^^^^^^^^^^^^^^^^^^^
-
-Our user model needs one last property before it's complete:  standard Django
-users have an API which includes 
-https://docs.djangoproject.com/en/1.8/ref/contrib/auth/#methods[several
-methods], most of which we won't need, but there is one that will come in
-useful: `.is_authenticated()`:
-
-[role="sourcecode"]
-.accounts/tests/test_models.py (ch16l045)
-[source,python]
-----
-    def test_is_authenticated(self):
-        user = User()
-        self.assertTrue(user.is_authenticated())
-----
-
-Which gives:
-
-----
-AttributeError: 'User' object has no attribute 'is_authenticated'
-----
-
-And so, the ultra-simple:
-
-[role="sourcecode"]
-.accounts/models.py
-[source,python]
-----
-class User(models.Model):
-    email = models.EmailField(primary_key=True)
-    last_login = models.DateTimeField(default=timezone.now)
-    REQUIRED_FIELDS = ()
-    USERNAME_FIELD = 'email'
-
-    def is_authenticated(self):
-        return True
-----
-//45-1
-
-And that works:
-(((range="endofrange", startref="ix_authentusermodel")))
-(((range="endofrange", startref="ix_Djangousermodel")))
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python3 manage.py test accounts*]
-[...]
-Ran 14 tests in 0.021s
-OK
-----
+So are we there yet?
 
 
 The Moment of Truth:  Will the FT Pass?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-I think we're just about ready to try our functional test!  Let's just wire 
-up our base template.  Firstly, it needs to show a different message for
-logged-in and non-logged-in users:
+I think we're just about ready to try our functional test!  
+
+Let's just make sure our base template shows a different nav bar for logged in
+and non-logged in users (which our FT relies on):
 
 [role="sourcecode small-code"]
-.lists/templates/base.html
+.lists/templates/base.html (ch16l046)
 [source,html]
 ----
 <nav class="navbar navbar-default" role="navigation">
-    <a class="navbar-brand" href="/">Superlists</a>
-    {% if user.email %}
-        <a class="btn navbar-btn navbar-right" id="id_logout" href="#">Log out</a>
-        <span class="navbar-text navbar-right">Logged in as {{ user.email }}</span>
-    {% else %}
-        <a class="btn navbar-btn navbar-right" id="id_login" href="#">Sign in</a>
-    {% endif %}
+<a class="navbar-brand" href="/">Superlists</a>
+{% if user.email %}
+  <p class="navbar-text">Logged in as {{ user.email }}</p>
+  <ul class="nav navbar-nav navbar-right">
+    <li><a class="navbar-link" href="#">Log out</a></li>
+  </ul>
+{% else %}
+  <form class="navbar-form navbar-right" method="POST" action="{% url 'send_login_email' %}">
+    <span>Enter email to log in:</span>
+    <input class="form-control" name="email" type="text" />
+    {% csrf_token %}
+  </form>
+{% endif %}
 </nav>
 ----
 //47
 
-Lovely.  Then we wire up our various context variables for the call to
-`initialize`:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+Internal Server Error: /accounts/login
+[...]
+  File "/workspace/superlists/accounts/views.py", line 32, in login
+    auth.login(request, user)
+[...]
+ValueError: The following fields do not exist in this model or are m2m fields: last_login
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate element: {"method":"link text","selector":"Log out"}
+----
+
+
+Oh no!  Something's not right.  But assuming you've kept the `LOGGING`
+config in 'settings.py', you should see the explanatory traceback,
+which is saying something about our custom user model needing a
+`last_login` field.
+
+https://code.djangoproject.com/ticket/26823[In my opinion] this is a
+bug in Django, but essentially the auth framework expects the user
+model to have a last_login field.  We don't have one.  But never fear!
+There's a way of handling this failure.  Let's write a test for it first.
+
+Since it's to do with our custom user model, as good a place to have it
+as any might be 'test_models.py':
+
 
 [role="sourcecode"]
-.lists/templates/base.html
-[source,html]
+.accounts/tests/test_models.py (ch16l047)
+[source,python]
 ----
-<script>
-    /*global $, Superlists, navigator */
-    $(document).ready(function () {
-        var user = "{{ user.email }}" || null;
-        var token = "{{ csrf_token }}";
-        var urls = {
-            login: "{% url 'persona_login' %}",
-            logout: "TODO",
-        };
-        Superlists.Accounts.initialize(navigator, user, token, urls);
-    });
-</script>
-----
-//48
+from django.test import TestCase
+from django.contrib import auth
+from accounts.models import Token
+User = auth.get_user_model()
 
-So how does our FT get along?
+
+class UserModelTest(TestCase):
+
+    def test_user_is_valid_with_email_only(self):
+        [...]
+
+    def test_no_problem_with_auth_login(self):
+        user = User.objects.create(email='edith@example.com')
+        user.backend = ''
+        request = self.client.request().wsgi_request
+        auth.login(request, user)  # should not raise
+----
+
+We create a request object and a user, and then we pass them into the
+`auth.login` function.
+
+That will raise our error:
+
+----
+    auth.login(request, user)  # should not raise
+[...]
+ValueError: The following fields do not exist in this model or are m2m fields: last_login
+----
+
+
+And we can fix it like this:
+
+[role="sourcecode"]
+.accounts/models.py (ch16l048)
+[source,python]
+----
+import uuid
+from django.contrib import auth
+from django.db import models
+
+auth.signals.user_logged_in.disconnect(auth.models.update_last_login)
+
+
+class User(models.Model):
+    [...]
+----
+
+
+And, how does our FT look now?
+
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python3 manage.py test functional_tests.test_login*]
 Creating test database for alias 'default'...
-[...]
-Ran 1 test in 26.382s
+Not Found: /favicon.ico
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 3.282s
 
 OK
+Destroying test database for alias 'default'...
 ----
+
+
+Wow!  Can you believe it?  I scarcely can!  Time for a manual look around.
+
+
+
 
 Woohoo!
 
@@ -1878,6 +1720,9 @@ $ *git add .*
 $ *git diff --staged*
 $ *git commit -m "Custom Persona auth backend + custom user model"*
 ----
+
+
+
 
 
 Finishing Off Our FT, Testing Logout
@@ -2218,4 +2063,66 @@ https://docs.djangoproject.com/en/1.8/topics/http/sessions/[Django docs on
 sessions].
 
 **********************************************************************
+
+
+Tests as Documentation
+^^^^^^^^^^^^^^^^^^^^^^
+
+((("tests, as documentation")))
+((("authentication", "tests as documentation")))
+((("documentation, tests as")))
+Let's go all the way and make the email field into the primary
+keyfootnote:[Emails may not be the perfect primary key IRL. One reader, clearly
+deeply emotionally scarred, wrote me a tearful email about how much they've
+suffered for over a decade from trying to deal with the effects email primary
+keys, due to their making multi-user account management impossible. So, as
+ever, YMMV.],
+and thus implicitly remove the auto-generated `id` column.
+
+Although that warning is probably enough of a justification to go ahead
+and make the change, it would be better to have a specific test:
+
+[role="sourcecode"]
+.accounts/tests/test_models.py (ch16l043)
+[source,python]
+----
+    def test_email_is_primary_key(self):
+        user = User()
+        self.assertFalse(hasattr(user, 'id'))
+----
+
+It'll help us remember if we ever come back and look at the code again
+in future.
+
+----
+    self.assertFalse(hasattr(user, 'id'))
+AssertionError: True is not false
+----
+
+NOTE: Your tests can be are a form of documentation for your code--they
+express what your requirements are of a particular class or function.
+Sometimes, if you forget why you've done something a particular way, going back
+and looking at the tests will give you the answer.  That's why it's important
+to give your tests explicit, verbose method names.
+
+And here's the implementation (feel free to check what happens with
+`unique=True` first):
+
+[role="sourcecode"]
+.accounts/models.py (ch16l044)
+[source,python]
+----
+    email = models.EmailField(primary_key=True)
+----
+
+That works:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+Ran 13 tests in 0.021s
+OK
+----
+
 
