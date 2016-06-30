@@ -2,28 +2,30 @@
 Testing external dependencies using mocks
 -----------------------------------------
 
-Let's crack on with the server side of our new auth system.  In this chapter
-we'll do some more mocking, this time with Python.  We'll also find out about
-kkkkk
-
-
-
+In this chapter we'll start testing the parts of our code that send emails.
 In the FT, you saw that Django gives us a way of retrieving any emails it
 sends by using the `mail.outbox` attribute.  But in this chapter, I want
 to demonstrate a very important testing technique called 'mocking', so for
 the purpose of these unit tests, we'll pretend that this nice Django shortcut
 doesn't exist.
 
+NOTE: Am I telling you not to use django's `mail.outbox`.  No, use it, it's a 
+    neat shortcut.  But I want to teach mocks because they're a useful
+    general-purpose tool for unit testing external dependencies.  You
+    may not always be using Django! And even if you are, you may not
+    be sending email -- any interaction with a third-party API is a good
+    candidate for testing with mocks.
+
 
 Before we start: getting the basic plumbing in
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Let's just get a basic view and url set up first.  We can do so with a simple
 test that our new URL for sending the login email should eventually redirect
 back to the home page:
 
 
-//ch15l035
+[role="dofirst-ch15l001"]
 .accounts/tests/test_views.py
 [source,python]
 ----
@@ -38,12 +40,14 @@ class SendLoginEmailViewTest(TestCase):
         })
         self.assertRedirects(response, '/')
 ----
+//ch16l003
 
 
 Wire up the `include` in 'superlists/urls.py', plus the url to
 'accounts/urls.py', and get the test passing with something a bit like this:
 
 
+[role="dofirst-ch15l002"]
 .accounts/views.py
 [source,python]
 ----
@@ -53,11 +57,11 @@ from django.shortcuts import redirect
 def send_login_email(request):
     return redirect('/')
 ----
-//ch15l036
+//ch16l003
+
 
 I've added the import of the `send_mail` function as a placeholder for now.
 
-[role="dofirst-ch15l034"]
 [subs="specialcharacters,quotes"]
 ----
 $ *python manage.py test accounts*
@@ -67,11 +71,11 @@ Ran 1 test in 0.015s
 OK
 ----
 
+OK now we have a starting point, let's get mocking!
 
 
-Mocking in Python
-^^^^^^^^^^^^^^^^^
-
+Mocking manually, aka monkey-patching
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When we call `send_mail` in real life we expect Django to be making a
 connection to our email provider, and sending an actual email across
@@ -89,9 +93,6 @@ http://martinfowler.com/articles/mocksArentStubs.html#TheDifferenceBetweenMocksA
 are the answer.
 
 
-
-Mocking manually, aka monkey-patching
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ((("monkeypatching")))
 Actually one of the great things about Python is that its dynamic nature makes
@@ -126,7 +127,7 @@ Check this out:
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch15l037)
+.accounts/tests/test_views.py (ch16l005)
 [source,python]
 ----
 from django.test import TestCase
@@ -229,8 +230,9 @@ TypeError: fake_send_mail() missing 4 required positional arguments: 'subject',
 'body', 'from_email', and 'to_list'
 ----
 
-Looks like our mock is working!  We've called `send_mail`, and it's gone into
-our `fake_send_mail` function, which wants more arguments.  Let's try this:
+Looks like our monkeypatch is working!  We've called `send_mail`, and it's gone
+into our `fake_send_mail` function, which wants more arguments.  Let's try
+this:
 
 
 [role="sourcecode"]
@@ -267,6 +269,7 @@ def send_login_email(request):
     )
     return redirect('/')
 ----
+//006
 
 
 and passing tests!
@@ -285,7 +288,7 @@ OK
 
 
 The Python Mock Library
-^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~
 
 The popular 'mock' package was added to the standard library as part of Python
 3.3.footnote:[If you're using Python 3.2, upgrade!  Or if you're stuck with it,
@@ -319,9 +322,13 @@ call(42, var='thing')
 ----
 
 A magical object, that responds to any request for an attribute or method call
-with other mocks, that you can configure to return specific values for its calls,
-and that allows you to inspect what it was called with?  Sounds like a useful
-thing to be able to use in our unit tests!
+with other mocks, that you can configure to return specific values for its
+calls, and that allows you to inspect what it was called with?  Sounds like a
+useful thing to be able to use in our unit tests!
+
+
+Using unittest.mock to our email-sending view
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 And as if that weren't enough, the `mock` module also provides a helper
 function called `patch`, which we can use to do the monkeypatching we did
@@ -329,7 +336,7 @@ by hand earlier.
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch15l039)
+.accounts/tests/test_views.py (ch16l007)
 [source,python]
 ----
 from django.test import TestCase
@@ -357,7 +364,7 @@ break it just to see:
 
 
 [role="sourcecode"]
-.accounts/tests/test_views.py (ch15l040)
+.accounts/tests/test_views.py (ch16l008)
 [source,python]
 ----
         self.assertEqual(to_list, ['schmedith@example.com'])
@@ -366,7 +373,7 @@ break it just to see:
 And let's add a little debug print to our view
 
 [role="sourcecode"]
-.accounts/views.py (ch15l041)
+.accounts/views.py (ch16l009)
 [source,python]
 ----
 def send_login_email(request):
@@ -406,8 +413,8 @@ test we're seeing a mock object.
 
 Let's reset our code back to where it was and do a little recap:
 
-[role="dofirst-ch15l042"]
-.accounts/tests/test_views.py (ch15l043)
+[role="sourcecode dofirst-ch16l010"]
+.accounts/tests/test_views.py (ch16l011)
 [source,python]
 ----
 @patch('accounts.views.send_mail')  #<1>
@@ -447,12 +454,258 @@ def test_sends_mail_to_address_from_post(self, mock_send_mail):  #<2>
     and examine what it was called with.
 
 
-All crystal-clear? No? Let's do a couple more tests with mocks, to see if they
-start to make more sense as we use them more.
+All crystal-clear? No? Don't worry, we'll do a couple more tests with mocks, to
+see if they start to make more sense as we use them more.
+
+
+Getting the FT a little farther along
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+First let's get back to our FT and see where it's failing.
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+[...]
+AssertionError: 'Check your email' not found in 'Superlists\nEnter email to log in:\nStart a new To-Do list'
+----
+
+Submitting the email address currently has no effect, because the form isn't
+sending the data anywhere.  Let's wire it up in 'base.html'
+
+
+[role="sourcecode small-code"]
+.lists/templates/base.html
+[source,html]
+----
+<form class="navbar-form navbar-right" method="POST" action="{% url 'send_login_email' %}">
+----
+
+Does that help?  Nope, same error.  Why?  Because we're not actually displaying
+a success message after we send the user an email.   Let's add a test for that:
+
+
+Testing the Django messages framework
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+We'll use Django's "messages framework", which is often used to display
+ephemeral "success" or "warning" messages to show the results of an action.
+Have a look at the 
+https://docs.djangoproject.com/en/1.9/ref/contrib/messages/[django messages docs]
+if you haven't come across it already.
+
+.TODO: sidebar on the Django Messages Framework
+**************************************************
+bla
+
+**************************************************
+
+Testing Django messages is a bit contorted (so much so that, at work, we used
+to test them with mocks.  You can test anything with mocks!  But, as we'll
+learn from <<isolation-chapter,later chapters>>, Mocks come at a price, so
+it's often worth trying to test without mocks whenever you can).  We have to
+pass `follow=True` to the test client to tell it to get the page after the 
+302-redirect, and examine its context for a list of messages.  Here's what it
+looks like:
+
+
+[role="sourcecode"]
+.accounts/tests/test_views.py (ch16l013)
+[source,python]
+----
+    def test_adds_success_message(self):
+        response = self.client.post('/accounts/send_login_email', data={
+            'email': 'edith@example.com'
+        }, follow=True)
+
+        message = list(response.context['messages'])[0]
+        self.assertEqual(
+            message.message,
+            "Check your email, we've sent you a link you can use to log in."
+        )
+        self.assertEqual(message.tags, "success")
+----
+
+That gives:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+    message = list(response.context['messages'])[0]
+IndexError: list index out of range
+----
+
+And we can get it passing with:
+
+
+[role="sourcecode"]
+.accounts/views.py (ch16l014)
+[source,python]
+----
+from django.contrib import messages
+[...]
+
+def send_login_email(request):
+    [...]
+    messages.success(
+        request,
+        "Check your email, we've sent you a link you can use to log in."
+    )
+    return redirect('/')
+----
+
+
+What happens next in the functional test?  Ah.  Still nothing.  We
+need to actually add the messages to the page.  Something like this:
+
+
+[role="sourcecode"]
+.lists/templates/base.html (ch16l015)
+[source,html]
+----
+      [...]
+      </nav>
+
+      {% if messages %}
+        <div class="row">
+          <div class="col-md-8">
+            <ul class="messages">
+              {% for message in messages %}
+                {% if message.tags == 'success' %}
+                  <li class="alert alert-success">
+                {% else %}
+                  <li class="alert alert-warning">
+                {% endif %}"
+                  {{ message }}
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% endif %}
+----
+
+
+Now do we get a little further?  Yes!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test accounts*]
+[...]
+Ran 5 tests in 0.023s
+
+OK
+
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+[...]
+AssertionError: 'Use this link to log in' not found in 'body text tbc'
+----
+
+
+We need to fill out the body text of the email, with a link that the
+user can use to log in.
+
+Let's just cheat for now though, by changing the value in the view:
+
+
+[role="sourcecode"]
+.accounts/views.py
+[source,python]
+----
+    send_mail(
+        'Your login link for Superlists',
+        'Use this link to log in',
+        'noreply@superlists',
+        [email]
+    )
+----
+
+That gets the FT a little further,
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+[...]
+AssertionError: Could not find url in email body:
+Use this link to log in
+----
+
+
+We're going to have to build some kind of URL!  Let's build one that, again,
+just cheats:
+
+
+Start on the login view
+^^^^^^^^^^^^^^^^^^^^^^^
+
+[role="sourcecode"]
+.accounts/tests/test_views.py (ch16l017)
+[source,python]
+----
+class LoginViewTest(TestCase):
+
+    def test_redirects_to_home_page(self):
+        response = self.client.get('/accounts/login?token=abcd123')
+        self.assertRedirects(response, '/')
+----
+
+We're imaging we'll pass the token in as a GET parameter, after the `?`.
+It doesn't need to do anything for now.
+
+
+I'm sure you can find your way through to getting a basic URL and view in, via
+errors like these:
+
+no URL:
+
+----
+AssertionError: 404 != 302 : Response didn't redirect as expected: Response
+code was 404 (expected 302)
+----
+
+
+No view:
+
+----
+AttributeError: module 'accounts.views' has no attribute 'login'
+----
+
+
+Broken view:
+
+----
+ValueError: The view accounts.views.login didn't return an HttpResponse object.
+It returned None instead.
+----
+
+OK!
+
+----
+Ran 6 tests in 0.029s
+
+OK
+----
 
 
 
-# TODO - merge up stuff from old 16 to new one:w
+Checking we send the user a token
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We've tested the email subject, from and to fields.  The body is the part that
+will have to include a token or URL they can use to log in.  Let's spec out
+two tests for that:
+
+
+
+
+
+# TODO - merge up stuff from old 16 to new one
+
+old content follows...
 
 
 Checking the View Actually Logs the User In

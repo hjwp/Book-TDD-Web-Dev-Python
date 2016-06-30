@@ -161,7 +161,10 @@ def parse_listing(listing):
         dofirst = None
 
     if 'sourcecode' in classes:
-        filename = listing.cssselect('.title')[0].text_content().strip()
+        try:
+            filename = listing.cssselect('.title')[0].text_content().strip()
+        except IndexError:
+            raise Exception('could not find title for listing {}'.format(listing.text_content()))
         contents = listing.cssselect('.content')[0].text_content().replace('\r\n', '\n').strip('\n')
         contents = _strip_callouts(contents)
         listing = CodeListing(filename, contents)
