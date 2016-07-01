@@ -66,27 +66,39 @@ def parse_chapters():
 
 def get_chapter_info():
     chapter_info = {}
-    for chapter, parsed_html in parse_chapters():
-        header = parsed_html.cssselect('h2')[0]
-        chapter_info[chapter] = header.get('id'), header.text_content(),
-    return chapter_info
-
-
-def print_toc_md(chapter_info):
-    chapter_no = 0
     appendix_numbers = [
         'I', 'II', 'III', 'IV', 'V', 'VI', 'VII'
     ]
-    for chapter in CHAPTERS:
-        html_id, chapter_title = chapter_info[chapter]
-        if chapter.startswith('chapter_'):
-            chapter_no += 1
-            chapter_title = 'Chapter {}: {}'.format(chapter_no, chapter_title)
+    chapter_numbers = list(range(1, 100))
+    part_numbers = list(range(1, 10))
+    for chapter, parsed_html in parse_chapters():
+        header = parsed_html.cssselect('h2')[0]
+        chapter_title = header.text_content()
+
         chapter_title = chapter_title.replace('Appendix A: ', '')
+
+        if chapter.startswith('chapter_'):
+            chapter_no = chapter_numbers.pop(0)
+            chapter_title = 'Chapter {}: {}'.format(chapter_no, chapter_title)
+
         if chapter.startswith('appendix_'):
             appendix_no = appendix_numbers.pop(0)
             chapter_title = 'Appendix {}: {}'.format(appendix_no, chapter_title)
 
+        if chapter.startswith('part'):
+            part_no = part_numbers.pop(0)
+            chapter_title = 'Part {}: {}'.format(part_no, chapter_title)
+
+        if chapter.startswith('epilogue'):
+            chapter_title = 'Epilogue: {}'.format(chapter_title)
+
+        chapter_info[chapter] = header.get('id'), chapter_title
+    return chapter_info
+
+
+def print_toc_md(chapter_info):
+    for chapter in CHAPTERS:
+        html_id, chapter_title = chapter_info[chapter]
         print('* [{title}]({link})'.format(title=chapter_title, link=chapter))
 
 
