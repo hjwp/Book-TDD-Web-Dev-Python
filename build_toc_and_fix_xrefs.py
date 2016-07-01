@@ -96,6 +96,25 @@ def get_chapter_info():
     return chapter_info
 
 
+def fix_xrefs(chapter, chapter_info):
+    contents = open(chapter).read()
+    for other_chap in CHAPTERS:
+        html_id, chapter_title = chapter_info[other_chap]
+        old_tag = 'href="#{}"'.format(html_id)
+        new_tag = 'href="{}"'.format(other_chap)
+        if old_tag in contents:
+            contents = contents.replace(old_tag, new_tag)
+
+    with open(chapter, 'w') as f:
+        f.write(contents)
+
+
+def fix_all_xrefs(chapter_info):
+    for chapter in CHAPTERS:
+        fix_xrefs(chapter, chapter_info)
+
+
+
 def print_toc_md(chapter_info):
     for chapter in CHAPTERS:
         html_id, chapter_title = chapter_info[chapter]
@@ -105,6 +124,7 @@ def print_toc_md(chapter_info):
 def main():
     make_chapters()
     chapter_info = get_chapter_info()
+    fix_all_xrefs(chapter_info)
     print_toc_md(chapter_info)
 
 
