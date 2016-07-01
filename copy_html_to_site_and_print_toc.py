@@ -116,14 +116,17 @@ def fix_xrefs(chapter, chapter_info):
 
 
 def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
+    comments_div = html.fromstring(open('disqus_comments.html').read())
+
     for chapter in CHAPTERS:
         new_contents = fix_xrefs(chapter, chapter_info)
         parsed = html.fromstring(new_contents)
+        body = parsed.cssselect('body')[0]
         if parsed.cssselect('#header'):
             header = parsed.cssselect('#header')[0]
             header.append(fixed_toc)
-            body = parsed.cssselect('body')[0]
             body.set('class', 'article toc2 toc-left')
+        body.append(comments_div)
         fixed_contents = html.tostring(parsed)
 
         target = os.path.join('/home/harry/workspace/www.obeythetestinggoat.com/content/book', chapter)
