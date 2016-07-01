@@ -5,7 +5,7 @@ from lxml import html
 import subprocess
 
 CHAPTERS = [
-    "praise.html",
+    "praise.harry.html",
     "preface.html",
     "pre-requisite-installations.html",
     "video_plug.html",
