@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
+import os
 from lxml import html
 import subprocess
 
 CHAPTERS = [
-    # "praise.html",
+    "praise.html",
     "preface.html",
     "pre-requisite-installations.html",
     "video_plug.html",
@@ -72,9 +73,14 @@ def get_chapter_info():
     chapter_numbers = list(range(1, 100))
     part_numbers = list(range(1, 10))
     for chapter, parsed_html in parse_chapters():
-        header = parsed_html.cssselect('h2')[0]
-        chapter_title = header.text_content()
+        print('getting info from', chapter)
+        if not parsed_html.cssselect('h2'):
+            header = parsed_html.cssselect('h1')[0]
+        else:
+            header = parsed_html.cssselect('h2')[0]
+        subheaders = [h.get('id') for h in parsed_html.cssselect('h3')]
 
+        chapter_title = header.text_content()
         chapter_title = chapter_title.replace('Appendix A: ', '')
 
         if chapter.startswith('chapter_'):
@@ -92,39 +98,78 @@ def get_chapter_info():
         if chapter.startswith('epilogue'):
             chapter_title = 'Epilogue: {}'.format(chapter_title)
 
-        chapter_info[chapter] = header.get('id'), chapter_title
+
+        chapter_info[chapter] = header.get('id'), chapter_title, subheaders
+
     return chapter_info
 
 
 def fix_xrefs(chapter, chapter_info):
     contents = open(chapter).read()
     for other_chap in CHAPTERS:
-        html_id, chapter_title = chapter_info[other_chap]
+        html_id, chapter_title, subheaders = chapter_info[other_chap]
         old_tag = 'href="#{}"'.format(html_id)
-        new_tag = 'href="{}"'.format(other_chap)
+        new_tag = 'href="/book/{}"'.format(other_chap)
         if old_tag in contents:
             contents = contents.replace(old_tag, new_tag)
-
-    with open(chapter, 'w') as f:
-        f.write(contents)
+    return contents
 
 
-def fix_all_xrefs(chapter_info):
+def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
     for chapter in CHAPTERS:
-        fix_xrefs(chapter, chapter_info)
+        new_contents = fix_xrefs(chapter, chapter_info)
+        parsed = html.fromstring(new_contents)
+        if parsed.cssselect('#header'):
+            header = parsed.cssselect('#header')[0]
+            header.append(fixed_toc)
+            body = parsed.cssselect('body')[0]
+            body.set('class', 'article toc2 toc-left')
+        fixed_contents = html.tostring(parsed)
 
+        target = os.path.join('/home/harry/workspace/www.obeythetestinggoat.com/content/book', chapter)
+        with open(target, 'w') as f:
+            f.write(fixed_contents.decode('utf8'))
+
+
+def extract_toc_from_book():
+    subprocess.check_call(['make', 'book.harry.html'], stdout=subprocess.PIPE)
+    parsed = html.fromstring(open('book.harry.html').read())
+    return parsed.cssselect('#toc')[0]
+
+
+
+def fix_toc(toc, chapter_info):
+    href_mappings = {}
+    for chapter in CHAPTERS:
+        html_id, chapter_title, subheaders = chapter_info[chapter]
+        if html_id:
+            href_mappings['#' + html_id] = '/book/{}'.format(chapter)
+        for subheader in subheaders:
+            href_mappings['#' + subheader] = '/book/{}#{}'.format(chapter, subheader)
+
+    def fix_link(href):
+        if href in href_mappings:
+            return href_mappings[href]
+        else:
+            return href
+
+    toc.rewrite_links(fix_link)
+    toc.set('class', 'toc2')
+    return toc
 
 
 def print_toc_md(chapter_info):
     for chapter in CHAPTERS:
-        html_id, chapter_title = chapter_info[chapter]
-        print('* [{title}]({link})'.format(title=chapter_title, link=chapter))
+        html_id, chapter_title, subheaders = chapter_info[chapter]
+        print('* [{title}](/book/{link})'.format(title=chapter_title, link=chapter))
 
 
 def main():
     make_chapters()
+    toc = extract_toc_from_book()
     chapter_info = get_chapter_info()
-    fix_all_xrefs(chapter_info)
+    fixed_toc = fix_toc(toc, chapter_info)
+    copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc)
     print_toc_md(chapter_info)
 
 
