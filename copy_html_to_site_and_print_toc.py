@@ -73,11 +73,16 @@ def get_chapter_info():
     chapter_numbers = list(range(1, 100))
     part_numbers = list(range(1, 10))
     for chapter, parsed_html in parse_chapters():
+
         print('getting info from', chapter)
+
         if not parsed_html.cssselect('h2'):
             header = parsed_html.cssselect('h1')[0]
         else:
             header = parsed_html.cssselect('h2')[0]
+        href_id = header.get('id')
+        if href_id is None:
+            href_id = parsed_html.cssselect('body')[0].get('id')
         subheaders = [h.get('id') for h in parsed_html.cssselect('h3')]
 
         chapter_title = header.text_content()
@@ -99,7 +104,7 @@ def get_chapter_info():
             chapter_title = 'Epilogue: {}'.format(chapter_title)
 
 
-        chapter_info[chapter] = header.get('id'), chapter_title, subheaders
+        chapter_info[chapter] = href_id, chapter_title, subheaders
 
     return chapter_info
 
