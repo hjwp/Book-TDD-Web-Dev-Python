@@ -238,17 +238,17 @@ def check_listing_matches_commit(listing, commit, future_contents):
             continue
         if line in commit.lines_to_add:
             print('line {} in commit lines to add'.format(line))
-            if listing_lines.count(line) > commit.lines_to_add.count(line):
-                if listing_pos != listing_lines.index(line):
-                    # skip subsequent occurrence of dupe line
-                    # (no way of telling whether dupe is 1st or 2nd)
-                    print('arbitrarily skipping a dupe commit line')
-                    continue
+            if listing_lines.count(line) > 1:
+                # skip duped lines
+                # (no way of telling whether dupe is 1st or 2nd)
+                assert line in commit.lines_to_add
+                print('skipping a dupe commit line')
+                continue
             try:
                 line_pos_in_commit = commit.lines_to_add[line_pos_in_commit:].index(line)
             except ValueError:
                 raise ApplyCommitException(
-                    'listing line {0} was in wrong order'.format(line)
+                    'listing line {} was in wrong order'.format(line)
                 )
             continue
         if line.strip() in stripped_future_lines:
