@@ -122,6 +122,7 @@ def fix_xrefs(chapter, chapter_info):
 
 def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
     comments_div = html.fromstring(open('disqus_comments.html').read())
+    buy_book_div = html.fromstring(open('buy_the_book_banner.html').read())
 
     for chapter in CHAPTERS:
         new_contents = fix_xrefs(chapter, chapter_info)
@@ -131,6 +132,7 @@ def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
             header = parsed.cssselect('#header')[0]
             header.append(fixed_toc)
             body.set('class', 'article toc2 toc-left')
+        body.insert(0, buy_book_div)
         body.append(comments_div)
         fixed_contents = html.tostring(parsed)
 
