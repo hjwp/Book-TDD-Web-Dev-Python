@@ -235,11 +235,6 @@ class ChapterTest(unittest.TestCase):
         )
         print('writing to file', codelisting.filename)
         write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
-        filenames = codelisting.filename.split(', ')
-        for filename in filenames:
-            with open(os.path.join(self.tempdir, 'superlists', filename)) as f:
-                print('wrote:')
-                print(f.read())
 
 
     def apply_patch(self, codelisting):

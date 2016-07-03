@@ -188,8 +188,7 @@ class SourceTree(object):
 
         self.patch_from_commit(listing.commit_ref, listing.filename)
         listing.was_written = True
-        print('applied commit. new contents:')
-        print(self.get_contents(listing.filename))
+        print('applied commit.')
 
 
 
