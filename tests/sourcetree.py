@@ -200,11 +200,6 @@ def check_listing_matches_commit(listing, commit, future_contents):
                 'diff new lines did not match.\n{}\n!=\n{}'.format(diff.new_lines, commit.new_lines)
             )
 
-        ## only one occurrence of this currently, ch10l010, and it has a [...] to indicate deleteds.
-        # if diff.deleted_lines != commit.deleted_lines:
-        #     raise ApplyCommitException(
-        #         'diff deleted lines did not match.\n{}\n!=\n{}'.format(diff.deleted_lines, commit.deleted_lines)
-        #     )
         return
 
     listing_lines = listing.contents.split('\n')
