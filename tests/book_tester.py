@@ -348,6 +348,7 @@ class ChapterTest(unittest.TestCase):
 
         if self.tempdir in actual:
             actual = actual.replace(self.tempdir, '/workspace')
+            actual = actual.replace('/private', '')  # macos thing
 
         if ls:
             actual = actual.strip()
