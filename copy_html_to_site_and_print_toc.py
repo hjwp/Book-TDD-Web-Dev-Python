@@ -72,8 +72,8 @@ def get_chapter_info():
     ]
     chapter_numbers = list(range(1, 100))
     part_numbers = list(range(1, 10))
-    for chapter, parsed_html in parse_chapters():
 
+    for chapter, parsed_html in parse_chapters():
         print('getting info from', chapter)
 
         if not parsed_html.cssselect('h2'):
@@ -123,6 +123,7 @@ def fix_xrefs(chapter, chapter_info):
 def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
     comments_div = html.fromstring(open('disqus_comments.html').read())
     buy_book_div = html.fromstring(open('buy_the_book_banner.html').read())
+    analytics_div = html.fromstring(open('analytics.html').read())
 
     for chapter in CHAPTERS:
         new_contents = fix_xrefs(chapter, chapter_info)
@@ -134,6 +135,7 @@ def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
             body.set('class', 'article toc2 toc-left')
         body.insert(0, buy_book_div)
         body.append(comments_div)
+        body.append(analytics_div)
         fixed_contents = html.tostring(parsed)
 
         target = os.path.join('/home/harry/workspace/www.obeythetestinggoat.com/content/book', chapter)
