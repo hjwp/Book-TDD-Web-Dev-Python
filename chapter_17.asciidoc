@@ -41,10 +41,9 @@ Here's how you can set it up:
 ----
 from django.conf import settings
 from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
-User = get_user_model()
 from django.contrib.sessions.backends.db import SessionStore
-
 from .base import FunctionalTest
+User = get_user_model()
 
 
 class MyListsTest(FunctionalTest):
@@ -82,11 +81,12 @@ works against the database on the staging server too.
 ((("Django", "test fixtures")))
 ((("JSON fixtures")))
 
+
 .JSON Test Fixtures Considered Harmful
 *******************************************************************************
 When we pre-populate the database with test data, as we've done here with the
-`User` object and its associated `Session` object, what we're doing is setting up
-a "test fixture".
+`User` object and its associated `Session` object, what we're doing is setting
+up a "test fixture".
 
 Django comes with built-in support for saving database objects as JSON (using
 the `manage.py dumpdata`), and automatically loading them in your test runs 
@@ -103,37 +103,32 @@ into a tool like https://factoryboy.readthedocs.org/[`factory_boy`].
 Checking It Works
 ^^^^^^^^^^^^^^^^^
 
-To check it works, it would be good to use the `wait_to_be_logged_in` function
-we defined in our last test.  To access it from a different test, we'll need
+To check it works, it would be good to use some of the code from our previous
+test.  Let's make a couple of functions called `assert_logged_in` and
+`assert_logged_out`. To access them from a different test, we'll need
 to pull it up into `FunctionalTest`, as well as a couple of other methods.
 We'll also tweak them slightly so that they can take an arbitrary email address
 as a parameter:
 
-[role="sourcecode dofirst=ch17l002-1"]
-.functional_tests/base.py (ch17l002-2)
+[role="sourcecode"]
+.functional_tests/base.py (ch17l002)
 [source,python]
 ----
-from selenium.webdriver.support.ui import WebDriverWait
-[...]
-
 class FunctionalTest(StaticLiveServerTestCase):
     [...]
 
-    def wait_for_element_with_id(self, element_id):
-        [...]
-
-
-    def wait_to_be_logged_in(self, email):
-        self.wait_for_element_with_id('id_logout')
+    def assert_logged_in(self, email):
+        self.browser.find_element_by_link_text('Log out')
         navbar = self.browser.find_element_by_css_selector('.navbar')
         self.assertIn(email, navbar.text)
 
 
-    def wait_to_be_logged_out(self, email):
-        self.wait_for_element_with_id('id_login')
+    def assert_logged_out(self, email):
+        self.browser.find_element_by_name('email')
         navbar = self.browser.find_element_by_css_selector('.navbar')
         self.assertNotIn(email, navbar.text)
 ----
+
 
 That means a small tweak in 'test_login.py':
 
@@ -142,27 +137,16 @@ That means a small tweak in 'test_login.py':
 .functional_tests/test_login.py (ch17l003)
 [source,python]
 ----
-TEST_EMAIL = 'edith@mockmyid.com'
-[...]
+    def test_can_get_email_link_to_log_in(self):
+        [...]
+        # she is logged in!
+        self.assert_logged_in(email=TEST_EMAIL)
 
-    def test_login_with_persona(self):
-        [...]
+        # Now she logs out
+        self.browser.find_element_by_link_text('Log out').click()
 
-        self.browser.find_element_by_id(
-            'authentication_email'
-        ).send_keys(TEST_EMAIL)
-        self.browser.find_element_by_tag_name('button').click()
-
-        [...]
-
-        # She can see that she is logged in
-        self.wait_to_be_logged_in(email=TEST_EMAIL)
-        [...]
-        self.wait_to_be_logged_in(email=TEST_EMAIL)
-        [...]
-        self.wait_to_be_logged_out(email=TEST_EMAIL)
-        [...]
-        self.wait_to_be_logged_out(email=TEST_EMAIL)
+        # She is logged out
+        self.assert_logged_out(email=TEST_EMAIL)
 ----
 
 Just to check we haven't broken anything, we rerun the login test:
@@ -170,7 +154,7 @@ Just to check we haven't broken anything, we rerun the login test:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_login*]
+$ pass:quotes[*python manage.py test functional_tests.test_login*]
 [...]
 OK
 ----
@@ -186,20 +170,20 @@ our pre-authenticated session creator really does work:
         email = 'edith@example.com'
 
         self.browser.get(self.server_url)
-        self.wait_to_be_logged_out(email)
+        self.assert_logged_in(email)
 
         # Edith is a logged-in user
         self.create_pre_authenticated_session(email)
 
         self.browser.get(self.server_url)
-        self.wait_to_be_logged_in(email)
+        self.assert_logged_out(email)
 ----
 
 That gets us:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
 [...]
 OK
 ----
@@ -213,6 +197,7 @@ $ *git commit -m "placeholder test_my_lists and move login checkers into base"*
 ----
 (((range="endofrange", startref="ix_preauthent")))
 (((range="endofrange", startref="ix_staging_database")))
+
 
 
 The Proof Is in the Pudding: Using Staging to Catch Final Bugs
@@ -247,42 +232,39 @@ Here's what happens when we run the functional tests:
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests \
+$ pass:quotes[*python manage.py test functional_tests \
 --liveserver=superlists-staging.ottg.eu*]
 
 ======================================================================
-ERROR: test_login_with_persona (functional_tests.test_login.LoginTest)
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists (functional_tests.test_my_lists.MyListsTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/worskpace/functional_tests/test_login.py", line 50, in
-test_login_with_persona
+  File "/workspace/superlists/functional_tests/test_my_lists.py", line 34, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    self.assert_logged_in(email)
+  File "/workspace/superlists/functional_tests/base.py", line 42, in assert_logged_in
+    self.browser.find_element_by_link_text('Log out')
 [...]
-    self.wait_for_element_with_id('id_logout')
-[...]
-selenium.common.exceptions.TimeoutException: Message: Could not find element
-with id id_logout. Page text was:
-Superlists
-Sign in
-Start a new To-Do list
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: {"method":"link text","selector":"Log out"}
 
 ======================================================================
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
+FAIL: test_can_get_email_link_to_log_in (functional_tests.test_login.LoginTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/worskpace/functional_tests/test_my_lists.py", line 34, in
-test_logged_in_users_lists_are_saved_as_my_lists
-    self.wait_to_be_logged_in(email)
-[...]
-selenium.common.exceptions.TimeoutException: Message: Could not find element
-with id id_logout. Page text was:
-Superlists
-Sign in
-Start a new To-Do list
+  File "/workspace/superlists/functional_tests/test_login.py", line 22, in
+test_can_get_email_link_to_log_in
+    self.assertIn('Check your email', body.text)
+AssertionError: 'Check your email' not found in 'Server Error (500)'
 ----
 
-We can't log in--either with the real Persona or with our pre-authenticated
+We can't log in--either with the real email system or with our pre-authenticated
 session.  There's some kind of bug.
+
+
+TODO: finish rewriting this chapter
+
+WARNING: the rest of this chapter still references the old login system.
 
 I had considered just going back and fixing this in the previous chapter,
 and pretending it never happened, but I think leaving it illustrates the point
@@ -485,7 +467,7 @@ Rerunning the tests just to be sure:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test accounts*]
+$ pass:quotes[*python manage.py test accounts*]
 [...]
 Ran 14 tests in 0.053s
 OK
@@ -534,7 +516,7 @@ pre-authenticated sessions doesn't work, so the "My Lists" test fails:
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests \
+$ pass:quotes[*python manage.py test functional_tests \
 --liveserver=superlists-staging.ottg.eu*]
 
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
@@ -625,7 +607,7 @@ and the management command prints it out at the command line. Try it out:
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py create_session a@b.com*]
+$ pass:quotes[*python manage.py create_session a@b.com*]
 Unknown command: 'create_session'
 ----
 
@@ -650,7 +632,7 @@ Now it works:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py create_session a@b.com*]
+$ pass:quotes[*python manage.py create_session a@b.com*]
 qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
@@ -879,7 +861,7 @@ anything:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
 [...]
 OK
 ----
@@ -902,7 +884,7 @@ specification of the `liveserver` argument now:
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists \
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists \
 --liveserver=elspeth@superlists-staging.ottg.eu*]
 Creating test database for alias 'default'...
 [superlists-staging.ottg.eu] Executing task 'reset_database'
@@ -922,7 +904,7 @@ Looking good!  We can rerun all the tests to make sure...
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests \
+$ pass:quotes[*python manage.py test functional_tests \
 --liveserver=elspeth@superlists-staging.ottg.eu*]
 Creating test database for alias 'default'...
 [superlists-staging.ottg.eu] Executing task 'reset_database'
@@ -1132,7 +1114,7 @@ And so we settle in with our real implementation:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test accounts*]
+$ pass:quotes[*python manage.py test accounts*]
 [...]
 Ran 15 tests in 0.033s
 
