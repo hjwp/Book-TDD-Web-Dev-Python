@@ -16,7 +16,7 @@ were the first popular ones, and in the Python world there's Salt and Ansible.
 Of all of these, Ansible is the easiest to get started with.  We
 can get it working with just two files:
 
-    pip install ansible  # Python 2 sadly
+    pip2 install --user ansible  # Python 2 sadly
 
 
 An "inventory file" at `deploy_tools/inventory.ansible` defines what servers we
@@ -27,13 +27,13 @@ can run against:
 [source,ini]
 ----
 [live]
-superlists.ottg.eu
+superlists.ottg.eu ansible_user=root
 
 [staging]
-superlists-staging.ottg.eu
+superlists-staging.ottg.eu ansible_user=root
 
 [local]
-localhost ansible_ssh_port=6666 ansible_host=127.0.0.1
+localhost ansible_user=root ansible_ssh_port=6666 ansible_host=127.0.0.1
 ----
 
 (The local entry is just an example, in my case a Virtualbox VM, with port
@@ -54,13 +54,14 @@ uses a syntax called YAML:
 
 - hosts: all
 
-  sudo: yes
+  vars: 
+      host: "{{ inventory_hostname }}"
 
   tasks:
     - name: make sure required packages are installed
       apt: pkg=nginx,git,python3,python3-pip state=present
     - name: make sure virtualenv is installed
-      command: pip3 install virtualenv
+      shell: pip3 install virtualenv
 
     - name: allow long hostnames in nginx
       lineinfile: 
@@ -70,14 +71,15 @@ uses a syntax called YAML:
         line='\1server_names_hash_bucket_size 64;'
 
     - name: add nginx config to sites-available
-      template: src=./nginx.conf.j2 
-                dest=/etc/nginx/sites-available/{{ inventory_hostname }}
+      template: src=./nginx.conf.j2 dest=/etc/nginx/sites-available/{{ host }}
       notify:
           - restart nginx
 
     - name: add symlink in nginx sites-enabled
-      file: src=/etc/nginx/sites-available/{{ inventory_hostname }} 
-            dest=/etc/nginx/sites-enabled/{{ inventory_hostname }} state=link
+      file:
+          src=/etc/nginx/sites-available/{{ host }}
+          dest=/etc/nginx/sites-enabled/{{ host }}
+          state=link
       notify:
           - restart nginx
 ----
@@ -97,15 +99,15 @@ actually a lot like the Django template syntax:
 ----
 server {
     listen 80;
-    server_name {{ inventory_hostname }};
+    server_name {{ host }};
 
     location /static {
-        alias /home/harry/sites/{{ inventory_hostname }}/static;
+        alias /home/harry/sites/{{ host }}/static;
     }
 
     location / {
-        proxy_set_header Host {{ inventory_hostname }};
-        proxy_pass http://unix:/tmp/{{ inventory_hostname }}.socket;
+        proxy_set_header Host {{ host }};
+        proxy_pass http://unix:/tmp/{{ host }}.socket;
     }
 }
 ----
@@ -121,45 +123,47 @@ Here's the second half of our playbook:
 .deploy_tools/provision.ansible.yaml
 [source,yaml]
 ----
-    - name: write gunicorn init script
-      template: src=./gunicorn-upstart.conf.j2 
-                dest=/etc/init/gunicorn-{{ inventory_hostname }}.conf
+    - name: write gunicorn service script
+      template:
+          src=./gunicorn.service.j2
+          dest=/etc/systemd/system/gunicorn-{{ host }}.service
       notify:
           - restart gunicorn
 
     - name: make sure nginx is running
       service: name=nginx state=running
     - name: make sure gunicorn is running
-      service: name=gunicorn-{{ inventory_hostname }} state=running
+      service: name=gunicorn-{{ host }} state=running
 
   handlers:
     - name: restart nginx
       service:  name=nginx state=restarted
 
     - name: restart gunicorn
-      service:  name=gunicorn-{{ inventory_hostname }} state=restarted
+      service:  name=gunicorn-{{ host }} state=restarted
+
 ----
 
 ((("Gunicorn")))
 Once again we use a template for our Gunicorn config:
 
 [role="sourcecode"]
-.deploy_tools/gunicorn-upstart.conf.j2
+.deploy_tools/gunicorn.service.j2
 [source,bash]
 ----
-description "Gunicorn server for {{ inventory_hostname }}"
+[Unit]
+Description=Gunicorn server for {{ host }}
+User=elspeth
 
-start on net-device-up
-stop on shutdown
-
-respawn
-
-chdir /home/harry/sites/{{ inventory_hostname }}/source
-exec ../virtualenv/bin/gunicorn \
-    --bind unix:/tmp/{{ inventory_hostname }}.socket \
+[Service]
+WorkingDirectory=/home/elspeth/sites/{{ host }}/source
+Restart=on-failure
+ExecStart=/home/elspeth/sites/{{ host }}/virtualenv/bin/gunicorn \
+    --bind unix:/tmp/{{ host }}.socket \
     --access-logfile ../access.log \
     --error-logfile ../error.log \
     superlists.wsgi:application
+
 ----
 
 Then we have two "handlers" to restart Nginx and Gunicorn.  Ansible is
