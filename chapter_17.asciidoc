@@ -93,10 +93,10 @@ the `manage.py dumpdata`), and automatically loading them in your test runs
 using the `fixtures` class attribute on `TestCase`.
 
 More and more people are starting to say: 
-http://bit.ly/1kSTyrb[don't
-use JSON fixtures].  They're a nightmare to maintain when your model
-changes.  Instead, if you can, load data directly using the Django ORM, or look
-into a tool like https://factoryboy.readthedocs.org/[`factory_boy`].
+http://bit.ly/1kSTyrb[don't use JSON fixtures].
+They're a nightmare to maintain when your model changes.  Instead, if you can,
+load data directly using the Django ORM, or look into a tool like
+https://factoryboy.readthedocs.org/[`factory_boy`].
 *******************************************************************************
 
 
@@ -236,13 +236,15 @@ $ pass:quotes[*python manage.py test functional_tests \
 --liveserver=superlists-staging.ottg.eu*]
 
 ======================================================================
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists (functional_tests.test_my_lists.MyListsTest)
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
   File "/workspace/superlists/functional_tests/test_my_lists.py", line 34, in
 test_logged_in_users_lists_are_saved_as_my_lists
     self.assert_logged_in(email)
-  File "/workspace/superlists/functional_tests/base.py", line 42, in assert_logged_in
+  File "/workspace/superlists/functional_tests/base.py", line 42, in
+assert_logged_in
     self.browser.find_element_by_link_text('Log out')
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
@@ -258,20 +260,19 @@ test_can_get_email_link_to_log_in
 AssertionError: 'Check your email' not found in 'Server Error (500)'
 ----
 
-We can't log in--either with the real email system or with our pre-authenticated
-session.  There's some kind of bug.
+We can't log in--either with the real email system or with our
+pre-authenticated session.  There's some kind of bug.
 
 
-TODO: finish rewriting this chapter
 
-WARNING: the rest of this chapter still references the old login system.
-
-I had considered just going back and fixing this in the previous chapter,
-and pretending it never happened, but I think leaving it illustrates the point
-of running tests against a staging environment.  It would have been pretty 
-embarrassing if we'd deployed this bug straight to our live site.
+When I ran into this bug, I did consider just going back and fixing it in the
+previous chapter, and pretending it never happened, but I think leaving it
+illustrates the point of running tests against a staging environment.  It would
+have been pretty embarrassing if we'd deployed this bug straight to our live
+site.
 
 Aside from that, we'll get to practice a bit of server-side debugging.
+
 
 
 Setting Up Logging
@@ -296,30 +297,6 @@ exec ../virtualenv/bin/gunicorn \
 ----
 
 That will put an access log and error log into the '~/sites/$SITENAME' folder.
-Then we add some debug calls in our `authenticate` function (again, we can do
-this directly on the server):
-
-[role="sourcecode skipme"]
-.accounts/authentication.py
-[source,python]
-----
-import logging
-[...]
-
-    def authenticate(self, assertion):
-        logging.warning('entering authenticate function')
-        response = requests.post(
-            PERSONA_VERIFY_URL,
-            data={'assertion': assertion, 'audience': settings.DOMAIN}
-        )
-        logging.warning('got response from persona')
-        logging.warning(response.content.decode())
-        [...]
-----
-
-TIP: Using the "root" logger like this (`logging.warning`) isn't generally
-a good idea.  We'll set up a more robust logging configuration at the end of
-the chapter.
 
 You should also make sure your 'settings.py' still contains the `LOGGING`
 settings which will actually send stuff to the console:
@@ -350,17 +327,41 @@ We restart Gunicorn again, and then either rerun the FT, or just try
 to log in manually.  While that happens, we can watch the logs on
 the server with a:
 
-[role="skipme"]
+[role="skipme smallcode"]
 [subs="specialcharacters,quotes"]
 ----
+elspeth@server: $ *service gunicorn-superlists-staging.ottg.eu restart*
 elspeth@server: $ *tail -f error.log*  # assumes we are in ~/sites/$SITENAME folder
-[...]
-WARNING:root:{"status":"failure","reason":"audience mismatch: domain mismatch"}
 ----
 
-((("Persona", id="ix_personabug", range="startofrange")))
-You may even find the page gets stuck in a "redirect loop", as Persona tries to 
-resubmit the assertion again and again.
+You should see an error like this:
+[role="skipme smallcode"]
+[subs="specialcharacters,quotes"]
+----
+Internal Server Error: /accounts/send_login_email
+Traceback (most recent call last):
+  File "/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/lib/python3.5/[...]
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File
+"/home/elspeth/sites/superlists-staging.ottg.eu/source/accounts/views.py", line
+20, in send_login_email
+    [email]
+[...]
+    self.connection.sendmail(from_email, recipients, message.as_bytes(linesep='\r\n'))
+  File "/usr/lib/python3.5/smtplib.py", line 862, in sendmail
+    raise SMTPSenderRefused(code, resp, from_addr)
+smtplib.SMTPSenderRefused: (530, b'5.5.1 Authentication Required. Learn more
+at\n5.5.1  https://support.google.com/mail/answer/14257 [...]
+gsmtp', 'noreply@superlists')
+----
+
+Hm, gmail is refusing to send our emails is it?  Now why might that be?  Ah
+yes, we haven't told the server what our password is!
+
+
+TODO: finish rewriting this chapter
+
+WARNING: the rest of this chapter still references the old login system.
 
 It turns out it's because I overlooked an important part of the
 Persona system, which is that authentications are only valid for particular
