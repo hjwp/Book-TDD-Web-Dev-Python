@@ -6,8 +6,6 @@ import unittest
 from book_tester import (
     ChapterTest,
     CodeListing,
-    Command,
-    Output,
     write_to_file
 )
 
@@ -26,43 +24,42 @@ class Chapter1Test(ChapterTest):
 
         # sanity checks
         self.assertEqual(type(self.listings[0]), CodeListing)
-        self.assertEqual(type(self.listings[1]), Command)
-        self.assertEqual(type(self.listings[2]), Output)
+        self.assertEqual(self.listings[1].skip, True)
 
-        self.skip_with_check(6, 'Performing system checks...') # after runserver
-        status1_pos = 19
+        self.skip_with_check(9, 'Performing system checks...') # after runserver
+        status1_pos = 22
         assert self.listings[status1_pos] == 'git status'
-        status2_pos = 25
+        status2_pos = 28
         assert self.listings[status2_pos] == 'git status'
 
         # first code listing
         self.recognise_listing_and_process_it()
 
         # first couple of commands needs manual cwd-setting
-        first_output = self.run_command(self.listings[1], cwd=self.tempdir)
-        self.assert_console_output_correct(first_output, self.listings[2])
-        self.run_command(self.listings[3], cwd=self.tempdir) # startproject
+        first_output = self.run_command(self.listings[4], cwd=self.tempdir)
+        self.assert_console_output_correct(first_output, self.listings[5])
+        self.run_command(self.listings[6], cwd=self.tempdir) # startproject
 
         # 4. tree
-        self.assert_directory_tree_correct(self.listings[4], cwd=self.tempdir)
-        self.pos = 5
+        self.assert_directory_tree_correct(self.listings[7], cwd=self.tempdir)
+        self.pos = 8
 
         # 6. runserver
         self.recognise_listing_and_process_it()
 
-        second_ft_run_output = self.run_command(self.listings[7], cwd=self.tempdir)
+        second_ft_run_output = self.run_command(self.listings[10], cwd=self.tempdir)
         self.assertFalse(second_ft_run_output)
-        self.assertEqual(self.listings[8].strip(), '$')
-        self.listings[8].was_checked = True
+        self.assertEqual(self.listings[11].strip(), '$')
+        self.listings[11].was_checked = True
 
-        ls_output = self.run_command(self.listings[9], cwd=self.tempdir)
+        ls_output = self.run_command(self.listings[12], cwd=self.tempdir)
         self.assert_console_output_correct(
-            ls_output, self.listings[10], ls=True
+            ls_output, self.listings[13], ls=True
         )
-        self.run_command(self.listings[11], cwd=self.tempdir) # mv
-        self.run_command(self.listings[12], cwd=self.tempdir) # cd
+        self.run_command(self.listings[14], cwd=self.tempdir) # mv
+        self.run_command(self.listings[15], cwd=self.tempdir) # cd
 
-        self.pos = 13
+        self.pos = 16
 
         while self.pos < status1_pos:
             print(self.pos)
