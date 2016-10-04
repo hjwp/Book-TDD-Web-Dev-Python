@@ -1,5 +1,11 @@
 # Outline
 
+TODO:
+
+  - switch to chrome in all tags
+  - switch to django 1.9 (or force_login wont work)
+
+
 > 1 day: Outside-in TDD with and without mocks (AKA - "listen to your tests").
 > This day will start with a discussion of the "outside-in" technique, a way of
 > deciding which tests to write, and what code to write, in what order, and how
@@ -295,6 +301,7 @@ Ideally: using TDD. Add some unit tests, in *test_models.py* and *test_views.py*
 
 Tips:
 
+* you'll probably need a foreign key from lists to the user model
 * `request.user` will be available if user is logged in
 * `request.user.is_authenticated()` is False if user is not logged in
 * `list.get_absolute_url()` will give you a url you can use in an <a> tag for the lists page
@@ -303,8 +310,7 @@ Tips:
 * if you need a views test to have a logged-in user, you have two choices
   - `self.client.force_login(user)`
   - or, import and call the view function directly with an HttpRequest instance whose .user attribute is set.
-
-* if the FTs are being weird, try switching from `webdriver.Firefox()` to `webdriver.Chrome()`.  You will need to download a thing called "chromedriver" and have it on the path
+* if you want to try manually logging in with persona, "anything@mockmyid.com" will "just work" (but use "localhost:8000" in your browser, not "127.0.0.1:800")
 
 **Help**: Grab my version of the "my lists" template. it will tell you what you need your views to do
 
