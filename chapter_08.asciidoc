@@ -127,7 +127,7 @@ your bearings:
   not.
 
 . Move from our quick & dirty version to a production-ready configuration,
-  using Gunicorn, Upstart, and domain sockets.
+  using Gunicorn, Systemd, and domain sockets.
 
 . Once we have a working config, we'll write a script to automate the process
   we've just been through manually, so that we can deploy our site
@@ -1220,60 +1220,60 @@ PC, using `git push` and `git pull` when I need to sync them up to the server.
 
 
 
-Using Upstart to Make Sure Gunicorn Starts on Boot
+Using Systemd to Make Sure Gunicorn Starts on Boot
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("Upstart")))
+((("Systemd")))
 Our final step is to make sure that the server starts up Gunicorn automatically
 on boot, and reloads it automatically if it crashes.  On Ubuntu, the way to do
-this is using Upstart:
+this is using Systemd:
 
 [role="sourcecode"]
-.server: /etc/init/gunicorn-superlists-staging.ottg.eu.conf
+.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
 [source,bash]
 ----
-description "Gunicorn server for superlists-staging.ottg.eu"
+[Unit]
+Description=Gunicorn server for superlists-staging.ottg.eu
 
-start on net-device-up  <1>
-stop on shutdown
-
-respawn  <2>
-
-setuid elspeth <3>
-chdir /home/elspeth/sites/superlists-staging.ottg.eu/source  <4>
-
-exec ../virtualenv/bin/gunicorn \  <5>
+[Service]
+Restart=on-failure  <1>
+User=elspeth  <2>
+WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu/source  <3>
+ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
     --bind unix:/tmp/superlists-staging.ottg.eu.socket \
     superlists.wsgi:application
 ----
 
-Upstart is joyously simple to configure (especially if you've ever had the
+Systemd is joyously simple to configure (especially if you've ever had the
 dubious pleasure of writing an `init.d` script), and is fairly
 self-explanatory. 
 
-<1> `start on net-device-up` makes sure Gunicorn only runs once the server has
-     connected up to the Internet.
+<1> `Restart=on-failure` will restart the process automatically if it crashes.
 
-<2> `respawn` will restart the process automatically if it crashes.
+<2> `User=elspeth` makes the process run as the "elspeth" user.
 
-<3> `setuid` makes the process run as the "elspeth" user.
+<3> `WorkingDirectory` sets the working directory.
 
-<4> `chdir` sets the working directory.
+<5> `ExecStart` is the actual process to execute.  We use the `\ ` line
+    continuation characters to split the full command over multiple lines,
+    for readability, but it could all go on one line.
 
-<5> `exec` is the actual process to execute.
 
+Systemd scripts live in '/etc/systemd/system', and their names must end in
+'.service'. 
 
-Upstart scripts live in '/etc/init', and their names must end in '.conf'. 
-
-Now we can start Gunicorn with the `start` command:
+Now we can start Gunicorn with the `service` command:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ sudo start gunicorn-superlists-staging.ottg.eu
+elspeth@server:$ sudo service gunicorn-superlists-staging.ottg.eu start
 ----
 
-And we can rerun the FTs to see that everything still works. You can even test
+(you should find this command responds to tab-completion, including of the
+service name, by the way)
+
+Now we can rerun the FTs to see that everything still works. You can even test
 that the site comes back up if you reboot the server!
 
 
@@ -1296,7 +1296,8 @@ a few tips and things to look out for:
 - You can ask Ubuntu to check the validity of your init script with 
   http://manpages.ubuntu.com/manpages/precise/man8/init-checkconf.8.html[init-checkconf]
 
-- Check the '/var/log/upstart/' folder for logs from Upstart and Gunicorn.
+- Check the Systemd logs for using 
+  `sudo journalctl -u gunicorn-superlists-staging.ottg.eu`
 
 - Remember to restart both services whenever you make changes.
 
@@ -1353,7 +1354,7 @@ Provisioning::
 2. `apt-get install nginx git python-pip`
 3. `pip install virtualenv`
 4. Add Nginx config for virtual host
-5. Add Upstart job for Gunicorn
+5. Add Systemd job for Gunicorn
 
 
 Deployment::
@@ -1370,7 +1371,7 @@ Deployment::
 
 Assuming we're not ready to entirely automate our provisioning process, how
 should we save the results of our investigation so far?  I would say that 
-the Nginx and Upstart config files should probably be saved somewhere, in
+the Nginx and Systemd config files should probably be saved somewhere, in
 a way that makes it easy to reuse them later.  Let's save them in a new
 subfolder in our repo:
 
@@ -1402,20 +1403,17 @@ server {
 
 
 [role="sourcecode"]
-.deploy_tools/gunicorn-upstart.template.conf
+.deploy_tools/gunicorn-systemd.template.service
 [source,bash]
 ----
-description "Gunicorn server for SITENAME"
+[Unit]
+Description=Gunicorn server for SITENAME
 
-start on net-device-up
-stop on shutdown
-
-respawn
-
-setuid elspeth
-chdir /home/elspeth/sites/SITENAME/source
-
-exec ../virtualenv/bin/gunicorn \
+[Service]
+Restart=on-failure
+User=elspeth
+WorkingDirectory=/home/elspeth/sites/SITENAME/source
+ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
     --bind unix:/tmp/SITENAME.socket \
     superlists.wsgi:application
 ----
@@ -1451,9 +1449,9 @@ e.g.,, on Ubuntu:
 * see nginx.template.conf
 * replace SITENAME with, e.g., staging.my-domain.com
 
-## Upstart Job
+## Systemd service
 
-* see gunicorn-upstart.template.conf
+* see gunicorn-systemd.template.service
 * replace SITENAME with, e.g., staging.my-domain.com
 
 ## Folder structure:
@@ -1486,7 +1484,7 @@ Our source tree will now look something like this:
 $ tree -I __pycache__
 .
 ├── deploy_tools
-│   ├── gunicorn-upstart.template.conf
+│   ├── gunicorn-systemd.template.service
 │   ├── nginx.template.conf
 │   └── provisioning_notes.md
 ├── functional_tests
