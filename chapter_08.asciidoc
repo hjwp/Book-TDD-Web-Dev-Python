@@ -462,7 +462,7 @@ then see the default Nginx "Hello World" screen:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo apt-get install nginx*
-elspeth@server:$ *sudo service nginx start*
+elspeth@server:$ *sudo systemctl start nginx*
 ----
 
 (You may need to do an `apt-get update` and/or an `apt-get upgrade` first.)
@@ -899,7 +899,7 @@ And now to test it:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo service nginx reload*
+elspeth@server:$ *sudo systemctl reload nginx*
 elspeth@server:$ *../virtualenv/bin/python3 manage.py runserver*
 ----
 
@@ -1107,7 +1107,7 @@ Reload Nginx and restart Gunicorn...
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo service nginx reload*
+elspeth@server:$ *sudo systemctl reload nginx*
 elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
 ----
 
@@ -1162,7 +1162,7 @@ of on the default port:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo service nginx reload*
+elspeth@server:$ *sudo systemctl reload nginx*
 elspeth@server:$ *../virtualenv/bin/gunicorn --bind \
     unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
 ----
@@ -1241,7 +1241,10 @@ User=elspeth  <2>
 WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu/source  <3>
 ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
     --bind unix:/tmp/superlists-staging.ottg.eu.socket \
-    superlists.wsgi:application
+    superlists.wsgi:application  <4>
+
+[Install]
+WantedBy=multi-user.target <5>
 ----
 
 Systemd is joyously simple to configure (especially if you've ever had the
@@ -1254,24 +1257,32 @@ self-explanatory.
 
 <3> `WorkingDirectory` sets the working directory.
 
-<5> `ExecStart` is the actual process to execute.  We use the `\ ` line
+<4> `ExecStart` is the actual process to execute.  We use the `\ ` line
     continuation characters to split the full command over multiple lines,
     for readability, but it could all go on one line.
+
+<4> `WantedBy` in the `[Install]` section is what tells Systemd we want this
+    service to start on boot.
 
 
 Systemd scripts live in '/etc/systemd/system', and their names must end in
 '.service'. 
 
-Now we can start Gunicorn with the `service` command:
+Now we tell Systemd to start Gunicorn with the `systemctl` command:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ sudo service gunicorn-superlists-staging.ottg.eu start
+# this command is necessary to tell Systemd to load our new config file
+elspeth@server:$ *sudo systemctl daemon-reload*
+# this command tells Systemd to always load our service on boot
+elspeth@server:$ *sudo systemctl enable gunicorn-superlists-staging.ottg.eu*
+# this command actually starts our service
+elspeth@server:$ *sudo systemctl start gunicorn-superlists-staging.ottg.eu*
 ----
 
-(you should find this command responds to tab-completion, including of the
-service name, by the way)
+(you should find the `systemctl` command responds to tab-completion, including
+of the service name, by the way)
 
 Now we can rerun the FTs to see that everything still works. You can even test
 that the site comes back up if you reboot the server!
@@ -1300,6 +1311,10 @@ a few tips and things to look out for:
   `sudo journalctl -u gunicorn-superlists-staging.ottg.eu`
 
 - Remember to restart both services whenever you make changes.
+
+- If you make changes to the Systemd config file, you need to 
+  run `daemon-reload` before `systemctl restart` to see the effect
+  of your changes.
 
 - Make sure your browser isn't caching an out-of-date response.  Use
   Ctrl+Refresh, or start a new private browser window.
@@ -1416,6 +1431,9 @@ WorkingDirectory=/home/elspeth/sites/SITENAME/source
 ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
     --bind unix:/tmp/SITENAME.socket \
     superlists.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
 ----
 
 Then it's easy for us to use those two files to generate
