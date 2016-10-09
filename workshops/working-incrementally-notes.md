@@ -38,6 +38,7 @@ pip install chromedriver_installer
   - get ppl to check out code, including modified FT
   - show how to run unit tests and FTs
   - explain the FT
+  - give more hints about the desired solution - each list gets an id
 
 
 Instructions:

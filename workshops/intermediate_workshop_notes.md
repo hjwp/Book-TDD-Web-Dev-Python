@@ -293,9 +293,7 @@ def view_list(request, list_id):
 
 ie: Get this FT to pass:
 
-```
-python manage.py test functional_tests.test_my_lists
-```
+    python manage.py test functional_tests.test_my_lists
 
 Ideally: using TDD. Add some unit tests, in *test_models.py* and *test_views.py*.  Get the FT to pass.
 
@@ -305,7 +303,7 @@ Tips:
 * `request.user` will be available if user is logged in
 * `request.user.is_authenticated()` is False if user is not logged in
 * `list.get_absolute_url()` will give you a url you can use in an <a> tag for the lists page
-* you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it
+* you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it.  You can inherit from base.html
 * you will need to associate the creation of a new list with the current user, if they're logged in
 * if you need a views test to have a logged-in user, you have two choices
   - `self.client.force_login(user)`
@@ -314,12 +312,10 @@ Tips:
 
 **Help**: Grab my version of the "my lists" template. it will tell you what you need your views to do
 
-```
-git checkout intermediate-tdd-workshop-end -- lists/templates/my_lists.html
-```
+    git checkout origin/intermediate-workshop-end -- lists/templates/my_lists.html
 
 
-
+//TODO: simplify my example my_lists.html
 
 
 
@@ -610,9 +606,9 @@ class List(models.Model):
 
 
 
-```
-git checkout intermediate-workshop-part2
-```
+    git checkout intermediate-workshop-part2
+    python manage.py test lists
+
 * Objective: get this test to pass *before* we move onto the models layer
 
 Tips:
@@ -627,7 +623,7 @@ you will probably need to mock one or both of these
   - either inside the `objects.create()` call,
   - or *before* calling `list_.save()`
 
-  self.assertEqual(mock_list.save.called, True)
+    self.assertEqual(mock_list.save.called, True)
 
 * No need to use mocks once you get to the models layer!
 

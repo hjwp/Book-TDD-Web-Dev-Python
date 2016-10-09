@@ -109,12 +109,20 @@ What next?
 
 * Adjust model so that items are associated with different lists
 * *Add unique URLs for each list* (started)
-* Add a URL for creating a new list via POST
+* Add a URL for creating a new list via POST (done)
 * Add URLs for adding a new item to an existing list via POST
 
 
   git stash # or commit, or new branch, or whatever you like
   git reset --hard incremental-workshop-step-2
+
+
+tips/useful commmands:
+
+  delete the database: rm db.sqlite3
+  re-create it:        python manage.py migrate
+  run the unit tests:  python manage.py test lists
+  run the FT:          python manage.py test functional_tests
 
 This tag includes a couple of failing unit tests for you to get passing.
 
