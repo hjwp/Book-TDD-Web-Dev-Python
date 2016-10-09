@@ -10,7 +10,7 @@ Now that we have a functional authentication system, we want to use it to
 identify users, and be able to show them all the lists they have created.
 
 To do that, we're going to have to write FTs that have a logged-in user. Rather
-than making each test go through the (time-consuming) Persona dialog, we want
+than making each test go through the (time-consuming) login email dance, we want
 to be able to skip that part.
 
 ((("functional tests/testing (FT)", "vs. unit tests", sortas="unittests")))
@@ -168,15 +168,13 @@ our pre-authenticated session creator really does work:
 ----
     def test_logged_in_users_lists_are_saved_as_my_lists(self):
         email = 'edith@example.com'
-
         self.browser.get(self.server_url)
-        self.assert_logged_in(email)
+        self.assert_logged_out(email)
 
         # Edith is a logged-in user
         self.create_pre_authenticated_session(email)
-
         self.browser.get(self.server_url)
-        self.assert_logged_out(email)
+        self.assert_logged_in(email)
 ----
 
 That gets us:
@@ -452,36 +450,42 @@ tortuous Python standard library pop3 client:
 .functional_tests/test_login.py (ch17l006)
 [source,python]
 ----
-def wait_for_email(self, test_email, subject):
-    if not self.against_staging:
-        email = mail.outbox[0]
-        self.assertIn(test_email, email.to)
-        self.assertEqual(email.subject, subject)
-        return email.body
+import os
+import poplib
+import re
+import time
+[...]
 
-    subject_line = 'Subject: {}'.format(subject)
-    email_id = None
-    start = time.time()
-    inbox = poplib.POP3_SSL('pop.mail.yahoo.com')
-    try:
-        inbox.user(test_email)
-        inbox.pass_(os.environ['YAHOO_PASSWORD'])
-        while time.time() - start < 60:
-            count, _ = inbox.stat()
-            for i in reversed(range(max(1, count - 10), count + 1)):
-                print('getting msg', i)
-                _, lines, __ = inbox.retr(i)
-                lines = [l.decode('utf8') for l in lines]
-                print(lines)
-                if subject_line in lines:
-                    email_id = i
-                    body = '\n'.join(lines)
-                    return body
-            time.sleep(5)
-    finally:
-        if email_id:
-            inbox.dele(email_id)
-        inbox.quit()
+    def wait_for_email(self, test_email, subject):
+        if not self.against_staging:
+            email = mail.outbox[0]
+            self.assertIn(test_email, email.to)
+            self.assertEqual(email.subject, subject)
+            return email.body
+
+        subject_line = 'Subject: {}'.format(subject)
+        email_id = None
+        start = time.time()
+        inbox = poplib.POP3_SSL('pop.mail.yahoo.com')
+        try:
+            inbox.user(test_email)
+            inbox.pass_(os.environ['YAHOO_PASSWORD'])
+            while time.time() - start < 60:
+                count, _ = inbox.stat()
+                for i in reversed(range(max(1, count - 10), count + 1)):
+                    print('getting msg', i)
+                    _, lines, __ = inbox.retr(i)
+                    lines = [l.decode('utf8') for l in lines]
+                    print(lines)
+                    if subject_line in lines:
+                        email_id = i
+                        body = '\n'.join(lines)
+                        return body
+                time.sleep(5)
+        finally:
+            if email_id:
+                inbox.dele(email_id)
+            inbox.quit()
 ----
 
 
@@ -1123,7 +1127,7 @@ config.
 
 Here's how we add a logger for both our apps into 'settings.py':
 
-[role="sourcecode"]
+[role="sourcecode skipme"]
 .superlists/settings.py
 [source,python]
 ----
@@ -1162,7 +1166,7 @@ the root logger), so you have to define one logger per app.
 
 Here's how to write a test for logging behaviour:
 
-[role="sourcecode"]
+[role="sourcecode skipme"]
 .accounts/tests/test_authentication.py (ch17l023)
 [source,python]
 ----
@@ -1201,6 +1205,7 @@ class AuthenticateTest(TestCase):
 
 That gives us:
 
+[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
 AssertionError: Expected 'warning' to be called once. Called 0 times.
@@ -1209,7 +1214,7 @@ AssertionError: Expected 'warning' to be called once. Called 0 times.
 Let's just try it out, to make sure we really are testing what we think
 we are:
 
-[role="sourcecode"]
+[role="sourcecode skipme"]
 .accounts/authentication.py (ch17l024)
 [source,python]
 ----
@@ -1226,6 +1231,7 @@ logger = logging.getLogger(__name__)
 We get the expected failure:
 
 
+[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
 AssertionError: Expected call: warning("Persona says no. Json was: {'status':
@@ -1235,7 +1241,7 @@ Actual call: warning('foo')
 
 And so we settle in with our real implementation:
 
-[role="sourcecode"]
+[role="sourcecode skipme"]
 .accounts/authentication.py (ch17l025)
 [source,python]
 ----
@@ -1246,6 +1252,7 @@ And so we settle in with our real implementation:
 ----
 
 
+[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test accounts*]
