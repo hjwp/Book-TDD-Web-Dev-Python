@@ -1,5 +1,5 @@
 [[testfixtures-and-logging]]
-== Test Fixtures, Logging, and pass:[<span class="keep-together">Server-Side Debugging</span>]
+== Test Fixtures, and Server-Side Debugging
 
 NOTE: This chapter not yet been updated for the new edition.  You won't be
     able to follow along with some of it if you have the code from the new
@@ -364,8 +364,15 @@ Hm, gmail is refusing to send our emails is it?  Now why might that be?  Ah
 yes, we haven't told the server what our password is!
 
 
+//TODO: consider adding a logging.info or similar here, so we can reintroduce
+//the logging stuff?
+
+
 Setting secret environment variables on the server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+TODO: finish rewriting this section
+
 
 
 * add EMAIL_PASSWORD to gunicorn systemd service config
@@ -403,19 +410,19 @@ selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: {"method":"link text","selector":"Log out"}
 ----
 
+Now the server logs show no error.
+
 The my_lists failure is still the same, but we have more information in our
 login test: the FT gets further, the site now looks like it's sending emails
 correctly, but we can't check the email in the mail.outbox...
 
+
+Adapting our FT to be able to test real emails via POP3
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Ah. That explains it. Now that we're running against a real server rather than
 the `LiveServerTestCase`, we can no longer inspect the local
 `django.mail.outbox` to see sent emails.
-
-
-TODO: finish rewriting this chapter/section
-
-* implement testing of email in FT
-* discuss pros+cons of same.
 
 
 First, we'll need to know, in our FTs, whether we're running against
@@ -558,10 +565,15 @@ And, believe it or not, that'll actually work, and give us an FT
 that can actually check for logins that work, involving real emails!
 
 
+TIP: I've just hacked this email-checking code together, and it's currently
+    pretty ugly and brittle.  With a few more retry loops it could grow into
+    something more reliable. Alternatively, services like 'mailinator.com' will
+    give you throwaway email addresses and an API to check them, for a small
+    fee.
+
+
 Managing the Test Database on Staging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-'[old content follows]'
 
 ((("staging server", "managing database on", id="ix_staging_database", range="startofrange")))
 ((("fixtures", "on staging server", id="ix_stagingtestdb", range="startofrange")))
@@ -691,9 +703,10 @@ $ pass:quotes[*python manage.py create_session a@b.com*]
 qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
-NOTE: If you see an error saying the `auth_user` table is missing, you may need to
-run `manage.py migrate`.  In case that doesn't work, delete the `db.sqlite3` file and
-run migrate again, to get a clean slate.
+NOTE: If you see an error saying the `auth_user` table is missing, you may need
+to run `manage.py migrate`.  In case that doesn't work, delete the `db.sqlite3`
+file and run migrate again, to get a clean slate.
+
 
 Getting the FT to Run the Management Command on the Server
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -777,6 +790,7 @@ class FunctionalTest(StaticLiveServerTestCase):
 <3> On a related note, if we're against staging, we can skip the normal
     tearDownClass, whose job is mainly to reset the local test database.
 (((range="endofrange", startref="ix_Djangomancommond")))
+
 
 An Additional Hop via subprocess
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -883,7 +897,7 @@ Does that make a reasonable amount of sense?  We've got a function that
 can create a session in the database.  If we detect we're running locally,
 we call it directly.  If we're against the server, there's a couple of hops:
 we use `subprocess` to get to Fabric via `fab`, which lets us run a management
-command that calls that same function, on the server.
+command that calls that same function, but on the server.
 
 
 How about an ASCII-art illustration?
@@ -1023,8 +1037,73 @@ ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
 ----
 
 
+Wrap-Up
+~~~~~~~
+
+We now have test fixtures that work both locally and on the server, and we've
+got some more robust logging configuration.
+
+But before we can deploy our actual live site, we'd better actually give the
+users what they wanted--the next chapter describes how to give them
+the ability to save their lists on a "My Lists" page.
+(((range="endofrange", startref="ix_loggingconfig")))
+((("functional tests/testing (FT)", "de-duplication")))
+((("test fixtures")))
+((("JSON fixtures")))
+((("Django", "management commands")))
+((("logging")))
+((("log messages")))
+
+
+.Fixtures and Logging
+*******************************************************************************
+
+De-duplicate your FTs, with caution::
+    Every single FT doesn't need to test every single part of your application.
+    In our case, we wanted to avoid going through the full login process for
+    every FT that needs an authenticated user, so we used a test fixture to 
+    "cheat" and skip that part. You might find other things you want to skip 
+    in your FTs.  A word of caution however: functional tests are there to 
+    catch unpredictable interactions between different parts of your
+    application, so be wary of pushing de-duplication to the extreme.
+    
+Test fixtures::
+    Test fixtures refers to test data that needs to be set up as a precondition
+    before a test is run--often this means populating the database with some
+    information, but as we've seen (with browser cookies), it can involve other
+    types of preconditions.
+
+Avoid JSON fixtures::
+    Django makes it easy to save and restore data from the database in JSON
+    format (and others) using the `dumpdata` and `loaddata` management
+    commands.  Most people recommend against using these for test fixtures,
+    as they are painful to manage when your database schema changes. Use the
+    ORM, or a tool like https://factoryboy.readthedocs.org/[factory_boy].
+
+Fixtures also have to work remotely::
+    `LiveServerTestCase` makes it easy to interact with the test database 
+    using the Django ORM for tests running locally.  Interacting with the 
+    database on the staging server is not so straightforward--one solution
+    is Django management commands, as I've shown, but you should explore what
+    works for you.
+
+Be very careful when resetting data on your servers::
+    A command that can remotely wipe the entire database on one of your
+    servers is a dangerous weapon, and you want to be really, really sure
+    it's never accidentally going to hit your production data.
+    
+
+*******************************************************************************
+
+
+Stuff from the old edition that we might want to save
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Using Hierarchical Logging Config
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+TODO: this section has not yet been adapted to the new version
 
 ((("logging configuration", id="ix_loggingconfig", range="startofrange")))
 When we hacked in the `logging.warning` earlier, we were using the root logger.
@@ -1179,57 +1258,9 @@ OK
 You can easily imagine how you could test more combinations at this point,
 if you wanted different error messages for `response.ok != True`, and so on.
 
-
-Wrap-Up
-~~~~~~~
-
-We now have test fixtures that work both locally and on the server, and we've
-got some more robust logging configuration.
-
-But before we can deploy our actual live site, we'd better actually give the
-users what they wanted--the next chapter describes how to give them
-the ability to save their lists on a "My Lists" page.
-(((range="endofrange", startref="ix_loggingconfig")))
-((("functional tests/testing (FT)", "de-duplication")))
-((("test fixtures")))
-((("JSON fixtures")))
-((("Django", "management commands")))
-((("logging")))
-((("log messages")))
-
-
-.Fixtures and Logging
+.More notes
 *******************************************************************************
 
-De-duplicate your FTs, with caution::
-    Every single FT doesn't need to test every single part of your application.
-    In our case, we wanted to avoid going through the full login process for
-    every FT that needs an authenticated user, so we used a test fixture to 
-    "cheat" and skip that part. You might find other things you want to skip 
-    in your FTs.  A word of caution however: functional tests are there to 
-    catch unpredictable interactions between different parts of your
-    application, so be wary of pushing de-duplication to the extreme.
-    
-Test fixtures::
-    Test fixtures refers to test data that needs to be set up as a precondition
-    before a test is run--often this means populating the database with some
-    information, but as we've seen (with browser cookies), it can involve other
-    types of preconditions.
-
-Avoid JSON fixtures::
-    Django makes it easy to save and restore data from the database in JSON
-    format (and others) using the `dumpdata` and `loaddata` management
-    commands.  Most people recommend against using these for test fixtures,
-    as they are painful to manage when your database schema changes. Use the
-    ORM, or a tool like https://factoryboy.readthedocs.org/[factory_boy].
-
-Fixtures also have to work remotely::
-    `LiveServerTestCase` makes it easy to interact with the test database 
-    using the Django ORM for tests running locally.  Interacting with the 
-    database on the staging server is not so straightforward--one solution
-    is Django management commands, as I've shown, but you should explore what
-    works for you, and be careful!
-    
 Use loggers named after the module you're in::
     The root logger is a single global object, available to any library that's
     loaded in your Python process, so you're never quite in control of it. 
@@ -1246,4 +1277,3 @@ Test important log messages::
     convenient way of unit testing it.
 
 *******************************************************************************
-
