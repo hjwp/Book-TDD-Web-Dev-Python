@@ -26,9 +26,8 @@ CHAPTERS = [
     "chapter_10.html",
     "chapter_11.html",
     "chapter_12.html",
-    "chapter_14.html",
-    # NB - 14 is intentionally before 13.
     "chapter_13.html",
+    "chapter_14.html",
 
     "part3.harry.html",
     "chapter_15.html",
