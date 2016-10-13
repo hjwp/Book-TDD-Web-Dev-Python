@@ -200,7 +200,7 @@ class ChapterTest(unittest.TestCase):
     ):
         if diff is None:
             diff = self.run_command(Command(
-                'git diff -b repo/chapter_{0:02d}'.format(chapter)
+                'git diff -w repo/chapter_{0:02d}'.format(chapter)
             ))
         try:
             print('checking final diff', diff)
