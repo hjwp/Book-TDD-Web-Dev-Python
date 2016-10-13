@@ -65,6 +65,10 @@ def strip_migration_timestamps(output):
     return re.sub(r'00(\d\d)_auto_20\d{6}_\d{4}', r'00\1_auto_20XXXXXX_XXXX', output)
 
 
+def strip_localhost_port(output):
+    return re.sub(r'localhost:\d{4}', r'localhost:XXXX', output)
+
+
 def strip_session_ids(output):
     return re.sub(r'^[a-z0-9]{32}$', r'xxx_session_id_xxx', output)
 
@@ -365,6 +369,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_object_ids(actual_fixed)
         actual_fixed = strip_migration_timestamps(actual_fixed)
         actual_fixed = strip_session_ids(actual_fixed)
+        actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
@@ -379,6 +384,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_object_ids(expected_fixed)
         expected_fixed = strip_migration_timestamps(expected_fixed)
         expected_fixed = strip_session_ids(expected_fixed)
+        expected_fixed = strip_localhost_port(expected_fixed)
         expected_fixed = strip_screenshot_timestamps(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
 
