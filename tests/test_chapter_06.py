@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
+import os
 
 from book_tester import (
     ChapterTest,
     Command,
 )
+
+os.environ['DJANGO_LIVE_TEST_SERVER_ADDRESS'] = 'localhost:8081'
 
 class Chapter6Test(ChapterTest):
     chapter_no = 6

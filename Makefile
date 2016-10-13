@@ -18,11 +18,15 @@ test: build
 
 test_chapter_%: chapter_%.html
 	python3 update_source_repo.py $(subst test_chapter_,,$@)
-	PYTHONHASHSEED=0 py.test -s --tb=short ./tests/$@.py
+	PYTHONHASHSEED=0 \
+	DJANGO_LIVE_TEST_SERVER_ADDRESS=localhost:2000-7000 \
+	py.test -s --tb=short ./tests/$@.py
 
 silent_test_chapter_%: chapter_%.html
 	python3 update_source_repo.py $(subst silent_test_chapter_,,$@)
-	PYTHONHASHSEED=0 py.test --tb=short ./tests/$(subst silent_,,$@).py
+	PYTHONHASHSEED=0 \
+	DJANGO_LIVE_TEST_SERVER_ADDRESS=localhost:2000-7000 \
+	py.test --tb=short ./tests/$(subst silent_,,$@).py
 
 clean:
 	rm -v $(HTML_PAGES)
