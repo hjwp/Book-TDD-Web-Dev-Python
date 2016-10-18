@@ -9,6 +9,11 @@ from book_tester import (
     write_to_file
 )
 
+os.environ['LC_ALL'] = 'en_GB.UTF-8'
+os.environ['LANG'] = 'en_GB.UTF-8'
+os.environ['LANGUAGE'] = 'en_GB.UTF-8'
+
+
 class Chapter1Test(ChapterTest):
     chapter_no = 1
 
