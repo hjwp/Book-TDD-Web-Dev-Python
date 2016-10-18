@@ -1,3 +1,4 @@
+import getpass
 import os
 import io
 import re
@@ -76,7 +77,8 @@ class SourceTree(object):
                 os.killpg(process.pid, signal.SIGTERM)
             except OSError:
                 pass
-        #shutil.rmtree(self.tempdir)
+        if getpass.getuser() != 'harry':
+            shutil.rmtree(self.tempdir)
 
 
     def run_command(self, command, cwd=None, user_input=None, ignore_errors=False, silent=False):
