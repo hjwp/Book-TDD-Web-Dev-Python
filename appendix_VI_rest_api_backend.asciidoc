@@ -203,6 +203,160 @@ def list(request, list_id):
 And that should get us started.
 
 
+Testing the client-side with sinon.js
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Don't even 'think' of doing Ajax testing without a mocking library.  Different test frameworks
+and tools have their own, sinon is generic.  It also provides JavaScript mocks, as we'll see...
+
+http://sinonjs.org/
+
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+  <div id="qunit-fixture">
+    <form>
+      <input name="text" />
+      <div class="has-error">Error text</div>
+    </form>
+    <table id="id_list_table">  <!--<1>-->
+    </table>
+  </div>
+
+  <script src="../jquery-3.1.1.min.js"></script>
+  <script src="../list.js"></script>
+  <script src="qunit-2.0.1.js"></script>
+  <script src="sinon-1.17.6.js"></script>  <!--<2>-->
+
+  <script>
+/* global sinon */
+var server;
+QUnit.testStart(function () {
+  server = sinon.fakeServer.create();  //<3>
+});
+QUnit.testDone(function () {
+  server.restore();  //<3>
+});
+
+QUnit.test("errors should be hidden on keypress", function (assert) {
+[...]
+
+
+QUnit.test("should get items by ajax on initialize", function (assert) {
+  var url = '/getitems/';
+  window.Superlists.initialize(url);
+
+  assert.equal(server.requests.length, 1); //<4>
+  var request = server.requests[0];
+  assert.equal(request.url, url);
+  assert.equal(request.method, 'GET');
+});
+
+  </script>
+----
+
+<1> We add a new item to the fixture div to represent our list table
+
+<2> We import 'sinon.js'
+
+<3> `testStart` and `testDone` are the QUnit equivalents of `setUp` and
+    `tearDown`.  We use them to tell sinon to start up its ajax testing
+    tool, the `fakeServer`.
+
+<4> That lets us make assertions about any ajax requests that were made
+    by our code.
+
+
+And we can get that passing with this
+
+[role="sourcecode"]
+.lists/static/lists.js
+[source,diff]
+----
+@@ -1,6 +1,10 @@
+ window.Superlists = {};
+-window.Superlists.initialize = function () {
++window.Superlists.initialize = function (url) {
+   $('input[name="text"]').on('keypress', function () {
+     $('.has-error').hide();
+   });
++
++  $.get(url);
++
+ };
+----
+
+
+----
+Took 35ms to run 5 tests. 5 passed, 0 failed.
+----
+
+But what about the async part, where we deal with the response?
+
+
+Sinon and testing the async part of Ajax
+++++++++++++++++++++++++++++++++++++++++
+
+This is a major reason to love sinon.  `server.respond()` allows us to exactly
+control the flow of the async code.
+
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,html]
+----
+QUnit.test("should fill in lists table from ajax response", function (assert) {
+  var url = '/getitems/';
+  var responseData = [
+    {'id': 101, 'text': 'item 1 text'},
+    {'id': 102, 'text': 'item 2 text'},
+  ];
+  server.respondWith('GET', url, [
+    200, {"Content-Type": "application/json"}, JSON.stringify(responseData) //<1>
+  ]);
+  window.Superlists.initialize(url); //<2>
+
+  server.respond(); //<3>
+
+  var rows = $('#id_list_table tr');
+  assert.equal(rows.length, 2);
+  var row1 = $('#id_list_table tr:first-child td');
+  console.log(row1);
+  assert.equal(row1.text(), '1: item 1 text');
+  var row2 = $('#id_list_table tr:last-child td');
+  assert.equal(row2.text(), '2: item 2 text');
+});
+----
+
+<1> We set up some response data for sinon to use, telling it what status code, headers,
+    and importantly what kind of response JSON we want to simulate coming from the
+    server.
+
+<2> Then we call the function under test
+
+<3> Here's the magic.  'Then' we can call `server.respond()`, whenever we like, and that
+    will kick off all the async part of the Ajax loop -- all the callbacks we'd assigned
+    to deal with the response.
+
+And then we can quietly check whether our Ajax callback has actually populated our table
+with the new list rows...
+
+TIP: We're lucky because of the way jQuery registers its callbacks for Ajax when we use
+    the `.done()` function.  If you want to switch to the more standard JavaScript promise
+    `.then()` callback, we get one more level of async.  QUnit does have a way of dealing with
+    that.  Check out the docs for the http://api.qunitjs.com/async/[async] function.  Other test
+    frameworks have something similar.
+
+
+
+Wiring it all up in the template and checking this first part
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+
 
 .REST API tips
 *******************************************************************************
@@ -213,6 +367,8 @@ dedupe ursl::
 don't work with raw json strings::
     json.loads and json.dumps are your friend.
 
+always use an ajax mocking library for your js tests::
+    sinon is fine.  Jasmine has its own, as does Angular.
 
 *******************************************************************************
 
