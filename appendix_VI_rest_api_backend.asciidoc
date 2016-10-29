@@ -8,11 +8,211 @@ Building a REST API
 Chapter under construction
 
 
+Plan:
+
+* All assumes an existing list
+* new URL structure /api/lists/{id}/
+* GET gives you details of a list (including all its items)
+* POST lets you add an item
+
+
+Basic piping
+~~~~~~~~~~~~
+
+
+
+Start with a unit test that we can return a JSON response, status 200, from a URL
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+import json
+from django.test import TestCase
+
+from lists.models import List, Item
+
+
+class APIGetListItemsTest(TestCase):
+    base_url = '/api/lists/{}/'  #<1>
+
+    def test_get_returns_json_200(self):
+        list_ = List.objects.create()
+        response = self.client.get(self.base_url.format(list_.id))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['content-type'], 'application/json')
+----
+
+
+<1> This is a new pattern we'll introduce for this chapter, it'll help
+    us to remove duplication of hard-coded urls in this test.  We could
+    even have used a call to `reverse`
+
+
+And we can get that together in 3 lines
+
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+from django.http import HttpResponse
+
+def list(request, list_id):
+    return HttpResponse(content_type='application/json')
+----
+
+And wire up a couple of urls files:
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+[...]
+from lists import api_urls
+from lists import urls as list_urls
+
+urlpatterns = [
+    url(r'^$', list_views.home_page, name='home'),
+    url(r'^lists/', include(list_urls)),
+    url(r'^accounts/', include(accounts_urls)),
+    url(r'^api/', include(api_urls)),
+]
+----
+
+
+[role="sourcecode"]
+.lists/api_urls.py
+[source,python]
+----
+from django.conf.urls import url
+from lists import api
+
+urlpatterns = [
+    url(r'^lists/(\d+)/$', api.list, name='api_list'),
+]
+----
+
+The tests should pass, and we have the basic piping together.
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python3 manage.py test lists*]
+Creating test database for alias 'default'...
+..................................................
+ ---------------------------------------------------------------------
+Ran 50 tests in 0.177s
+
+OK
+----
+
+
+Actually responding something
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+    def test_get_returns_items_for_correct_list(self):
+        other_list = List.objects.create()
+        Item.objects.create(list=other_list, text='item 1')
+        our_list = List.objects.create()
+        item1 = Item.objects.create(list=our_list, text='item 1')
+        item2 = Item.objects.create(list=our_list, text='item 2')
+        response = self.client.get(self.base_url.format(our_list.id))
+        self.assertEqual(
+            json.loads(response.content.decode('utf8')),  #<1>
+            [
+                {'id': item1.id, 'text': item1.text},
+                {'id': item2.id, 'text': item2.text},
+            ]
+        )
+----
+
+<1> This is the main thing to notice about this test -- we expect our
+    response to be in JSON format.  We use `json.loads()` because testing
+    python objects is easier than messing about with raw JSON strings.
+
+
+And the implementation, conversely, uses `json.dumps()`
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+import json
+from django.http import HttpResponse
+from lists.models import List
+
+
+def list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    item_dicts = [
+        {'id': item.id, 'text': item.text}
+        for item in list_.item_set.all()
+    ]
+    return HttpResponse(
+        json.dumps(item_dicts),
+        content_type='application/json'
+    )
+----
+
+
+Adding POST
+~~~~~~~~~~~
+
+We'll start with the "happy path":
+
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+    def test_POSTing_a_new_item(self):
+        list_ = List.objects.create()
+        response = self.client.post(
+            self.base_url.format(list_.id),
+            {'text': 'new item'},
+        )
+        self.assertEqual(response.status_code, 201)
+        new_item = list_.item_set.get()
+        self.assertEqual(new_item.text, 'new item')
+----
+
+
+And the implementation is similarly simple -- basically
+the same was what we do in our normal view, but we return
+a 201 rather than a redirect:
+
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+def list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    if request.method == 'POST':
+        Item.objects.create(list=list_, text=request.POST['text'])
+        return HttpResponse(status=201)
+    [...]
+----
+
+
+And that should get us started.
+
+
+
 .REST API tips
 *******************************************************************************
 
-Here comes a tip::
-    It's all about REST...
+dedupe ursl::
+    in test
+
+don't work with raw json strings::
+    json.loads and json.dumps are your friend.
+
 
 *******************************************************************************
 
