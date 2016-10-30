@@ -335,6 +335,114 @@ ERROR: test_cannot_add_duplicate_items
 (functional_tests.test_list_item_validation.ItemValidationTest)
 ----
 
+I won't spell this all out for you, but here's at least the unit
+tests you'll need:
+
+[role="sourcecode"]
+.lists/tests/test_api.py
+[source,python]
+----
+    def post_empty_input(self):
+        list_ = List.objects.create()
+        return self.client.post(
+            self.base_url.format(list_.id),
+            data={'text': ''}
+        )
+
+
+    def test_for_invalid_input_nothing_saved_to_db(self):
+        self.post_empty_input()
+        self.assertEqual(Item.objects.count(), 0)
+
+
+    def test_for_invalid_input_returns_error_code(self):
+        response = self.post_empty_input()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            json.loads(response.content.decode('utf8')),
+            {'error': EMPTY_ITEM_ERROR}
+        )
+
+
+    def test_duplicate_items_error(self):
+        list_ = List.objects.create()
+        self.client.post(self.base_url.format(list_.id), data={'text': 'thing'})
+        response = self.client.post(self.base_url.format(list_.id), data={'text': 'thing'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            json.loads(response.content.decode('utf8')),
+            {'error': DUPLICATE_ITEM_ERROR}
+        )
+----
+
+
+[role="sourcecode"]
+.lists/static/tests/tests.html
+[source,python]
+----
+QUnit.test("should display errors on post failure", function (assert) {
+  var url = '/listitemsapi/';
+  window.Superlists.initialize(url);
+  server.respondWith('POST', url, [
+    400,
+    {"Content-Type": "application/json"},
+    JSON.stringify({'error': 'something is amiss'})
+  ]);
+  $('.has-error').hide();
+
+  $('#id_item_form').submit();
+  server.respond();
+
+  assert.equal($('.has-error').is(':visible'), true);
+  assert.equal($('.has-error .help-block').text(), 'something is amiss');
+});
+
+QUnit.test("should hide errors on post success", function (assert) {
+    [...]
+----
+
+
+And you'll want some modifications to 'base.html' to make it compatible with
+both displaying Django errors (which the home page still uses for now) and
+errors from JavaScript:
+
+[role="sourcecode"]
+.lists/templates/base.html
+[source,diff]
+----
+@@ -12,6 +12,7 @@
+ 
+   <body>
+     <div class="container">
++
+       <nav class="navbar navbar-default" role="navigation">
+         <div class="container-fluid">
+           <a class="navbar-brand" href="/">Superlists</a>
+@@ -55,17 +56,21 @@
+         <div class="col-md-6 col-md-offset-3 jumbotron">
+           <div class="text-center">
+             <h1>{% block header_text %}{% endblock %}</h1>
++
+             {% block list_form %}
+             <form id="id_item_form" method="POST" action="{% block form_action %}{% endblock %}">
+               {{ form.text }}
+               {% csrf_token %}
+-                {% if form.errors %}
+               <div class="form-group has-error">
+-                    <div class="help-block">{{ form.text.errors }}</div>
+-                  </div>
++                <div class="help-block">
++                  {% if form.errors %}
++                    {{ form.text.errors }}
+                   {% endif %}
++                </div>
++              </div>
+             </form>
+             {% endblock %}
++
+           </div>
+----
+
 
 
 .REST JavaScript tips
