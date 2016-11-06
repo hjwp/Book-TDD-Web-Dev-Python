@@ -44,9 +44,9 @@ CHAPTERS = [
     "appendix_II_Django_Class-Based_Views.html",
     "appendix_III_provisioning_with_ansible.html",
     "appendix_IV_testing_migrations.html",
-    "appendix_V_bdd_tools.asciidoc",
-    "appendix_VI_rest_api.asciidoc",
-    "appendix_VII_DjangoRestFramework.asciidoc",
+    "appendix_V_bdd_tools.html",
+    "appendix_VI_rest_api.html",
+    "appendix_VII_DjangoRestFramework.html",
     "appendix_IX_cheat_sheet.html",
     "appendix_X_what_to_do_next.html",
 
@@ -69,7 +69,7 @@ def parse_chapters():
 def get_chapter_info():
     chapter_info = {}
     appendix_numbers = [
-        'I', 'II', 'III', 'IV', 'V', 'VI', 'VII'
+        'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'IX', 'X'
     ]
     chapter_numbers = list(range(1, 100))
     part_numbers = list(range(1, 10))
