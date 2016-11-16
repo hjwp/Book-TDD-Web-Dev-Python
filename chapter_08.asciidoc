@@ -467,27 +467,28 @@ elspeth@server:$ *sudo systemctl start nginx*
 
 (You may need to do an `apt-get update` and/or an `apt-get upgrade` first.)
 
+
+
 You should be able to go to the IP address of your server, and see the
 "Welcome to nginx" page at this point, as in <<nginx-it-works>>.
-
-[[nginx-it-works]]
-.Nginx--it works!
-image::images/twdp_0801.png["The default 'Welcome to nginx!' page"]
 
 If you don't see it, it may be because your firewall does not open port 80 to
 the world. On AWS for example, you may need to configure the "security group"
 for your server to open port 80.
 
 While we've got root access, let's make sure the server has the key
-pieces of software we need at the system level: Python, Git, pip, and
-virtualenv.
+pieces of software we need at the system level: Python, Git, pip, and virtualenv.
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo apt-get install git python3*
-elspeth@server:$ *sudo apt-get install python3-pip python3-venv virtualenvwrapper*
+elspeth@server:$ *sudo apt-get install git python3 python3-pip*
+elspeth@server:$ *sudo pip3 install virtualenv*
 ----
+
+[[nginx-it-works]]
+.Nginx--it works!
+image::images/twdp_0801.png["The default 'Welcome to nginx!' page"]
 
 
 Configuring Domains for Staging and Live
@@ -567,10 +568,14 @@ sites like this:
 │   │    │    ├── superlists
 │   │    │    ├── etc...
 │   │    │
-│   │    └── static
-│   │         ├── base.css
+│   │    ├── static
+│   │    │    ├── base.css
+│   │    │    ├── etc...
+│   │    │
+│   │    └── virtualenv
+│   │         ├── lib
 │   │         ├── etc...
-│   │     
+│   │
 │   ├── www.staging.my-website.com
 │   │    ├── database
 │   │    ├── etc...
@@ -581,7 +586,8 @@ we have a separate folder for the source code, the database, and the static
 files.  The logic is that, while the source code might change from one version
 of the site to the next, the database will stay the same.  The static folder
 is in the same relative location, '../static', that we set up at the end of
-the last chapter.
+the last chapter. Finally, the virtualenv gets its own subfolder too.  What's a
+virtualenv, I hear you ask? We'll find out shortly.
 
 
 Adjusting the Database Location
@@ -652,6 +658,7 @@ in bash:
 elspeth@server:$ <strong>export SITENAME=superlists-staging.ottg.eu</strong>
 elspeth@server:$ <strong>mkdir -p ~/sites/$SITENAME/database</strong>
 elspeth@server:$ <strong>mkdir -p ~/sites/$SITENAME/static</strong>
+elspeth@server:$ <strong>mkdir -p ~/sites/$SITENAME/virtualenv</strong>
 # you should replace the URL in the next line with the URL for your own repo
 elspeth@server:$ <strong>git clone https://github.com/hjwp/book-example.git \
 ~/sites/$SITENAME/source</strong>
@@ -802,7 +809,7 @@ And now to test it:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *python manage.py runserver*
+elspeth@server:$ *../virtualenv/bin/python3 manage.py runserver*
 ----
 
 NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
@@ -921,7 +928,7 @@ had a pony...
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *pip install gunicorn*
+elspeth@server:$ *../virtualenv/bin/pip install gunicorn*
 ----
 
 Gunicorn will need to know a path to a WSGI server, which is usually
@@ -931,7 +938,7 @@ a function called `application`.  Django provides one in 'superlists/wsgi.py':
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *gunicorn superlists.wsgi:application*
+elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
 2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.18.0
 2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
 [...]
@@ -975,10 +982,13 @@ Nginx can find them:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *python manage.py collectstatic --noinput*
+elspeth@server:$ *../virtualenv/bin/python3 manage.py collectstatic --noinput*
 elspeth@server:$ *ls ../static/*
 base.css  bootstrap
 ----
+
+Note that, again, instead of using the virtualenv `activate` command, we 
+can use the direct path to the virtualenv's copy of Python instead.
 
 Now we tell Nginx to start serving those static files for us:
 
@@ -1006,7 +1016,7 @@ Reload Nginx and restart Gunicorn...
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *gunicorn superlists.wsgi:application*
+elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
 ----
 
 And if we take another look at the site, things are looking much healthier. We
@@ -1061,7 +1071,7 @@ of on the default port:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *gunicorn --bind \
+elspeth@server:$ *../virtualenv/bin/gunicorn --bind \
     unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
 ----
 
@@ -1137,12 +1147,12 @@ Description=Gunicorn server for superlists-staging.ottg.eu
 Restart=on-failure  <1>
 User=elspeth  <2>
 WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu/source  <3>
-ExecStart=/home/elspeth/.virtualenvs/superlists-staging.ottg.eu/bin/gunicorn \ <4>
-    --bind unix:/tmp/superlists-staging.ottg.eu.socket \  <5>
-    superlists.wsgi:application
+ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
+    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
+    superlists.wsgi:application  <4>
 
 [Install]
-WantedBy=multi-user.target <6>
+WantedBy=multi-user.target <5>
 ----
 
 Systemd is joyously simple to configure (especially if you've ever had the
@@ -1155,15 +1165,11 @@ self-explanatory.
 
 <3> `WorkingDirectory` sets the working directory.
 
-<4> `ExecStart` is the actual process to execute.  Notice that we don't use
-    `workon` to activate our virtualenv, instead we specify the full path
-    to the version of Gunicorn that's in our virtualenv. That automatically
-    gives it access to everything else that's in the virtualenv.
+<4> `ExecStart` is the actual process to execute.  We use the `\ ` line
+    continuation characters to split the full command over multiple lines,
+    for readability, but it could all go on one line.
 
-<5> I'm using the +\+ line continuation character to split the full command over
-    multiple lines, for readability, but it could all go on one line.
-
-<6> `WantedBy` in the `[Install]` section is what tells Systemd we want this
+<5> `WantedBy` in the `[Install]` section is what tells Systemd we want this
     service to start on boot.
 
 
@@ -1240,8 +1246,10 @@ of packages we need in our virtualenvs:
 
 [subs="specialcharacters,quotes"]
 ----
-$ pip install gunicorn
-$ *pip freeze | grep gunicorn >> requirements.txt*
+$ *source ../virtualenv/bin/activate* # if necessary
+(virtualenv)$ pip install gunicorn
+(virtualenv)$ *pip freeze > requirements.txt*
+(virtualenv)$ deactivate
 $ *git commit -am "Add gunicorn to virtualenv requirements"*
 $ *git push* 
 ----
@@ -1275,12 +1283,13 @@ Provisioning::
 Deployment::
 1. Create directory structure in '~/sites'
 2. Pull down source code into folder named 'source'
-3. Create a virtualenv and `pip install -r requirements.txt`
-4. `manage.py migrate` for database
-5. `collectstatic` for static files
-6. Set DEBUG = False and ALLOWED_HOSTS in 'settings.py'
-7. Restart Gunicorn job
-8. Run FTs to check everything works
+3. Start virtualenv in '../virtualenv'
+4. `pip install -r requirements.txt`
+5. `manage.py migrate` for database
+6. `collectstatic` for static files
+7. Set DEBUG = False and ALLOWED_HOSTS in 'settings.py'
+8. Restart Gunicorn job
+9. Run FTs to check everything works
 
 
 Assuming we're not ready to entirely automate our provisioning process, how
@@ -1327,7 +1336,7 @@ Description=Gunicorn server for SITENAME
 Restart=on-failure
 User=elspeth
 WorkingDirectory=/home/elspeth/sites/SITENAME/source
-ExecStart=/home/elspeth/.virtualenvs/SITENAME/bin/gunicorn \
+ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
     --bind unix:/tmp/SITENAME.socket \
     superlists.wsgi:application
 
@@ -1358,8 +1367,8 @@ Provisioning a new site
 
 e.g.,, on Ubuntu:
 
-    sudo apt-get install nginx git python3 python3-pip \
-        python3-venv virtualenvwrapper
+    sudo apt-get install nginx git python3 python3-pip
+    sudo pip3 install virtualenv
 
 ## Nginx Virtual Host config
 
@@ -1375,13 +1384,12 @@ e.g.,, on Ubuntu:
 Assume we have a user account at /home/username
 
 /home/username
-├── .virtualenvs
-│   └── SITENAME
 └── sites
     └── SITENAME
          ├── database
          ├── source
-         └── static
+         ├── static
+         └── virtualenv
 ----
 
 We can do a commit for those:
