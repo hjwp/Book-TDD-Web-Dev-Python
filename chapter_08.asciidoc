@@ -71,18 +71,19 @@ Dependencies::
 But there are solutions to all of these.  In order:
 
 *   Using a 'staging site', on the same infrastructure as the production site,
-    can help us test out our deployments and get things right before we go to the
-    "real" site.
+    can help us test out our deployments and get things right before we go to
+    the "real" site.
     ((("staging sites")))
 
 *   We can also 'run our functional tests against the staging site'. That will
     reassure us that we have the right code and packages on the server, and
-    since we now have a "smoke test" for our site layout, we'll know that the CSS
-    is loaded correctly.
+    since we now have a "smoke test" for our site layout, we'll know that the
+    CSS is loaded correctly.
     ((("functional tests/testing (FT)", "for staging sites", sortas="stagingsites")))
 
-*   'Virtualenvs' are a useful tool for managing packages and dependencies
-    on a machine that might be running more than one Python application.
+*   Just like on our own PC, a 'Virtualenv' is useful on the server for
+    managing packages and dependencies when you might be running more than one
+    Python application.
     ((("virtualenvs")))
 
 *   And finally, 'automation, automation, automation'.  By using an automated
@@ -120,8 +121,7 @@ your bearings:
 . Try and get a quick & dirty version of our site running on the staging domain
   using the Django dev server.
 
-. Learn how to use a virtualenv to manage our project's Python dependencies on
-  the server.
+. Set up a virtualenv on the server.
 
 . As we go, we'll keep running our FT, to tell us what's working and what's
   not.
@@ -467,28 +467,27 @@ elspeth@server:$ *sudo systemctl start nginx*
 
 (You may need to do an `apt-get update` and/or an `apt-get upgrade` first.)
 
-
-
 You should be able to go to the IP address of your server, and see the
 "Welcome to nginx" page at this point, as in <<nginx-it-works>>.
+
+[[nginx-it-works]]
+.Nginx--it works!
+image::images/twdp_0801.png["The default 'Welcome to nginx!' page"]
 
 If you don't see it, it may be because your firewall does not open port 80 to
 the world. On AWS for example, you may need to configure the "security group"
 for your server to open port 80.
 
 While we've got root access, let's make sure the server has the key
-pieces of software we need at the system level: Python, Git, pip, and virtualenv.
+pieces of software we need at the system level: Python, Git, pip, and
+virtualenv.
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo apt-get install git python3 python3-pip*
-elspeth@server:$ *sudo pip3 install virtualenv*
+elspeth@server:$ *sudo apt-get install git python3*
+elspeth@server:$ *sudo apt-get install python3-pip python3-venv virtualenvwrapper*
 ----
-
-[[nginx-it-works]]
-.Nginx--it works!
-image::images/twdp_0801.png["The default 'Welcome to nginx!' page"]
 
 
 Configuring Domains for Staging and Live
@@ -568,14 +567,10 @@ sites like this:
 │   │    │    ├── superlists
 │   │    │    ├── etc...
 │   │    │
-│   │    ├── static
-│   │    │    ├── base.css
-│   │    │    ├── etc...
-│   │    │
-│   │    └── virtualenv
-│   │         ├── lib
+│   │    └── static
+│   │         ├── base.css
 │   │         ├── etc...
-│   │
+│   │     
 │   ├── www.staging.my-website.com
 │   │    ├── database
 │   │    ├── etc...
@@ -586,8 +581,7 @@ we have a separate folder for the source code, the database, and the static
 files.  The logic is that, while the source code might change from one version
 of the site to the next, the database will stay the same.  The static folder
 is in the same relative location, '../static', that we set up at the end of
-the last chapter. Finally, the virtualenv gets its own subfolder too.  What's a
-virtualenv, I hear you ask? We'll find out shortly.
+the last chapter.
 
 
 Adjusting the Database Location
@@ -658,7 +652,6 @@ in bash:
 elspeth@server:$ <strong>export SITENAME=superlists-staging.ottg.eu</strong>
 elspeth@server:$ <strong>mkdir -p ~/sites/$SITENAME/database</strong>
 elspeth@server:$ <strong>mkdir -p ~/sites/$SITENAME/static</strong>
-elspeth@server:$ <strong>mkdir -p ~/sites/$SITENAME/virtualenv</strong>
 # you should replace the URL in the next line with the URL for your own repo
 elspeth@server:$ <strong>git clone https://github.com/hjwp/book-example.git \
 ~/sites/$SITENAME/source</strong>
@@ -689,112 +682,27 @@ ImportError: No module named django.core.management
 
 Ah. Django isn't installed on the server.
 
-Creating a Virtualenv
-^^^^^^^^^^^^^^^^^^^^^
 
-((("Django", "and virtualenvs", sortas="virualenvs", id="ix_Djangovirtenvs", range="startofrange")))
-((("dependencies", "virtualenv")))
+Creating a Virtualenv using requirements.txt
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 ((("deployment", "virtualenvs", id="ix_deployvirtenvs", range="startofrange")))
-We could install it at this point, but that would leave us with a problem:  if
-we ever wanted to upgrade Django when a new version comes out, it would be
-impossible to test the staging site with a different version from live.
-Similarly, if there are other users on the server, we'd all be forced to use
-the same version of Django.
-
-((("virtualenvs", id="ix_virtualenvs", range="startofrange")))
-The solution is a "virtualenv"&mdash;a neat way of having different versions of
-Python packages installed in different places, in their own "virtual
-environments".
-
-Let's try it out locally, on our own PC first:
-
-[subs="specialcharacters,quotes"]
-----
-$ *pip3 install virtualenv* # will need a sudo on linux/macos.
-----
-
-We'll follow the same folder structure as we're planning for the server:
-
-[subs="specialcharacters,quotes"]
-----
-$ *virtualenv --python=python3 ../virtualenv*
-$ *ls ../virtualenv/*
-bin  include  lib
-----
-
-
-That will create a folder at '../virtualenv' which will contain its own
-copy of Python and `pip`, as well as a location to install Python packages
-to.  It's a self-contained ``virtual'' Python environment.  To start using
-it, we run a script called `activate`, which will change the system path
-and the Python path in such a way as to use the virtualenv's executables
-and packages:
-
-[subs="specialcharacters,quotes"]
-----
-$ *which python3*
-/usr/bin/python3
-$ *source ../virtualenv/bin/activate*
-$ *which python*  # note switch to virtualenv Python
-/workspace/virtualenv/bin/python
-(virtualenv)$ *python3 manage.py test lists*
-[...]
-ImportError: No module named \'django'
-----
-
-NOTE: It's not required, but you might want to look into a tool called
-`virtualenvwrapper` for managing virtualenvs on your own PC.
-
-
-.Virtualenvs on Windows
-*******************************************************************************
-On Windows, things are slightly different. There are two main things to watch
-out for:
-
-* The 'virtualenv/bin' folder is called 'virtualenv/Scripts', so you should
-  substitute that in as appropriate.
-
-* When using Git-Bash, do not try and run %%activate.bat%%&mdash;it is written for
-  the DOS shell.  Use `source ..\virtualenv\Scripts\activate`.  The `source` is
-  important.
-
-*******************************************************************************
-
-We're seeing that `ImportError: No module named django` because Django isn't
-installed inside the virtualenv.  So, we can install it, and see that it
-ends up inside the virtualenv's 'site-packages' folder:
-
-[role="small-code"]
-[subs="specialcharacters,quotes"]
-----
-(virtualenv)$ *pip install "django<1.9"*
-[...]
-Successfully installed django
-Cleaning up...
-(virtualenv)$ *python3 manage.py test lists*
-[...]
-OK
-$ *ls ../virtualenv/lib/python3.4/site-packages/*
-django                       pip                     setuptools
-Django-1.8.11.dist-info  py-1.4.31.dist-info  setuptools-18.2.dist-info
-[...]
-----
-
 To "save" the list of packages we need in our virtualenv, and be able to
-re-create it later, we create a 'requirements.txt' file, using `pip freeze`,
-and add that to our repository:
+re-create it on the server, we create a 'requirements.txt' file:
 
 [subs="specialcharacters,quotes"]
 ----
-(virtualenv)$ *pip freeze > requirements.txt*
-(virtualenv)$ *deactivate*
-$ *cat requirements.txt*
-Django==1.8.11
+$ *echo "Django==1.8.16" > requirements.txt*
 $ *git add requirements.txt*
 $ *git commit -m "Add requirements.txt for virtualenv"*
 ----
 
-And now we do a `git push` to send our updates up to our code-sharing site:
+NOTE: You may be wondering why we didn't add our other dependency,
+    selenium, to our requirements.  The reason is that selenium is
+    only a dependency for the tests, not the application code.  Some
+    people like to also create a file called 'test-requirements.txt'.
+
+Now we do a `git push` to send our updates up to our code-sharing site:
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
@@ -810,30 +718,23 @@ make the server virtualenv just like our local one:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *git pull*  # may ask you to do some git config first
-elspeth@server:$ *virtualenv --python=python3 ../virtualenv/*
-elspeth@server:$ *../virtualenv/bin/pip install -r requirements.txt*
-Downloading/unpacking Django==1.8 (from -r requirements.txt (line 1))
+elspeth@server:$ *mkvirtualenv --python=python3 superlists-staging.ottg.eu*
+elspeth@server:(superlists-staging.ottg.eu)$ *pip install -r requirements.txt*
+Downloading/unpacking Django==1.8.16 (from -r requirements.txt (line 1))
 [...]
 Successfully installed Django
 Cleaning up...
-elspeth@server:$ *../virtualenv/bin/python3 manage.py runserver*
+elspeth@server:$ *python manage.py runserver*
 Validating models...
 0 errors found
 [...]
 ----
 
+I named the virtualenv after the site name too, dots are allowed in
+virtualenv names, and, as a convention, it guarantees the virtualenv
+name will be unique, and it's easy to tell which one is which!
+
 That looks like it's running happily.  We can Ctrl-C it for now.
-
-Notice you don't have to use the `activate` to use the virtualenv.
-Directly specifying the path to the virtualenv copies of `python` or
-`pip` works too.  We'll use the direct paths on the server.
-
-
-TIP: Most people like to create a virtualenv for a project as soon
-as they start it.  I only waited until now because I wanted to keep
-the first few chapters as simple as possible.
-(((range="endofrange", startref="ix_virtualenvs")))
-(((range="endofrange", startref="ix_Djangovirtenvs")))
 (((range="endofrange", startref="ix_deployvirtenvs")))
 
 
@@ -901,7 +802,7 @@ And now to test it:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *../virtualenv/bin/python3 manage.py runserver*
+elspeth@server:$ *python manage.py runserver*
 ----
 
 NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
@@ -920,7 +821,6 @@ TIP: If you ever find Nginx isn't behaving as expected, try the command
 problems in your configuration files.
 
 Let's see what our functional tests say:
-//TODO: these tests will fail if run inside the virtualenv, because we
 // don't have selenium installed in there...
 
 [subs="specialcharacters,macros"]
@@ -967,12 +867,12 @@ you sure" prompts:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *../virtualenv/bin/python3 manage.py migrate --noinput*
+elspeth@server:$ *python manage.py migrate --noinput*
 Creating tables ...
 [...]
 elspeth@server:$ *ls ../database/*
 db.sqlite3
-elspeth@server:$ *../virtualenv/bin/python3 manage.py runserver*
+elspeth@server:$ *python manage.py runserver*
 ----
 
 Let's try the FTs again:
@@ -1021,7 +921,7 @@ had a pony...
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *../virtualenv/bin/pip install gunicorn*
+elspeth@server:$ *pip install gunicorn*
 ----
 
 Gunicorn will need to know a path to a WSGI server, which is usually
@@ -1031,7 +931,7 @@ a function called `application`.  Django provides one in 'superlists/wsgi.py':
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
+elspeth@server:$ *gunicorn superlists.wsgi:application*
 2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.18.0
 2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
 [...]
@@ -1075,13 +975,10 @@ Nginx can find them:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *../virtualenv/bin/python3 manage.py collectstatic --noinput*
+elspeth@server:$ *python manage.py collectstatic --noinput*
 elspeth@server:$ *ls ../static/*
 base.css  bootstrap
 ----
-
-Note that, again, instead of using the virtualenv `activate` command, we 
-can use the direct path to the virtualenv's copy of Python instead.
 
 Now we tell Nginx to start serving those static files for us:
 
@@ -1109,7 +1006,7 @@ Reload Nginx and restart Gunicorn...
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
+elspeth@server:$ *gunicorn superlists.wsgi:application*
 ----
 
 And if we take another look at the site, things are looking much healthier. We
@@ -1164,7 +1061,7 @@ of on the default port:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *../virtualenv/bin/gunicorn --bind \
+elspeth@server:$ *gunicorn --bind \
     unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
 ----
 
@@ -1240,12 +1137,12 @@ Description=Gunicorn server for superlists-staging.ottg.eu
 Restart=on-failure  <1>
 User=elspeth  <2>
 WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu/source  <3>
-ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
-    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
-    superlists.wsgi:application  <4>
+ExecStart=/home/elspeth/.virtualenvs/superlists-staging.ottg.eu/bin/gunicorn \ <4>
+    --bind unix:/tmp/superlists-staging.ottg.eu.socket \  <5>
+    superlists.wsgi:application
 
 [Install]
-WantedBy=multi-user.target <5>
+WantedBy=multi-user.target <6>
 ----
 
 Systemd is joyously simple to configure (especially if you've ever had the
@@ -1258,11 +1155,15 @@ self-explanatory.
 
 <3> `WorkingDirectory` sets the working directory.
 
-<4> `ExecStart` is the actual process to execute.  We use the `\ ` line
-    continuation characters to split the full command over multiple lines,
-    for readability, but it could all go on one line.
+<4> `ExecStart` is the actual process to execute.  Notice that we don't use
+    `workon` to activate our virtualenv, instead we specify the full path
+    to the version of Gunicorn that's in our virtualenv. That automatically
+    gives it access to everything else that's in the virtualenv.
 
-<5> `WantedBy` in the `[Install]` section is what tells Systemd we want this
+<5> I'm using the +\+ line continuation character to split the full command over
+    multiple lines, for readability, but it could all go on one line.
+
+<6> `WantedBy` in the `[Install]` section is what tells Systemd we want this
     service to start on boot.
 
 
@@ -1339,10 +1240,8 @@ of packages we need in our virtualenvs:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *source ../virtualenv/bin/activate* # if necessary
-(virtualenv)$ pip install gunicorn
-(virtualenv)$ *pip freeze > requirements.txt*
-(virtualenv)$ deactivate
+$ pip install gunicorn
+$ *pip freeze | grep gunicorn >> requirements.txt*
 $ *git commit -am "Add gunicorn to virtualenv requirements"*
 $ *git push* 
 ----
@@ -1376,13 +1275,12 @@ Provisioning::
 Deployment::
 1. Create directory structure in '~/sites'
 2. Pull down source code into folder named 'source'
-3. Start virtualenv in '../virtualenv'
-4. `pip install -r requirements.txt`
-5. `manage.py migrate` for database
-6. `collectstatic` for static files
-7. Set DEBUG = False and ALLOWED_HOSTS in 'settings.py'
-8. Restart Gunicorn job
-9. Run FTs to check everything works
+3. Create a virtualenv and `pip install -r requirements.txt`
+4. `manage.py migrate` for database
+5. `collectstatic` for static files
+6. Set DEBUG = False and ALLOWED_HOSTS in 'settings.py'
+7. Restart Gunicorn job
+8. Run FTs to check everything works
 
 
 Assuming we're not ready to entirely automate our provisioning process, how
@@ -1429,7 +1327,7 @@ Description=Gunicorn server for SITENAME
 Restart=on-failure
 User=elspeth
 WorkingDirectory=/home/elspeth/sites/SITENAME/source
-ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
+ExecStart=/home/elspeth/.virtualenvs/SITENAME/bin/gunicorn \
     --bind unix:/tmp/SITENAME.socket \
     superlists.wsgi:application
 
@@ -1477,12 +1375,13 @@ e.g.,, on Ubuntu:
 Assume we have a user account at /home/username
 
 /home/username
+├── .virtualenvs
+│   └── SITENAME
 └── sites
     └── SITENAME
          ├── database
          ├── source
-         ├── static
-         └── virtualenv
+         └── static
 ----
 
 We can do a commit for those:
