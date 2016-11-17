@@ -42,7 +42,7 @@ SERVER_COMMAND = """<div class="listingblock server-commands">
 COMMANDS_WITH_VIRTUALENV = """<div class="listingblock">
 <div class="content">
 <pre><code>$ <strong>source ../virtualenv/bin/activate</strong>
-(virtualenv)$ <strong>python3 manage.py test lists</strong>
+(virtualenv)$ <strong>python manage.py test lists</strong>
 [...]
 ImportError: No module named django</code></pre>
 </div></div>"""
@@ -142,7 +142,7 @@ $ <strong>rm bootstrap.zip</strong></code></pre>
 OUTPUT_WITH_COMMANDS_INLINE = """
 <div class="listingblock">
 <div class="content">
-<pre><code>$ <strong>python3 manage.py makemigrations</strong>
+<pre><code>$ <strong>python manage.py makemigrations</strong>
 You are trying to add a non-nullable field 'list' to item without a default;
 we can't do that (the database needs something to populate existing rows).
 Please select a fix:
