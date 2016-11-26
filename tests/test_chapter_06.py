@@ -20,15 +20,14 @@ class Chapter6Test(ChapterTest):
 
         # skips
         self.skip_with_check(15, 'msg eg') # git
-        self.skip_with_check(58, 'should show 4 changed files') # git
-        self.skip_with_check(63, 'add a message summarising') # git
-        self.skip_with_check(81, '5 changed files') # git
-        self.skip_with_check(83, 'forms x2') # git
-        self.skip_with_check(109, '3 changed files') # git
-        touch_pos = 49
+        self.skip_with_check(60, 'should show 4 changed files') # git
+        self.skip_with_check(65, 'add a message summarising') # git
+        self.skip_with_check(83, '5 changed files') # git
+        self.skip_with_check(85, 'forms x2') # git
+        self.skip_with_check(112, '3 changed files') # git
+        touch_pos = 53
         touch = self.listings[touch_pos]
         assert 'touch' in touch
-
 
         # other prep
         self.sourcetree.start_with_checkout(self.chapter_no)
