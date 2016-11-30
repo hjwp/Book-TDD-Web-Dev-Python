@@ -428,7 +428,7 @@ There's a main 'urls.py' for the whole site in the
 """superlists URL Configuration
 
 The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/1.8/topics/http/urls/
+    https://docs.djangoproject.com/en/1.10/topics/http/urls/
 Examples:
 Function views
     1. Add an import:  from my_app import views
@@ -437,15 +437,15 @@ Class-based views
     1. Add an import:  from other_app.views import Home
     2. Add a URL to urlpatterns:  url(r'^$', Home.as_view(), name='home')
 Including another URLconf
-    1. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
+    1. Import the include() function: from django.conf.urls import url, include
+    2. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
 """
-from django.conf.urls import include, url
+from django.conf.urls import url
 from django.contrib import admin
 
 urlpatterns = [
-    url(r'^admin/', include(admin.site.urls)),
+    url(r'^admin/', admin.site.urls),
 ]
-
 ----
 
 As usual, lots of helpful comments and default suggestions from Django.
@@ -453,43 +453,29 @@ As usual, lots of helpful comments and default suggestions from Django.
 A `url` entry starts with a regular expression that defines which URLs it
 applies to, and goes on to say where it should send those requests--either to
 a view function you've imported, or maybe to another 'urls.py' file somewhere
-else using `include`.
-
-You can see there's one entry in there by default there for the admin site.
-We're not using that yet, so let's comment it out for now:
-
-
-[role="sourcecode"]
-.superlists/urls.py
-[source,python]
-----
-from django.conf.urls import include, url
-from django.contrib import admin
-
-urlpatterns = [
-    # url(r'^admin/', include(admin.site.urls)),
-]
-----
+else.
 
 The first example entry has the regular expression `^$`, which means
 an empty string--could this be the same as the root of our site, which we've
 been testing with ``/''?  Let's find out--what happens if we include it?
 
 NOTE: If you've never come across regular expressions, you can get away with
-just taking my word for it, for now--but you should make a mental note to
-go learn about them.
+    just taking my word for it, for now--but you should make a mental note to
+    go learn about them.
+
+We'll also get rid of the admin URL, because we won't be using the Django
+admin site for now.
+
 
 [role="sourcecode"]
 .superlists/urls.py
 [source,python]
 ----
 from django.conf.urls import url
-
 from lists import views
 
 urlpatterns = [
     url(r'^$', views.home_page, name='home'),
-    # url(r'^admin/', include(admin.site.urls)),
 ]
 ----
 
@@ -498,16 +484,16 @@ Run the unit tests again, with *`python manage.py test`*:
 ----
 [...]
 TypeError: view must be a callable or a list/tuple in the case of include().
-
 ----
 
 That's progress!  We're no longer getting a 404.
 
-The message is slightly cryptic, but the unit tests have actually made the link
-between the URL '/' and the `home_page = None` in 'lists/views.py', and are now
-complaining that the `home_page` view is not callable. And that gives us a
-justification for changing it from being `None` to being an actual function.
-Every single code change is driven by the tests! 
+The traceback is messy, but the message at the end is telling us what's going on:
+the unit tests have actually made the link between the URL '/' and the
+`home_page = None` in 'lists/views.py', and are now complaining that the
+`home_page` view is not callable. And that gives us a justification for
+changing it from being `None` to being an actual function. Every single code
+change is driven by the tests! 
 
 Back in 'lists/views.py':
 
@@ -594,9 +580,10 @@ class HomePageTest(TestCase):
     def test_home_page_returns_correct_html(self):
         request = HttpRequest()  #<1>
         response = home_page(request)  #<2>
-        self.assertTrue(response.content.startswith(b'<html>'))  #<3>
-        self.assertIn(b'<title>To-Do lists</title>', response.content)  #<4>
-        self.assertTrue(response.content.endswith(b'</html>'))  #<3>
+        html = response.content.decode('utf8')  #<3>
+        self.assertTrue(html.startswith('<html>'))  #<4>
+        self.assertIn('<title>To-Do lists</title>', html)  #<5>
+        self.assertTrue(html.endswith('</html>'))  #<4>
 ----
 
 What's going on in this new test?  
@@ -605,16 +592,15 @@ What's going on in this new test?
     a user's browser asks for a page.
 
 <2> We pass it to our `home_page` view, which gives us a response. You won't be
-    surprised to hear that this object is an instance of a class called `HttpResponse`.
-    +
-    Then, we assert that the `.content` of the response--which is the HTML
-    that we send to the user--has certain properties. 
+    surprised to hear that this object is an instance of a class called
+    `HttpResponse`.
 
-<3> We want it to start with an `<html>` tag which gets closed at the end.
-    Notice that `response.content` is raw bytes, not a Python string, so we
-    have to use the `b''` syntax to compare them. More info is available in Django's 
-    https://docs.djangoproject.com/en/1.8/topics/python3/[Porting to Python 3
-    docs].
+<3> Then, we extract the `.content` of the response.  These are the raw bytes,
+    the ones and zeroes that would be sent down the wire to the user's browser.
+    We call `.decode()` to convert them into the string of HTML that's being
+    sent to the user.
+
+<4> We want it to start with an `<html>` tag which gets closed at the end.
 
 <4> And we want a `<title>` tag somewhere in the middle, with the words
     "To-Do lists" in it--because that's what we specified in our functional test.
@@ -627,6 +613,7 @@ Let's run the unit tests now and see how we get on:
 ----
 TypeError: home_page() takes 0 positional arguments but 1 was given
 ----
+
 
 The Unit-Test/Code Cycle
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -661,7 +648,7 @@ def home_page(request):
 * Tests:
 
 ----
-    self.assertTrue(response.content.startswith(b'<html>'))
+html = response.content.decode('utf8')
 AttributeError: 'NoneType' object has no attribute 'content'
 ----
 
@@ -681,7 +668,7 @@ def home_page(request):
 * Tests again:
 
 ----
-    self.assertTrue(response.content.startswith(b'<html>'))
+    self.assertTrue(html.startswith('<html>'))
 AssertionError: False is not true
 ----
 
@@ -698,7 +685,7 @@ def home_page(request):
 * Tests:
 
 ----
-AssertionError: b'<title>To-Do lists</title>' not found in b'<html>'
+AssertionError: '<title>To-Do lists</title>' not found in '<html>'
 ----
 
 * Code:
@@ -715,7 +702,7 @@ def home_page(request):
 * Tests--almost there?
 
 ----
-    self.assertTrue(response.content.endswith(b'</html>'))
+    self.assertTrue(html.endswith('</html>'))
 AssertionError: False is not true
 ----
 

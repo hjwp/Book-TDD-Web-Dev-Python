@@ -437,7 +437,7 @@ well. Belt and braces. Open it up and look for a variable called
 ----
 # Application definition
 
-INSTALLED_APPS = (
+INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -445,7 +445,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'lists',
-)
+]
 ----
 
 
@@ -459,7 +459,7 @@ Now we can try running the tests again:
 ----
 $ pass:quotes[*python manage.py test*]
     [...]
-    self.assertTrue(response.content.endswith(b'</html>'))
+    self.assertTrue(html.endswith('</html>'))
 AssertionError: False is not true
 ----
 
@@ -474,7 +474,7 @@ NOTE: Depending on whether your text editor insists on adding newlines to the
 
 But it did get further!  It seems it's managed to find our template, but
 the last of the three assertions is failing. Apparently there's something wrong
-at the end of the output. I had to do a little +print(repr(response.content))+
+at the end of the output. I had to do a little +print(repr(html))+
 to debug this, but it turns out that the switch to templates has introduced an
 additional newline (`\n`) at the end. We can get them to pass like this:
 
@@ -483,7 +483,7 @@ additional newline (`\n`) at the end. We can get them to pass like this:
 .lists/tests.py
 [source,python]
 ----
-self.assertTrue(response.content.strip().endswith(b'</html>'))
+self.assertTrue(html.strip().endswith('</html>'))
 ----
 
 It's a tiny bit of a cheat, but whitespace at the end of an HTML file really
@@ -499,11 +499,14 @@ OK
 Our refactor of the code is now complete, and the tests mean we're happy that
 behaviour is preserved. Now we can change the tests so that they're no longer
 testing constants; instead, they should just check that we're rendering the
-right template.  Another Django helper function called `render_to_string` is
-our friend here:
+right template.  
+
+One way we could test this is to manually render the template ourselves in the
+test, and then compare that to what the view returns.  Django has a function
+called `render_to_string` which will let us do that:
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/tests.py (ch04l007)
 [source,python]
 ----
 from django.template.loader import render_to_string
@@ -514,18 +517,98 @@ from django.template.loader import render_to_string
         response = home_page(request)
         expected_html = render_to_string('home.html')
         self.assertEqual(response.content.decode(), expected_html)
+        html = response.content.decode('utf8')
+        [...]
 ----
 
-We use `.decode()` to convert the `response.content` bytes into a Python
-unicode string, which allows us to compare strings with strings, instead
-of bytes with bytes as we did earlier.
+But that's a bit of an unwieldy way of testing that we use the right template.
+And all this faffing about with `.decode()`, and `.strip()` is distracting.
+Instead, Django gives us a tool called the Django Test Client, which has
+built-in ways of checking what templates are used.  Here's how it looks:
+
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+    def test_home_page_returns_correct_html(self):
+        response = self.client.get('/')  #<1>
+
+        html = response.content.decode('utf8')  #<2>
+        self.assertTrue(html.startswith('<html>'))
+        self.assertIn('<title>To-Do lists</title>', html)
+        self.assertTrue(html.strip().endswith('</html>'))
+
+        self.assertTemplateUsed(response, 'home.html')  #<3>
+----
+
+<1> Instead of manually creating an `HttpRequest` object and calling the view
+    function directly, we call `self.client.get`, passing it the URL we want
+    to test
+
+<2> We'll leave the old tests there for now, just to make sure everything is
+    working the way we think it is.
+
+<3> `.assertTemplateUsed` is the test method that the django `TestCase` class
+    provides us.  It lets us check what template was used to render a response
+    (NB - it will only work for responses that were retrieved by the Test
+    Client.)
+
+And that test will still pass:
+
+----
+Ran 2 tests in 0.016s
+
+OK
+----
+
+Just because I'm always suspicious of a test I haven't seen fail, let's
+deliberately break it.
+
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+        self.assertTemplateUsed(response, 'wrong.html')
+----
+
+That way we'll also learn what its error messages look like:
+
+----
+AssertionError: False is not true : Template 'wrong.html' was not a template
+used to render the response. Actual template(s) used: home.html
+----
+
+That's very helpful!  Let's change the assert back to the right thing.  While
+we're at it, we can delete our old assertions.  And we can also delete the
+old `test_root_url_resolves` test, because that's tested implicitly by the
+Django test client.  We've combined two long-winded tests into one!
+
+[role="sourcecode"]
+.lists/tests.py (ch04l010)
+[source,python]
+----
+from django.test import TestCase
+
+class HomePageTest(TestCase):
+
+    def test_uses_home_template(self):
+        response = self.client.get('/')
+        self.assertTemplateUsed(response, 'home.html')
+----
+
 
 The main point, though, is that instead of testing constants we're testing our
 implementation. Great!
 
-NOTE: Django has a test client with tools for testing templates, which we'll
-    use in later chapters. For now we'll use the low-level tools to make sure
-    we're comfortable with how everything works. No magic!
+NOTE: You may be asking yourself "why didn't we just use the Django Test Client
+    from the very beginning?".  In real life, that's what I would do.  But I
+    wanted to show you the "manual" way of doing it first for a couple of
+    reasons.  Firstly because it allowed me to introduce concepts one by one,
+    and keep the learning curve as shallow as possible.  Secondly, because you
+    may not always be using Django to build your apps, and testing tools may
+    not always be available--but calling functions directly and examining
+    their responses is always possible!
 
 
 On Refactoring
@@ -562,10 +645,10 @@ image::images/twdp_0402.png["An adventurous cat, trying to refactor its way out 
 
 
 NOTE: We'll come across ``Refactoring Cat'' again during this book,
-as an example of what happens when we get carried away and want to change
-too many things at once. Think of it as the little cartoon demon counterpart
-to the Testing Goat, popping up over your other shoulder and giving you bad
-advice...
+    as an example of what happens when we get carried away and want to change
+    too many things at once. Think of it as the little cartoon demon
+    counterpart to the Testing Goat, popping up over your other shoulder and
+    giving you bad advice...
 
 It's a good idea to do a commit after any refactoring:
 
@@ -576,8 +659,8 @@ $ *git add .*  # will also add the untracked templates folder
 $ *git diff --staged* # review the changes we're about to commit
 $ *git commit -m "Refactor home page view to use a template"*
 ----
-
 (((range="endofrange", startref="ix_refactoring")))
+
 
 A Little More of Our Front Page
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

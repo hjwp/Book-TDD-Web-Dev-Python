@@ -26,8 +26,8 @@ class Chapter4Test(ChapterTest):
 
         self.skip_with_check(8, 'wibble')
         self.skip_with_check(9, 'wibble')
-        self.skip_with_check(26, 'add the untracked templates folder')
-        self.skip_with_check(28, 'review the changes')
+        self.skip_with_check(31, 'add the untracked templates folder')
+        self.skip_with_check(33, 'review the changes')
 
         while self.pos < len(self.listings):
             print(self.pos, self.listings[self.pos].type)

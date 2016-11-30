@@ -26,7 +26,7 @@ class Chapter3Test(ChapterTest):
 
         self.start_dev_server()
 
-        final_ft = 42
+        final_ft = 41
         self.assertIn('Finish the test', self.listings[final_ft + 1])
 
         while self.pos < final_ft:
