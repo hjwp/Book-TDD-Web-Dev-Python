@@ -61,7 +61,7 @@ class Chapter8Test(ChapterTest):
 
         self.sourcetree.start_with_checkout(self.chapter_no)
         # other prep
-        self.sourcetree.run_command('python3 manage.py syncdb --noinput')
+        self.sourcetree.run_command('python3 manage.py migrate --noinput')
 
         # skips
         self.skip_with_check(37, 'replace the URL in the next line with')
@@ -74,17 +74,17 @@ class Chapter8Test(ChapterTest):
         assert self.listings[reboot_pos + 1] == 'sudo service nginx reload'
 
         # find two runservers, the first one of which should be killed
-        # before we syncdb and restart it, and the second one should be
+        # before we migrate and restart it, and the second one should be
         # killed before we switch to gunicorn
-        syncdb_pos = 83
-        assert 'syncdb' in self.listings[syncdb_pos], 'wrong pos in listings\n{}'.format(
+        migrate_pos = 83
+        assert 'migrate' in self.listings[migrate_pos], 'wrong pos in listings\n{}'.format(
             '\n'.join('{} {}'.format(ix, l) for ix, l in enumerate(self.listings))
         )
-        self.skip_with_check(syncdb_pos + 1, 'Creating tables')
-        self.skip_with_check(syncdb_pos + 2, 'ls')
-        self.skip_with_check(syncdb_pos + 3, 'db.sqlite3')
-        assert 'Creating tables' in self.listings[syncdb_pos + 1]
-        assert 'runserver' in self.listings[syncdb_pos - 3]
+        self.skip_with_check(migrate_pos + 1, 'Creating tables')
+        self.skip_with_check(migrate_pos + 2, 'ls')
+        self.skip_with_check(migrate_pos + 3, 'db.sqlite3')
+        assert 'Creating tables' in self.listings[migrate_pos + 1]
+        assert 'runserver' in self.listings[migrate_pos - 3]
         gunicorn_pos = 93
         assert 'gunicorn superlists.wsgi:application' in self.listings[gunicorn_pos]
         assert 'runserver' in self.listings[gunicorn_pos - 6]
@@ -116,16 +116,16 @@ class Chapter8Test(ChapterTest):
             'sudo sed -i "s/# server_names_hash_bucket_size/server_names_hash_bucket_size/g" /etc/nginx/nginx.conf'
         )
 
-        while self.pos < syncdb_pos:
+        while self.pos < migrate_pos:
             print(self.pos)
             self.recognise_listing_and_process_it()
         self._cleanup_runserver()
-        syncdb_output = self.run_server_command(self.listings[syncdb_pos])
-        self.assertIn('Creating tables', syncdb_output)
-        self.skip_with_check(syncdb_pos + 1, 'Creating tables')
-        ls_output = self.run_server_command(self.listings[syncdb_pos + 2])
+        migrate_output = self.run_server_command(self.listings[migrate_pos])
+        self.assertIn('Creating tables', migrate_output)
+        self.skip_with_check(migrate_pos + 1, 'Creating tables')
+        ls_output = self.run_server_command(self.listings[migrate_pos + 2])
         self.assertIn('db.sqlite3', ls_output)
-        self.pos = syncdb_pos + 4
+        self.pos = migrate_pos + 4
 
         while self.pos < gunicorn_pos:
             print(self.pos)

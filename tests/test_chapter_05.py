@@ -20,6 +20,9 @@ class Chapter5Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
+        views_pos = 16
+        assert "request.POST.get" in self.listings[views_pos].contents
+
         nutemplate_pos = 77
         assert "{'items': items}" in self.listings[nutemplate_pos].contents
 
@@ -33,10 +36,14 @@ class Chapter5Test(ChapterTest):
         self.sourcetree.start_with_checkout(5)
         self.start_dev_server()
 
+        restarted_after_views = False
         restarted_after_migrate = False
         restarted_after_nutemplate = False
         while self.pos < len(self.listings):
             print(self.pos)
+            if self.pos > views_pos and not restarted_after_views:
+                self.restart_dev_server()
+                restarted_after_views = True
             if self.pos > migrate_pos and not restarted_after_migrate:
                 self.restart_dev_server()
                 restarted_after_migrate = True

@@ -65,7 +65,7 @@ class Command(str):
                 return git_cmd
         if self.startswith('python') and 'test' in self:
             return 'test'
-        if self == 'python manage.py syncdb':
+        if self == 'python manage.py migrate':
             return 'interactive manage.py'
         if self == 'python manage.py migrate':
             return 'interactive manage.py'

@@ -22,23 +22,23 @@ class Chapter6Test(ChapterTest):
         self.skip_with_check(15, 'msg eg') # git
         self.skip_with_check(60, 'should show 4 changed files') # git
         self.skip_with_check(65, 'add a message summarising') # git
-        self.skip_with_check(83, '5 changed files') # git
-        self.skip_with_check(85, 'forms x2') # git
-        self.skip_with_check(112, '3 changed files') # git
+        self.skip_with_check(80, '5 changed files') # git
+        self.skip_with_check(82, 'forms x2') # git
+        self.skip_with_check(109, '3 changed files') # git
         touch_pos = 53
         touch = self.listings[touch_pos]
         assert 'touch' in touch
 
         # other prep
         self.sourcetree.start_with_checkout(self.chapter_no)
-        self.run_command(Command('python3 manage.py syncdb --noinput'))
+        self.run_command(Command('python3 manage.py migrate --noinput'))
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 127
-            self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch06l036-2')
+            self.pos = 114
+            self.sourcetree.run_command('git checkout {}'.format(
+                self.sourcetree.get_commit_spec('ch06l033')
             ))
 
         while self.pos < touch_pos:

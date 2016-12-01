@@ -18,7 +18,7 @@ class Chapter7Test(ChapterTest):
 
         self.sourcetree.start_with_checkout(self.chapter_no)
         # other prep
-        self.sourcetree.run_command('python3 manage.py syncdb --noinput')
+        self.sourcetree.run_command('python3 manage.py migrate --noinput')
 
         # skips
         self.skip_with_check(25, 'the -b means ignore whitespace')
