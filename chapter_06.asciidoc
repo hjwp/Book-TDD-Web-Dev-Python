@@ -2,10 +2,6 @@
 Getting to the Minimum Viable Site
 ----------------------------------
 
-
-
-((("functional tests/testing (FT)","cleanup", id="ix_FTcleanup", range="startofrange")))
-((("functional tests/testing (FT)","isolation in", id="ix_FTisolation", range="startofrange")))
 In this chapter we're going to address the problems we discovered at the end
 of the last chapter. In the immediate, the problem of cleaning up after
 functional test runs. Later, the more general problem, which is that
@@ -18,12 +14,13 @@ Refactoring Cat.
 Ensuring Test Isolation in Functional Tests
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+((("functional tests/testing (FT)","cleanup", id="ix_FTcleanup", range="startofrange")))
+((("functional tests/testing (FT)","isolation in", id="ix_FTisolation", range="startofrange")))
 We ended the last chapter with a classic testing problem:  how to ensure
 'isolation' between tests.  Each run of our functional tests was leaving list
 items lying around in the database, and that would interfere with the test
 results when you next ran the tests.
 
-((("Django", "functional tests (FT) in", see="functional tests/testing (FT)")))
 When we run 'unit' tests, the Django test runner automatically creates a brand
 new test database (separate from the real one), which it can safely reset
 before each individual test is run, and then throw away at the end.  But our
@@ -35,6 +32,7 @@ to 'functional_tests.py' which would do the cleaning up. The `setUp` and
 
 ((("LiveServerTestCase")))
 ((("Django", "LiveServerTestCase")))
+((("Django", "functional tests (FT) in", see="functional tests/testing (FT)")))
 Since Django 1.4 though, there's a new class called `LiveServerTestCase` which
 can do this work for you. It will automatically create a test database (just
 like in a unit test run), and start up a development server for the functional
@@ -76,6 +74,7 @@ At this point your directory tree should look like this:
 │   └── tests.py
 ├── lists
 │   ├── admin.py
+│   ├── apps.py
 │   ├── __init__.py
 │   ├── migrations
 │   │   ├── 0001_initial.py
@@ -151,7 +150,6 @@ since we'll be using the Django test runner to launch the FT.
 
 Now we are able to run our functional tests using the Django test runner, by
 telling it to run just the tests for our new `functional_tests` app:
-
 
 [subs="specialcharacters,macros"]
 ----
@@ -421,22 +419,27 @@ list should live at its own, unique URL:
 .functional_tests/tests.py (ch06l005)
 [source,python]
 ----
-    def test_can_start_a_list_for_one_user(self):
-        # Edith has heard about a cool new online to-do app. She goes
-        [...]
-        
+def test_can_start_a_list_for_one_user(self):
+    # Edith has heard about a cool new online to-do app. She goes
+    [...]
+    # The page updates again, and now shows both items on her list
+    self.check_for_row_in_list_table('2: Use peacock feathers to make a fly')
+    self.check_for_row_in_list_table('1: Buy peacock feathers')
 
-    def test_multiple_users_can_start_lists_at_different_urls(self):
-        # Edith start a new todo list
-        self.browser.get(self.live_server_url)
-        inputbox = self.browser.find_element_by_id('id_new_item')
-        inputbox.send_keys('Buy peacock feathers')
-        inputbox.send_keys(Keys.ENTER)
-        self.check_for_row_in_list_table('1: Buy peacock feathers')
+    # Satisfied, she goes back to sleep
+    
 
-        # She notices that her list has a unique URL
-        edith_list_url = self.browser.current_url
-        self.assertRegex(edith_list_url, '/lists/.+')  #<1>
+def test_multiple_users_can_start_lists_at_different_urls(self):
+    # Edith start a new todo list
+    self.browser.get(self.live_server_url)
+    inputbox = self.browser.find_element_by_id('id_new_item')
+    inputbox.send_keys('Buy peacock feathers')
+    inputbox.send_keys(Keys.ENTER)
+    self.check_for_row_in_list_table('1: Buy peacock feathers')
+
+    # She notices that her list has a unique URL
+    edith_list_url = self.browser.current_url
+    self.assertRegex(edith_list_url, '/lists/.+')  #<1>
 ----
 
 <1> `assertRegex` is a helper function from `unittest` that checks
@@ -639,29 +642,12 @@ us we've introduce a 'regression'.  Let's try and get back to a working
 state as quickly as possible by building a URL for our one and only list.
 
 
-Testing Views, Templates, and URLs Together with the Django Test Client
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Taking a first, self-contained step: one new URL
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In previous chapters we've used unit tests that check the URL resolution
-explicitly, that test view functions by actually calling them, and that
-check that views render templates correctly too.  Django actually
-provides us with a little tool that can do all three at once, which we'll use
-now.
-
-I wanted to show you how to "roll your own" first, partially because it's
-a better introduction to how Django works, but also because those techniques
-are portable--you may not always use Django, but you'll almost always have
-view functions, templates, and URL mappings, and now you know how to test them.
-
-
-A New Test Class
-^^^^^^^^^^^^^^^^
-
-((("Django", "test client")))
-So let's use the Django test client.  Open up 'lists/tests.py', and add a new
-test class called `ListViewTest`.  Then copy the method called
-`test_displays_all_list_items` across from `HomePageTest` into our
-new class, rename it, and adapt it slightly:
+Open up 'lists/tests.py', and add a new test class called `ListViewTest`.  Then
+copy the method called `test_displays_all_list_items` across from
+`HomePageTest` into our new class, rename it, and adapt it slightly:
 
 [role="sourcecode"]
 .lists/tests.py (ch06l009)
@@ -673,36 +659,30 @@ class ListViewTest(TestCase):
         Item.objects.create(text='itemey 1')
         Item.objects.create(text='itemey 2')
 
-        response = self.client.get('/lists/the-only-list-in-the-world/')  #<1>
+        response = self.client.get('/lists/the-only-list-in-the-world/')
 
-        self.assertContains(response, 'itemey 1')  #<2>
-        self.assertContains(response, 'itemey 2')  #<2>
+        self.assertContains(response, 'itemey 1')  #<1>
+        self.assertContains(response, 'itemey 2')  #<1>
 
 ----
 
-<1> Instead of calling the view function directly, we use the Django test
-    client, which is an attribute of the Django `TestCase` called
-    `self.client`. We tell it to `.get` the URL we're testing--it's actually a
-    very similar API to the one that Selenium uses.
-
-<2> Instead of using the slightly annoying
+<1> Here's a new helper method: instead of using the slightly annoying
     `assertIn`/`response.content.decode()` dance, Django provides the
     `assertContains` method which knows how to deal with responses and the
     bytes of their content.
 
 
-NOTE: Some people really don't like the Django test client.  They say it
-    does too much magic, and involves too much of the stack to be used in a
-    real "unit" test--you end up writing what are more properly called
-    integrated tests.  They also complain that it is relatively slow (and
-    relatively is measured in milliseconds). We'll explore this argument
-    further in <<isolation-chapter,a later chapter>>.
-
 Let's try running this test now:
 
 ----
+    self.assertContains(response, 'itemey 1')
+[...]
 AssertionError: 404 != 200 : Couldn't retrieve content: Response code was 404
 ----
+
+Here's a nice side-effect of using `assertContains`: it tells us straight
+away that the test is failing because our new URL doesn't exist yet, and
+is returning a 404.
 
 
 A New URL
@@ -713,7 +693,7 @@ A New URL
 Our singleton list URL doesn't exist yet.  We fix that in 'superlists/urls.py'.
 
 TIP: Watch out for trailing slashes in URLs, both here in the tests and in
-    'urls.py'&mdash;they're a common source of bugs.
+    'urls.py'. They're a common source of bugs.
 
 
 [role="sourcecode small-code"]
@@ -725,7 +705,7 @@ urlpatterns = [
     url(r'^lists/the-only-list-in-the-world/$', views.view_list, name='view_list'),
 ]
 ----
-//010
+//010-1
 
 
 Running the tests again, we get:
@@ -735,6 +715,7 @@ AttributeError: module 'lists.views' has no attribute 'view_list'
 [...]
 FAILED (errors=6)
 ----
+
 
 A New View Function
 ^^^^^^^^^^^^^^^^^^^
@@ -757,10 +738,14 @@ Now we get:
 ----
 ValueError: The view lists.views.view_list didn't return an HttpResponse
 object. It returned None instead.
+
+[...]
+FAILED (errors=1)
 ----
 
-Let's copy the two last lines from the `home_page` view and see if they'll do
-the trick:
+Down to just one failure, and it's pointing us in the right direction. Let's
+copy the two last lines from the `home_page` view and see if they'll do the
+trick:
 
 [role="sourcecode"]
 .lists/views.py
@@ -805,13 +790,13 @@ hats on here.  We know the home page is working, because the test has got all
 the way down to line 55 in the FT, so we've at least added a first item.  And
 our unit tests are all passing, so we're pretty sure the URLs and views are
 doing what they should -- the home page displays the right template, and
-can handle POST requests, and the only-list-in-the-world view knows how
-to display all items...  But it doesn't know how to handle POST requests.
+can handle POST requests, and the 'only-list-in-the-world' view knows how
+to display all items...  But it doesn't know how to handle POST requests. Ah,
+that gives us a clue.
 
-Ah, that gives us a clue.  The second clue is the fact that, when all the unit
-tests are passing but the functional tests aren't, it's often pointing at a
-problem that's not covered by the unit tests, and in our case, that's often
-a template problem.
+A second clue is the rule of thumb that, when all the unit tests are passing
+but the functional tests aren't, it's often pointing at a problem that's not
+covered by the unit tests, and in our case, that's often a template problem.
 
 The answer is that our 'home.html' input form currently doesn't specify an
 explicit URL to POST to.
@@ -823,15 +808,15 @@ explicit URL to POST to.
         <form method="POST">
 ----
 
-So, by default the browser sends the POST data back to the same URL it's
-currently on.  When we're on the home page that works fine, but when we're on
-our only-list-in-the-world page, it doesn't.
+By default the browser sends the POST data back to the same URL it's currently
+on.  When we're on the home page that works fine, but when we're on our
+'only-list-in-the-world' page, it doesn't.
 
 Now we could dive in and add POST request handling to our new view, but that
 would involve writing a bunch more tests and code, and at this point we'd like
-to get back to a working state as quickly as possible.  So the quickest thing
-we can do to get things fixed is to just use the home page view, which already
-works, for all POST requests:
+to get back to a working state as quickly as possible.  Actually the quickest
+thing we can do to get things fixed is to just use the existing home page view,
+which already works, for all POST requests:
 
 [role="sourcecode"]
 .lists/templates/home.html
@@ -854,23 +839,22 @@ FAILED (failures=1)
 ----
 
 Our original test passes once again, so we know we're back to a working state.
-The new functionality may not be working yet, but at least the old stuff
-is working again.
-
+The new functionality may not be working yet, but at least the old stuff works
+as well as it used to.
 
 
 Green? Refactor
-+++++++++++++++
+^^^^^^^^^^^^^^^
 
 ((("Red, Green, Refactor")))
 ((("refactoring", "Red, Green, Refactor")))
 Time for a little tidying up.  
 
-In the Red/Green/Refactor dance, we've arrived at green, so we should see what
-needs a refactor.  We now have two views, one for the home page, and one for an
-individual list.  Both are currently using the same template, and passing it
-all the list items currently in the database.  If we look through our unit test
-methods, we can see some stuff we probably want to change:
+In the 'Red/Green/Refactor' dance, we've arrived at green, so we should see
+what needs a refactor.  We now have two views, one for the home page, and one
+for an individual list.  Both are currently using the same template, and
+passing it all the list items currently in the database.  If we look through
+our unit test methods, we can see some stuff we probably want to change:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -888,9 +872,9 @@ class ItemModelTest(TestCase):
 
 ----
 
-We can definitely delete the `test_displays_all_list_items` method,
-it's no longer needed.  If you run *`manage.py test lists`* now, it should say
-it ran 6 tests instead of 7:
+We can definitely delete the `test_displays_all_list_items` method from 
+`HomePageTest`, it's no longer needed.  If you run *`manage.py test lists`*
+now, it should say it ran 6 tests instead of 7:
 
 [role="dofirst-ch06l012"]
 ----
@@ -898,12 +882,13 @@ Ran 6 tests in 0.016s
 OK
 ----
 
-Next, we don't actually need the home page to display all list items any more;
-it should just show a single input box inviting you to start a new list.
+Next, since we don't actually need the home page template to display all list
+items any more; it should just show a single input box inviting you to start a
+new list.
 
 
 A Separate Template for Viewing Lists
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("templates", "separate")))
 ((("Django", "templates")))
