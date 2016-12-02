@@ -32,7 +32,7 @@ class Chapter13Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
         self.sourcetree.run_command('git add . && git commit -m"final commit"')
-        self.check_final_diff(self.chapter_no)
+        self.check_final_diff()
 
 
 if __name__ == '__main__':

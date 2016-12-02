@@ -22,9 +22,9 @@ class Chapter6Test(ChapterTest):
         self.skip_with_check(15, 'msg eg') # git
         self.skip_with_check(60, 'should show 4 changed files') # git
         self.skip_with_check(65, 'add a message summarising') # git
-        self.skip_with_check(80, '5 changed files') # git
-        self.skip_with_check(82, 'forms x2') # git
-        self.skip_with_check(109, '3 changed files') # git
+        self.skip_with_check(83, '5 changed files') # git
+        self.skip_with_check(85, 'forms x2') # git
+        self.skip_with_check(112, '3 changed files') # git
         touch_pos = 53
         touch = self.listings[touch_pos]
         assert 'touch' in touch
@@ -36,9 +36,9 @@ class Chapter6Test(ChapterTest):
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 114
+            self.pos = 127
             self.sourcetree.run_command('git checkout {}'.format(
-                self.sourcetree.get_commit_spec('ch06l033')
+                self.sourcetree.get_commit_spec('ch06l036-2')
             ))
 
         while self.pos < touch_pos:
@@ -59,7 +59,7 @@ class Chapter6Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no, ignore_moves=True)
+        self.check_final_diff(ignore="moves")
 
 
 if __name__ == '__main__':

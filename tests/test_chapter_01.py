@@ -106,7 +106,7 @@ class Chapter1Test(ChapterTest):
             'sed -i "s:/dev/:/1.7/:g" superlists/settings.py'
         )
 
-        self.check_final_diff(self.chapter_no, ignore_secret_key=True)
+        self.check_final_diff(ignore="SECRET_KEY")
 
 
 if __name__ == '__main__':

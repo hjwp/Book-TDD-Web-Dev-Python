@@ -41,7 +41,7 @@ class Chapter21Test(ChapterTest):
         diff = self.sourcetree.run_command(
             'git diff -b {}'.format(commit)
         )
-        self.check_final_diff(self.chapter_no, ignore_moves=True, diff=diff)
+        self.check_final_diff(ignore="moves", diff=diff)
 
 
 if __name__ == '__main__':

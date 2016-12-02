@@ -37,7 +37,7 @@ class Chapter16Test(ChapterTest):
         self.assert_all_listings_checked(self.listings)
 
         # tidy up any .origs from patches
-        self.check_final_diff(self.chapter_no, ignore_moves=True)
+        self.check_final_diff(ignore="moves")
 
 
 if __name__ == '__main__':

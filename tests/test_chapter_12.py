@@ -36,7 +36,7 @@ class Chapter12Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no)
+        self.check_final_diff()
 
 
 if __name__ == '__main__':
