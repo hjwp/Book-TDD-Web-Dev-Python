@@ -1109,7 +1109,8 @@ Try running that:
     self.assertEqual(Item.objects.count(), 1)
 AssertionError: 0 != 1
 [...]
-    self.assertEqual(response.status_code, 302)
+    self.assertRedirects(response, '/lists/the-only-list-in-the-world/')
+[...]
 AssertionError: 404 != 302 : Response didn't redirect as expected: Response
 code was 404 (expected 302)
 ----
@@ -1188,7 +1189,8 @@ def new_list(request):
     Item.objects.create(text=request.POST['item_text'])
     return redirect('/lists/the-only-list-in-the-world/')
 ----
-//23
+//24
+//TODO: new_list gets into the wrong order here.  Maybe use a commit?
 
 And everything now passes:
 
@@ -1593,9 +1595,11 @@ our own code that caused the failure:
 
 [subs="specialcharacters,macros"]
 ----
-File "/workspace/superlists/lists/views.py", line 9, in new_list
+File "/workspace/superlists/lists/views.py", line 14, in new_list
 Item.objects.create(text=request.POST['item_text'])
 ----
+
+//TODO: line 14 shld be line 9, because new_list is in wrong place, see todo above.
 
 It's when we try and create an item without a parent list. So we make a similar
 change in the view:
@@ -1766,11 +1770,11 @@ ERROR: test_uses_list_template (lists.tests.ListViewTest)
 [...]
 TypeError: view_list() takes 1 positional argument but 2 were given
 [...]
-FAILED (errors=2)
+ERROR: test_redirects_after_POST (lists.tests.NewListTest)
+[...]
+TypeError: view_list() takes 1 positional argument but 2 were given
+FAILED (errors=3)
 ----
-
-//TODO: check this bit manually.  3 errors or 2? something weird in 
-// repo commits, or if use skip=True in tests.
 
 We can fix that easily with a dummy parameter in 'views.py':
 
@@ -1805,33 +1809,111 @@ def view_list(request, list_id):
 //35-2
 
 
-That gets us back to passing unit tests.  What about the functional
-tests?  We must be almost there?
+Adjusting new_list to the New World
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Oops, now we get errors in another test:
+
+----
+ERROR: test_redirects_after_POST (lists.tests.NewListTest)
+ValueError: invalid literal for int() with base 10:
+'the-only-list-in-the-world'
+----
+
+Let's take a look at this test then, since it's moaning:
+
+
+[role="sourcecode currentcontents"]
+.lists/tests.py
+[source,python]
+----
+class NewListTest(TestCase):
+    [...]
+
+    def test_redirects_after_POST(self):
+        response = self.client.post('/lists/new', data={'item_text': 'A new list item'})
+        self.assertRedirects(response, '/lists/the-only-list-in-the-world/')
+----
+
+It looks like it hasn't been adjusted to the new world of Lists and Items.
+The test should be saying that this view redirects to the URL of the specific
+new list it just created:
+
+[role="sourcecode"]
+.lists/tests.py (ch06l036-1)
+[source,python]
+----
+    def test_redirects_after_POST(self):
+        response = self.client.post('/lists/new', data={'item_text': 'A new list item'})
+        new_list = List.objects.first()
+        self.assertRedirects(response, '/lists/%d/' % (new_list.id,))
+----
+
+That still gives us the 'invalid literal' error. We take a look at the view
+itself, and change it so it redirects to a valid place:
+
+//IDEA: explain more exactly why this is happening?
+
+[role="sourcecode"]
+.lists/views.py (ch06l036-2)
+[source,python]
+----
+def new_list(request):
+    list_ = List.objects.create()
+    Item.objects.create(text=request.POST['item_text'], list=list_)
+    return redirect('/lists/%d/' % (list_.id,))
+----
+
+That gets us back to passing unit tests.  
+
+----
+Creating test database for alias 'default'...
+......
+ ---------------------------------------------------------------------
+Ran 6 tests in 0.033s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+
+What about the functional tests?  We must be almost there?
 
 
 The functional tests detect another regression
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Nope.
+Well, almost:
 
 ----
-ERROR: test_can_start_a_list_for_one_user (functional_tests.tests.NewVisitorTest)
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"id","selector":"id_list_table"}
-[...]
-ERROR: test_multiple_users_can_start_lists_at_different_urls
+Creating test database for alias 'default'...
+F.
+======================================================================
+FAIL: test_can_start_a_list_for_one_user
 (functional_tests.tests.NewVisitorTest)
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"id","selector":"id_list_table"}
-[...]
-FAILED (failures=2)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/superlists/functional_tests/tests.py", line 55, in
+test_can_start_a_list_for_one_user
+    self.check_for_row_in_list_table('2: Use peacock feathers to make a fly')
+  File "/workspace/superlists/functional_tests/tests.py", line 18, in
+check_for_row_in_list_table
+    self.assertIn(row_text, [row.text for row in rows])
+AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Use
+peacock feathers to make a fly']
+
+ ---------------------------------------------------------------------
+Ran 2 tests in 8.617s
+
+FAILED (failures=1)
+Destroying test database for alias 'default'...
 ----
 
-Once again the FTs are doing this job, and catching a regression in our
-application: because of our quick-and dirty hack where create a new list for
-every single POST submission, we have broken the ability to add multiple items
-to a list.  This is exactly what we have functional tests for!
+Our new test is actually passing, and different users can get different lists,
+but the old test is warning us of a regression.  It looks like you can't
+add a second item to a list any more.  It's because of our quick-and dirty hack
+where create a new list for every single POST submission. This is exactly what
+we have functional tests for!
 
 And it correlates nicely with the last item on our to-do list:
 
@@ -1887,7 +1969,13 @@ class NewItemTest(TestCase):
         self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))
 ----
 
-//IDEA: explain other_list
+NOTE: Are you wondering about `other_list`?  A bit like in the tests for
+    viewing a specific list, it's important that we add items to a specific
+    list.  Adding this second object to the database prevents me from using
+    a hack like List.objects.first() in the implementation.  That would be
+    a stupid thing to do, and you must go too far down the road of testing
+    for all the stupid things you must not do; it's a judgement call, but
+    this one feels worth it.
 
 We get:
 
@@ -1907,14 +1995,15 @@ That's a little strange. We haven't actually specified a URL for
 '/lists/1/add_item' yet, so our expected failure is `404 != 302`.  Why are we
 getting a 301?
 
-This was a bit of a puzzler; it's because we've used a very "greedy"
+This was a bit of a puzzler! It's because we've used a very "greedy"
 regular expression in our URL:
 
 
-[role="skipme"]
+[role="sourcecode currentcontents"]
+.superlists/urls.py
 [source,python]
 ----
-    url(r'^lists/(.+)/$', 'lists.views.view_list', name='view_list'),
+    url(r'^lists/(.+)/$', views.view_list, name='view_list'),
 ----
 
 Django has some built-in code to issue a permanent redirect (301) whenever
@@ -1932,8 +2021,9 @@ digits, by using the regular expression `\d`:
 ----
     url(r'^lists/(\d+)/$', views.view_list, name='view_list'),
 ----
+//38
 
-That gives:
+That gives us the failure we expected:
 
 ----
 AssertionError: 0 != 1
@@ -2062,8 +2152,8 @@ OK
 ----
 
 
-But How to Use That URL in the Form?
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Testing the response context objects directly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ((("URLs", "in Django")))
 ((("Django", "URLs in")))
@@ -2101,15 +2191,16 @@ Let's create a new unit test in `ListViewTest`:
         other_list = List.objects.create()
         correct_list = List.objects.create()
         response = self.client.get('/lists/%d/' % (correct_list.id,))
-        self.assertEqual(response.context['list'], correct_list)
+        self.assertEqual(response.context['list'], correct_list)  #<1>
 ----
 
 //IDEA: explain correct_list, other_list
 
+<1> `response.context` represents the context we're going to pass into
+    the render function--the Django test client puts it on the `response`
+    object for us, to help with testing.
 
-`response.context` represents the context we're going to pass into
-the render function--the Django test client puts it on the `response`
-object for us, to help with testing. That gives us:
+That gives us:
 
 ----
 KeyError: 'list'
@@ -2127,9 +2218,12 @@ def view_list(request, list_id):
     return render(request, 'list.html', {'list': list_})
 ----
 
-That, of course, will break because the template is expecting `items`:
+That, of course, will break one of our old tests, because the template
+needed `items`:
 
 ----
+FAIL: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+[...]
 AssertionError: False is not true : Couldn't find 'itemey 1' in response
 ----
 
@@ -2139,23 +2233,26 @@ But we can fix it in 'list.html', as well as adjusting the form's POST action:
 .lists/templates/list.html (ch06l043)
 [source,html]
 ----
-    <form method="POST" action="/lists/{{ list.id }}/add_item">
+    <form method="POST" action="/lists/{{ list.id }}/add_item">  <1>
 
     [...]
 
-        {% for item in list.item_set.all %}  <1>
+        {% for item in list.item_set.all %}  <2>
             <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
         {% endfor %}
 ----
 
-<1> `.item_set` is called a "reverse lookup"&mdash;it's one of Django's
-    incredibly useful bits of ORM that lets you look up an object's related
-    items from a different table...
+<1> There's our new form action.
+
+<2> `.item_set` is called a 
+    https://docs.djangoproject.com/en/1.10/topics/db/queries/#following-relationships-backward[reverse lookup].
+    It's one of Django's incredibly useful bits of ORM that lets you look up an
+    object's related items from a different table...
 
 So that gets the unit tests to pass:
 
 ----
-Ran 9 tests in 0.060s
+Ran 9 tests in 0.040s
 
 OK
 ----
@@ -2174,7 +2271,7 @@ OK
 Destroying test database for alias 'default'...
 ----
 
-Yes!  And a quick check on our to-do list:
+HOORAY!  Oh, and a quick check on our to-do list:
 
 [role="scratchpad"]
 *****
@@ -2216,10 +2313,7 @@ $ *cp superlists/urls.py lists/*
 ----
 //44
 
-Then we replace three lines in 'superlists/urls.py' with an `include`.  Notice
-that `include` can take a part of a URL regex as a prefix, which will be
-applied to all the included URLs (this is the bit where we reduce duplication,
-as well as giving our code a better structure):
+Then we replace three lines in 'superlists/urls.py' with an `include`.
 
 [role="sourcecode"]
 .superlists/urls.py
@@ -2231,16 +2325,20 @@ from lists import urls as list_urls  #<1>
 
 urlpatterns = [
     url(r'^$', list_views.home_page, name='home'),
-    url(r'^lists/', include(list_urls)),
+    url(r'^lists/', include(list_urls)),  #<2>
 ]
 ----
 //45
 
-<1> While we're at it, we use the `import x as y` syntax
-    to alias `views` and `urls`.  This is good practice
-    in your top-level 'urls.py', because it will let us
-    import views and urls from multiple apps if we need
-    to--and indeed we will need to later on in the book.
+<1> While we're at it, we use the `import x as y` syntax to alias `views` and
+    `urls`.  This is good practice in your top-level 'urls.py', because it will
+    let us import views and urls from multiple apps if we want--and indeed we
+    will need to later on in the book.
+
+<2> Here's the `include`. Notice that it can take a part of a URL regex as a
+    prefix, which will be applied to all the included URLs (this is the bit
+    where we reduce duplication, as well as giving our code a better
+    structure):
 
 
 Back in 'lists/urls.py' we can trim down to only include the latter part
@@ -2261,13 +2359,16 @@ urlpatterns = [
 ]
 ----
 
-Rerun the unit tests to check everything worked.  When I did it, I
-couldn't quite believe I did it correctly on the first go. It always pays to be
-skeptical of your own abilities, so I deliberately changed one of the URLs
-slightly, just to check if it broke a test. It did. We're covered.
+Rerun the unit tests to check everything worked.  
+
+
+When I did it, I couldn't quite believe I did it correctly on the first go. It
+always pays to be skeptical of your own abilities, so I deliberately changed
+one of the URLs slightly, just to check if it broke a test. It did. We're
+covered.
 
 Feel free to try it yourself!  Remember to change it back, check the tests
-all pass again, and then commit:
+all pass again, and then a final commit:
 
 [subs="specialcharacters,quotes"]
 ----
