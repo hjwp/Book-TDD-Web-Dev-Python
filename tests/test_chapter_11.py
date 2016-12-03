@@ -16,18 +16,18 @@ class Chapter11Test(ChapterTest):
         self.assertEqual(self.listings[2].type, 'output')
 
         # skips
-        self.skip_with_check(34, '# review changes') # diff
+        self.skip_with_check(29, '# review changes') # diff
 
         # prep
         self.sourcetree.start_with_checkout(self.chapter_no)
         self.prep_database()
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
-            self.pos = 27
-            self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch11l015')
+            self.pos = 59
+            self.sourcetree.run_command('git checkout {}'.format(
+                self.sourcetree.get_commit_spec('ch11l030')
             ))
 
 
