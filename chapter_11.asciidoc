@@ -87,7 +87,7 @@ HTML will look like:
 ----
     self.fail(form.as_p())
 AssertionError: <p><label for="id_item_text">Item text:</label> <input
-id="id_item_text" name="item_text" type="text" /></p>
+id="id_item_text" name="item_text" type="text" required /></p>
 ----
 
 It's already pretty close to what we have in 'base.html'.  We're missing
@@ -130,7 +130,7 @@ That gives:
 ----
 AssertionError: 'class="form-control input-lg"' not found in '<p><label
 for="id_item_text">Item text:</label> <input id="id_item_text" name="item_text"
-placeholder="Enter a to-do item" type="text" /></p>'
+placeholder="Enter a to-do item" type="text" required /></p>'
 ----
 
 And then:
@@ -209,7 +209,7 @@ We now have some different-looking form HTML:
 ----
 AssertionError: 'placeholder="Enter a to-do item"' not found in '<p><label
 for="id_text">Text:</label> <textarea cols="40" id="id_text" name="text"
-rows="10">\r\n</textarea></p>'
+rows="10" required>\r\n</textarea></p>'
 ----
 
 ((("widgets")))
@@ -398,11 +398,8 @@ Using the Form in a View with a GET Request
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ((("GET requests")))
-Let's start in our unit tests for the home view. We'll replace the old-style
-`test_home_page_returns_correct_html` and
-`test_root_url_resolves_to_home_` `page_view`  with a set of tests that use the
-Django test client.  We leave the old tests in at first, to check that our new
-tests are equivalent:
+Let's start in our unit tests for the home view. We'll add a new method
+that checks whether we're using the right kind of form:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch11l013)
@@ -412,29 +409,16 @@ from lists.forms import ItemForm
 
 class HomePageTest(TestCase):
 
-    def test_root_url_resolves_to_home_page_view(self):
+    def test_uses_home_template(self):
         [...]
-
-    def test_home_page_returns_correct_html(self):
-        request = HttpRequest()
-        [...]
-
-
-    def test_home_page_renders_home_template(self):
-        response = self.client.get('/')
-        self.assertTemplateUsed(response, 'home.html')  #<1>
-
 
     def test_home_page_uses_item_form(self):
         response = self.client.get('/')
         self.assertIsInstance(response.context['form'], ItemForm)  #<2>
 ----
 
-<1> We'll use the helper method `assertTemplateUsed` to replace our old
-    manual test of the template.
+<1> `assertIsInstance` checks that our form is of the correct class
 
-<2> We use `assertIsInstance` to check that our view uses the right kind of
-    form.
 
 That gives us:
 
@@ -474,82 +458,6 @@ with `{{ form.text }}`:
 
 `{{ form.text }}` renders just the HTML input for the `text` field of the form.
 
-Now the old test is out of date:
-
-----
-    self.assertEqual(response.content.decode(), expected_html)
-AssertionError: '<!DO[651 chars]     <input class="form-control input-lg"
-id="[342 chars]l>\n' != '<!DO[651 chars]     \n                    \n
-[233 chars]l>\n'
-----
-
-That error message is impossible to read though. Let's clarify its message a
-little:
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch11l016)
-[source,python]
-----
-class HomePageTest(TestCase):
-    maxDiff = None  #<2>
-    [...]
-    def test_home_page_returns_correct_html(self):
-        request = HttpRequest()
-        response = home_page(request)
-        expected_html = render_to_string('home.html')
-        self.assertMultiLineEqual(response.content.decode(), expected_html)  #<1>
-----
-
-<1> `assertMultiLineEqual` is useful for comparing long strings; it gives you a
-    diff-style output, but it truncates long diffs by default...
-
-<2> ...so that's why we also need to set `maxDiff = None` on the test class.
-
-Sure enough, it's because our `render_to_string` call doesn't know about the
-form:
-
-----
-[...]
-                  <form method="POST" action="/lists/new">
--                     <input class="form-control input-lg" id="id_text"
-name="text" placeholder="Enter a to-do item" type="text" />
-+
-[...]
-----
-
-But we can fix that:
-
-[role="sourcecode"]
-.lists/tests/test_views.py
-[source,python]
-----
-def test_home_page_returns_correct_html(self):
-    request = HttpRequest()
-    response = home_page(request)
-    expected_html = render_to_string('home.html', {'form': ItemForm()})
-    self.assertMultiLineEqual(response.content.decode(), expected_html)
-----
-
-
-And that gets us back to passing.  We've now reassured ourselves enough that
-the behaviour has stayed the same, so it's now OK to delete the two old tests.
-The `assertTemplateUsed` and `response.context` checks from the new test are
-sufficient for testing a basic view with a GET request.
-
-That leaves us with just two tests in `HomePageTest`:
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch11l017)
-[source,python]
-----
-class HomePageTest(TestCase):
-
-    def test_home_page_renders_home_template(self):
-        [...]
-
-    def test_home_page_uses_item_form(self):
-        [...]
-----
 
 
 A Big Find and Replace
