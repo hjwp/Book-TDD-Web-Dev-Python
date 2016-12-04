@@ -210,7 +210,7 @@ def check_listing_matches_commit(listing, commit, future_contents):
     stripped_listing_lines = [l.strip() for l in listing_lines]
     for new_line in commit.new_lines:
         if new_line.strip() not in stripped_listing_lines:
-            print('stripped_listing_lines', stripped_listing_lines)
+            # print('stripped_listing_lines', stripped_listing_lines)
             raise ApplyCommitException(
                 'could not find commit new line {0} in listing:\n{1}'.format(
                     new_line, listing.contents
@@ -239,7 +239,7 @@ def check_listing_matches_commit(listing, commit, future_contents):
 
             continue
         if line in commit.lines_to_add:
-            print('line {} in commit lines to add'.format(line))
+            # print('line {} in commit lines to add'.format(line))
             if listing_lines.count(line) > 1:
                 # skip duped lines
                 # (no way of telling whether dupe is 1st or 2nd)
