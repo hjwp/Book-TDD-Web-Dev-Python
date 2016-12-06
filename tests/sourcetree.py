@@ -277,7 +277,8 @@ def get_offset(lines, future_lines):
 def check_indentation(listing_lines, future_lines):
     offset = get_offset(listing_lines, future_lines)
     for listing_line in listing_lines:
-        if listing_line and not '[...]' in listing_line:
+        if listing_line and '[...]' not in listing_line:
             fixed_line = offset + listing_line
             if fixed_line not in future_lines:
-                raise ApplyCommitException('Could not find {!r} in future contents {}'.format(fixed_line, future_lines))
+                raise ApplyCommitException('Could not find {!r} in future contents:\n{}'.format(fixed_line, '\n'.join(future_lines)))
+

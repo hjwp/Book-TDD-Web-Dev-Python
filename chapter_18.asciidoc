@@ -488,30 +488,19 @@ Here's a first crack at writing the test:
 .lists/tests/test_views.py (ch18l014)
 [source,python]
 ----
-from django.http import HttpRequest
-[...]
-from lists.views import new_list
-[...]
-
 class NewListTest(TestCase):
     [...]
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
-        request = HttpRequest()
-        request.user = User.objects.create(email='a@b.com')
-        request.POST['text'] = 'new list item'
-        new_list(request)
+        user = User.objects.create(email='a@b.com')
+        self.client.force_login(user)  #<1>
+        self.client.post('/lists/new', data={'text': 'new item'})
         list_ = List.objects.first()
-        self.assertEqual(list_.owner, request.user)
+        self.assertEqual(list_.owner, user)
 ----
 
-This test uses the raw view function, and manually constructs an
-`HttpRequest` because it's slightly easier to write the test that way.
-Although the Django test client does have a helper function called `login`, it 
-doesn't work well with external authentication services.  The alternative would
-be to manually create a session object (like we do in the functional tests), or
-to use mocks, and I think both of those would end up uglier than this version.
-If you're curious, you could have a go at writing it differently.
+<1> `force_login()` is the way you get the test client to make requests
+    with a logged-in user.
 
 The test fails as follows:
 
@@ -544,7 +533,7 @@ But it won't actually work, because we don't know how to save a list owner yet:
 
 
 ----
-    self.assertEqual(list_.owner, request.user)
+    self.assertEqual(list_.owner, user)
 AttributeError: 'List' object has no attribute 'owner'
 ----
 
@@ -677,7 +666,7 @@ Because we need to do make some migrations:
 ----
 $ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'lists':
-  0006_list_owner.py:
+  lists/migrations/0006_list_owner.py:
     - Add field owner to list
 ----
 //22
@@ -690,7 +679,8 @@ ERROR: test_redirects_after_POST (lists.tests.test_views.NewListTest)
 ValueError: Cannot assign "<SimpleLazyObject:
 <django.contrib.auth.models.AnonymousUser object at 0x7f364795ef90>>":
 "List.owner" must be a "User" instance.
-ERROR: test_saving_a_POST_request (lists.tests.test_views.NewListTest)
+ERROR: test_can_save_a_POST_request (lists.tests.test_views.NewListTest)
+
 [...]
 ValueError: Cannot assign "<SimpleLazyObject:
 <django.contrib.auth.models.AnonymousUser object at 0x7f364795ef90>>":
@@ -702,12 +692,11 @@ ValueError: Cannot assign "<SimpleLazyObject:
 We're moving back up to the views layer now, just doing a little 
 tidying up. Notice that these are in the old test for the `new_list` view, when
 we haven't got a logged-in user.  We should only save the list owner when the
-user is actually logged in.  The `.is_authenticated()` function we defined in
+user is actually logged in.  The `.is_authenticated` attribute we defined in
 <<python-mocks-chapter>> comes in useful now (when they're not logged in,
 Django represents users using a class called `AnonymousUser`, whose 
-`.is_authenticated()` always returns `False`):
+`.is_authenticated` is always `False`):
 
-//TODO: should be is_authenticated (property, not method)
 
 [role="sourcecode"]
 .lists/views.py (ch18l023)
@@ -715,7 +704,7 @@ Django represents users using a class called `AnonymousUser`, whose
 ----
     if form.is_valid():
         list_ = List()
-        if request.user.is_authenticated():
+        if request.user.is_authenticated:
             list_.owner = request.user
         list_.save()
         form.save(for_list=list_)
