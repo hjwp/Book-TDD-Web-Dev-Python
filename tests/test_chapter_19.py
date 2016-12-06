@@ -46,7 +46,7 @@ class Chapter19Test(ChapterTest):
                 print('OK')
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(ignore="moves")
+        self.check_final_diff(ignore=["moves"])
 
 
 if __name__ == '__main__':

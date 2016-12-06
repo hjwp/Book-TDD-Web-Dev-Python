@@ -40,7 +40,7 @@ class Chapter17Test(ChapterTest):
         # tidy up any .origs from patches
         self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
         self.sourcetree.run_command('git add . && git commit -m"final commit ch17"')
-        self.check_final_diff(ignore="moves")
+        self.check_final_diff(ignore=["moves"])
 
 
 if __name__ == '__main__':
