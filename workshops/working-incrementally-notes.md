@@ -15,7 +15,7 @@
 
 ```
 mkvirtualenv tdd-workshop --python=python3
-pip install 'django<1.9' selenium
+pip install 'django<1.10' selenium
 git clone https://github.com/hjwp/book-example.git tdd-workshop
 cd tdd-workshop
 git checkout chapter_06

@@ -3,7 +3,6 @@
 TODO:
 
   - switch to chrome in all tags
-  - switch to django 1.9 (or force_login wont work)
 
 
 > 1 day: Outside-in TDD with and without mocks (AKA - "listen to your tests").
