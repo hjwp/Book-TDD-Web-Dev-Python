@@ -457,14 +457,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             stuff
             """).strip()
         expected = Output(dedent("""
-            bla bla<1>
+            bla bla  <12>
             stuff
             """).strip()
         )
 
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
-
 
 
     def test_ignores_asciidoctor_callouts(self):
@@ -473,14 +472,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             stuff
             """).strip()
         expected = Output(dedent("""
-            bla bla  (1)
+            bla bla  (12)
             stuff
             """).strip()
         )
 
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
-
 
 
     def test_ignores_git_commit_numers_in_logs(self):

@@ -97,7 +97,7 @@ def strip_git_hashes(output):
 
 def strip_callouts(output):
     minus_old_callouts = re.sub(
-        r"^(.+)( ?<\d+>)$",
+        r"^(.+)  <\d+>$",
         r"\1",
         output,
         flags=re.MULTILINE,
