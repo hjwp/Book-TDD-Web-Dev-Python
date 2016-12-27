@@ -1,5 +1,22 @@
 # Outline
 
+TODO:
+
+  - switch to chrome in all tags
+
+
+> 1 day: Outside-in TDD with and without mocks (AKA - "listen to your tests").
+> This day will start with a discussion of the "outside-in" technique, a way of
+> deciding which tests to write, and what code to write, in what order, and how
+> high-level tests interact with lower-level tests.  We'll do one run with
+> familiar django/integration tests, and then we'll move on to working with
+> mocks.  Using a practical example we'll be able to see many of the common
+> problems with mocks, the difficulties they introduce, but also a real
+> demonstration of the possible benefits mocks (or "purist" unit testing) can
+> bring.  We'll conclude the day with a discussion of the pros and cons of
+> different types of tests: end-to-end/functional vs integration vs unit tests.
+
+
 * Intro and installations (15m, t=0)
 * Our example app - tour (5m, t=15)
 * Codebase tour (5m, t=20)
@@ -17,9 +34,6 @@
 
 
 # notes from live session
-- need a good example much better planned for double-loop tdd demo. 
-- got to beginning of first exercise in 40 mins with 6ppl (5 mins behind)
-- got to end of outside-in discussion after 2h10 (35 mins behind)
 - have a better process for outside-in live code bit
 - slides worked well for that bit
 - and for the mocks bit
@@ -278,33 +292,29 @@ def view_list(request, list_id):
 
 ie: Get this FT to pass:
 
-```
-python manage.py test functional_tests.test_my_lists
-```
+    python manage.py test functional_tests.test_my_lists
 
 Ideally: using TDD. Add some unit tests, in *test_models.py* and *test_views.py*.  Get the FT to pass.
 
 Tips:
 
+* you'll probably need a foreign key from lists to the user model
 * `request.user` will be available if user is logged in
 * `request.user.is_authenticated()` is False if user is not logged in
 * `list.get_absolute_url()` will give you a url you can use in an <a> tag for the lists page
-* you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it
+* you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it.  You can inherit from base.html
 * you will need to associate the creation of a new list with the current user, if they're logged in
 * if you need a views test to have a logged-in user, you have two choices
   - `self.client.force_login(user)`
   - or, import and call the view function directly with an HttpRequest instance whose .user attribute is set.
-
-* if the FTs are being weird, try switching from `webdriver.Firefox()` to `webdriver.Chrome()`.  You will need to download a thing called "chromedriver" and have it on the path
+* if you want to try manually logging in with persona, "anything@mockmyid.com" will "just work" (but use "localhost:8000" in your browser, not "127.0.0.1:800")
 
 **Help**: Grab my version of the "my lists" template. it will tell you what you need your views to do
 
-```
-git checkout intermediate-tdd-workshop-end -- lists/templates/my_lists.html
-```
+    git checkout origin/intermediate-workshop-end -- lists/templates/my_lists.html
 
 
-
+//TODO: simplify my example my_lists.html
 
 
 
@@ -595,9 +605,9 @@ class List(models.Model):
 
 
 
-```
-git checkout intermediate-workshop-part2
-```
+    git checkout intermediate-workshop-part2
+    python manage.py test lists
+
 * Objective: get this test to pass *before* we move onto the models layer
 
 Tips:
@@ -612,7 +622,7 @@ you will probably need to mock one or both of these
   - either inside the `objects.create()` call,
   - or *before* calling `list_.save()`
 
-  self.assertEqual(mock_list.save.called, True)
+    self.assertEqual(mock_list.save.called, True)
 
 * No need to use mocks once you get to the models layer!
 

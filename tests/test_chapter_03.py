@@ -26,7 +26,7 @@ class Chapter3Test(ChapterTest):
 
         self.start_dev_server()
 
-        final_ft = 42
+        final_ft = 41
         self.assertIn('Finish the test', self.listings[final_ft + 1])
 
         while self.pos < final_ft:
@@ -39,7 +39,7 @@ class Chapter3Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no)
+        self.check_final_diff()
 
 
 if __name__ == '__main__':

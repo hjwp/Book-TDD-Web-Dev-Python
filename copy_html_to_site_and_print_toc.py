@@ -26,9 +26,8 @@ CHAPTERS = [
     "chapter_10.html",
     "chapter_11.html",
     "chapter_12.html",
-    "chapter_14.html",
-    # NB - 14 is intentionally before 13.
     "chapter_13.html",
+    "chapter_14.html",
 
     "part3.harry.html",
     "chapter_15.html",
@@ -45,9 +44,11 @@ CHAPTERS = [
     "appendix_II_Django_Class-Based_Views.html",
     "appendix_III_provisioning_with_ansible.html",
     "appendix_IV_testing_migrations.html",
-    "appendix_bdd_tools.html",
-    "appendix_V_what_to_do_next.html",
-    "appendix_VI_cheat_sheet.html",
+    "appendix_V_bdd_tools.html",
+    "appendix_VI_rest_api.html",
+    "appendix_VII_DjangoRestFramework.html",
+    "appendix_IX_cheat_sheet.html",
+    "appendix_X_what_to_do_next.html",
 
     "bibliography.html",
 ]
@@ -68,7 +69,7 @@ def parse_chapters():
 def get_chapter_info():
     chapter_info = {}
     appendix_numbers = [
-        'I', 'II', 'III', 'IV', 'V', 'VI', 'VII'
+        'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'IX', 'X'
     ]
     chapter_numbers = list(range(1, 100))
     part_numbers = list(range(1, 10))

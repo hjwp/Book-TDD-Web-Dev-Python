@@ -12,8 +12,8 @@ class Chapter17Test(ChapterTest):
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing')
-        self.assertEqual(self.listings[1].type, 'code listing with git ref')
-        self.assertEqual(self.listings[2].type, 'code listing with git ref')
+        self.assertEqual(self.listings[1].type, 'other command')
+        self.assertEqual(self.listings[2].type, 'output')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
@@ -40,7 +40,7 @@ class Chapter17Test(ChapterTest):
         # tidy up any .origs from patches
         self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
         self.sourcetree.run_command('git add . && git commit -m"final commit ch17"')
-        self.check_final_diff(self.chapter_no, ignore_moves=True)
+        self.check_final_diff(ignore=["moves"])
 
 
 if __name__ == '__main__':

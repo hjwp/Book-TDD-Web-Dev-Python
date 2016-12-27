@@ -1,17 +1,12 @@
 [[testfixtures-and-logging]]
-== Test Fixtures, Logging, and pass:[<span class="keep-together">Server-Side Debugging</span>]
-
-NOTE: This chapter not yet been updated for the new edition.  You won't be
-    able to follow along with some of it if you have the code from the new
-    version of chapters 16 + 17
-
+== Test Fixtures, and Server-Side Debugging
 
 Now that we have a functional authentication system, we want to use it to
 identify users, and be able to show them all the lists they have created.
 
 To do that, we're going to have to write FTs that have a logged-in user. Rather
-than making each test go through the (time-consuming) Persona dialog, we want
-to be able to skip that part.
+than making each test go through the (time-consuming) login email dance, we
+want to be able to skip that part.
 
 ((("functional tests/testing (FT)", "vs. unit tests", sortas="unittests")))
 ((("unit tests", "vs. functional tests", sortas="functionaltests")))
@@ -24,6 +19,11 @@ that part, we'll spend less time waiting for duplicated test paths.
 TIP: Don't overdo de-duplication in FTs.  One of the benefits of an FT is that
      it can catch strange and unpredictable interactions between different
      parts of your application.
+
+
+NOTE: This chapter has only just been rewritten for the new edition, so let me
+    know via obeythetestinggoat@gmail.com if you spot any problems or have any
+    suggestions for improvement!
 
 
 Skipping the Login Process by Pre-creating a Session
@@ -82,22 +82,69 @@ works against the database on the staging server too.
 ((("JSON fixtures")))
 
 
-.JSON Test Fixtures Considered Harmful
-*******************************************************************************
-When we pre-populate the database with test data, as we've done here with the
-`User` object and its associated `Session` object, what we're doing is setting
-up a "test fixture".
+.Django Sessions: How a User's Cookies Tell the Server She Is Authenticated
+**********************************************************************
 
-Django comes with built-in support for saving database objects as JSON (using
-the `manage.py dumpdata`), and automatically loading them in your test runs 
-using the `fixtures` class attribute on `TestCase`.
+'Being an attempt to explain sessions, cookies, and authentication in Django.'
+((("sessions")))
+((("cookies")))
+((("authentication","in Django", sortas="Django")))
+((("Django", "authentication in")))
 
-More and more people are starting to say: 
-http://bit.ly/1kSTyrb[don't use JSON fixtures].
-They're a nightmare to maintain when your model changes.  Instead, if you can,
-load data directly using the Django ORM, or look into a tool like
-https://factoryboy.readthedocs.org/[`factory_boy`].
-*******************************************************************************
+Because HTTP is stateless, servers need a way of recognising different clients
+with 'every single request'. IP addresses can be shared, so the usual
+solution is to give each client a unique session ID, which it will store in a
+cookie, and submit with every request.  The server will store that ID somewhere
+(by default, in the database), and then it can recognise each request that
+comes in as being from a particular client.
+
+If you log in to the site using the dev server, you can actually take a look at
+your session ID by hand if you like.  It's stored under the key `sessionid` by
+default. See <<session-cookie-screenshot>>.
+
+[[session-cookie-screenshot]]
+.Examining the session cookie in the Debug toolbar
+image::images/twdp_1601.png[scale="80"]
+
+These session cookies are set for all visitors to a Django site, whether
+they're logged in or not.
+
+When we want to recognise a client as being a logged-in and authenticated user,
+again, rather asking the client to send their username and password with every
+single request, the server can actually just mark that client's session as
+being an authenticated session, and associate it with a user ID in its
+database.
+
+A session is a dictionary-like data structure, and the user ID is stored under
+the key given by `django.contrib.auth.SESSION_KEY`.  You can check this out
+in a `manage.py` console if you like:
+
+[role="skipme small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py shell*]
+[...]
+In [1]: from django.contrib.sessions.models import Session
+
+# substitute your session id from your browser cookie here
+In [2]: session = Session.objects.get(
+    session_key="8u0pygdy9blo696g3n4o078ygt6l8y0y"
+)
+
+In [3]: print(session.get_decoded())
+{'_auth_user_id': 'harry@mockmyid.com', '_auth_user_backend':
+'accounts.authentication.PersonaAuthenticationBackend'}
+----
+
+You can also store any other information you like on a user's session,
+as a way of temporarily keeping track of some state. This works for
+non-logged-in users too.  Just use `request.session` inside any
+view, and it works as a dict. There's more information in the 
+https://docs.djangoproject.com/en/1.10/topics/http/sessions/[Django docs on
+sessions].
+
+**********************************************************************
+
 
 
 Checking It Works
@@ -106,9 +153,8 @@ Checking It Works
 To check it works, it would be good to use some of the code from our previous
 test.  Let's make a couple of functions called `assert_logged_in` and
 `assert_logged_out`. To access them from a different test, we'll need
-to pull it up into `FunctionalTest`, as well as a couple of other methods.
-We'll also tweak them slightly so that they can take an arbitrary email address
-as a parameter:
+to pull them up into `FunctionalTest`. We'll also tweak them slightly so that
+they can take an arbitrary email address as a parameter:
 
 [role="sourcecode"]
 .functional_tests/base.py (ch17l002)
@@ -168,15 +214,13 @@ our pre-authenticated session creator really does work:
 ----
     def test_logged_in_users_lists_are_saved_as_my_lists(self):
         email = 'edith@example.com'
-
         self.browser.get(self.server_url)
-        self.assert_logged_in(email)
+        self.assert_logged_out(email)
 
         # Edith is a logged-in user
         self.create_pre_authenticated_session(email)
-
         self.browser.get(self.server_url)
-        self.assert_logged_out(email)
+        self.assert_logged_in(email)
 ----
 
 That gets us:
@@ -193,10 +237,28 @@ That's a good place for a commit:
 [subs="specialcharacters,quotes"]
 ----
 $ *git add functional_tests*
-$ *git commit -m "placeholder test_my_lists and move login checkers into base"*
+$ *git commit -m "test_my_lists: precreate sessions, move login checks into base"*
 ----
 (((range="endofrange", startref="ix_preauthent")))
 (((range="endofrange", startref="ix_staging_database")))
+
+
+.JSON Test Fixtures Considered Harmful
+*******************************************************************************
+When we pre-populate the database with test data, as we've done here with the
+`User` object and its associated `Session` object, what we're doing is setting
+up a "test fixture".
+
+Django comes with built-in support for saving database objects as JSON (using
+the `manage.py dumpdata`), and automatically loading them in your test runs 
+using the `fixtures` class attribute on `TestCase`.
+
+More and more people are starting to say: 
+http://bit.ly/1kSTyrb[don't use JSON fixtures].
+They're a nightmare to maintain when your model changes.  Instead, if you can,
+load data directly using the Django ORM, or look into a tool like
+https://factoryboy.readthedocs.org/[`factory_boy`].
+*******************************************************************************
 
 
 
@@ -224,7 +286,8 @@ And restart Gunicorn...
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server: *sudo restart gunicorn-superlists-staging.ottg.eu*
+elspeth@server:$ *sudo systemctl daemon-reload*
+elspeth@server:$ *sudo systemctrl restart gunicorn-superlists-staging.ottg.eu*
 ----
 
 Here's what happens when we run the functional tests:
@@ -236,42 +299,44 @@ $ pass:quotes[*python manage.py test functional_tests \
 --liveserver=superlists-staging.ottg.eu*]
 
 ======================================================================
+ERROR: test_can_get_email_link_to_log_in
+(functional_tests.test_login.LoginTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/.../functional_tests/test_login.py", line 22, in
+  test_can_get_email_link_to_log_in
+    self.assertIn('Check your email', body.text)
+AssertionError: 'Check your email' not found in 'Server Error (500)'
+
+
+======================================================================
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
 (functional_tests.test_my_lists.MyListsTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/workspace/superlists/functional_tests/test_my_lists.py", line 34, in
-test_logged_in_users_lists_are_saved_as_my_lists
+  File "/home/harry/.../book-example/functional_tests/test_my_lists.py",
+  line 34, in test_logged_in_users_lists_are_saved_as_my_lists
     self.assert_logged_in(email)
-  File "/workspace/superlists/functional_tests/base.py", line 42, in
-assert_logged_in
+  File "/worskpace/functional_tests/base.py", line 42, in assert_logged_in
     self.browser.find_element_by_link_text('Log out')
-[...]
+    [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: {"method":"link text","selector":"Log out"}
+Stacktrace:
+[...]
 
-======================================================================
-FAIL: test_can_get_email_link_to_log_in (functional_tests.test_login.LoginTest)
  ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/workspace/superlists/functional_tests/test_login.py", line 22, in
-test_can_get_email_link_to_log_in
-    self.assertIn('Check your email', body.text)
-AssertionError: 'Check your email' not found in 'Server Error (500)'
+Ran 8 tests in 27.933s
+
+FAILED (errors=2)
 ----
 
 We can't log in--either with the real email system or with our
-pre-authenticated session.  There's some kind of bug.
+pre-authenticated session.  Looks like our nice new authentication
+system is crashing the server.
 
 
-
-When I ran into this bug, I did consider just going back and fixing it in the
-previous chapter, and pretending it never happened, but I think leaving it
-illustrates the point of running tests against a staging environment.  It would
-have been pretty embarrassing if we'd deployed this bug straight to our live
-site.
-
-Aside from that, we'll get to practice a bit of server-side debugging.
+Let's practice a bit of server-side debugging!
 
 
 
@@ -281,15 +346,14 @@ Setting Up Logging
 
 ((("Gunicorn")))
 ((("logging")))
-In order to track this bug down, we have to set up Gunicorn to do some
+In order to track this problem down, we have to set up Gunicorn to do some
 logging.  Adjust the Gunicorn config on the server, using `vi` or `nano`:
 
-[role="sourcecode skipme"]
-.server: /etc/init/gunicorn-superlists-staging.ottg.eu.conf
-[source,bash]
+[role="sourcecode small-code skipme"]
+.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
+[source,ini]
 ----
-[...]
-exec ../virtualenv/bin/gunicorn \
+ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
     --bind unix:/tmp/superlists-staging.ottg.eu.socket \
     --access-logfile ../access.log \
     --error-logfile ../error.log \
@@ -330,8 +394,9 @@ the server with a:
 [role="skipme smallcode"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server: $ *service gunicorn-superlists-staging.ottg.eu restart*
-elspeth@server: $ *tail -f error.log*  # assumes we are in ~/sites/$SITENAME folder
+elspeth@server:$ *sudo systemctl daemon-reload*
+elspeth@server:$ *sudo systemctrl restart gunicorn-superlists-staging.ottg.eu*
+elspeth@server:$ *tail -f error.log*  # assumes we are in ~/sites/$SITENAME folder
 ----
 
 You should see an error like this:
@@ -351,166 +416,237 @@ Traceback (most recent call last):
   File "/usr/lib/python3.5/smtplib.py", line 862, in sendmail
     raise SMTPSenderRefused(code, resp, from_addr)
 smtplib.SMTPSenderRefused: (530, b'5.5.1 Authentication Required. Learn more
-at\n5.5.1  https://support.google.com/mail/answer/14257 [...]
-gsmtp', 'noreply@superlists')
+at\n5.5.1  https://support.google.com/mail/?p=WantAuthError [...]
+- gsmtp', 'noreply@superlists')
+
 ----
 
 Hm, gmail is refusing to send our emails is it?  Now why might that be?  Ah
 yes, we haven't told the server what our password is!
 
 
-TODO: finish rewriting this chapter
-
-* add EMAIL_PASSWORD to gunicorn service config
-* ? discuss difference with secret_key
-* still won't work, implement testing of email in FT
-* discuss pros+cons of same.
+//TODO: consider adding a logging.info or similar here, so we can reintroduce
+//the logging stuff?
 
 
-WARNING: the rest of this chapter still references the old login system.
+Setting secret environment variables on the server
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-It turns out it's because I overlooked an important part of the
-Persona system, which is that authentications are only valid for particular
-domains.  We've left the domain hardcoded as "localhost" in
-'accounts/authentication.py':
+In the deployment chapter, we've seen one way of setting secret
+values on the server, which we use to populate the Django
+`SECRET_KEY` setting--creating one-off Python files on the server
+filesystem, and importing them.
 
-[role="sourcecode currentcontents"]
-.accounts/authentication.py
-[source,python]
+In these chapters we've been using environment variables in our
+shells to store our email password, so let's replicate that on 
+the server.  We can set the environment variable in the Systemd
+config file:
+
+[role="sourcecode small-code skipme"]
+.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
+[source,ini]
 ----
-PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
-DOMAIN = 'localhost'
-User = get_user_model()
-----
-
-We can try and hack in a fix on the server:
-
-[role="sourcecode skipme"]
-.accounts/authentication.py
-[source,python]
-----
-DOMAIN = 'superlists-staging.ottg.eu'
+[Service]
+User=elspeth
+Environment=EMAIL_PASSWORD=yoursekritpasswordhere
+WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu/source
 ----
 
-And check whether it works by doing a manual login. It does.
+NOTE: One arguable security advantage to using this config file is we
+    can restrict its permissions to only be readable by root, something
+    we can't do for our app's Python source files.
 
 
-Fixing the Persona Bug
-^^^^^^^^^^^^^^^^^^^^^^
+Saving that file, and doing the usual `daemon-reload` and `restart gunicorn`
+dance, we can re-run our FTs, and...
 
-Here's how we go about baking in a fix, switching back to coding on our local
-PC. We start by moving the definition for the `DOMAIN` variable into
-'settings.py', where we can later use the deploy script to override it:
-
-[role="sourcecode"]
-.superlists/settings.py (ch17l011)
-[source,python]
-----
-# This setting is changed by the deploy script
-DOMAIN = "localhost"
-
-ALLOWED_HOSTS = [DOMAIN]
-----
-
-We feed that change back through the tests:
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py
-[source,diff]
-----
-@@ -1,12 +1,14 @@
- from unittest.mock import patch
-+from django.conf import settings
- from django.contrib.auth import get_user_model
- from django.test import TestCase
- User = get_user_model()
- 
- from accounts.authentication import (
--    PERSONA_VERIFY_URL, DOMAIN, PersonaAuthenticationBackend
-+    PERSONA_VERIFY_URL, PersonaAuthenticationBackend
- )
- 
-+
- @patch('accounts.authentication.requests.post')
- class AuthenticateTest(TestCase):
- 
-@@ -21,7 +23,7 @@ class AuthenticateTest(TestCase):
-         self.backend.authenticate('an assertion')
-         mock_post.assert_called_once_with(
-             PERSONA_VERIFY_URL,
--            data={'assertion': 'an assertion', 'audience': DOMAIN}
-+            data={'assertion': 'an assertion', 'audience': settings.DOMAIN}
-         )
-----
-
-And then we change the implementation:
-
-[role="sourcecode"]
-.accounts/authentication.py
-[source,diff]
-----
-@@ -1,8 +1,8 @@
- import requests
-+from django.conf import settings
- from django.contrib.auth import get_user_model
- User = get_user_model()
- 
- PERSONA_VERIFY_URL = 'https://verifier.login.persona.org/verify'
--DOMAIN = 'localhost'
- 
- 
-@@ -11,7 +11,7 @@ class PersonaAuthenticationBackend(object):
-     def authenticate(self, assertion):
-         response = requests.post(
-             PERSONA_VERIFY_URL,
--            data={'assertion': assertion, 'audience': DOMAIN}
-+            data={'assertion': assertion, 'audience': settings.DOMAIN}
-         )
-        if response.ok and response.json()['status'] == 'okay':
-            email = response.json()['email']
-----
-
-Rerunning the tests just to be sure:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test accounts*]
-[...]
-Ran 14 tests in 0.053s
-OK
-----
-
-Next we update our fabfile to make it adjust the domain in 'settings.py', 
-removing the cumbersome two-line `sed` on `ALLOWED_HOSTS`:
-(((range="endofrange", startref="ix_personabug")))
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py
-[source,python]
-----
-def _update_settings(source_folder, site_name):
-    settings_path = source_folder + '/superlists/settings.py'
-    sed(settings_path, "DEBUG = True", "DEBUG = False")
-    sed(settings_path, 'DOMAIN = "localhost"', 'DOMAIN = "%s"' % (site_name,))
-    secret_key_file = source_folder + '/superlists/secret_key.py'
-    if not exists(secret_key_file):
-        [...]
-----
-
-We redeploy, and spot the `sed` in the output:
 
 [role="skipme"]
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *fab deploy --host=superlists-staging.ottg.eu*
+$ pass:quotes[*python manage.py test functional_tests \
+--liveserver=superlists-staging.ottg.eu*]
+
 [...]
-[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DOMAIN =
-"localhost"/DOMAIN = "superlists-staging.ottg.eu"/g' "$(echo
-/home/harry/sites/superlists-staging.ottg.eu/source/superlists/settings.py)"
+Traceback (most recent call last):
+  File "/.../superlists/functional_tests/test_login.py", line 25, in
+  test_can_get_email_link_to_log_in
+    email = mail.outbox[0]
+IndexError: list index out of range
+
 [...]
+
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: {"method":"link text","selector":"Log out"}
 ----
-(((range="endofrange", startref="ix_debugstaging")))
-(((range="endofrange", startref="ix_stagingdebug")))
+
+
+The my_lists failure is still the same, but we have more information in our
+login test: the FT gets further, the site now looks like it's sending emails
+correctly, (and the server log shows no errors) but we can't check the email in
+the mail.outbox...
+
+
+Adapting our FT to be able to test real emails via POP3
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ah. That explains it. Now that we're running against a real server rather than
+the `LiveServerTestCase`, we can no longer inspect the local
+`django.mail.outbox` to see sent emails.
+
+
+First, we'll need to know, in our FTs, whether we're running against
+the staging server or not.  Let's populate a variable `self.against_staging`
+in 'base.py':
+
+[role="sourcecode"]
+.functional_tests/base.py (ch17l005)
+[source,diff]
+----
+@@ -9,8 +9,10 @@ class FunctionalTest(StaticLiveServerTestCase):
+         for arg in sys.argv:
+             if 'liveserver' in arg:
+                 cls.server_url = 'http://' + arg.split('=')[1]
++                cls.against_staging = True
+                 return
+         super().setUpClass()
++        cls.against_staging = False
+         cls.server_url = cls.live_server_url
+----
+
+Then we build a helper function that can retrieve a real
+email from a real POP3 email server, using the horifically
+tortuous Python standard library pop3 client:
+
+[role="sourcecode"]
+.functional_tests/test_login.py (ch17l006)
+[source,python]
+----
+import os
+import poplib
+import re
+import time
+[...]
+
+    def wait_for_email(self, test_email, subject):
+        if not self.against_staging:
+            email = mail.outbox[0]
+            self.assertIn(test_email, email.to)
+            self.assertEqual(email.subject, subject)
+            return email.body
+
+        subject_line = 'Subject: {}'.format(subject)
+        email_id = None
+        start = time.time()
+        inbox = poplib.POP3_SSL('pop.mail.yahoo.com')
+        try:
+            inbox.user(test_email)
+            inbox.pass_(os.environ['YAHOO_PASSWORD'])
+            while time.time() - start < 60:
+                count, _ = inbox.stat()
+                for i in reversed(range(max(1, count - 10), count + 1)):
+                    print('getting msg', i)
+                    _, lines, __ = inbox.retr(i)
+                    lines = [l.decode('utf8') for l in lines]
+                    print(lines)
+                    if subject_line in lines:
+                        email_id = i
+                        body = '\n'.join(lines)
+                        return body
+                time.sleep(5)
+        finally:
+            if email_id:
+                inbox.dele(email_id)
+            inbox.quit()
+----
+
+
+And feed thru the rest of the changes to the FT that are required
+as a result:
+
+
+
+[role="sourcecode"]
+.functional_tests/test_login.py (ch17l007)
+[source,diff]
+----
+@@ -5,7 +5,7 @@ import time
+ from django.core import mail
+ from .base import FunctionalTest
+ 
+-TEST_EMAIL = 'edith@example.com'
++
+ SUBJECT = 'Your login link for Superlists'
+ 
+ 
+@@ -42,13 +42,19 @@ class LoginTest(FunctionalTest):
+                 inbox.dele(email_id)
+             inbox.quit()
+ 
++
+     def test_can_get_email_link_to_log_in(self):
+         # Edith goes to the awesome superlists site
+         # and notices a "Log in" section in the navbar for the first time
+         # It's telling her to enter her email address, so she does
++        if self.against_staging:
++            test_email = 'edith.testuser@yahoo.com'
++        else:
++            test_email = 'edith@example.com'
++
+         self.browser.get(self.server_url)
+         self.browser.find_element_by_name('email').send_keys(
+-            TEST_EMAIL + '\n'
++            test_email + '\n'
+         )
+ 
+         # A message appears telling her an email has been sent
+@@ -56,16 +62,14 @@ class LoginTest(FunctionalTest):
+         self.assertIn('Check your email', body.text)
+ 
+         # She checks her email and finds a message
+-        email = mail.outbox[0]
+-        self.assertIn(TEST_EMAIL, email.to)
+-        self.assertEqual(email.subject, SUBJECT)
++        body = self.wait_for_email(test_email, SUBJECT)
+ 
+         # It has a url link in it
+-        self.assertIn('Use this link to log in', email.body)
+-        url_search = re.search(r'http://.+/.+$', email.body)
++        self.assertIn('Use this link to log in', body)
++        url_search = re.search(r'http://.+/.+$', body)
+         if not url_search:
+             self.fail(
+-                'Could not find url in email body:\n{}'.format(email.body)
++                'Could not find url in email body:\n{}'.format(body)
+             )
+         url = url_search.group(0)
+         self.assertIn(self.server_url, url)
+@@ -74,11 +78,11 @@ class LoginTest(FunctionalTest):
+         self.browser.get(url)
+ 
+         # she is logged in!
+-        self.assert_logged_in(email=TEST_EMAIL)
++        self.assert_logged_in(email=test_email)
+ 
+         # Now she logs out
+         self.browser.find_element_by_link_text('Log out').click()
+ 
+         # She is logged out
+-        self.assert_logged_out(email=TEST_EMAIL)
++        self.assert_logged_out(email=test_email)
+----
+
+
+And, believe it or not, that'll actually work, and give us an FT
+that can actually check for logins that work, involving real emails!
+
+
+TIP: I've just hacked this email-checking code together, and it's currently
+    pretty ugly and brittle.  With a few more retry loops it could grow into
+    something more reliable. Alternatively, services like 'mailinator.com' will
+    give you throwaway email addresses and an API to check them, for a small
+    fee.
+
 
 Managing the Test Database on Staging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -535,7 +671,7 @@ Superlists
 Sign in
 Start a new To-Do list
 
-Ran 7 tests in 72.742s
+Ran 8 tests in 72.742s
 
 FAILED (errors=1)
 ----
@@ -627,11 +763,11 @@ well as tests:
 [source,python]
 ----
 +++ b/superlists/settings.py
-@@ -42,6 +42,7 @@ INSTALLED_APPS = (
+@@ -42,6 +42,7 @@ INSTALLED_APPS = [
      'lists',
      'accounts',
 +    'functional_tests',
- )
+ ]
 ----
 
 Now it works:
@@ -643,9 +779,10 @@ $ pass:quotes[*python manage.py create_session a@b.com*]
 qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
-NOTE: If you see an error saying the `auth_user` table is missing, you may need to
-run `manage.py migrate`.  In case that doesn't work, delete the `db.sqlite3` file and
-run migrate again, to get a clean slate.
+NOTE: If you see an error saying the `auth_user` table is missing, you may need
+to run `manage.py migrate`.  In case that doesn't work, delete the `db.sqlite3`
+file and run migrate again, to get a clean slate.
+
 
 Getting the FT to Run the Management Command on the Server
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -683,8 +820,8 @@ class MyListsTest(FunctionalTest):
 ----
 
 
-Let's see how we know whether or not we're working against the 
-staging server. `self.against_staging` gets populated in 'base.py':
+Let's also tweak 'base.py', to gather a bit more information
+when we populate `self.against_staging`:
 
 
 [role="sourcecode"]
@@ -701,7 +838,7 @@ class FunctionalTest(StaticLiveServerTestCase):
             if 'liveserver' in arg:
                 cls.server_host = arg.split('=')[1] #<1>
                 cls.server_url = 'http://' + cls.server_host
-                cls.against_staging = True #<1>
+                cls.against_staging = True
                 return
         super().setUpClass()
         cls.against_staging = False
@@ -709,7 +846,7 @@ class FunctionalTest(StaticLiveServerTestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if not cls.against_staging:
+        if not cls.against_staging:  #<3>
             super().tearDownClass()
 
     def setUp(self):
@@ -720,13 +857,16 @@ class FunctionalTest(StaticLiveServerTestCase):
 ----
 
 <1> Instead of just storing `cls.server_url`, we also store the `server_host` 
-    and `against_staging` attributes if we detect the `liveserver` command-line
-    argument.
+    attributes if we detect the `liveserver` command-line argument.
 
 <2> We also need a way of resetting the server database in between each test. 
     I'll explain the logic of the session-creation code, which should also 
     explain how this works.
+
+<3> On a related note, if we're against staging, we can skip the normal
+    tearDownClass, whose job is mainly to reset the local test database.
 (((range="endofrange", startref="ix_Djangomancommond")))
+
 
 An Additional Hop via subprocess
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -749,17 +889,17 @@ def create_session_on_server(host, email):
     return subprocess.check_output(
         [
             'fab',
-            'create_session_on_server:email={}'.format(email), #<1><2>
-            '--host={}'.format(host),
-            '--hide=everything,status', #<3>
+            'create_session_on_server:email={}'.format(email),  #<1><2>
+            '--host=elspeth@{}'.format(host),  #<3>
+            '--hide=everything,status',  #<4>
         ],
         cwd=THIS_FOLDER
-    ).decode().strip() #<3>
+    ).decode().strip()  #<4>
 
 
 def reset_database(host):
     subprocess.check_call(
-        ['fab', 'reset_database', '--host={}'.format(host)],
+        ['fab', 'reset_database', '--host=elspeth@{}'.format(host)],  <3>
         cwd=THIS_FOLDER
     )
 ----
@@ -780,7 +920,9 @@ Here we use the `subprocess` module to call some Fabric functions using the
     http://docs.python.org/3/library/string.html#format-examples[Python docs]
     to learn more.
 
-<3> Because of all the hopping around via Fabric and subprocesses, we're forced
+<3> Replace "elspeth" with your own user account name on your server.
+
+<4> Because of all the hopping around via Fabric and subprocesses, we're forced
     to be quite careful about extracting the session key as a string from the
     output of the command as it gets run on the server.
 
@@ -831,7 +973,7 @@ Does that make a reasonable amount of sense?  We've got a function that
 can create a session in the database.  If we detect we're running locally,
 we call it directly.  If we're against the server, there's a couple of hops:
 we use `subprocess` to get to Fabric via `fab`, which lets us run a management
-command that calls that same function, on the server.
+command that calls that same function, but on the server.
 
 
 How about an ASCII-art illustration?
@@ -840,26 +982,23 @@ How about an ASCII-art illustration?
 .Locally:
 ----
 MyListsTest
-.create_pre_authenticated_session --> .management.commands.create_session
-                                      .create_pre_authenticated_session
+.create_pre_authenticated_session  →   .management.commands.create_session
+                                       .create_pre_authenticated_session
 ----
 
 [role="skipme"]
 .Against staging:
 ----
 MyListsTest
-.create_pre_authenticated_session     .management.commands.create_session
-                                      .create_pre_authenticated_session
-     |                                              
-    \|/                                             /|\
-                                                     |
+.create_pre_authenticated_session      .management.commands.create_session
+                                       .create_pre_authenticated_session
+     ↓
+                                                      ↑
 server_tools
-.create_session_on_server               run manage.py create_session 
+.create_session_on_server                run manage.py create_session 
 
-     |                                              /|\
-    \|/                                              |
-
-subprocess.check_output  -->   fab  -->  fabfile.create_session_on_server
+     ↓                                                ↑
+subprocess.check_output    →    fab   →   fabfile.create_session_on_server
 ----
 
 Anyway, let's see if it works.  First, locally, to check we didn't break
@@ -916,7 +1055,7 @@ $ pass:quotes[*python manage.py test functional_tests \
 Creating test database for alias 'default'...
 [superlists-staging.ottg.eu] Executing task 'reset_database'
 [...]
-Ran 7 tests in 89.494s
+Ran 8 tests in 89.494s
 
 OK
 Destroying test database for alias 'default'...
@@ -962,174 +1101,17 @@ good, after all.
 Let's start by saving the Gunicorn config to our template file in 'deploy_tools':
 
 [role="sourcecode"]
-.deploy_tools/gunicorn-upstart.template.conf
-[source,bash]
+.deploy_tools/gunicorn-systemd.template.service
+[source,ini]
 ----
 [...]
-chdir /home/elspeth/sites/SITENAME/source
-
-exec ../virtualenv/bin/gunicorn \
+ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
     --bind unix:/tmp/SITENAME.socket \
     --access-logfile ../access.log \
     --error-logfile ../error.log \
     superlists.wsgi:application
-----
-
-Using Hierarchical Logging Config
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("logging configuration", id="ix_loggingconfig", range="startofrange")))
-When we hacked in the `logging.warning` earlier, we were using the root logger.
-That's not normally a good idea, since any third-party package can mess with the
-root logger.  The normal pattern is to use a logger named after the file you're
-in, by using:
-
-[role="skipme"]
-[source,python]
-----
-logger = logging.getLogger(__name__)
-----
-
-Logging configuration is hierarchical, so you can define "parent" loggers for
-top-level modules, and all the Python modules inside them will inherit that
-config.
-
-Here's how we add a logger for both our apps into 'settings.py':
-
-[role="sourcecode"]
-.superlists/settings.py
-[source,python]
-----
-LOGGING = {
-   'version': 1,
-   'disable_existing_loggers': False,
-   'handlers': {
-       'console': {
-           'level': 'DEBUG',
-           'class': 'logging.StreamHandler',
-       },
-   },
-   'loggers': {
-        'django': {
-            'handlers': ['console'],
-        },
-        'accounts': {
-            'handlers': ['console'],
-        },
-        'lists': {
-            'handlers': ['console'],
-        },
-    },
-    'root': {'level': 'INFO'},
-}
-----
-
-Now 'accounts.models', 'accounts.views', 'accounts.authentication', and all 
-the others will inherit the `logging.StreamHandler` from the parent 'accounts'
-logger.  
-
-Unfortunately, because of Django's project structure, there's no 
-way of defining a top-level logger for your whole project (aside from using
-the root logger), so you have to define one logger per app.
-
-
-Here's how to write a test for logging behaviour:
-
-[role="sourcecode"]
-.accounts/tests/test_authentication.py (ch17l023)
-[source,python]
-----
-import logging
 [...]
-
-@patch('accounts.authentication.requests.post')
-class AuthenticateTest(TestCase):
-    [...]
-
-    def test_logs_non_okay_responses_from_persona(self, mock_post):
-        response_json = {
-            'status': 'not okay', 'reason': 'eg, audience mismatch'
-        }
-        mock_post.return_value.ok = True
-        mock_post.return_value.json.return_value = response_json  #<1>
-
-        logger = logging.getLogger('accounts.authentication')  #<2>
-        with patch.object(logger, 'warning') as mock_log_warning:  #<3>
-            self.backend.authenticate('an assertion')
-
-        mock_log_warning.assert_called_once_with(
-            'Persona says no. Json was: {}'.format(response_json)  #<4>
-        )
 ----
-
-<1> We set up our test with some data that should cause some logging.
-
-<2> We retrieve the actual logger for the module we're testing.
-
-<3> We use `patch.object` to temporarily mock out its warning function,
-    by using `with` to make it a 'context manager' around the function we're
-    testing.
-
-<4> And then it's available for us to make assertions against.
-
-That gives us:
-
-[subs="specialcharacters,macros"]
-----
-AssertionError: Expected 'warning' to be called once. Called 0 times.
-----
-
-Let's just try it out, to make sure we really are testing what we think
-we are:
-
-[role="sourcecode"]
-.accounts/authentication.py (ch17l024)
-[source,python]
-----
-import logging
-logger = logging.getLogger(__name__)
-[...]
-
-        if response.ok and response.json()['status'] == 'okay':
-            [...]
-        else:
-            logger.warning('foo')
-----
-
-We get the expected failure:
-
-
-[subs="specialcharacters,macros"]
-----
-AssertionError: Expected call: warning("Persona says no. Json was: {'status':
-'not okay', 'reason': 'eg, audience mismatch'}")
-Actual call: warning('foo')
-----
-
-And so we settle in with our real implementation:
-
-[role="sourcecode"]
-.accounts/authentication.py (ch17l025)
-[source,python]
-----
-    else:
-        logger.warning(
-            'Persona says no. Json was: {}'.format(response.json())
-        )
-----
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test accounts*]
-[...]
-Ran 15 tests in 0.033s
-
-OK
-----
-
-You can easily imagine how you could test more combinations at this point,
-if you wanted different error messages for `response.ok != True`, and so on.
 
 
 Wrap-Up
@@ -1180,8 +1162,185 @@ Fixtures also have to work remotely::
     using the Django ORM for tests running locally.  Interacting with the 
     database on the staging server is not so straightforward--one solution
     is Django management commands, as I've shown, but you should explore what
-    works for you, and be careful!
+    works for you.
+
+Be very careful when resetting data on your servers::
+    A command that can remotely wipe the entire database on one of your
+    servers is a dangerous weapon, and you want to be really, really sure
+    it's never accidentally going to hit your production data.
     
+
+*******************************************************************************
+
+
+Stuff from the old edition that we might want to save
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Using Hierarchical Logging Config
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+TODO: this section has not yet been adapted to the new version
+
+((("logging configuration", id="ix_loggingconfig", range="startofrange")))
+When we hacked in the `logging.warning` earlier, we were using the root logger.
+That's not normally a good idea, since any third-party package can mess with the
+root logger.  The normal pattern is to use a logger named after the file you're
+in, by using:
+
+[role="skipme"]
+[source,python]
+----
+logger = logging.getLogger(__name__)
+----
+
+Logging configuration is hierarchical, so you can define "parent" loggers for
+top-level modules, and all the Python modules inside them will inherit that
+config.
+
+Here's how we add a logger for both our apps into 'settings.py':
+
+[role="sourcecode skipme"]
+.superlists/settings.py
+[source,python]
+----
+LOGGING = {
+   'version': 1,
+   'disable_existing_loggers': False,
+   'handlers': {
+       'console': {
+           'level': 'DEBUG',
+           'class': 'logging.StreamHandler',
+       },
+   },
+   'loggers': {
+        'django': {
+            'handlers': ['console'],
+        },
+        'accounts': {
+            'handlers': ['console'],
+        },
+        'lists': {
+            'handlers': ['console'],
+        },
+    },
+    'root': {'level': 'INFO'},
+}
+----
+
+Now 'accounts.models', 'accounts.views', 'accounts.authentication', and all 
+the others will inherit the `logging.StreamHandler` from the parent 'accounts'
+logger.  
+
+Unfortunately, because of Django's project structure, there's no 
+way of defining a top-level logger for your whole project (aside from using
+the root logger), so you have to define one logger per app.
+
+
+Here's how to write a test for logging behaviour:
+
+[role="sourcecode skipme"]
+.accounts/tests/test_authentication.py (ch17l023)
+[source,python]
+----
+import logging
+[...]
+
+@patch('accounts.authentication.requests.post')
+class AuthenticateTest(TestCase):
+    [...]
+
+    def test_logs_non_okay_responses_from_persona(self, mock_post):
+        response_json = {
+            'status': 'not okay', 'reason': 'eg, audience mismatch'
+        }
+        mock_post.return_value.ok = True
+        mock_post.return_value.json.return_value = response_json  #<1>
+
+        logger = logging.getLogger('accounts.authentication')  #<2>
+        with patch.object(logger, 'warning') as mock_log_warning:  #<3>
+            self.backend.authenticate('an assertion')
+
+        mock_log_warning.assert_called_once_with(
+            'Persona says no. Json was: {}'.format(response_json)  #<4>
+        )
+----
+
+<1> We set up our test with some data that should cause some logging.
+
+<2> We retrieve the actual logger for the module we're testing.
+
+<3> We use `patch.object` to temporarily mock out its warning function,
+    by using `with` to make it a 'context manager' around the function we're
+    testing.
+
+<4> And then it's available for us to make assertions against.
+
+That gives us:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+AssertionError: Expected 'warning' to be called once. Called 0 times.
+----
+
+Let's just try it out, to make sure we really are testing what we think
+we are:
+
+[role="sourcecode skipme"]
+.accounts/authentication.py (ch17l024)
+[source,python]
+----
+import logging
+logger = logging.getLogger(__name__)
+[...]
+
+        if response.ok and response.json()['status'] == 'okay':
+            [...]
+        else:
+            logger.warning('foo')
+----
+
+We get the expected failure:
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+AssertionError: Expected call: warning("Persona says no. Json was: {'status':
+'not okay', 'reason': 'eg, audience mismatch'}")
+Actual call: warning('foo')
+----
+
+And so we settle in with our real implementation:
+
+[role="sourcecode skipme"]
+.accounts/authentication.py (ch17l025)
+[source,python]
+----
+    else:
+        logger.warning(
+            'Persona says no. Json was: {}'.format(response.json())
+        )
+----
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test accounts*]
+[...]
+Ran 15 tests in 0.033s
+
+OK
+----
+
+You can easily imagine how you could test more combinations at this point,
+if you wanted different error messages for `response.ok != True`, and so on.
+
+.More notes
+*******************************************************************************
+
 Use loggers named after the module you're in::
     The root logger is a single global object, available to any library that's
     loaded in your Python process, so you're never quite in control of it. 
@@ -1198,4 +1357,3 @@ Test important log messages::
     convenient way of unit testing it.
 
 *******************************************************************************
-

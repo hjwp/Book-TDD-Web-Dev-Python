@@ -31,6 +31,13 @@ SLIMERJS_BINARY = os.path.join(
 )
 
 
+def contains(inseq, subseq):
+    return any(
+        inseq[pos:pos + len(subseq)] == subseq
+        for pos in range(0, len(inseq) - len(subseq) + 1)
+    )
+
+
 
 def wrap_long_lines(text):
     paragraphs = text.split('\n')
@@ -65,8 +72,16 @@ def strip_migration_timestamps(output):
     return re.sub(r'00(\d\d)_auto_20\d{6}_\d{4}', r'00\1_auto_20XXXXXX_XXXX', output)
 
 
+def strip_localhost_port(output):
+    return re.sub(r'localhost:\d{4}', r'localhost:XXXX', output)
+
+
 def strip_session_ids(output):
     return re.sub(r'^[a-z0-9]{32}$', r'xxx_session_id_xxx', output)
+
+
+def standardise_assertionerror_none(output):
+    return output.replace("AssertionError: None", "AssertionError")
 
 
 def strip_git_hashes(output):
@@ -86,7 +101,7 @@ def strip_git_hashes(output):
 
 def strip_callouts(output):
     minus_old_callouts = re.sub(
-        r"^(.+)( ?<\d+>)$",
+        r"^(.+)  <\d+>$",
         r"\1",
         output,
         flags=re.MULTILINE,
@@ -194,13 +209,10 @@ class ChapterTest(unittest.TestCase):
         self.listings = [p for n in listings_nodes for p in parse_listing(n)]
 
 
-    def check_final_diff(
-        self, chapter, ignore_moves=False, ignore_secret_key=False,
-        diff=None
-    ):
+    def check_final_diff(self, ignore=None, diff=None):
         if diff is None:
             diff = self.run_command(Command(
-                'git diff -b repo/chapter_{0:02d}'.format(chapter)
+                'git diff -w repo/chapter_{0:02d}'.format(self.chapter_no)
             ))
         try:
             print('checking final diff', diff)
@@ -211,21 +223,23 @@ class ChapterTest(unittest.TestCase):
         commit = Commit.from_diff(start_marker + diff)
         error = AssertionError('Final diff was not empty, was:\n{}'.format(diff))
 
-        if ignore_secret_key:
-            for line in commit.lines_to_add + commit.lines_to_remove:
-                if 'SECRET_KEY' not in line:
-                    raise error
+        if ignore is None:
+            if commit.lines_to_add or commit.lines_to_remove:
+                raise error
+            return
 
-        elif ignore_moves:
-            if commit.deleted_lines or commit.new_lines:
-                raise AssertionError(
-                    'Found lines to delete or add in diff.\nto delete:\n{}\n\nto add:\n{}'.format(
-                        '\n- '.join(commit.deleted_lines), '\n+'.join(commit.new_lines)
-                    )
-                )
+        if "moves" in ignore:
+            ignore.remove("moves")
+            difference_lines = commit.deleted_lines + commit.new_lines
+        else:
+            difference_lines = commit.lines_to_add + commit.lines_to_remove
 
-        elif commit.lines_to_add or commit.lines_to_remove:
+        for line in difference_lines:
+            if any(ignorable in line for ignorable in ignore):
+                continue
             raise error
+
+
 
 
     def write_to_file(self, codelisting):
@@ -347,7 +361,7 @@ class ChapterTest(unittest.TestCase):
         )
 
         if self.tempdir in actual:
-            actual = actual.replace(self.tempdir, '/workspace')
+            actual = actual.replace(self.tempdir, '/...')
             actual = actual.replace('/private', '')  # macos thing
 
         if ls:
@@ -365,10 +379,12 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_object_ids(actual_fixed)
         actual_fixed = strip_migration_timestamps(actual_fixed)
         actual_fixed = strip_session_ids(actual_fixed)
+        actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
+        actual_fixed = standardise_assertionerror_none(actual_fixed)
 
         expected_fixed = standardise_library_paths(expected)
         expected_fixed = fix_test_dashes(expected_fixed)
@@ -379,8 +395,10 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_object_ids(expected_fixed)
         expected_fixed = strip_migration_timestamps(expected_fixed)
         expected_fixed = strip_session_ids(expected_fixed)
+        expected_fixed = strip_localhost_port(expected_fixed)
         expected_fixed = strip_screenshot_timestamps(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
+        expected_fixed = standardise_assertionerror_none(expected_fixed)
 
         if '\t' in actual_fixed:
             actual_fixed = re.sub(r'\s+', ' ', actual_fixed)
@@ -533,7 +551,7 @@ class ChapterTest(unittest.TestCase):
             self.assert_console_output_correct(lists_run, expected_output)
             return
         else:
-            if '0 failed' in lists_run and not '0 failed' in expected_output:
+            if '0 failed' in lists_run and '0 failed' not in expected_output:
                 print('lists tests pass, assuming accounts tests')
                 accounts_run = self.run_js_tests(accounts_tests)
                 self.assert_console_output_correct(accounts_run, expected_output)
@@ -550,6 +568,19 @@ class ChapterTest(unittest.TestCase):
                     else:
                         raise first_error
 
+
+    def check_current_contents(self, listing, actual_contents):
+        print("CHECK CURRENT CONTENTS")
+        stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
+        listing_contents = re.sub(r' +#$', '', listing.contents, flags=re.MULTILINE)
+        listing_blocks = re.split(r'^.*\[\.\.\..*$', listing_contents, flags=re.MULTILINE)
+        for block in listing_blocks:
+            stripped_block = [line.strip() for line in block.strip().split('\n')]
+            self.assertTrue(
+                contains(stripped_actual_lines, stripped_block),
+                '{}\n\nnot found in\n\n{}'.format(stripped_block, actual_contents)
+            )
+        listing.was_written = True
 
 
     def check_commit(self, pos):
@@ -590,7 +621,7 @@ class ChapterTest(unittest.TestCase):
             return
         for expected_file in LIKELY_FILES:
             if '/' + expected_file in git_output:
-                if not expected_file in comment:
+                if expected_file not in comment:
                     self.fail(
                         "could not find %s in comment %r given git output\n%s" % (
                             expected_file, comment, git_output)
@@ -627,11 +658,13 @@ class ChapterTest(unittest.TestCase):
         else:
             return self.run_command(Command("python3 manage.py test lists"))
 
+
     def run_fts(self):
         if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
             return self.run_command(Command("python3 manage.py test functional_tests"))
         else:
             return self.run_command(Command("python3 functional_tests.py"))
+
 
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
@@ -765,13 +798,7 @@ class ChapterTest(unittest.TestCase):
             actual_contents = self.sourcetree.get_contents(
                 listing.filename
             )
-            print("CHECK CURRENT CONTENTS")
-            stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
-            listing_contents = re.sub(r' +#$', '', listing.contents, flags=re.MULTILINE)
-            for line in listing_contents.split('\n'):
-                if line and not '[...]' in line:
-                    self.assertIn(line.strip(), stripped_actual_lines)
-            listing.was_written = True
+            self.check_current_contents(listing, actual_contents)
             self.pos += 1
 
         elif listing.type == 'code listing':
@@ -796,7 +823,7 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'output':
             self._strip_out_any_pycs()
             test_run = self.run_unit_tests()
-            if 'OK' in test_run and not 'OK' in listing:
+            if 'OK' in test_run and 'OK' not in listing:
                 print('unit tests pass, must be an FT:\n', test_run)
                 test_run = self.run_fts()
             try:

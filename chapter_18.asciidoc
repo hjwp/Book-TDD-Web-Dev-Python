@@ -14,12 +14,6 @@ outside, and build up our code in layers. Now I'll make it explicit, and talk
 about some of the common issues involved. 
 
 
-NOTE: this chapter has not yet been updated for the new edition.  However,
-    if you have a version of the `create_pre_authenticated_session` helper
-    function from the previous chapter, and it works, you should be able
-    to follow along with this chapter.
-
-
 The Alternative: "Inside Out"
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -117,7 +111,7 @@ write our FT to look for a "My Lists" page:
         self.assertEqual(self.browser.current_url, second_list_url)
 
         # She logs out.  The "My lists" option disappears
-        self.browser.find_element_by_id('id_logout').click()
+        self.browser.find_element_by_link_text('Log out').click()
         self.assertEqual(
             self.browser.find_elements_by_link_text('My lists'),
             []
@@ -147,11 +141,14 @@ our navigation bar. Here's the minimal code change:
 .lists/templates/base.html (ch18l002-1)
 [source,html]
 ----
-{% if user.email %}
-    <ul class="nav navbar-nav">
-        <li><a href="#">My lists</a></li>
+  {% if user.email %}
+    <ul class="nav navbar-nav navbar-left">
+      <li><a href="#">My lists</a></li>
     </ul>
-    <a class="btn navbar-btn navbar-right" id="id_logout" [...]
+    <ul class="nav navbar-nav navbar-right">
+      <li class="navbar-text">Logged in as {{ user.email }}</li>
+      <li><a href="{% url 'logout' %}">Log out</a></li>
+    </ul>
 ----
 
 Of course, that link doesn't actually go anywhere, but it does get us along to
@@ -175,9 +172,8 @@ URL and nothing else:
 .lists/templates/base.html (ch18l002-2)
 [source,html]
 ----
-    <ul class="nav navbar-nav">
-        <li><a href="{% url 'my_lists' user.email %}">My lists</a></li>
-    </ul>
+    <li><a href="{% url 'logout' %}">Log out</a></li>
+    <li><a href="{% url 'my_lists' user.email %}">My lists</a></li>
 ----
 
 
@@ -228,13 +224,13 @@ That gives us a test failure, which informs us of what we should do as we
 move down to the next level:
 
 ----
-AttributeError: 'module' object has no attribute 'my_lists'
+AttributeError: module 'lists.views' has no attribute 'my_lists'
 ----
 
 
 ((("Outside-In TDD", "views layer", id="ix_tddviews", range="startofrange")))
 We move in from the presentation layer to the views layer, and create a
-minimal pass:[<span class="keep-together">placeholder:</span>]
+minimal placeholder:
 
 [role="sourcecode"]
 .lists/views.py (ch18l005)
@@ -288,45 +284,47 @@ we'll put that into a block too, making it optional:
 .lists/templates/base.html (ch18l007-1)
 [source,html]
 ----
-    <div class="text-center">
-        <h1>{% block header_text %}{% endblock %}</h1>
-
-        {% block list_form %}
-        <form method="POST" action="{% block form_action %}{% endblock %}">
-            {{ form.text }}
-            {% csrf_token %}
-            {% if form.errors %}
-                <div class="form-group has-error">
+      <div class="row">
+        <div class="col-md-6 col-md-offset-3 jumbotron">
+          <div class="text-center">
+            <h1>{% block header_text %}{% endblock %}</h1>
+            {% block list_form %}
+              <form method="POST" action="{% block form_action %}{% endblock %}">
+                {{ form.text }}
+                {% csrf_token %}
+                {% if form.errors %}
+                  <div class="form-group has-error">
                     <div class="help-block">{{ form.text.errors }}</div>
-                </div>
-            {% endif %}
-        </form>
-        {% endblock %}
-
-    </div>
+                  </div>
+                {% endif %}
+              </form>
+            {% endblock %}
+          </div>
+        </div>
+      </div>
 ----
 
 [role="sourcecode"]
 .lists/templates/base.html (ch18l007-2)
 [source,html]
 ----
-    <div class="row">
+      <div class="row">
         <div class="col-md-6 col-md-offset-3">
-            {% block table %}
-            {% endblock %}
+          {% block table %}
+          {% endblock %}
         </div>
-    </div>
+      </div>
 
-    <div class="row">
+      <div class="row">
         <div class="col-md-6 col-md-offset-3">
-            {% block extra_content %}
-            {% endblock %}
+          {% block extra_content %}
+          {% endblock %}
         </div>
-    </div>
+      </div>
 
-</div>
-<script src="http://code.jquery.com/jquery.min.js"></script>
-[...]
+    </div>
+    <script src="/static/jquery-3.1.1.min.js"></script>
+    [...]
 ----
 
 
@@ -390,13 +388,13 @@ we've got any further:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests*]
+$ pass:quotes[*python manage.py test functional_tests*]
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: {"method":"link text","selector":"Reticulate splines"}
 
  ---------------------------------------------------------------------
-Ran 7 tests in 77.613s
+Ran 8 tests in 77.613s
 
 FAILED (errors=1)
 ----
@@ -490,30 +488,19 @@ Here's a first crack at writing the test:
 .lists/tests/test_views.py (ch18l014)
 [source,python]
 ----
-from django.http import HttpRequest
-[...]
-from lists.views import new_list
-[...]
-
 class NewListTest(TestCase):
     [...]
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
-        request = HttpRequest()
-        request.user = User.objects.create(email='a@b.com')
-        request.POST['text'] = 'new list item'
-        new_list(request)
+        user = User.objects.create(email='a@b.com')
+        self.client.force_login(user)  #<1>
+        self.client.post('/lists/new', data={'text': 'new item'})
         list_ = List.objects.first()
-        self.assertEqual(list_.owner, request.user)
+        self.assertEqual(list_.owner, user)
 ----
 
-This test uses the raw view function, and manually constructs an
-`HttpRequest` because it's slightly easier to write the test that way.
-Although the Django test client does have a helper function called `login`, it 
-doesn't work well with external authentication services.  The alternative would
-be to manually create a session object (like we do in the functional tests), or
-to use mocks, and I think both of those would end up uglier than this version.
-If you're curious, you could have a go at writing it differently.
+<1> `force_login()` is the way you get the test client to make requests
+    with a logged-in user.
 
 The test fails as follows:
 
@@ -546,7 +533,7 @@ But it won't actually work, because we don't know how to save a list owner yet:
 
 
 ----
-    self.assertEqual(list_.owner, request.user)
+    self.assertEqual(list_.owner, user)
 AttributeError: 'List' object has no attribute 'owner'
 ----
 
@@ -677,9 +664,9 @@ Because we need to do make some migrations:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py makemigrations*]
+$ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'lists':
-  0006_list_owner.py:
+  lists/migrations/0006_list_owner.py:
     - Add field owner to list
 ----
 //22
@@ -692,7 +679,8 @@ ERROR: test_redirects_after_POST (lists.tests.test_views.NewListTest)
 ValueError: Cannot assign "<SimpleLazyObject:
 <django.contrib.auth.models.AnonymousUser object at 0x7f364795ef90>>":
 "List.owner" must be a "User" instance.
-ERROR: test_saving_a_POST_request (lists.tests.test_views.NewListTest)
+ERROR: test_can_save_a_POST_request (lists.tests.test_views.NewListTest)
+
 [...]
 ValueError: Cannot assign "<SimpleLazyObject:
 <django.contrib.auth.models.AnonymousUser object at 0x7f364795ef90>>":
@@ -704,10 +692,10 @@ ValueError: Cannot assign "<SimpleLazyObject:
 We're moving back up to the views layer now, just doing a little 
 tidying up. Notice that these are in the old test for the `new_list` view, when
 we haven't got a logged-in user.  We should only save the list owner when the
-user is actually logged in.  The `.is_authenticated()` function we defined in
+user is actually logged in.  The `.is_authenticated` attribute we defined in
 <<python-mocks-chapter>> comes in useful now (when they're not logged in,
 Django represents users using a class called `AnonymousUser`, whose 
-`.is_authenticated()` always returns `False`):
+`.is_authenticated` is always `False`):
 
 
 [role="sourcecode"]
@@ -716,7 +704,7 @@ Django represents users using a class called `AnonymousUser`, whose
 ----
     if form.is_valid():
         list_ = List()
-        if request.user.is_authenticated():
+        if request.user.is_authenticated:
             list_.owner = request.user
         list_.save()
         form.save(for_list=list_)
@@ -727,7 +715,7 @@ And that gets us passing!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python manage.py test lists*]
 Creating test database for alias 'default'...
 .......................................
  ---------------------------------------------------------------------
@@ -809,9 +797,9 @@ image::images/twdp_1801.png["Screenshot of new My Lists page"]
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests*]
+$ pass:quotes[*python manage.py test functional_tests*]
 [...]
-Ran 7 tests in 93.819s
+Ran 8 tests in 93.819s
 
 OK
 ----

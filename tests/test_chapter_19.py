@@ -42,11 +42,11 @@ class Chapter19Test(ChapterTest):
             if check_head:
                 print('checking chapter started from correct tag')
                 revision = self.sourcetree.run_command('git rev-parse HEAD')
-                assert "fb32e0d7ae5ee5" in revision
+                assert "3a35529" in revision
                 print('OK')
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(self.chapter_no, ignore_moves=True)
+        self.check_final_diff(ignore=["moves"])
 
 
 if __name__ == '__main__':

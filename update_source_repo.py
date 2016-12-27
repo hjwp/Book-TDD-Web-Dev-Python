@@ -14,11 +14,13 @@ import subprocess
 import os
 import getpass
 
+REMOTE = 'local' if getpass.getuser() == 'harry' else 'origin'
+
 THIS_FOLDER = os.path.abspath(os.path.dirname(__file__))
 
 def fetch_if_possible(target_dir):
     fetch = subprocess.Popen(
-        ['git', 'fetch'], cwd=target_dir,
+        ['git', 'fetch', REMOTE], cwd=target_dir,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
     stdout, stderr = fetch.communicate()
@@ -51,7 +53,7 @@ def update_sources_for_chapter(chapter_no):
     if chapter_no > 1:
         # make sure branch for previous chapter is available to start tests
         subprocess.check_output(['git', 'checkout', chapter_before], cwd=source_dir)
-        subprocess.check_output(['git', 'reset', '--hard', 'origin/{}'.format(chapter_before)], cwd=source_dir)
+        subprocess.check_output(['git', 'reset', '--hard', '{}/{}'.format(REMOTE, chapter_before)], cwd=source_dir)
     # check out current branch, local version, for final diff
     subprocess.check_output(['git', 'checkout', current_chapter], cwd=source_dir)
     if getpass.getuser() == 'jenkins':

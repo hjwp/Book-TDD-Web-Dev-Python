@@ -7,16 +7,18 @@ import unittest
 from book_tester import (
     ChapterTest,
     PHANTOMJS_RUNNER,
+    contains,
     wrap_long_lines,
+
 )
 from book_parser import (
     Command,
     Output,
 )
-from test_write_to_file import *
-from test_book_parser import *
-from test_source_updater import *
-from test_sourcetree import *
+from test_write_to_file import *  # noqa
+from test_book_parser import *  # noqa
+from test_source_updater import *  # noqa
+from test_sourcetree import *  # noqa
 
 
 
@@ -54,7 +56,7 @@ class WrapLongLineTest(unittest.TestCase):
 
 
     def test_wrap_long_lines_doesnt_swallow_spaces(self):
-        text  =  "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars  by  a  country  mile"
+        text = "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars  by  a  country  mile"
         expected_text = "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars\nby  a  country  mile"
         #TODO: handle trailing space corner case?
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
@@ -63,13 +65,13 @@ class WrapLongLineTest(unittest.TestCase):
     def test_wrap_long_lines_with_unbroken_chars(self):
         text = "." * 479
         expected_text = (
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "....."
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "....."
         )
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
@@ -152,7 +154,7 @@ class RunServerCommandTest(ChapterTest):
             os.path.join(os.path.dirname(__file__), 'run_server_command.py')
         )
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'sudo apt-get install -y something'],
+            ['python2.7', self.RUN_SERVER_PATH, 'sudo apt-get install -y something'],
         )
 
 
@@ -165,35 +167,35 @@ class RunServerCommandTest(ChapterTest):
             os.path.join(os.path.dirname(__file__), 'run_server_command.py')
         )
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
+            ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
         )
         # but not for the export itself
         self.run_server_command('export SITENAME=foo')
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'export SITENAME=foo'],
+            ['python2.7', self.RUN_SERVER_PATH, 'export SITENAME=foo'],
         )
 
 
     @patch('book_tester.subprocess')
     def test_hacks_in_cd_if_one_set_by_last_command(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        assert self.current_server_cd == None
+        assert self.current_server_cd is None
         self.run_server_command('cd /foo')
         assert self.current_server_cd == '/foo'
         self.run_server_command('do something')
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'cd /foo && do something'],
+            ['python2.7', self.RUN_SERVER_PATH, 'cd /foo && do something'],
         )
 
 
     @patch('book_tester.subprocess')
     def test_hacks_in_cd_correctly_when_theres_also_a_SITENAME(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        assert self.current_server_cd == None
+        assert self.current_server_cd is None
         self.run_server_command('cd /foo/$SITENAME')
         self.run_server_command('do something')
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
+            ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
         )
 
 
@@ -204,8 +206,11 @@ class RunServerCommandTest(ChapterTest):
         self.run_server_command('source ../virtualenv/bin/activate && python3 manage.py runserver')
         mock_subprocess.check_output.assert_called_with(
             [
-                'python2.7', self.RUN_SERVER_PATH,
-                'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && source ../virtualenv/bin/activate && dtach -n /tmp/dtach.sock python3 manage.py runserver'
+                'python2.7',
+                self.RUN_SERVER_PATH,
+                'SITENAME=superlists-staging.ottg.eu;'
+                ' cd /foo/$SITENAME && source ../virtualenv/bin/activate'
+                ' && dtach -n /tmp/dtach.sock python3 manage.py runserver'
             ],
         )
 
@@ -317,7 +322,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             MyException: a really long exception, which will eventually wrap into multiple lines, so much so that it just gets boring after a while and we just stop caring...
 
             and then there's some stuff afterwards we don't care about
-            """).strip()
+            """).strip()  # noqa
         expected = Output(dedent("""
             [...]
             MyException: a really long exception, which will eventually wrap into multiple
@@ -348,12 +353,14 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_for_short_expected_with_trailing_elipsis(self):
-        actual = dedent("""
+        actual = dedent(
+            """
             bla
             bla bla
                 self.assertSomething(burgle)
-            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it really goes on and on and on, so much so that it gets boring and we chop it off"""
-            ).strip()
+            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it really goes on and on and on, so much so that it gets boring and we chop it off
+            """  # noqa
+        ).strip()
         expected = Output(dedent("""
             AssertionError: a long assertion error which ends up wrapping so we have to
             have it across two lines but then it really goes on and on [...]
@@ -365,10 +372,11 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_elipsis_lines_still_checked(self):
-        actual = dedent("""
-            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it changes and ends up saying something different from what was expected so we shoulf fail
+        actual = dedent(
             """
-            ).strip()
+            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it changes and ends up saying something different from what was expected so we shoulf fail
+            """  # noqa
+        ).strip()
         expected = Output(dedent("""
             AssertionError: a long assertion error which ends up wrapping so we have to
             have it across two lines but then it really goes on and on [...]
@@ -380,7 +388,8 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_middle_elipsis(self):
-        actual = dedent("""
+        actual = dedent(
+            """
             bla
             bla bla
             ERROR: the first line
@@ -391,7 +400,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             KeyError: something
             more stuff happens later
             """
-            ).strip()
+        ).strip()
         expected = Output(dedent("""
             ERROR: the first line
             [...]
@@ -412,7 +421,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_working_directory_substitution(self):
-        expected = Output('bla bla /workspace/foo stuff')
+        expected = Output('bla bla /.../foo stuff')
         actual = 'bla bla %s/foo stuff' % (self.tempdir,)
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
@@ -448,20 +457,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             stuff
             """).strip()
         expected = Output(dedent("""
-            bla bla<1>
+            bla bla  <12>
             stuff
             """).strip()
         )
 
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
-
-        expected2 = Output(dedent("""
-            bla bla <11>
-            stuff
-            """).strip()
-        )
-        self.assert_console_output_correct(actual, expected)
 
 
     def test_ignores_asciidoctor_callouts(self):
@@ -470,20 +472,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             stuff
             """).strip()
         expected = Output(dedent("""
-            bla bla  (1)
+            bla bla  (12)
             stuff
             """).strip()
         )
 
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
-
-        expected2 = Output(dedent("""
-            bla bla <11>
-            stuff
-            """).strip()
-        )
-        self.assert_console_output_correct(actual, expected)
 
 
     def test_ignores_git_commit_numers_in_logs(self):
@@ -573,6 +568,23 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_ignores_3_5_x_AssertionError_None_thing(self):
+        actual = "AssertionError"
+        expected = Output("AssertionError: None")
+        self.assert_console_output_correct(actual, expected)
+        actual2 = "AssertionError: something"
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(actual2, expected)
+
+
+
+    def test_ignores_localhost_server_port(self):
+        actual = "//localhost:2021/my-url is a thing"
+        expected = Output("//localhost:3339/my-url is a thing")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
     def test_only_ignores_exactly_32_char_strings_no_whitespace(self):
         actual = "qnslckvp2aga7tm6xuivyb0ob1akzzwl"
         expected = Output("jvhzc8kj2mkh06xooqq9iciptead20qq")
@@ -584,18 +596,18 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
     def test_ignores_screenshot_times(self):
         actual = (
-            'screenshotting to /workspace/superlists/functional_tests/screendumps/MyListsTes\n'
+            'screenshotting to /.../superlists/functional_tests/screendumps/MyListsTes\n'
             't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.38.\n'
             'png\n'
-            'dumping page HTML to /workspace/superlists/functional_tests/screendumps/MyLists\n'
+            'dumping page HTML to /.../superlists/functional_tests/screendumps/MyLists\n'
             'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.\n'
             '38.html\n'
         )
         expected = Output(
-            'screenshotting to /workspace/superlists/functional_tests/screendumps/MyListsTes\n'
+            'screenshotting to /.../superlists/functional_tests/screendumps/MyListsTes\n'
             't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2013-04-09T13.40.39.\n'
             'png\n'
-            'dumping page HTML to /workspace/superlists/functional_tests/screendumps/MyLists\n'
+            'dumping page HTML to /.../superlists/functional_tests/screendumps/MyLists\n'
             'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-04-04T12.43.\n'
             '42.html\n'
         )
@@ -702,7 +714,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             ERROR: test_root_url_resolves_to_home_page_view (lists.tests.HomePageTest)
             ----------------------------------------------------------------------
             Traceback (most recent call last):
-              File "/workspace/superlists/lists/tests.py", line 8, in test_root_url_resolves_to_home_page_view
+              File "/.../superlists/lists/tests.py", line 8, in test_root_url_resolves_to_home_page_view
                 found = resolve('/')
               File "/usr/local/lib/python2.7/dist-packages/django/core/urlresolvers.py", line 440, in resolve
                 return get_resolver(urlconf).resolve(path)
@@ -765,10 +777,137 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
 
+class CurrentContentsTest(ChapterTest):
+
+    def test_ok_for_correct_current_contents(self):
+        actual_contents = dedent(
+            """
+            line 0
+            line 1
+            line 2
+            line 3
+            line 4
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+            line 3
+            """).lstrip()
+        )
+        self.check_current_contents(listing, actual_contents)  # should not raise
+
+
+    def test_raises_for_any_line_not_in_actual_contents(self):
+        actual_contents = dedent(
+            """
+            line 0
+            line 1
+            line 2
+            line 3
+            line 4
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 3
+            line 4
+            line 5
+            """).lstrip()
+        )
+        with self.assertRaises(AssertionError):
+            self.check_current_contents(listing, actual_contents)
+
+
+    def test_indentation_is_ignored(self):
+        actual_contents = dedent(
+            """
+            line 0
+                line 1
+            line 2
+            line 3
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+            line 3
+            """).lstrip()
+        )
+        self.check_current_contents(listing, actual_contents)
+
+
+    def test_raises_if_lines_not_in_order(self):
+        actual_contents = dedent(
+            """
+            line 1
+            line 2
+            line 3
+            line 4
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 3
+            line 2
+            """).lstrip()
+        )
+        listing.currentcontents = True
+
+        with self.assertRaises(AssertionError):
+            self.check_current_contents(listing, actual_contents)
+
+
+    def test_checks_elipsis_blocks_separately(self):
+        actual_contents = dedent(
+            """
+            line 1
+            line 2
+            line 3
+            line 4
+            line 5
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+            [...]
+            line 4
+            """).lstrip()
+        )
+        listing.currentcontents = True
+        self.check_current_contents(listing, actual_contents)  # should not raise
+
+
+
+class TestContains:
+
+    def test_smoketest(self):
+        assert contains([1, 2, 3, 4], [1, 2])
+
+    def testcontains_end_seq(self):
+        assert contains([1, 2, 3, 4], [3, 4])
+
+    def testcontains_middle_seq(self):
+        assert contains([1, 2, 3, 4, 5], [3, 4])
+
+    def testcontains_oversized_seq(self):
+        assert contains([1, 2, 3, 4, 4], [1, 2, 3, 4])
+
+    def testcontains_iteslf(self):
+        assert contains([1, 2, 3], [1, 2, 3])
+
+
+
+
 class DictOrderingTest(ChapterTest):
 
     def test_dict_ordering_is_stable(self):
-        assert list({'a':'b', 'c':'d'}.keys()) == ['a', 'c']
+        assert list({'a': 'b', 'c': 'd'}.keys()) == ['a', 'c']
         self.assertEqual(os.environ['PYTHONHASHSEED'], "0")
 
 
@@ -810,6 +949,7 @@ class CheckQunitOuptutTest(ChapterTest):
             '../source/chapter_13/superlists/lists/static/tests/tests.html'
         ))
         accounts_tests = lists_tests.replace('/lists/', '/accounts/')
+
         def test_results(path):
             if path == lists_tests:
                 return '0 failed'
@@ -827,78 +967,109 @@ class CheckQunitOuptutTest(ChapterTest):
 
 
 class CheckFinalDiffTest(ChapterTest):
+    chapter_no = 1
 
     def test_empty_passes(self):
         self.run_command = lambda _: ""
-        self.check_final_diff(1) # should pass
+        self.check_final_diff() # should pass
 
 
     def test_diff_fails(self):
         diff = dedent(
-        """
-        + a missing line
-        - a line that was wrong
-        bla
-        """)
+            """
+            + a missing line
+            - a line that was wrong
+            bla
+            """
+        )
         self.run_command = lambda _: diff
         with self.assertRaises(AssertionError):
-            self.check_final_diff(1)
+            self.check_final_diff()
 
 
     def test_blank_lines_ignored(self):
         diff = dedent(
-        """
-        +
-        -
-        bla
-        """)
+            """
+            +
+            -
+            bla
+            """
+        )
         self.run_command = lambda _: diff
-        self.check_final_diff(1) # should pass
+        self.check_final_diff() # should pass
 
 
     def test_ignore_moves(self):
         diff = dedent(
-        """
-        + some
-        + block
-        stuff
-        - some
-        - block
+            """
+            + some
+            + block
+            stuff
+            - some
+            - block
 
-        bla
-        """)
+            bla
+            """
+        )
         self.run_command = lambda _: diff
         with self.assertRaises(AssertionError):
-            self.check_final_diff(1)
-        self.check_final_diff(chapter=1, ignore_moves=True) # should pass
+            self.check_final_diff()
+        self.check_final_diff(ignore=["moves"]) # should pass
         with self.assertRaises(AssertionError):
             diff += '\n+a genuinely different line'
-            self.check_final_diff(chapter=1, ignore_moves=True)
+            self.check_final_diff(ignore=["moves"])
 
 
-    def test_ignore_secret_key(self):
+    def test_ignore_secret_key_and_generated_by_django(self):
         diff = dedent(
-        """
-        diff --git a/superlists/settings.py b/superlists/settings.py
-        index 7463a4c..6eb4bde 100644
-        --- a/superlists/settings.py
-        +++ b/superlists/settings.py
-        @@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-         # See https://docs.djangoproject.com/en/1.6/howto/deployment/checklist/
+            """
+            diff --git a/superlists/settings.py b/superlists/settings.py
+            index 7463a4c..6eb4bde 100644
+            --- a/superlists/settings.py
+            +++ b/superlists/settings.py
+            @@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+             # See https://docs.djangoproject.com/en/1.6/howto/deployment/checklist/
 
-         # SECURITY WARNING: keep the secret key used in production secret!
-        -SECRET_KEY = '!x8-9w9o%s#c8u(4^zb9n2g(xy4q*@c^$9axl2o48wkz(v%_!*'
-        +SECRET_KEY = 'y)exet(6z6z6)(b!v1m8it$a0q^e=b^#*r8a2o5er1u(=sl=7f'
+             # SECURITY WARNING: keep the secret key used in production secret!
+            -SECRET_KEY = '!x8-9w9o%s#c8u(4^zb9n2g(xy4q*@c^$9axl2o48wkz(v%_!*'
+            +SECRET_KEY = 'y)exet(6z6z6)(b!v1m8it$a0q^e=b^#*r8a2o5er1u(=sl=7f'
 
-         # SECURITY WARNING: don't run with debug turned on in production!
-        """)
+             # SECURITY WARNING: don't run with debug turned on in production!
+
+            -# Generated by Django 1.10.3 on 2016-12-01 21:11
+            +# Generated by Django 1.10.3 on 2016-12-02 10:19
+             from __future__ import unicode_literals
+            """
+        )
         self.run_command = lambda _: diff
         with self.assertRaises(AssertionError):
-            self.check_final_diff(1)
-        self.check_final_diff(chapter=1, ignore_secret_key=True) # should pass
+            self.check_final_diff()
+        self.check_final_diff(ignore=["SECRET_KEY", "Generated by Django 1.10"]) # should pass
         with self.assertRaises(AssertionError):
             diff += '\n+a genuinely different line'
-            self.check_final_diff(chapter=1, ignore_secret_key=True)
+            self.check_final_diff(ignore=["SECRET_KEY", "Generated by Django 1.10"])
+
+
+    def test_ignore_moves_and_custom(self):
+        diff = dedent(
+            """
+            + some
+            + block
+            stuff
+            - some
+            - block
+
+            bla
+            + ignore me
+            """
+        )
+        self.run_command = lambda _: diff
+        with self.assertRaises(AssertionError):
+            self.check_final_diff()
+        self.check_final_diff(ignore=["moves", "ignore me"]) # should pass
+        with self.assertRaises(AssertionError):
+            diff += '\n+a genuinely different line'
+            self.check_final_diff(ignore=["moves", "ignore me"])
 
 
 if __name__ == '__main__':

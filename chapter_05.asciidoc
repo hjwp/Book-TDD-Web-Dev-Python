@@ -1,7 +1,6 @@
 [[chapter-5]]
-Saving User Input
------------------
-
+Saving User Input: Testing the Database
+---------------------------------------
 
 ((("user input, saving", id="ix_userinput", range="startofrange")))
 We want to take the to-do item input from the user and send it to the server,
@@ -62,7 +61,7 @@ Now, running our FTs gives us a slightly cryptic, unexpected error:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 functional_tests.py*]
+$ pass:quotes[*python functional_tests.py*]
 [...]
 Traceback (most recent call last):
   File "functional_tests.py", line 39, in
@@ -194,47 +193,36 @@ which is dealt with by our `home_page` function. Let's adapt the view to be
 able to deal with a POST request.
 
 That means a new unit test for the `home_page` view. Open up 'lists/tests.py',
-and add a new method to `HomePageTest`. I copied the previous method,
-then adapted it to add our POST request and check that the returned
-HTML will have the new item text in it:
+and add a new method to `HomePageTest`:
 
 [role="sourcecode"]
 .lists/tests.py (ch05l005)
 [source,python]
 ----
-def test_home_page_returns_correct_html(self):
-    [...]
+def test_uses_home_template(self):
+    response = self.client.get('/')
+    self.assertTemplateUsed(response, 'home.html')
 
 
-def test_home_page_can_save_a_POST_request(self):
-    request = HttpRequest()
-    request.method = 'POST'
-    request.POST['item_text'] = 'A new list item'
-
-    response = home_page(request)
-
+def test_can_save_a_POST_request(self):
+    response = self.client.post('/', data={'item_text': 'A new list item'})
     self.assertIn('A new list item', response.content.decode())
 ----
 
-NOTE: Are you wondering about the line spacing in the test? I'm grouping
-      together three lines at the beginning which set up the test, one line in
-      the middle which actually calls the function under test, and the
-      assertions at the end. This isn't obligatory, but it does help see the
-      structure of the test. Setup, Exercise, Assert is the typical structure
-      for a unit test. 
-
-You can see that we're using a couple of special attributes of the
-`HttpRequest`: `.method` and `.POST` (they're fairly self-explanatory,
-although now might be a good time for a peek at the Django
-https://docs.djangoproject.com/en/1.8/ref/request-response/[request and
-response documentation]). Then we check that the text from our POST request
-ends up in the rendered HTML. That gives us our expected fail:
+To do a POST, we call `self.client.post`, and as you can see it takes
+a `data` argument which contains the form data we want to send.
+Then we check that the text from our POST request ends up in the rendered HTML.
+That gives us our expected fail:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test*]
+$ pass:quotes[*python manage.py test*]
 [...]
-AssertionError: 'A new list item' not found in '<html> [...]
+AssertionError: 'A new list item' not found in '<html>\n    <head>\n
+<title>To-Do lists</title>\n    </head>\n    <body>\n        <h1>Your To-Do
+list</h1>\n        <form method="POST">\n            <input name="item_text"
+[...]
+</body>\n</html>\n'
 ----
 
 We can get the test to pass by adding an `if` and providing a different code
@@ -288,43 +276,29 @@ string:
 </body>
 ----
 
-How can we test that our view is passing in the correct value for 
-`new_item_text`? How do we pass a variable to a template?  We can find out by
-actually doing it in the unit test--we've already used the `render_to_string`
-function in a previous unit test to manually render a template and compare it
-with the HTML the view returns.  Now let's add the variable we want to pass in:
+Let's adjust our unit test so that it checks we are still using the template:
 
 
 [role="sourcecode"]
 .lists/tests.py
 [source,python]
 ----
-    self.assertIn('A new list item', response.content.decode())
-    expected_html = render_to_string(
-        'home.html',
-        {'new_item_text':  'A new list item'}
-    )
-    self.assertEqual(response.content.decode(), expected_html)
+    def test_can_save_a_POST_request(self):
+        response = self.client.post('/', data={'item_text': 'A new list item'})
+        self.assertIn('A new list item', response.content.decode())
+        self.assertTemplateUsed(response, 'home.html')
 ----
 
-((("render to string")))
-As you can see, the `render_to_string` function takes, as its second parameter,
-a mapping of variable names to values. We're giving the template a variable
-named `new_item_text`, whose value is the expected item text from our
-POST request.
-
-When we run the unit test, `render_to_string` will substitute 
-`{{ new_item_text }}` for 'A new list item' inside the `<td>`. That's
-something the actual view isn't doing yet, so we should see a test failure:
+And that will fail as expected:
 
 ----
-    self.assertEqual(response.content.decode(), expected_html)
-AssertionError: 'A new list item' != '<html>\n    <head>\n [...]
+AssertionError: No templates used to render the response
 ----
 
 Good, our deliberately silly return value is now no longer fooling our tests,
 so we are allowed to rewrite our view, and tell it to pass the POST
-parameter to the template:
+parameter to the template.  The `render` function takes, as its third argument,
+a dictionary which maps template variable names to their values:
 
 
 [role="sourcecode"]
@@ -340,10 +314,13 @@ def home_page(request):
 Running the unit tests again:
 
 ----
-ERROR: test_home_page_returns_correct_html (lists.tests.HomePageTest)
+ERROR: test_uses_home_template (lists.tests.HomePageTest)
 [...]
+  File "/.../superlists/lists/views.py", line 5, in home_page
     'new_item_text': request.POST['item_text'],
-KeyError: 'item_text'
+[...]
+django.utils.datastructures.MultiValueDictKeyError: "'item_text'"
+
 ----
 
 An 'unexpected failure'.  
@@ -380,15 +357,15 @@ not sure what's going on there.
 
 The unit tests should now pass.  Let's see what the functional tests say:
 
-TIP: If the unit tests don't pass for you at this point, and you see an error
-    message about a csrf token, it's probably because you're using the
-    wrong version of Django.  The book expects you to be using Django 1.8,
-    which is an LTS edition. See the <<pre-requisites>> chapter.
-
-
 ----
 AssertionError: False is not true : New to-do item did not appear in table
 ----
+
+
+TIP: If your functional tests show you a different error at this point,
+    or at any point in this chapter, complaining about a 
+    `StaleElementReferenceException`, it's probably because you're using
+    Selenium 3 instead of Selenium 2.  See the <<pre-requisites>> chapter.
 
 
 ((("debugging", "improving error messages")))
@@ -692,14 +669,16 @@ information was saved.
 
 Django's ORM has many other helpful and intuitive features; this might be a
 good time to skim through the
-https://docs.djangoproject.com/en/1.8/intro/tutorial01/[Django
+https://docs.djangoproject.com/en/1.10/intro/tutorial01/[Django
 tutorial], which has an excellent intro to them.
 ((("unit tests", "vs. integrated tests", sortas="integratedtests")))
 ((("integrated tests", "vs. unit tests", sortas="unittests")))
 
 NOTE: I've written this unit test in a very verbose style, as a way of
-introducing the Django ORM.  You can actually write a much shorter test for a
-model class, which we'll see later on, in <<simple-form-chapter>>.
+    introducing the Django ORM. I wouldn't recommend writing your model
+    tests like this "in real life".  We'll actually rewrite this test to
+    be much more concise <<rewrite-model-test,later on>>, in 
+    <<advanced-forms-chapter>>.
 
 .Terminology 2: Unit Tests Versus Integrated Tests, and the Database
 *******************************************************************************
@@ -775,20 +754,24 @@ In Django, the ORM's job is to model the database, but there's a second
 system that's in charge of actually building the database called 'migrations'.
 Its job is to give you the ability to add and remove tables and columns,
 based on changes you make to your 'models.py' files.
+((("migrations")))
+((("Django","migrations")))
 
 One way to think of it is as a version control system for your database.
 As we'll see later, it comes in particularly useful when we need to 
 upgrade a database that's deployed on a live server.
 
 For now all we need to know is how to build our first database migration,
-which we do using the `makemigrations` command:
+which we do using the `makemigrations` 
+commandfootnote:[Are you wondering about when we're going to run "migrate"
+as well as "makemigrations"?  Read on, that's coming up later in the chapter.]:
 ((("manage.py")))
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py makemigrations*]
+$ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'lists':
-  0001_initial.py:
+  lists/migrations/0001_initial.py:
     - Create model Item
 $ pass:quotes[*ls lists/migrations*]
 0001_initial.py  __init__.py  __pycache__
@@ -807,7 +790,7 @@ The test actually gets surprisingly far:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python manage.py test lists*]
 [...]
     self.assertEqual(first_saved_item.text, 'The first (ever) list item')
 AttributeError: 'Item' object has no attribute 'text'
@@ -843,7 +826,7 @@ the latter requires a length restriction, which seems arbitrary at this point.
 You can read more on field types in the Django
 http://bit.ly/1slDAGH[tutorial]
 and in the
-https://docs.djangoproject.com/en/1.8/ref/models/fields/[documentation].
+https://docs.djangoproject.com/en/1.10/ref/models/fields/[documentation].
 
 
 
@@ -864,11 +847,12 @@ Let's try it:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py makemigrations*]
+$ pass:quotes[*python manage.py makemigrations*]
 You are trying to add a non-nullable field 'text' to item without a default; we
 can't do that (the database needs something to populate existing rows).
 Please select a fix:
- 1) Provide a one-off default now (will be set on all existing rows)
+ 1) Provide a one-off default now (will be set on all existing rows with a null
+value for this column)
  2) Quit, and let me add a default in models.py
 Select an option:pass:quotes[*2*]
 ----
@@ -894,9 +878,9 @@ And now the migration should complete:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py makemigrations*]
+$ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'lists':
-  0002_item_text.py:
+  lists/migrations/0002_item_text.py:
     - Add field text to item
 ----
 
@@ -907,10 +891,10 @@ the tests pass...
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python manage.py test lists*]
 [...]
 
-Ran 4 tests in 0.010s
+Ran 3 tests in 0.010s
 OK
 ----
 
@@ -941,23 +925,15 @@ Let's adjust the test for our home page POST request, and say we want the view t
 .lists/tests.py
 [source,python]
 ----
-def test_home_page_can_save_a_POST_request(self):
-    request = HttpRequest()
-    request.method = 'POST'
-    request.POST['item_text'] = 'A new list item'
-
-    response = home_page(request)
+def test_can_save_a_POST_request(self):
+    response = self.client.post('/', data={'item_text': 'A new list item'})
 
     self.assertEqual(Item.objects.count(), 1)  #<1>
     new_item = Item.objects.first()  #<2>
     self.assertEqual(new_item.text, 'A new list item')  #<3>
 
     self.assertIn('A new list item', response.content.decode())
-    expected_html = render_to_string(
-        'home.html',
-        {'new_item_text':  'A new list item'}
-    )
-    self.assertEqual(response.content.decode(), expected_html)
+    self.assertTemplateUsed(response, 'home.html')
 ----
 
 <1> We check that one new `Item` has been saved to the database.
@@ -1054,9 +1030,8 @@ add a new one:
 class HomePageTest(TestCase):
     [...]
 
-    def test_home_page_only_saves_items_when_necessary(self):
-        request = HttpRequest()
-        home_page(request)
+    def test_only_saves_items_when_necessary(self):
+        self.client.get('/')
         self.assertEqual(Item.objects.count(), 0)
 ----
 
@@ -1090,7 +1065,7 @@ def home_page(request):
 And that gets the test passing:
 
 ----
-Ran 5 tests in 0.010s
+Ran 4 tests in 0.010s
 
 OK
 ----
@@ -1112,12 +1087,8 @@ the item in it, it should redirect back to the home page:
 .lists/tests.py
 [source,python]
 ----
-    def test_home_page_can_save_a_POST_request(self):
-        request = HttpRequest()
-        request.method = 'POST'
-        request.POST['item_text'] = 'A new list item'
-
-        response = home_page(request)
+    def test_can_save_a_POST_request(self):
+        response = self.client.post('/', data={'item_text': 'A new list item'})
 
         self.assertEqual(Item.objects.count(), 1)
         new_item = Item.objects.first()
@@ -1155,7 +1126,7 @@ def home_page(request):
 And the tests should now pass:
 
 ----
-Ran 5 tests in 0.010s
+Ran 4 tests in 0.010s
 
 OK
 ----
@@ -1180,25 +1151,16 @@ first go, but now feels like a good time to separate out our concerns:
 .lists/tests.py
 [source,python]
 ----
-    def test_home_page_can_save_a_POST_request(self):
-        request = HttpRequest()
-        request.method = 'POST'
-        request.POST['item_text'] = 'A new list item'
-
-        response = home_page(request)
+    def test_can_save_a_POST_request(self):
+        self.client.post('/', data={'item_text': 'A new list item'})
 
         self.assertEqual(Item.objects.count(), 1)
         new_item = Item.objects.first()
         self.assertEqual(new_item.text, 'A new list item')
 
 
-    def test_home_page_redirects_after_POST(self):
-        request = HttpRequest()
-        request.method = 'POST'
-        request.POST['item_text'] = 'A new list item'
-
-        response = home_page(request)
-
+    def test_redirects_after_POST(self):
+        response = self.client.post('/', data={'item_text': 'A new list item'})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response['location'], '/')
 ----
@@ -1206,7 +1168,7 @@ first go, but now feels like a good time to separate out our concerns:
 And we should now see six tests pass instead of five:
 
 ----
-Ran 6 tests in 0.010s
+Ran 5 tests in 0.010s
 
 OK
 ----
@@ -1239,16 +1201,23 @@ that checks that the template can also display multiple list items:
 class HomePageTest(TestCase):
     [...]
 
-    def test_home_page_displays_all_list_items(self):
+    def test_displays_all_list_items(self):
         Item.objects.create(text='itemey 1')
         Item.objects.create(text='itemey 2')
 
-        request = HttpRequest()
-        response = home_page(request)
+        response = self.client.get('/')
 
         self.assertIn('itemey 1', response.content.decode())
         self.assertIn('itemey 2', response.content.decode())
 ----
+
+
+NOTE: Are you wondering about the line spacing in the test? I'm grouping
+      together two lines at the beginning which set up the test, one line in
+      the middle which actually calls the code under test, and the
+      assertions at the end. This isn't obligatory, but it does help see the
+      structure of the test. Setup, Exercise, Assert is the typical structure
+      for a unit test. 
 
 
 That fails as expected:
@@ -1277,7 +1246,7 @@ will render with multiple `<tr>` rows, one for each item in the variable
 `items`.  Pretty neat!  I'll introduce a few more bits of Django template
 magic as we go, but at some point you'll want to go and read up on the rest of
 them in the 
-https://docs.djangoproject.com/en/1.8/topics/templates/[Django docs].
+https://docs.djangoproject.com/en/1.10/topics/templates/[Django docs].
 
 Just changing the template doesn't get our tests to pass; we need to actually
 pass the items to it from our home page view:
@@ -1300,7 +1269,7 @@ test pass?
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 functional_tests.py*]
+$ pass:quotes[*python functional_tests.py*]
 [...]
 AssertionError: 'To-Do' not found in 'OperationalError at /'
 ----
@@ -1321,8 +1290,8 @@ image::images/twdp_0502.png["OperationalError at / no such table: lists_item"]
 Creating Our Production Database with migrate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("migrations", id="ix_migrate", range="startofrange")))
-((("Django","migrations", id="ix_Djangomigrate", range="startofrange")))
+((("migrations")))
+((("Django","migrations")))
 Another helpful error message from Django, which is basically complaining that
 we haven't set up the database properly.  How come everything worked fine
 in the unit tests, I hear you ask?  Because Django creates a special 'test
@@ -1340,7 +1309,7 @@ project directory:
 ----
 [...]
 # Database
-# https://docs.djangoproject.com/en/1.8/ref/settings/#databases
+# https://docs.djangoproject.com/en/1.10/ref/settings/#databases
 
 DATABASES = {
     'default': {
@@ -1358,25 +1327,22 @@ it to creating a real database, we use another Django Swiss Army knife
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py migrate*]
+$ pass:quotes[*python manage.py migrate*]
 Operations to perform:
-  Synchronize unmigrated apps: messages, staticfiles
-  Apply all migrations: contenttypes, lists, admin, auth, sessions
-Synchronizing apps without migrations:
-  Creating tables...
-    Running deferred SQL...
-  Installing custom SQL...
+  Apply all migrations: admin, auth, contenttypes, lists, sessions
 Running migrations:
-  Rendering model states... DONE
   Applying contenttypes.0001_initial... OK
   Applying auth.0001_initial... OK
   Applying admin.0001_initial... OK
+  Applying admin.0002_logentry_remove_auto_add... OK
   Applying contenttypes.0002_remove_content_type_name... OK
   Applying auth.0002_alter_permission_name_max_length... OK
   Applying auth.0003_alter_user_email_max_length... OK
   Applying auth.0004_alter_user_username_opts... OK
   Applying auth.0005_alter_user_last_login_null... OK
   Applying auth.0006_require_contenttypes_0002... OK
+  Applying auth.0007_alter_validators_add_error_messages... OK
+  Applying auth.0008_alter_user_username_max_length... OK
   Applying lists.0001_initial... OK
   Applying lists.0002_item_text... OK
   Applying sessions.0001_initial... OK
@@ -1436,8 +1402,6 @@ worse:
 6: Use peacock feathers to make a fly
 ----
 
-(((range="endofrange", startref="ix_migrate")))
-(((range="endofrange", startref="ix_Djangomigrate")))
 Grrr.  We're so close! We're going to need some kind of automated way of
 tidying up after ourselves. For now, if you feel like it, you can do it
 manually, by deleting the database and re-creating it fresh with `migrate`:
@@ -1445,7 +1409,7 @@ manually, by deleting the database and re-creating it fresh with `migrate`:
 [subs="specialcharacters,quotes"]
 ----
 $ *rm db.sqlite3*
-$ *python3 manage.py migrate --noinput*
+$ *python manage.py migrate --noinput*
 ----
 
 And then reassure yourself that the FT still passes.

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 from lxml import html
 import re
 from textwrap import dedent
@@ -165,7 +165,7 @@ class ParseCodeListingTest(unittest.TestCase):
         listings = parse_listing(node)
         print(listings)
         virtualenv_command = listings[1]
-        self.assertEqual(virtualenv_command, 'source ../virtualenv/bin/activate && python3 manage.py test lists')
+        self.assertEqual(virtualenv_command, 'source ../virtualenv/bin/activate && python manage.py test lists')
         self.assertEqual(len(listings), 3)
 
 
@@ -184,7 +184,7 @@ class ParseCodeListingTest(unittest.TestCase):
         listing = html.fromstring(
             '<div class="listingblock">\r\n'
             '<div class="content">\r\n'
-            '<pre><code>$ <strong>python3 functional_tests.py</strong>\r\n'
+            '<pre><code>$ <strong>python functional_tests.py</strong>\r\n'
             'Traceback (most recent call last):\r\n'
             '  File "functional_tests.py", line 6, in &lt;module&gt;\r\n'
             '    assert \'Django\' in browser.title\r\n'
@@ -195,7 +195,7 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(
             parsed_listings,
             [
-                'python3 functional_tests.py',
+                'python functional_tests.py',
                 'Traceback (most recent call last):\n'
                 '  File "functional_tests.py", line 6, in <module>\n'
                 '    assert \'Django\' in browser.title\n'
@@ -322,7 +322,7 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(
             [str(c) for c in commands],
             [
-                'python3 manage.py makemigrations',
+                'python manage.py makemigrations',
                 '1',
                 "''",
             ]
@@ -411,11 +411,11 @@ class GetCommandsTest(unittest.TestCase):
 
     def test_extracting_one_command(self):
         listing = html.fromstring(
-            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>python3 functional_tests.py</strong>\r\nTraceback (most recent call last):\r\n  File "functional_tests.py", line 6, in &lt;module&gt;\r\n    assert \'Django\' in browser.title\r\nAssertionError</code></pre>\r\n</div></div>&#13;\n'
+            '<div class="listingblock">\r\n<div class="content">\r\n<pre><code>$ <strong>python functional_tests.py</strong>\r\nTraceback (most recent call last):\r\n  File "functional_tests.py", line 6, in &lt;module&gt;\r\n    assert \'Django\' in browser.title\r\nAssertionError</code></pre>\r\n</div></div>&#13;\n'
         )
         self.assertEqual(
             get_commands(listing),
-            ['python3 functional_tests.py']
+            ['python functional_tests.py']
         )
 
     def test_extracting_multiple(self):

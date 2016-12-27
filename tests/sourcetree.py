@@ -1,3 +1,4 @@
+import getpass
 import os
 import io
 import re
@@ -76,7 +77,8 @@ class SourceTree(object):
                 os.killpg(process.pid, signal.SIGTERM)
             except OSError:
                 pass
-        #shutil.rmtree(self.tempdir)
+        if getpass.getuser() != 'harry':
+            shutil.rmtree(self.tempdir)
 
 
     def run_command(self, command, cwd=None, user_input=None, ignore_errors=False, silent=False):
@@ -208,7 +210,7 @@ def check_listing_matches_commit(listing, commit, future_contents):
     stripped_listing_lines = [l.strip() for l in listing_lines]
     for new_line in commit.new_lines:
         if new_line.strip() not in stripped_listing_lines:
-            print('stripped_listing_lines', stripped_listing_lines)
+            # print('stripped_listing_lines', stripped_listing_lines)
             raise ApplyCommitException(
                 'could not find commit new line {0} in listing:\n{1}'.format(
                     new_line, listing.contents
@@ -237,7 +239,7 @@ def check_listing_matches_commit(listing, commit, future_contents):
 
             continue
         if line in commit.lines_to_add:
-            print('line {} in commit lines to add'.format(line))
+            # print('line {} in commit lines to add'.format(line))
             if listing_lines.count(line) > 1:
                 # skip duped lines
                 # (no way of telling whether dupe is 1st or 2nd)
@@ -275,7 +277,8 @@ def get_offset(lines, future_lines):
 def check_indentation(listing_lines, future_lines):
     offset = get_offset(listing_lines, future_lines)
     for listing_line in listing_lines:
-        if listing_line and not '[...]' in listing_line:
+        if listing_line and '[...]' not in listing_line:
             fixed_line = offset + listing_line
             if fixed_line not in future_lines:
-                raise ApplyCommitException('Could not find {!r} in future contents {}'.format(fixed_line, future_lines))
+                raise ApplyCommitException('Could not find {!r} in future contents:\n{}'.format(fixed_line, '\n'.join(future_lines)))
+

@@ -1,3 +1,4 @@
+/*global require, phantom */
 var system = require('system');
 
 if (!system.args[1]){
@@ -11,6 +12,11 @@ if (path.indexOf('/') !== 0) {
 }
 
 var page = require('webpage').create();
+var logs = '';
+
+page.onConsoleMessage = function (msg) {
+  logs += msg + '\n';
+};
 
 page.open('file://' + path, function () {
     setTimeout(function() {
@@ -55,6 +61,7 @@ page.open('file://' + path, function () {
             return results;
         });
         console.log(output);
+        console.log(logs);
         phantom.exit();
 
     }, 100);

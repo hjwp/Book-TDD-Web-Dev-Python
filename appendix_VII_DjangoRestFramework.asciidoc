@@ -1,0 +1,241 @@
+[[appendix-rest-api-frontend]]
+[appendix]
+Django-Rest-Framework
+---------------------
+
+(((REST)))
+(((API)))
+WARNING: Chapter under construction.  Apologies, it's in pretty telegraphic style for now.
+
+I can't write a book involving Django and tell you to build a REST API without
+telling you to at least investigate
+http://www.django-rest-framework.org/[Django-Rest-Framework].
+
+
+Writing this appendix, one of the main thing I struggled with was getting the
+exact same API that I'd just implemented manually to be replicated by DRF. 
+Geting the exact same URL structure, the exact data structures I'd defined
+in JSON, proved to be quite a challenge, and I felt like I was fighting the
+framework.
+
+That's always a warning sign.  The people who built Django-Rest-Framework
+are a lot smarter than I am, and they've seen a lot more REST APIs than I
+have, and if they're opinionated about the way that things "should" look,
+then maybe my time would be better spent seeing if I can adapt and work
+with their view of the world, rather than forcing my own preconceptions
+onto it.
+
+"Don't fight the framework" is one of the best pieces of advice I've heard.
+Either go with the flow, or perhaps re-assess whether you want to be using
+a framework at all.
+
+We'll work from the API we had at the end of the last chapter, 
+and see if we can rewrite it to use DRF.
+
+
+Serializers (well, ModelSerializers really)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The http://www.django-rest-framework.org/#tutorial[Django-Rest-Framework tutorial]
+is a pretty good resource to learn DRF.  The first thing you'll come across
+is serializers, and specifically in our case, "ModelSerializers". They are
+DRF's way of converting from Django database models to JSON (or possibly other
+formats) that you can send over the wire.
+
+ 
+
+TODO: add an explicit unit test or two for serialization
+
+
+[role="sourcecode"]
+.lists/api.py
+[source,python]
+----
+class ItemSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Item
+        fields = ('id', 'text')
+
+
+class ListSerializer(serializers.ModelSerializer):
+    items = ItemSerializer(many=True, source='item_set')
+
+    class Meta:
+        model = List
+        fields = ('id', 'items',)
+----
+
+
+Viewsets (well, ModelViewsets really) and routers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Retrieving all items for a list
+
+
+[role="sourcecode"]
+.lists/api.py
+[source,python]
+----
+class ListViewSet(viewsets.ModelViewSet):
+    queryset = List.objects.all()
+    serializer_class = ListSerializer
+
+router = routers.SimpleRouter()
+router.register(r'lists', ListViewSet)
+----
+
+
+tweak existing test bc of extra "items" key:
+
+[role="sourcecode"]
+.lists/tests/test_api.py
+[source,python]
+----
+    self.assertEqual(
+        json.loads(response.content.decode('utf8')),
+        {'id': our_list.id, 'items': [
+            {'id': item1.id, 'text': item1.text},
+            {'id': item2.id, 'text': item2.text},
+        ]}
+    )
+----
+
+
+A different URL for POST item 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is the point at which I gave up on fighting the framework
+and just saw where DRF wanted to take me. You post to an item view, not a list
+view:
+
+
+[role="sourcecode"]
+.lists/api.py
+[source,python]
+----
+class ItemViewSet(viewsets.ModelViewSet):
+    serializer_class = ItemSerializer
+    queryset = Item.objects.all()
+
+
+router = routers.SimpleRouter()
+router.register(r'lists', ListViewSet)
+router.register(r'items', ItemViewSet)
+----
+
+
+SO that means we change the test slightly
+
+[role="sourcecode"]
+.lists/tests/test_api.py
+[source,python]
+----
+class ItemsAPITest(TestCase):
+    base_url = reverse('api:item-list')
+
+    def test_POSTing_a_new_item(self):
+        list_ = List.objects.create()
+        response = self.client.post(
+            self.base_url,
+            {'list': list_.id, 'text': 'new item'},
+        )
+        self.assertEqual(response.status_code, 201)
+        new_item = list_.item_set.get()
+        self.assertEqual(new_item.text, 'new item')
+[...]
+----
+
+And so on.  Also need to add the list id to our
+serialization of items, otherwise we don't know
+what list it's for:
+
+
+[role="sourcecode"]
+.lists/api.py
+[source,python]
+----
+class ItemSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Item
+        fields = ('id', 'list', 'text')
+----
+
+
+And that causes a few more associated test changes.
+
+
+Adapting the client side
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+* `response.items`
+
+
+[role="sourcecode"]
+.lists/static/list.js
+[source,diff]
+----
+ window.Superlists.updateItems = function (url) {
+   $.get(url).done(function (response) {
++    if (!response.items) {return;}
+     var rows = '';
+-    for (var i=0; i<response.length; i++) {
+-      var item = response[i];
++    for (var i=0; i<response.items.length; i++) {
++      var item = response.items[i];
+       rows += '\n<tr><td>' + (i+1) + ': ' + item.text + '</td></tr>';
+     }
+     $('#id_list_table').html(rows);
+   });
+ };
+----
+
+* `initialize` with 3 params, including different urls
+  for retrieving list and posting new items
+ 
+[role="sourcecode"]
+.lists/static/list.js
+[source,diff]
+----
+-window.Superlists.initialize = function (url) {
++window.Superlists.initialize = function (params) {
+   $('input[name="text"]').on('keypress', function () {
+     $('.has-error').hide();
+   });
+ 
+-  if (url) {
+-    window.Superlists.updateItems(url);
++  if (params) {
++    window.Superlists.updateItems(params.listApiUrl);
+ 
+     var form = $('#id_item_form');
+     form.on('submit', function(event) {
+       event.preventDefault();
+-      $.post(url, {
++      $.post(params.itemsApiUrl, {
++        'list': params.listId,
+         'text': form.find('input[name="text"]').val(),
+         'csrfmiddlewaretoken': form.find('input[name="csrfmiddlewaretoken"]').val(),
+       }).done(function () {
+         $('.has-error').hide();
+-        window.Superlists.updateItems(url);
++        window.Superlists.updateItems(params.listApiUrl);
+       }).fail(function (xhr) {
+         $('.has-error').show();
+----
+
+
+And a few more to do with error handling
+
+
+.Django-Rest-Framework tips
+*******************************************************************************
+
+Don't fight the framework::
+    Going with the flow is often the best way to stay productive.  That, or
+    maybe don't use the framework.  Or use it at a lower level.
+
+
+*******************************************************************************
+
