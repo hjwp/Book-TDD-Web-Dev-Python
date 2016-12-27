@@ -31,6 +31,13 @@ SLIMERJS_BINARY = os.path.join(
 )
 
 
+def contains(inseq, subseq):
+    return any(
+        inseq[pos:pos + len(subseq)] == subseq
+        for pos in range(0, len(inseq) - len(subseq) + 1)
+    )
+
+
 
 def wrap_long_lines(text):
     paragraphs = text.split('\n')

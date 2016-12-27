@@ -7,6 +7,7 @@ import unittest
 from book_tester import (
     ChapterTest,
     PHANTOMJS_RUNNER,
+    contains,
     wrap_long_lines,
 
 )
@@ -765,6 +766,92 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         )
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
+
+
+
+class CurrentContentsTest(ChapterTest):
+
+    def test_ok_for_correct_current_contents(self):
+        actual_contents = dedent(
+            """
+            line 0
+            line 1
+            line 2
+            line 3
+            line 4
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+            line 3
+            """).lstrip()
+        )
+        self.check_current_contents(listing, actual_contents)  # should not raise
+
+
+    def test_raises_for_any_line_not_in_actual_contents(self):
+        actual_contents = dedent(
+            """
+            line 0
+            line 1
+            line 2
+            line 3
+            line 4
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 3
+            line 4
+            line 5
+            """).lstrip()
+        )
+        with self.assertRaises(AssertionError):
+            self.check_current_contents(listing, actual_contents)
+
+
+    def test_raises_if_lines_not_in_order(self):
+        actual_contents = dedent(
+            """
+            line 1
+            line 2
+            line 3
+            line 4
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 3
+            line 2
+            """).lstrip()
+        )
+        listing.currentcontents = True
+
+        with self.assertRaises(AssertionError):
+            self.check_current_contents(listing, actual_contents)
+
+
+
+class TestContains:
+
+    def test_smoketest(self):
+        assert contains([1, 2, 3, 4], [1, 2])
+
+    def testcontains_end_seq(self):
+        assert contains([1, 2, 3, 4], [3, 4])
+
+    def testcontains_middle_seq(self):
+        assert contains([1, 2, 3, 4, 5], [3, 4])
+
+    def testcontains_oversized_seq(self):
+        assert contains([1, 2, 3, 4, 4], [1, 2, 3, 4])
+
+    def testcontains_iteslf(self):
+        assert contains([1, 2, 3], [1, 2, 3])
+
 
 
 
