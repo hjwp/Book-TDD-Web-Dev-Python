@@ -8,15 +8,16 @@ from book_tester import (
     ChapterTest,
     PHANTOMJS_RUNNER,
     wrap_long_lines,
+
 )
 from book_parser import (
     Command,
     Output,
 )
-from test_write_to_file import *
-from test_book_parser import *
-from test_source_updater import *
-from test_sourcetree import *
+from test_write_to_file import *  # noqa
+from test_book_parser import *  # noqa
+from test_source_updater import *  # noqa
+from test_sourcetree import *  # noqa
 
 
 
@@ -54,7 +55,7 @@ class WrapLongLineTest(unittest.TestCase):
 
 
     def test_wrap_long_lines_doesnt_swallow_spaces(self):
-        text  =  "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars  by  a  country  mile"
+        text = "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars  by  a  country  mile"
         expected_text = "A  really  long  line  that  uses  multiple  spaces  to  go  over  80  chars\nby  a  country  mile"
         #TODO: handle trailing space corner case?
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
@@ -63,13 +64,13 @@ class WrapLongLineTest(unittest.TestCase):
     def test_wrap_long_lines_with_unbroken_chars(self):
         text = "." * 479
         expected_text = (
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "." * 79 + "\n" +
-                "....."
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "." * 79 + "\n" +
+            "....."
         )
         self.assertMultiLineEqual(wrap_long_lines(text), expected_text)
 
@@ -152,7 +153,7 @@ class RunServerCommandTest(ChapterTest):
             os.path.join(os.path.dirname(__file__), 'run_server_command.py')
         )
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'sudo apt-get install -y something'],
+            ['python2.7', self.RUN_SERVER_PATH, 'sudo apt-get install -y something'],
         )
 
 
@@ -165,35 +166,35 @@ class RunServerCommandTest(ChapterTest):
             os.path.join(os.path.dirname(__file__), 'run_server_command.py')
         )
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
+            ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
         )
         # but not for the export itself
         self.run_server_command('export SITENAME=foo')
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'export SITENAME=foo'],
+            ['python2.7', self.RUN_SERVER_PATH, 'export SITENAME=foo'],
         )
 
 
     @patch('book_tester.subprocess')
     def test_hacks_in_cd_if_one_set_by_last_command(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        assert self.current_server_cd == None
+        assert self.current_server_cd is None
         self.run_server_command('cd /foo')
         assert self.current_server_cd == '/foo'
         self.run_server_command('do something')
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'cd /foo && do something'],
+            ['python2.7', self.RUN_SERVER_PATH, 'cd /foo && do something'],
         )
 
 
     @patch('book_tester.subprocess')
     def test_hacks_in_cd_correctly_when_theres_also_a_SITENAME(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        assert self.current_server_cd == None
+        assert self.current_server_cd is None
         self.run_server_command('cd /foo/$SITENAME')
         self.run_server_command('do something')
         mock_subprocess.check_output.assert_called_with(
-                ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
+            ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
         )
 
 
@@ -204,8 +205,11 @@ class RunServerCommandTest(ChapterTest):
         self.run_server_command('source ../virtualenv/bin/activate && python3 manage.py runserver')
         mock_subprocess.check_output.assert_called_with(
             [
-                'python2.7', self.RUN_SERVER_PATH,
-                'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && source ../virtualenv/bin/activate && dtach -n /tmp/dtach.sock python3 manage.py runserver'
+                'python2.7',
+                self.RUN_SERVER_PATH,
+                'SITENAME=superlists-staging.ottg.eu;'
+                ' cd /foo/$SITENAME && source ../virtualenv/bin/activate'
+                ' && dtach -n /tmp/dtach.sock python3 manage.py runserver'
             ],
         )
 
@@ -317,7 +321,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             MyException: a really long exception, which will eventually wrap into multiple lines, so much so that it just gets boring after a while and we just stop caring...
 
             and then there's some stuff afterwards we don't care about
-            """).strip()
+            """).strip()  # noqa
         expected = Output(dedent("""
             [...]
             MyException: a really long exception, which will eventually wrap into multiple
@@ -348,12 +352,14 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_for_short_expected_with_trailing_elipsis(self):
-        actual = dedent("""
+        actual = dedent(
+            """
             bla
             bla bla
                 self.assertSomething(burgle)
-            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it really goes on and on and on, so much so that it gets boring and we chop it off"""
-            ).strip()
+            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it really goes on and on and on, so much so that it gets boring and we chop it off
+            """  # noqa
+        ).strip()
         expected = Output(dedent("""
             AssertionError: a long assertion error which ends up wrapping so we have to
             have it across two lines but then it really goes on and on [...]
@@ -365,10 +371,11 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_elipsis_lines_still_checked(self):
-        actual = dedent("""
-            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it changes and ends up saying something different from what was expected so we shoulf fail
+        actual = dedent(
             """
-            ).strip()
+            AssertionError: a long assertion error which ends up wrapping so we have to have it across two lines but then it changes and ends up saying something different from what was expected so we shoulf fail
+            """  # noqa
+        ).strip()
         expected = Output(dedent("""
             AssertionError: a long assertion error which ends up wrapping so we have to
             have it across two lines but then it really goes on and on [...]
@@ -380,7 +387,8 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_with_middle_elipsis(self):
-        actual = dedent("""
+        actual = dedent(
+            """
             bla
             bla bla
             ERROR: the first line
@@ -391,7 +399,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             KeyError: something
             more stuff happens later
             """
-            ).strip()
+        ).strip()
         expected = Output(dedent("""
             ERROR: the first line
             [...]
@@ -456,12 +464,6 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-        expected2 = Output(dedent("""
-            bla bla <11>
-            stuff
-            """).strip()
-        )
-        self.assert_console_output_correct(actual, expected)
 
 
     def test_ignores_asciidoctor_callouts(self):
@@ -478,12 +480,6 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
-        expected2 = Output(dedent("""
-            bla bla <11>
-            stuff
-            """).strip()
-        )
-        self.assert_console_output_correct(actual, expected)
 
 
     def test_ignores_git_commit_numers_in_logs(self):
@@ -775,7 +771,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 class DictOrderingTest(ChapterTest):
 
     def test_dict_ordering_is_stable(self):
-        assert list({'a':'b', 'c':'d'}.keys()) == ['a', 'c']
+        assert list({'a': 'b', 'c': 'd'}.keys()) == ['a', 'c']
         self.assertEqual(os.environ['PYTHONHASHSEED'], "0")
 
 
@@ -817,6 +813,7 @@ class CheckQunitOuptutTest(ChapterTest):
             '../source/chapter_13/superlists/lists/static/tests/tests.html'
         ))
         accounts_tests = lists_tests.replace('/lists/', '/accounts/')
+
         def test_results(path):
             if path == lists_tests:
                 return '0 failed'
