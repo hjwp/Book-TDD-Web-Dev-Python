@@ -567,9 +567,14 @@ class ChapterTest(unittest.TestCase):
         print("CHECK CURRENT CONTENTS")
         stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
         listing_contents = re.sub(r' +#$', '', listing.contents, flags=re.MULTILINE)
-        for line in listing_contents.split('\n'):
-            if line and '[...]' not in line:
-                self.assertIn(line.strip(), stripped_actual_lines)
+        stripped_listing_lines = [
+            line.strip() for line in listing_contents.split('\n')
+            if line and '[...' not in line
+        ]
+        self.assertTrue(
+            contains(stripped_actual_lines, stripped_listing_lines),
+            '{}\n\nnot found in\n\n{}'.format(listing.contents, actual_contents)
+        )
         listing.was_written = True
 
 
