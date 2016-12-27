@@ -48,7 +48,7 @@ class Chapter8Test(ChapterTest):
         if LOCAL:
             def fix_git_clones(listing):
                 if listing.type == 'server command':
-                    return listing.replace('https://github.com/hjwp/book-example.git', 'workspace/Book/source/chapter_08/superlists')
+                    return listing.replace('https://github.com/hjwp/book-example.git', '.../Book/source/chapter_08/superlists')
                 return listing
             self.listings = [
                 fix_git_clones(l) for l in self.listings

@@ -810,6 +810,25 @@ class CurrentContentsTest(ChapterTest):
             self.check_current_contents(listing, actual_contents)
 
 
+    def test_indentation_is_ignored(self):
+        actual_contents = dedent(
+            """
+            line 0
+                line 1
+            line 2
+            line 3
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+            line 3
+            """).lstrip()
+        )
+        self.check_current_contents(listing, actual_contents)
+
+
     def test_raises_if_lines_not_in_order(self):
         actual_contents = dedent(
             """
@@ -830,6 +849,28 @@ class CurrentContentsTest(ChapterTest):
 
         with self.assertRaises(AssertionError):
             self.check_current_contents(listing, actual_contents)
+
+
+    def test_checks_elipsis_blocks_separately(self):
+        actual_contents = dedent(
+            """
+            line 1
+            line 2
+            line 3
+            line 4
+            line 5
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+            [...]
+            line 4
+            """).lstrip()
+        )
+        listing.currentcontents = True
+        self.check_current_contents(listing, actual_contents)  # should not raise
 
 
 
