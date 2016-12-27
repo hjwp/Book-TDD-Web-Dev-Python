@@ -568,6 +568,16 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
 
 
+    def test_ignores_3_5_x_AssertionError_None_thing(self):
+        actual = "AssertionError"
+        expected = Output("AssertionError: None")
+        self.assert_console_output_correct(actual, expected)
+        actual2 = "AssertionError: something"
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(actual2, expected)
+
+
+
     def test_ignores_localhost_server_port(self):
         actual = "//localhost:2021/my-url is a thing"
         expected = Output("//localhost:3339/my-url is a thing")

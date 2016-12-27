@@ -80,6 +80,10 @@ def strip_session_ids(output):
     return re.sub(r'^[a-z0-9]{32}$', r'xxx_session_id_xxx', output)
 
 
+def standardise_assertionerror_none(output):
+    return output.replace("AssertionError: None", "AssertionError")
+
+
 def strip_git_hashes(output):
     fixed_indexes = re.sub(
         r"index .......\.\........ 100644",
@@ -380,6 +384,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = fix_sqlite_messages(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
+        actual_fixed = standardise_assertionerror_none(actual_fixed)
 
         expected_fixed = standardise_library_paths(expected)
         expected_fixed = fix_test_dashes(expected_fixed)
@@ -393,6 +398,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_localhost_port(expected_fixed)
         expected_fixed = strip_screenshot_timestamps(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
+        expected_fixed = standardise_assertionerror_none(expected_fixed)
 
         if '\t' in actual_fixed:
             actual_fixed = re.sub(r'\s+', ' ', actual_fixed)
