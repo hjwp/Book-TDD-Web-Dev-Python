@@ -350,7 +350,7 @@ class ChapterTest(unittest.TestCase):
         )
 
         if self.tempdir in actual:
-            actual = actual.replace(self.tempdir, '/workspace')
+            actual = actual.replace(self.tempdir, '/...')
             actual = actual.replace('/private', '')  # macos thing
 
         if ls:
@@ -632,11 +632,13 @@ class ChapterTest(unittest.TestCase):
         else:
             return self.run_command(Command("python3 manage.py test lists"))
 
+
     def run_fts(self):
         if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
             return self.run_command(Command("python3 manage.py test functional_tests"))
         else:
             return self.run_command(Command("python3 functional_tests.py"))
+
 
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
