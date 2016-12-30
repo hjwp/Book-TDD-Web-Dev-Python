@@ -5,25 +5,73 @@ Building a REST API: JSON, Ajax, and mocking with JavaScript
 
 (((REST)))
 (((API)))
-WARNING: Chapter under construction.  Apologies, it's in pretty telegraphic style for now.
+Representational State Transfer (REST) is an approach to designing a web
+service to allow a user to retrieve and update information about "resources". It's 
+become the dominant approach when designing APIs for use over the web.
+
+We've built a working web app without needing an API so far.  Why might we want
+one?  One motivation might be to improve the user experience by making the site
+more dynamic.  Rather than waiting for the page to refresh after each addition
+to a list, we can use JavaScript to fire off those requests asynchronously to our
+API, and give the user a more interactive feeling.
+
+Perhaps more interestingly, once we've built an API, we can interact with our
+back-end application via other mechanisms than the browser.  A mobile app might
+be one new candidate client application, another might be some sort of
+command-line application, or other developers might be able to build libraries
+and tools around your back-end.
+
+In this chapter we'll see how to build an API "by hand".  In the next, I'll
+give an overview of how to use a popular tool from the Django ecosystem called
+Django-Rest-Framework.
 
 
-Plan:
+Our approach for this chapter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* All assumes an existing list
-* new URL structure /api/lists/{id}/
-* GET gives you details of a list (including all its items)
+I won't convert the entirety of the app for now, we'll start by assuming we
+have an existing list.  REST defines a relationship between URLs and the 
+HTTP methods (GET and POST, but also the more funky ones like PUT and DELETE)
+which will guide us in our design.
+
+https://en.wikipedia.org/wiki/Representational_state_transfer#Relationship_between_URL_and_HTTP_methods[The wikipedia entry on REST]
+has a good overview.  In brief:
+
+* Our new URL structure will be '/api/lists/{id}/'
+* GET will give you details of a list (including all its items) in JSON format.
 * POST lets you add an item
 
+We'll take the code from its state at the end of Chapter 21.
 
-Code example start from chapter 21.
+
+Choosing our test approach
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If we were building an API that was entirely agnostic about its clients, we might
+want to think about what levels to test it at.  The equivalent of functional
+tests would perhaps spin up a real server (maybe using `LiveServerTestCase`)
+and interact with it using the `requests` library. We'd have to think carefully
+about how to set up fixtures (if we use the API itself, that introduces a lot
+of dependencies between tests) and what additional layer of lower-level/unit
+tests might be most useful to us.  Or we might decide that a single layer of
+tests using the Django Test Client would be enough.
+
+As it is, we're building an API in the context of a browser-based client side.
+We want to start using it on our production site, and have the app continue to
+provide the same functionality as it did before.  So our functional tests will
+continue to serve the role of being the highest-level tests, and of checking
+the integration between our JavaScript and our API.
+
+That leaves the Django Test Client as a natural place to site our lower-level
+tests.  Let's start there.
+
 
 
 Basic piping
 ~~~~~~~~~~~~
 
-
-Start with a unit test that we can return a JSON response, status 200, from a URL
+We start with a unit test that just checks that our new URL structure returns
+a 200 response to GET requests, and that it uses the JSON format (instead of HTML).
 
 [role="sourcecode"]
 .lists/tests.py
@@ -46,25 +94,12 @@ class APIGetListItemsTest(TestCase):
 ----
 
 
-<1> This is a new pattern we'll introduce for this chapter, it'll help
-    us to remove duplication of hard-coded urls in this test.  We could
-    even have used a call to `reverse`
+<1> Using a class-level constant for the URL under test is a new pattern we'll
+    introduce for this chapter. It'll help us to remove duplication of
+    hard-coded URLs.  You could even use a call to `reverse` to reduce
+    duplication even further.
 
-
-And we can get that together in 3 lines
-
-
-[role="sourcecode"]
-.lists/tests.py
-[source,python]
-----
-from django.http import HttpResponse
-
-def list(request, list_id):
-    return HttpResponse(content_type='application/json')
-----
-
-And wire up a couple of urls files:
+First we wire up a couple of 'urls' files:
 
 [role="sourcecode"]
 .lists/tests.py
@@ -82,6 +117,7 @@ urlpatterns = [
 ]
 ----
 
+and
 
 [role="sourcecode"]
 .lists/api_urls.py
@@ -93,6 +129,21 @@ from lists import api
 urlpatterns = [
     url(r'^lists/(\d+)/$', api.list, name='api_list'),
 ]
+----
+
+
+And the actual core of our API can live in a file called 'api.py'.  Just
+3 lines should be enough:
+
+
+[role="sourcecode"]
+.lists/api.py
+[source,python]
+----
+from django.http import HttpResponse
+
+def list(request, list_id):
+    return HttpResponse(content_type='application/json')
 ----
 
 The tests should pass, and we have the basic piping together.
@@ -112,6 +163,8 @@ OK
 Actually responding something
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Our next step is to get our API to actually respond with some content,
+specifically, a JSON representation of our list items.
 
 [role="sourcecode"]
 .lists/tests.py
@@ -133,8 +186,8 @@ Actually responding something
         )
 ----
 
-<1> This is the main thing to notice about this test -- we expect our
-    response to be in JSON format.  We use `json.loads()` because testing
+<1> This is the main thing to notice about this test. We expect our
+    response to be in JSON format; we use `json.loads()` because testing
     python objects is easier than messing about with raw JSON strings.
 
 
@@ -161,11 +214,15 @@ def list(request, list_id):
     )
 ----
 
+A nice opportunity to use a list comprehension!
+
+
 
 Adding POST
 ~~~~~~~~~~~
 
-We'll start with the "happy path":
+The second thing we need from our API is the ability to add new items
+to our list by using a POST request. We'll start with the "happy path":
 
 
 [role="sourcecode"]
@@ -184,9 +241,8 @@ We'll start with the "happy path":
 ----
 
 
-And the implementation is similarly simple -- basically
-the same was what we do in our normal view, but we return
-a 201 rather than a redirect:
+And the implementation is similarly simple--basically the same was what we do
+in our normal view, but we return a 201 rather than a redirect:
 
 
 [role="sourcecode"]
@@ -201,18 +257,25 @@ def list(request, list_id):
     [...]
 ----
 
-
 And that should get us started.
 
+NOTE: One of the fun things about building a REST API is that you get
+    to use a few more of the full range of 
+    https://en.wikipedia.org/wiki/List_of_HTTP_status_codes[HTTP status codes]
 
-Testing the client-side with sinon.js
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Don't even 'think' of doing Ajax testing without a mocking library.  Different test frameworks
-and tools have their own, sinon is generic.  It also provides JavaScript mocks, as we'll see...
 
-http://sinonjs.org/
+Testing the client-side Ajax with Sinon.js
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Don't even 'think' of doing Ajax testing without a mocking library.  Different
+test frameworks and tools have their own, 'Sinon' is generic.  It also provides
+JavaScript mocks, as we'll see...
+
+Start by downloading it from its site, http://sinonjs.org/, and putting it into
+our 'lists/static/tests/' folder.
+
+Then we can write our first Ajax test:
 
 [role="sourcecode"]
 .lists/static/tests/tests.html
@@ -234,6 +297,7 @@ http://sinonjs.org/
 
   <script>
 /* global sinon */
+
 var server;
 QUnit.testStart(function () {
   server = sinon.fakeServer.create();  //<3>
@@ -259,19 +323,23 @@ QUnit.test("should get items by ajax on initialize", function (assert) {
   </script>
 ----
 
-<1> We add a new item to the fixture div to represent our list table
+<1> We add a new item to the fixture `div` to represent our list table.
 
 <2> We import 'sinon.js'
 
 <3> `testStart` and `testDone` are the QUnit equivalents of `setUp` and
-    `tearDown`.  We use them to tell sinon to start up its ajax testing
-    tool, the `fakeServer`.
+    `tearDown`.  We use them to tell Sinon to start up its Ajax testing
+    tool, the `fakeServer`, and make it available via a globally scoped
+    variable called `server`.
 
-<4> That lets us make assertions about any ajax requests that were made
-    by our code.
+<4> That lets us make assertions about any Ajax requests that were made
+    by our code.  In this case, we test what URL the request went to,
+    and what HTTP method it used.
 
 
-And we can get that passing with this
+To actually make our Ajax request, we'll use the
+https://api.jquery.com/jQuery.get/[jQuery Ajax helpers], which are 'much'
+easier than trying to use the low-level browser standard `XMLHttpRequest` objects.
 
 [role="sourcecode"]
 .lists/static/lists.js
@@ -291,19 +359,23 @@ And we can get that passing with this
 ----
 
 
+That should get our test passing:
+
+
 ----
 Took 35ms to run 5 tests. 5 passed, 0 failed.
 ----
 
-But what about the async part, where we deal with the response?
+Well, we might be pinging out a GET request to the server, but what about
+actually 'doing' something?  How do we test the actual "async" part, where we
+deal with the (eventual) response?
 
 
-Sinon and testing the async part of Ajax
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Sinon and testing the asynchronous part of Ajax
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-
-This is a major reason to love sinon.  `server.respond()` allows us to exactly
-control the flow of the async code.
+This is a major reason to love Sinon.  `server.respond()` allows us to exactly
+control the flow of the asynchronous code.
 
 
 [role="sourcecode"]
@@ -333,29 +405,31 @@ QUnit.test("should fill in lists table from ajax response", function (assert) {
 });
 ----
 
-<1> We set up some response data for sinon to use, telling it what status code, headers,
+<1> We set up some response data for Sinon to use, telling it what status code, headers,
     and importantly what kind of response JSON we want to simulate coming from the
     server.
 
 <2> Then we call the function under test
 
 <3> Here's the magic.  'Then' we can call `server.respond()`, whenever we like, and that
-    will kick off all the async part of the Ajax loop -- all the callbacks we'd assigned
+    will kick off all the async part of the Ajax loop -- ie, any callback we've assigned
     to deal with the response.
 
-And then we can quietly check whether our Ajax callback has actually populated our table
+Now we can quietly check whether our Ajax callback has actually populated our table
 with the new list rows...
+
 
 TIP: We're lucky because of the way jQuery registers its callbacks for Ajax when we use
     the `.done()` function.  If you want to switch to the more standard JavaScript Promise
-    `.then()` callback, we get one more level of async.  QUnit does have a way of dealing with
-    that.  Check out the docs for the http://api.qunitjs.com/async/[async] function.  Other test
-    frameworks have something similar.
+    `.then()` callback, we get one more "level" of async.  QUnit does have a
+    way of dealing with that.  Check out the docs for the
+    http://api.qunitjs.com/async/[async] function.
+    Other test frameworks have something similar.
 
 
 
-Wiring it all up in the template to check it all works so far
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Wiring it all up in the template to see if it really works
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 We break it first, by removing the list table `{% for %}` loop from the 
 lists.html template.
@@ -376,7 +450,29 @@ lists.html template.
      {% if list.owner %}
 ----
 
-Yep, that breaks the FT
+.Graceful degradation and progressive enhancement
+*******************************************************************************
+By removing the non-Ajax version of the lists page, I've removed the option of
+https://www.w3.org/wiki/Graceful_degradation_versus_progressive_enhancement[graceful
+degradation], ie keeping a version of the site that will still work without
+JavaScript.
+
+This used to be an accessibility issue: "screen reader" browsers for visually
+impaired people used not to have JavaScript, so relying entirely on JS would
+exclude those users.  That's not so much of an issue any more, as I understand
+it.  But some users will block JavaScript for security reasons.
+
+Another common problem is differing levels of JavaScript support in different
+browsers.  This is a particular issue if you start adventuring off in the
+direction of "modern" front-end development and ES2015.
+
+In short, it's always nice to have a non-javascript "backup".  Particularly
+if you've built a site that works fine without it, don't throw away your
+working "plain old" HTML version too hastily. I'm just doing it because it's
+convenient for what I want to demonstrate.
+*******************************************************************************
+
+That causes our basic FT to fail:
 
 [subs="specialcharacters,macros"]
 ----
@@ -393,8 +489,9 @@ AssertionError: '1: Buy peacock feathers' not found in []
 FAILED (failures=1)
 ----
 
-We then add a block called `{% scripts %}` to the base template to allow us
-to override it selectively in 'list.html':
+
+Let's add a block called `{% scripts %}` to the base template, which we
+can selectively override later in our lists page.
 
 [role="sourcecode"]
 .lists/templates/base.html
@@ -412,6 +509,7 @@ $(document).ready(function () {
 
   </body>
 ----
+
 
 And now in 'list.html' we add a slightly different call to `initialize`, with
 the correct url:
@@ -457,11 +555,10 @@ single-page app yet.  But we'll get there!
 
 
 
-Implementing Ajax POST
-~~~~~~~~~~~~~~~~~~~~~~
+Implementing Ajax POST, including the CSRF token
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-First we give our list form an `id` so we can pick it up
-in our JS:
+First we give our list form an `id` so we can pick it up easily in our JS:
 
 [role="sourcecode"]
 .lists/templates/base.html
@@ -478,8 +575,8 @@ in our JS:
                  {% if form.errors %}
 ----
 
-
-Next tweak the fixture in our js test:
+Next tweak the fixture in our JS test to reflect that ID, as well as the
+CSRF token that's currently on the page.
 
 [role="sourcecode"]
 .lists/static/tests/tests.html
@@ -530,8 +627,8 @@ QUnit.test("should intercept form submit and do ajax post", function (assert) {
     first one is the GET for the list items table).
 
 <3> We check our POST `requestBody`.  As you can see, it's
-    URL-encoded, which isn't the most value to test, but it's still just about
-    readable.
+    URL-encoded, which isn't the most easy value to test, but it's still just
+    about readable.
 
 And here's how we implement it:
 
@@ -554,8 +651,8 @@ And here's how we implement it:
 ----
 
 That get our JS tests passing but it breaks our FTs, because, although we're
-doing our POST ok, we're not updating the page after the POST to show the new
-list item:
+doing our POST all right, we're not updating the page after the POST to show
+the new list item:
 
 ----
   File "/.../superlists/functional_tests/base.py", line 109, in check_for_row_in_list_table
@@ -666,15 +763,16 @@ QUnit.test("should call updateItems after successful post", function (assert) {
 <1> First important thing to notice:  We only set up our server response
     'after' we do the initialize.  We want this to be the response to the
     POST request that happens on form submit, not the response to the
-    initial GET request (remember our lesson from chapter 13?  On of the most
-    challenging things about JS testing is controlling the order of execution)
+    initial GET request (remember our lesson from <<javascript-chapter>>?
+    One of the most challenging things about JS testing is controlling the
+    order of execution).
 
 <2> Similarly, we only start mocking our helper function 'after' we know the
     first call for the initial GET has already happened.  The `sandbox.spy` call
     is what does the job that `patch` does in Python tests.  It replaces the given
     object with a mock version.
 
-<3> our `updateItems` function has now grown some mocky extra attributes, like
+<3> Our `updateItems` function has now grown some mocky extra attributes, like
     `lastCall` and `lastCall.args`, which are like the Python mock's `call_args`.
 
 
@@ -715,8 +813,11 @@ And we fix it thusly:
 
 
 And our FT passes!  or at least one of them does, the others have problems,
-we'll come back to them later
+we'll come back to them shortly.
 
+
+Finishing the refactor: getting the tests to match the code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 First, I'm not happy until we've seen through this refactor, and made
 our unit tests match the code a little more:
@@ -766,16 +867,17 @@ our unit tests match the code a little more:
    server.respond();
 ----
 
+//TODO: show new unit test run output
+
 
 Data validation.  An exercise for the reader?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 
 IF you do a full test run, you should find two FTs are failing:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test *]
+$ pass:quotes[*python manage.py test*]
 [...]
 ERROR: test_cannot_add_empty_list_items
 (functional_tests.test_list_item_validation.ItemValidationTest)
@@ -893,25 +995,32 @@ errors from JavaScript:
 ----
 
 
-If you need a hint, check out the repo
+If you need a hint, check out 
+https://github.com/hjwp/book-example/tree/appendix_VI_rest_api[the repo].
 
 But I would never suggest building a REST API in Django without checking out
-Django-Rest-Framework.  Which is the topix of the next appendix!  Read on,
+Django-Rest-Framework.  Which is the topic of the next appendix!  Read on,
 Macduff.
 
 
 .REST API tips
 *******************************************************************************
 
-Dedupe ursl::
-    in test
+Dedupe URLs::
+    URLs are more important, in a way, to an API than they are to a
+    browser-facing app.  Try to reduce the amount of times you hard-code them
+    in your tests.
 
-Don't work with raw json strings::
-    json.loads and json.dumps are your friend.
+Don't work with raw JSON strings::
+    `json.loads` and `json.dumps` are your friend.
 
-Always use an ajax mocking library for your js tests::
-    sinon is fine.  Jasmine has its own, as does Angular.
+Always use an Ajax mocking library for your JS tests::
+    Sinon is fine.  Jasmine has its own, as does Angular.
 
+Bear graceful degradation & progressive enhancement in mind::
+    Especially if you're moving from a static site to a more JavaScript-driven
+    one, consider keeping at least the core of your site's functionality
+    working without JavaScript.
 
 *******************************************************************************
 
