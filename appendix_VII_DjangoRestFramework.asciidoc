@@ -224,7 +224,110 @@ Adapting the client side
 ----
 
 
-And a few more to do with error handling
+And a few more to do with error handling, which you can explore in the
+https://github.com/hjwp/book-example/blob/appendix_VII_DjangoRestFramework/lists/api.py[repo for this appendix] if
+you're curious.
+
+
+What Django-Rest-Framework gives you
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may be wondering what the point of using this framework was.
+
+
+Configuration instead of code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Well, the first advantage is that I've transformed my old procedural view
+function into a more declarative syntax
+
+
+[role="sourcecode skipme"]
+.lists/api.py (old version)
+[source,python]
+----
+def list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    if request.method == 'POST':
+        form = ExistingListItemForm(for_list=list_, data=request.POST)
+        if form.is_valid():
+            form.save()
+            return HttpResponse(status=201)
+        else:
+            return HttpResponse(
+                json.dumps({'error': form.errors['text'][0]}),
+                content_type='application/json',
+                status=400
+            )
+    item_dicts = [
+        {'id': item.id, 'text': item.text}
+        for item in list_.item_set.all()
+    ]
+    return HttpResponse(
+        json.dumps(item_dicts),
+        content_type='application/json'
+    )
+----
+
+If you compare this to the final DRF version, you'll notice that it is actually
+entirely configuration:
+
+
+[role="sourcecode skipme"]
+.lists/api.py (new version)
+[source,python]
+----
+class ItemSerializer(serializers.ModelSerializer):
+    text = serializers.CharField(
+        allow_blank=False, error_messages={'blank': EMPTY_ITEM_ERROR}
+    )
+
+    class Meta:
+        model = Item
+        fields = ('id', 'list', 'text')
+        validators = [
+            UniqueTogetherValidator(
+                queryset=Item.objects.all(),
+                fields=('list', 'text'),
+                message=DUPLICATE_ITEM_ERROR
+            )
+        ]
+
+
+class ListSerializer(serializers.ModelSerializer):
+    items = ItemSerializer(many=True, source='item_set')
+
+    class Meta:
+        model = List
+        fields = ('id', 'items',)
+
+
+class ListViewSet(viewsets.ModelViewSet):
+    queryset = List.objects.all()
+    serializer_class = ListSerializer
+
+
+class ItemViewSet(viewsets.ModelViewSet):
+    serializer_class = ItemSerializer
+    queryset = Item.objects.all()
+
+
+router = routers.SimpleRouter()
+router.register(r'lists', ListViewSet)
+router.register(r'items', ItemViewSet)
+----
+
+
+Free functionality
+^^^^^^^^^^^^^^^^^^
+
+The second advantage is that, by using DRF's `ModelSerializer`, `ViewSet` and
+routers, I've actually ended up with a much more extensive API than the one I'd
+rolled by hand.
+
+* GET, POST, PUT, PATCH, OPTIONS for all list and items urls
+* browsable / self-documenting version available
+
 
 
 .Django-Rest-Framework tips
