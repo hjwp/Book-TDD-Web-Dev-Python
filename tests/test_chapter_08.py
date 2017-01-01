@@ -5,7 +5,7 @@ import unittest
 import time
 
 from book_tester import ChapterTest
-LOCAL = True
+LOCAL = False
 
 class Chapter8Test(ChapterTest):
     chapter_no = 8
@@ -90,7 +90,7 @@ class Chapter8Test(ChapterTest):
         assert 'runserver' in self.listings[gunicorn_pos - 6]
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 42
             self.sourcetree.run_command('git checkout {0}'.format(
