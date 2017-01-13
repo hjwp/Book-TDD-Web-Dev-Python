@@ -1,7 +1,7 @@
 SOURCES := $(wildcard chapter_*.asciidoc)
 CHAPTER_TESTS := $(wildcard tests/test_chapter_*.py)
 HTML_PAGES := $(patsubst %.asciidoc, %.html, ${SOURCES})
-RUN_ASCIIDOC = asciidoctor -a source-highlighter=coderay -a icons=font -a compat-mode
+RUN_ASCIIDOC = asciidoctor -a source-highlighter=coderay -a linkcss -a icons=font -a compat-mode
 
 
 book.html: $(SOURCES)
