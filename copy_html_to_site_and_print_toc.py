@@ -125,14 +125,15 @@ def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
     comments_div = html.fromstring(open('disqus_comments.html').read())
     buy_book_div = html.fromstring(open('buy_the_book_banner.html').read())
     analytics_div = html.fromstring(open('analytics.html').read())
+    load_toc_script = open('load_toc.js').read()
 
     for chapter in CHAPTERS:
         new_contents = fix_xrefs(chapter, chapter_info)
         parsed = html.fromstring(new_contents)
         body = parsed.cssselect('body')[0]
         if parsed.cssselect('#header'):
-            header = parsed.cssselect('#header')[0]
-            header.append(fixed_toc)
+            head = parsed.cssselect('head')[0]
+            head.append(html.fragment_fromstring('<script>' + load_toc_script + '</script>'))
             body.set('class', 'article toc2 toc-left')
         body.insert(0, buy_book_div)
         body.append(comments_div)
@@ -142,6 +143,9 @@ def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
         target = os.path.join('/home/harry/workspace/www.obeythetestinggoat.com/content/book', chapter)
         with open(target, 'w') as f:
             f.write(fixed_contents.decode('utf8'))
+        toc = '/home/harry/workspace/www.obeythetestinggoat.com/content/book/toc.html'
+        with open(toc, 'w') as f:
+            f.write(html.tostring(fixed_toc).decode('utf8'))
 
 
 def extract_toc_from_book():
