@@ -2,248 +2,15 @@
 Working Incrementally
 ---------------------
 
-In this chapter we're going to address the problems we discovered at the end
-of the last chapter. In the immediate, the problem of cleaning up after
-functional test runs. Later, the more general problem, which is that
-our design only allows for one global list.  I'll demonstrate a critical
-TDD technique:  how to adapt existing code using an incremental, step-by-step
-process which takes you from working state to working state. Testing Goat, not
-Refactoring Cat.
+In this chapter we're going to address our main problem, which is that our
+design only allows for one global list.  I'll demonstrate a critical TDD
+technique:  how to adapt existing code using an incremental, step-by-step
+process which takes you from working state to working state.
+Testing Goat, not Refactoring Cat.
 
 
-Ensuring Test Isolation in Functional Tests
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("functional tests/testing (FT)","cleanup", id="ix_FTcleanup", range="startofrange")))
-((("functional tests/testing (FT)","isolation in", id="ix_FTisolation", range="startofrange")))
-We ended the last chapter with a classic testing problem:  how to ensure
-'isolation' between tests.  Each run of our functional tests was leaving list
-items lying around in the database, and that would interfere with the test
-results when you next ran the tests.
-
-When we run 'unit' tests, the Django test runner automatically creates a brand
-new test database (separate from the real one), which it can safely reset
-before each individual test is run, and then throw away at the end.  But our
-functional tests currently run against the "real" database, 'db.sqlite3'.
-
-One way to tackle this would be to "roll our own" solution, and add some code
-to 'functional_tests.py' which would do the cleaning up. The `setUp` and
-`tearDown` methods are perfect for this sort of thing.
-
-((("LiveServerTestCase")))
-((("Django", "LiveServerTestCase")))
-((("Django", "functional tests (FT) in", see="functional tests/testing (FT)")))
-Since Django 1.4 though, there's a new class called `LiveServerTestCase` which
-can do this work for you. It will automatically create a test database (just
-like in a unit test run), and start up a development server for the functional
-tests to run against. Although as a tool it has some limitations which we'll
-need to work around later, it's dead useful at this stage, so let's check it
-out.
-
-`LiveServerTestCase` expects to be run by the Django test runner using
-'manage.py'. As of Django 1.6, the test runner will find any files whose name
-begins with 'test'.  To keep things neat and tidy, let's make a folder for
-our functional tests, so that it looks a bit like an app. All Django needs is
-for it to be a valid Python package directory (i.e., one with a '\_\_init__.py'
-in it):
-
-[subs=""]
-----
-$ <strong>mkdir functional_tests</strong>
-$ <strong>touch functional_tests/__init__.py</strong>
-----
-
-Then we 'move' our functional tests, from being a standalone file called
-'functional_tests.py', to being the 'tests.py' of the `functional_tests` app.
-We use *`git mv`* so that Git notices that we've moved the file:
-
-
-[subs=""]
-----
-$ <strong>git mv functional_tests.py functional_tests/tests.py</strong>
-$ <strong>git status</strong> # shows the rename to functional_tests/tests.py and __init__.py
-----
-
-At this point your directory tree should look like this:
-
-----
-.
-├── db.sqlite3
-├── functional_tests
-│   ├── __init__.py
-│   └── tests.py
-├── lists
-│   ├── admin.py
-│   ├── apps.py
-│   ├── __init__.py
-│   ├── migrations
-│   │   ├── 0001_initial.py
-│   │   ├── 0002_item_text.py
-│   │   ├── __init__.py
-│   │   └── __pycache__
-│   ├── models.py
-│   ├── __pycache__
-│   ├── templates
-│   │   └── home.html
-│   ├── tests.py
-│   └── views.py
-├── manage.py
-└── superlists
-    ├── __init__.py
-    ├── __pycache__
-    ├── settings.py
-    ├── urls.py
-    └── wsgi.py
-----
-
-'functional_tests.py' is gone, and has turned into 'functional_tests/tests.py'.
-Now, whenever we want to run our functional tests, instead of running `python
-functional_tests.py`, we will use `python manage.py test functional_tests`.
-
-NOTE: You could mix your functional tests into the tests for the `lists` app.
-    I tend to prefer to keep them separate, because functional tests usually
-    have cross-cutting concerns that run across different apps.  FTs are meant
-    to see things from the point of view of your users, and your users don't
-    care about how you've split work between different apps!
-
-
-Now let's edit 'functional_tests/tests.py' and change our `NewVisitorTest`
-class to make it use `LiveServerTestCase`:
-
-
-[role="sourcecode"]
-.functional_tests/tests.py (ch06l001)
-[source,python]
-----
-from django.test import LiveServerTestCase
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-
-class NewVisitorTest(LiveServerTestCase):
-
-    def setUp(self):
-        [...]
-----
-
-Next, instead of hardcoding the visit to localhost port 8000, `LiveServerTestCase`
-gives us an attribute called `live_server_url`:
-
-
-[role="dofirst-ch06l003 sourcecode"]
-.functional_tests/tests.py (ch06l002)
-[source,python]
-----
-    def test_can_start_a_list_and_retrieve_it_later(self):
-        # Edith has heard about a cool new online to-do app. She goes
-        # to check out its homepage
-        self.browser.get(self.live_server_url)
-----
-
-We can also remove the `if __name__ == '__main__'` from the end if we want,
-since we'll be using the Django test runner to launch the FT.
-
-Now we are able to run our functional tests using the Django test runner, by
-telling it to run just the tests for our new `functional_tests` app:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test functional_tests*]
-Creating test database for alias 'default'...
-F
-======================================================================
-FAIL: test_can_start_a_list_and_retrieve_it_later
-(functional_tests.tests.NewVisitorTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/.../superlists/functional_tests/tests.py", line 61, in
-test_can_start_a_list_and_retrieve_it_later
-    self.fail('Finish the test!')
-AssertionError: Finish the test!
-
- ---------------------------------------------------------------------
-Ran 1 test in 6.378s
-
-FAILED (failures=1)
-Destroying test database for alias 'default'...
-----
-
-The FT gets through to the `self.fail`, just like it did before the refactor.
-You'll also notice that if you run the tests a second time, there aren't any
-old list items lying around from the previous test--it has cleaned up after
-itself.  Success! We should commit it as an atomic change:
-
-[subs=""]
-----
-$ <strong>git status</strong> # functional_tests.py renamed + modified, new __init__.py
-$ <strong>git add functional_tests</strong>
-$ <strong>git diff --staged -M</strong>
-$ <strong>git commit</strong>  # msg eg "make functional_tests an app, use LiveServerTestCase"
-----
-
-The `-M` flag on the `git diff` is a useful one. It means "detect moves", so it
-will notice that 'functional_tests.py' and 'functional_tests/tests.py' are the
-same file, and show you a more sensible diff (try it without the flag!).
-(((range="endofrange", startref="ix_FTcleanup")))
-(((range="endofrange", startref="ix_FTisolation")))
-
-
-Running Just the Unit Tests
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("functional tests/testing (FT)", "running unit tests only")))
-Now if we run `manage.py test`, Django will run both the functional and the
-unit tests:
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test*]
-Creating test database for alias 'default'...
-......F
-======================================================================
-FAIL: test_can_start_a_list_and_retrieve_it_later
-[...]
-AssertionError: Finish the test!
-
- ---------------------------------------------------------------------
-Ran 7 tests in 3.132s
-
-FAILED (failures=1)
-Destroying test database for alias 'default'...
-----
-
-In order to run just the unit tests, we can specify that we want to
-only run the tests for the `lists` app:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test lists*]
-Creating test database for alias 'default'...
-......
- ---------------------------------------------------------------------
-Ran 6 tests in 0.009s
-
-OK
-Destroying test database for alias 'default'...
-----
-
-
-
-.Useful Commands Updated
-*******************************************************************************
-
-To run the functional tests::
-    *`python manage.py test functional_tests`*
-
-To run the unit tests::
-    *`python manage.py test lists`*
-
-What to do if I say "run the tests", and you're not sure which ones I mean?
-Have another look at the flowchart at the end of <<chapter-4>>, and try and figure
-out where we are.  As a rule of thumb, we usually only run the functional tests
-once all the unit tests are passing, so if in doubt, try both!
-
-*******************************************************************************
+A quick FT run to remind us where we are
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Now let's move on to thinking about how we want support for multiple lists to
 work.  Currently the FT (which is the closest we have to a design document)
@@ -322,8 +89,8 @@ adding to the complexity of your application. YAGNI is the mantra we use to
 resist our overenthusiastic creative urges.
 
 
-REST
-^^^^
+REST (ish)
+^^^^^^^^^^
 
 We have an idea of the data structure we want--the Model part of
 Model-View-Controller (MVC).  What about the View and Controller parts?
@@ -2392,16 +2159,8 @@ needs a little prettification first...let's look at what we need to do to
 deploy it in the next couple of chapters.
 
 
-.Useful TDD Concepts and Rules Of Thumb
+.Some more TDD Philosophy
 *******************************************************************************
-
-Test Isolation and Global State::
-    Different tests shouldn't affect one another.  This means we need to
-    reset any permanent state at the end of each test. Django's test runner
-    helps us do this by creating a test database, which it wipes clean in
-    between each test.  (See also <<isolation-chapter>>.)
-    ((("test isolation")))
-    ((("functional tests/testing (FT)", "isolation in")))
 
 Working State to Working State (aka The Testing Goat vs. Refactoring Cat)::
     Our natural urge is often to dive in and fix everything at once...but if
@@ -2412,6 +2171,14 @@ Working State to Working State (aka The Testing Goat vs. Refactoring Cat)::
     ((("test-driven development (TDD)", "Working state to working state")))
     ((("Testing Goat")))
     ((("Refactoring Cat")))
+
+
+Split work out into small, achievable tasks::
+    Sometimes this means starting with "boring" work rather than diving
+    straight in with the fun stuff, but you'll have to trust that YOLO-you
+    in the parallel universe is probably having a bad time, having broken
+    everything, and struggling to get their app working again.
+    
 
 YAGNI::
     You ain't gonna need it!  Avoid the temptation to write code that you 
