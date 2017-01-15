@@ -259,26 +259,97 @@ you when it thinks the page is loading.  It even provides a method called
 an element that doesn't seem to be on the page yet.
 
 In fact, in the first edition, I was able to rely entirely on implicit waits.
-The problem is that implicit waits are always a little unreliable and with the
+The problem is that implicit waits are always a little flakey and with the
 release of Selenium 3, implicit waits became even more unreliable, at the same
 time as the general opinion from the Selenium team was that implicit waits were
 just a bad idea, and to be avoided.
 
 
 So this edition has explicit waits from the very beginning, but the problem
-is that those "time.sleeps" have their own problem.  Currently we're waiting
+is that those "time.sleeps" have their own issues.  Currently we're waiting
 for one second, but who's to say that's the right amount of time?  For most
 tests we run against our own machine, one second is way too long, and it's
-going to really slow down our FT runs.  But the problem is that you never know
-when your machine is going to have a glitch, or be loading a large image,
-or a page for some reason takes just slightly longer than one second to load,
-and now a test will fail for spurious reasons.  And false positives in your
-tests are very annoying (there's lots more on this in
+going to really slow down our FT runs. 0.1s would be fine.  But the problem is
+that if you set it that low, every so often you're going to get a spurious
+failure because, for whatever reason, the laptop was being a bit slow just
+then.  And even at 1s you can never be quite sure you're not going to get
+random failures that don't indicate a real problem, and false positives
+in tests are a real annoyance. (there's lots more on this in
 https://martinfowler.com/articles/nonDeterminism.html[an article by Martin Fowler]).
 
 
 So let's replace our sleeps with a tool that will wait for just as long as is
-needed, and allows for the occasional glitch
+needed, up to a nice long timeout to catch any glitches.
+
+
+First, here's a generic "`wait_for`" helper function, that will keep retrying
+a function until a timeout expires:
+
+
+
+[role="sourcecode"]
+.functional_tests/tests.py  (ch05bl004)
+[source,python]
+----
+from selenium.common.exceptions import WebDriverException
+[...]
+
+    def wait_for(self, fn, timeout=5):
+        start_time = time.time()
+        while time.time() - start_time < timeout:  #<1>
+            try:
+                return fn()  #<2>
+            except (AssertionError, WebDriverException):  #<3>
+                time.sleep(0.1)
+        # one more try, which will raise any errors if they are outstanding
+        return fn()  #<4>
+----
+
+<1> Here's the loop, which will keep going until our timeout expires
+
+<2> We try and call our function, and as long as it doesn't raise any
+    errors, we return what it returns, and escape the loop.
+
+<3> But if we catch an exception, we wait a short amount of time and loop
+    around to retry.  There are two types of exceptions we want to catch:
+    `WebDriverException` for when selenium can't find an element on a page,
+    and `AssertionError` for when our function is a test method that is
+    currently failing.
+
+<4> If we get to this point, that means our function kept raising exceptions
+    every time we tried it until we ran out of time.  We call it one more
+    time, but this time without catching the errors, so that they bubble back
+    up to our test, and most likely end up in our traceback, telling us why
+    our test failed.
+
+Does that seem a little abstract?  Let's see it in action, by rewriting our
+`check_for_row_in_list_table` function to use a wait:
+
+
+[role="sourcecode"]
+.functional_tests/tests.py  (ch05bl005)
+[source,python]
+----
+    def wait_for_row_in_list_table(self, row_text):
+        self.wait_for(lambda: self.assertIn(
+            row_text,
+            [row.text for row in self.browser.find_elements_by_css_selector(
+                '#id_list_table tr')]
+        ))
+----
+
+
+We're still carrying out the same `assertIn` check as before, but now it's 
+wrapped in a `lambda` to make it into a function we can pass as an argument.
+The other change is that, rather than retrieving the table first and then
+the rows, we fetch them in a single selenium call, so there's only one
+place that can raise a `WebDriverException`.
+
+This is quite dense in terms of concepts, but the end result is that we
+have a 'reasonably' readable syntax for doing waits: you just add a
+`self.wait_for` and a `lambda:`, and you make your test assertions just
+as you did before.
+
 
 
 
