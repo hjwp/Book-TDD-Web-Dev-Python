@@ -283,35 +283,18 @@ needed, up to a nice long timeout to catch any glitches.
 
 
 
-Avoiding race conditions by making selenium calls atomic
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+A `wait_for` decorator
+^^^^^^^^^^^^^^^^^^^^^^
 
+We'll implement our waits using a very Pythonic tool: a decorator.  Now, if
+you're new to Python, this is definitely an intermediate-level technique, so
+you have two choices.  Either spend a good bit of time wrapping your head
+around the functional programming techniques involved, until you're sure you
+understand it.  Or, put that off to another day, and trust that it "just works",
+because once we've written our decorator, as you'll see, using it will be
+very easy.  That's the Pythonic part!
 
-We start by rewriting our `check_for_row_in_list_table` function to only
-call selenium once. The reason is that, if we first retrieve the table
-and then retrieve its rows, we set up a "race condition" where Selenium could
-conceivably fetch the table object from the page before the load, and then
-try and fetch the rows as the new page loads, and then we'll get errors
-(`StaleElementReferenceException` usually).  By making just one "atomic"
-call to Selenium, we avoid that race condition:
-
-[role="sourcecode"]
-.functional_tests/tests.py  (ch05bl004)
-[source,python]
-----
-    def check_for_row_in_list_table(self, row_text):
-        self.assertIn(
-            row_text,
-            [row.text for row in self.browser.find_elements_by_css_selector(
-                '#id_list_table tr')]
-        )
-----
-
-
-
-
-First, here's a generic "`wait_for`" helper function, that will keep retrying
-a function until a timeout expires:
+OK hold on to your functional hat, here we go!
 
 
 
@@ -322,20 +305,30 @@ a function until a timeout expires:
 from selenium.common.exceptions import WebDriverException
 [...]
 
-    def wait_for(self, fn, timeout=5):
+
+def wait_for(fn):  #<1>
+    def modified_fn(*args, **kwargs):  #<2>
         start_time = time.time()
-        while time.time() - start_time < timeout:  #<1>
+        while time.time() - start_time < 5:  #<3>
             try:
-                return fn()  #<2>
-            except (AssertionError, WebDriverException):  #<3>
+                return fn(*args, **kwargs)  #<3>
+            except (AssertionError, WebDriverException):  #<4>
                 time.sleep(0.1)
         # one more try, which will raise any errors if they are outstanding
-        return fn()  #<4>
+        return fn(*args)  #<5>
+    return modified_fn  #<6>
 ----
 
-<1> Here's the loop, which will keep going until our timeout expires
+<1> A decorator is a way of modifying a function, and itself is a function
+    that takes a function as an argument, and returns another function as
+    the modified version.
 
-<2> We try and call our function, and as long as it doesn't raise any
+<2> Here's where we create our modified version of the function. It
+    can take arbitrary arguments (`args` and `kwargs`).
+
+<3> Here's the loop, which will keep going until our timeout expires
+
+<4> We try and call our function, and as long as it doesn't raise any
     errors, we return what it returns, and escape the loop.
 
 <3> But if we catch an exception, we wait a short amount of time and loop
