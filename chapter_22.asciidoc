@@ -1,491 +1,602 @@
-[[hot-lava-chapter]]
-Fast Tests, Slow Tests, and Hot Lava
-------------------------------------
+[[page-pattern-chapter]]
+The Token Social Bit, the Page Pattern, and an Exercise for the Reader
+----------------------------------------------------------------------
 
-[quote, 'https://www.youtube.com/watch?v=bsmFVb8guMU[Casey Kinsey]']
+
+Are jokes about how "everything has to be social now" slightly old hat?
+Everything has to be all A/B tested big data get-more-clicks lists of 10 Things
+This Inspiring Teacher Said That Will Make You Change Your Mind About Blah Blah
+now...anyway. Lists, be they Inspirational or otherwise, are often better
+shared. Let's allow our users to collaborate on their lists with other users.
+
+((("Selenium", "wait patterns")))
+((("waits")))
+Along the way we'll improve our FTs by starting to implement the interact/wait
+Selenium pattern that we learned in the last chapter.  We'll also experiment
+with something called the Page Object pattern.
+
+Then, rather than showing you explicitly what to do, I'm going to let you write
+your unit tests and application code by yourself.  Don't worry, you won't be
+totally on your own!  I'll give an outline of the steps to take, as well as
+some hints and tips.
+
+
+NOTE: this chapter has not yet been updated for the new edition, but it
+    should not be changing substantially.
+
+
+An FT with Multiple Users, and addCleanup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("functional tests/testing (FT)", "multiple users")))
+((("functional tests/testing (FT)", "cleanup")))
+Let's get started--we'll need two users for this FT:
+
+[role="sourcecode small-code"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+from selenium import webdriver
+from .base import FunctionalTest
+
+def quit_if_possible(browser):
+    try: browser.quit()
+    except: pass
+
+
+class SharingTest(FunctionalTest):
+
+    def test_logged_in_users_lists_are_saved_as_my_lists(self):
+        # Edith is a logged-in user
+        self.create_pre_authenticated_session('edith@example.com')
+        edith_browser = self.browser
+        self.addCleanup(lambda: quit_if_possible(edith_browser))
+
+        # Her friend Oniciferous is also hanging out on the lists site
+        oni_browser = webdriver.Firefox()
+        self.addCleanup(lambda: quit_if_possible(oni_browser))
+        self.browser = oni_browser
+        self.create_pre_authenticated_session('oniciferous@example.com')
+
+        # Edith goes to the home page and starts a list
+        self.browser = edith_browser
+        self.browser.get(self.server_url)
+        self.get_item_input_box().send_keys('Get help\n')
+
+        # She notices a "Share this list" option
+        share_box = self.browser.find_element_by_css_selector('input[name=email]')
+        self.assertEqual(
+            share_box.get_attribute('placeholder'),
+            'your-friend@example.com'
+        )
+----
+//IDEA: rename Oni to Francis, as per ch. 6?
+
+The interesting feature to note about this section is the `addCleanup`
+function, whose documentation you can find 
+http://bit.ly/SuW8Hv[here].
+It can be used as an alternative to the `tearDown` function as a way of
+cleaning up resources used during the test.  It's most useful when the resource
+is only allocated halfway through a test, so you don't have to spend time in
+`tearDown` figuring out what does or doesn't need cleaning up.
+
+`addCleanup` is run after `tearDown`, which is why we need that `try/except`
+formulation for `quit_if_possible`&mdash;whichever of `edith_browser` and 
+`oni_browser` is also assigned to `self.browser` at the point at which the 
+test ends will already have been quit by the `tearDown` function.
+
+We'll also need to move `create_pre_authenticated_session` from
+'test_my_lists.py' into 'base.py'.
+
+OK, let's see if that all works:
+
+[role="dofirst-ch21l002"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_sharing*]
+[...]
+Traceback (most recent call last):
+  File "/.../superlists/functional_tests/test_sharing.py", line 29, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    share_box = self.browser.find_element_by_css_selector('input[name=email]')
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: {"method":"css selector","selector":"input[name=email]"}
+----
+
+Great! It seems to have got through creating the two user sessions, and
+it gets onto an expected failure--there is no input for an email address
+of a person to share a list with on the page.
+
+Let's do a commit at this point, because we've got at least a placeholder 
+for our FT, we've got a useful modification of the
+`create_pre_authenticated_session` function, and we're about to embark on
+a bit of an FT refactor:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "New FT for sharing, move session creation stuff to base"*
+----
+
+
+Implementing the Selenium Interact/Wait Pattern
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Selenium", "wait patterns")))
+((("waits")))
+Before we continue, let's take a closer look at the interactions with the site
+which we have in our FT so far:
+
+[role="sourcecode currentcontents small-code"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+    # Edith goes to the home page and starts a list
+    self.browser = edith_browser
+    self.browser.get(self.server_url)
+    self.get_item_input_box().send_keys('Get help\n')  #<1>
+
+    # She notices a "Share this list" option
+    share_box = self.browser.find_element_by_css_selector('input[name=email]')  #<2>
+    self.assertEqual(
+        share_box.get_attribute('placeholder'),
+        'your-friend@example.com'
+    )
+----
+
+<1> Interaction with site
+
+<2> Assumption about updated state of page
+
+We learned in the last chapter that it's dangerous to assume too much about
+the state of the browser after we do an interaction (like `send_keys`). In
+theory, `implicitly_wait` will make sure that, if the call to
+`find_element_by_css_selector` doesn't find our `input[name=email]` at first,
+it will silently retry a few times.  But it can also go wrong--imagine if
+there was an input on the previous page, with the same `name=email`, but a
+different placeholder text?  We'd get a strange failure, because Selenium
+could theoretically pick up the element from the previous page while the
+new page is loading.  That tends to raise a `StaleElementException`.
+
+TIP: Unexpected `StaleElementException` errors from Selenium often mean you
+    have some kind of race condition.  You should probably specify an explicit
+    interaction/wait pattern.
+    ((("race conditions")))
+    ((("Selenium", "race conditions")))
+
+Instead, it's always prudent to follow the "wait-for" pattern whenever we
+want to check on the effects of an interaction that we've just triggered.
+Something like this:
+
+
+[role="sourcecode skipme"]
+.functional_tests/test_sharing.py
+[source,python]
+----
+    self.get_item_input_box().send_keys('Get help\n')
+
+    # She notices a "Share this list" option
+    self.wait_for(
+        lambda:  self.assertEqual(
+            self.browser.find_element_by_css_selector(
+                'input[name=email]'
+            ).get_attribute('placeholder'),
+            'your-friend@example.com'
+        )
+    )
+----
+
+
+The Page Pattern
+~~~~~~~~~~~~~~~~
+
+((("helper functions/methods", id="ix_helperfunctions", range="startofrange")))
+((("Page pattern", id="ix_pagepattern", range="startofrange")))
+But do you know what would be even better?  This is an occasion for a "three
+strikes and refactor".  This test, and many others, all begin off with the user
+starting a new list.  What if we had a helper function called "start new list"
+that would do the `wait_for` as well as the list item input?  
+
+We've already seen how to use helper methods on the base `FunctionalTest`
+class, but if we continue using too many of them, it's going to get very
+crowded. I've worked on a base FT class that was over 1,500 lines long, and
+that got pretty unwieldy.
+
+One accepted pattern for splitting up your FT helper code is called the 
+http://www.seleniumhq.org/docs/06_test_design_considerations.jsp#page-object-design-pattern[Page
+pattern], and it involves having objects to represent the different pages on
+your site, and to be the single place to store information about how to 
+interact with them.
+
+Let's see how we would create Page objects for the home and lists pages. Here's one
+for the home page:
+
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py
+[source,python]
+----
+class HomePage(object):
+
+    def __init__(self, test):
+        self.test = test  #<1>
+
+
+    def go_to_home_page(self):  #<2>
+        self.test.browser.get(self.test.server_url)
+        self.test.wait_for(self.get_item_input)
+        return self  #<3>
+
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id('id_text')
+
+
+    def start_new_list(self, item_text):  #<4>
+        self.go_to_home_page()
+        inputbox = self.get_item_input()
+        inputbox.send_keys(item_text + '\n')
+        list_page = ListPage(self.test)  #<5>
+        list_page.wait_for_new_item_in_list(item_text, 1)  #<6>
+        return list_page  #<7>
+----
+
+<1> It's initialised with an object that represents the current test.  That
+    gives us the ability to make assertions, access the browser instance via
+    `self.test.browser`, and use the `wait_for` function.
+
+<2> Most Page objects have a "go to this page" function.  Notice that it
+    implements the interaction/wait pattern--first we `get` the page URL,
+    then we wait for an element that we know is on the home page.
+//IDEA: consider the fact that the lists page has that too...
+
+<3> Returning `self` is just a convenience. It enables 
+    https://en.wikipedia.org/wiki/Method_chaining[method chaining].
+
+<4> Here's our function that starts a new list.  It goes to the home page,
+    finds the input box, and sends the new item text to it, as well as a
+    carriage return.  Then it uses a wait to check that the interaction
+    has completed, but as you can see that wait is actually on a different
+    Page object:
+
+<5> The `ListPage`, which we'll see the code for shortly. It's initialised just
+    like a `HomePage`.
+
+<6> We use the `ListPage` to `wait_for_new_item_in_list`.  We specify the
+    expected text of the item, and its expected position in the list.
+
+<7> Finally, we return the `list_page` object to the caller, because they
+    will probably find it useful (as we'll see shortly).
+
+
+
+Here's how `ListPage` looks:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py (ch21l006)
+[source,python]
+----
+[...]
+
+class ListPage(object):
+
+    def __init__(self, test):
+        self.test = test
+
+    def get_list_table_rows(self):
+        return self.test.browser.find_elements_by_css_selector(
+            '#id_list_table tr'
+        )
+
+    def wait_for_new_item_in_list(self, item_text, position):
+        expected_row = '{}: {}'.format(position, item_text)
+        self.test.wait_for(lambda: self.test.assertIn(
+            expected_row,
+            [row.text for row in self.get_list_table_rows()]
+        ))
+----
+
+NOTE: It's usually best to have a separate file for each Page object. 
+    In this case, `HomePage` and `ListPage` are so closely related it's
+    easier to keep them together.
+
+
+Let's see how to use it in our test:
+
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py (ch21l007)
+[source,python]
+----
+from .home_and_list_pages import HomePage
+[...]
+
+        # Edith goes to the home page and starts a list
+        self.browser = edith_browser
+        list_page = HomePage(self).start_new_list('Get help')
+----
+
+Let's continue rewriting our test, using the Page object whenever
+we want to access elements from the lists page:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py (ch21l008)
+[source,python]
+----
+        # She notices a "Share this list" option
+        share_box = list_page.get_share_box()
+        self.assertEqual(
+            share_box.get_attribute('placeholder'),
+            'your-friend@example.com'
+        )
+
+        # She shares her list.
+        # The page updates to say that it's shared with Oniciferous:
+        list_page.share_list_with('oniciferous@example.com')
+----
+
+We add the following three functions to our `ListPage`:
+
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py (ch21l009)
+[source,python]
+----
+    def get_share_box(self):
+        return self.test.browser.find_element_by_css_selector(
+            'input[name=email]'
+        )
+
+
+    def get_shared_with_list(self):
+        return self.test.browser.find_elements_by_css_selector(
+            '.list-sharee'
+        )
+
+
+    def share_list_with(self, email):
+        self.get_share_box().send_keys(email + '\n')
+        self.test.wait_for(lambda: self.test.assertIn(
+            email,
+            [item.text for item in self.get_shared_with_list()]
+        ))
+----
+
+The idea behind the Page pattern is that it should capture all the information
+about a particular page in your site, so that if, later, you want to go and
+make changes to that page--even just simple tweaks to its HTML layout for
+example--you have a single place to go and look for to adjust your functional
+tests, rather than having to dig through dozens of FTs.
+
+The next step would be to pursue the FT refactor through our other tests. I'm
+not going to show that here, but it's something you could do, for practice, 
+to get a feel for what the trade-offs between D.R.Y. and test readability
+are like...
+(((range="endofrange", startref="ix_helperfunctions")))
+(((range="endofrange", startref="ix_pagepattern")))
+
+
+Extend the FT to a Second User, and the "My Lists" Page
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("functional tests/testing (FT)", "multiple users", id="ix_ftmult", range="startofrange")))
+Let's spec out just a little more detail of what we want our sharing user
+story to be.  Edith has seen on her list page that the list is now "shared
+with" Oniciferous, and then we can have Oni log in and see the list on his "My
+Lists" page, maybe in a section called "lists shared with me":
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py (ch21l010)
+[source,python]
+----
+    [...]
+    list_page.share_list_with('oniciferous@example.com')
+
+    # Oniciferous now goes to the lists page with his browser
+    self.browser = oni_browser
+    HomePage(self).go_to_home_page().go_to_my_lists_page()
+
+    # He sees Edith's list in there!
+    self.browser.find_element_by_link_text('Get help').click()
+----
+
+That means another function in our `HomePage` class:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py (ch21l011)
+[source,python]
+----
+class HomePage(object):
+
+    [...]
+
+    def go_to_my_lists_page(self):
+        self.test.browser.find_element_by_link_text('My lists').click()
+        self.test.wait_for(lambda: self.test.assertEqual(
+            self.test.browser.find_element_by_tag_name('h1').text,
+            'My Lists'
+        ))
+----
+
+Once again, this is a function that would be good to carry across into
+'test_my_lists.py', along with maybe a `MyListsPage` object. Exercise
+for the reader!
+
+In the meantime, Oniciferous can also add things to the list:
+
+[role="sourcecode"]
+.functional_tests/test_sharing.py (ch21l012)
+[source,python]
+----
+    # On the list page, Oniciferous can see says that it's Edith's list
+    self.wait_for(lambda: self.assertEqual(
+        list_page.get_list_owner(),
+        'edith@example.com'
+    ))
+
+    # He adds an item to the list
+    list_page.add_new_item('Hi Edith!')
+
+    # When Edith refreshes the page, she sees Oniciferous's addition
+    self.browser = edith_browser
+    self.browser.refresh()
+    list_page.wait_for_new_item_in_list('Hi Edith!', 2)
+----
+
+That's a couple more additions to our Page object:
+
+[role="sourcecode"]
+.functional_tests/home_and_list_pages.py (ch21l013)
+[source,python]
+----
+ITEM_INPUT_ID = 'id_text'
+[...]
+
+class HomePage(object):
+    [...]
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
+
+
+class ListPage(object):
+    [...]
+
+    def get_item_input(self):
+        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
+
+
+    def add_new_item(self, item_text):
+        current_pos = len(self.get_list_table_rows())
+        self.get_item_input().send_keys(item_text + '\n')
+        self.wait_for_new_item_in_list(item_text, current_pos + 1)
+
+
+    def get_list_owner(self):
+        return self.test.browser.find_element_by_id('id_list_owner').text
+----
+
+It's long past time to run the FT and check if all of this works!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_sharing*]
+
+    share_box = list_page.get_share_box()
+    [...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: {"method":"css selector","selector":"input[name=email]"}
+----
+
+That's the expected failure; we don't have an input for email addresses
+of people to share with. Let's do a commit:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "Create Page objects for Home and List pages, use in sharing FT"*
+----
+(((range="endofrange", startref="ix_ftmult")))
+
+
+An Exercise for the Reader
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[quote, Iain H. (reader)]
 ______________________________________________________________
-The database is Hot Lava!
+I probably didn’t really understand what I was doing until after having
+completed the "Exercise for the reader" in Chapter 21." 
 ______________________________________________________________
 
-((("test-driven development (TDD)", "advanced considerations in", id="ix_tddadvanced", range="startofrange")))
-((("best practices in testing")))
-((("testing best practices")))
-Right up until <<isolation-chapter>>, almost all of the "unit" tests in
-the book should perhaps have been called 'integrated' tests, because they
-either rely on the database, or they use the Django test client, which does too
-much magic with the middleware layers that sit between requests, responses, and
-view functions.
-
-There is an argument that a true unit test should always be isolated, because
-it's meant to test a single unit of software.
-
-Some TDD veterans say you should strive to write "pure", isolated unit tests
-wherever possible, instead of writing integrated tests.  It's one of the 
-ongoing (occasionally heated) debates in the testing community. 
-
-Being merely a young whippersnapper myself, I'm only part way towards all the
-subtleties of the argument. But in this chapter, I'd like to try and talk about
-why people feel strongly about it, and try and give you some idea of when you
-can get away with muddling through with integrated tests (which I confess I do
-a lot of!), and when it's worth striving for more "pure" unit tests.
-((("test types")))
-
-.Terminology: Different Types of Test
-******************************************************************************
-
-Isolated tests ("pure" unit tests) vs. integrated tests:: 
-    The primary purpose of a unit test should be to verify the correctness
-    of the logic of your application.  
-    An 'isolated' test is one that tests exactly one chunk of code, and whose
-    success or failure does not depend on any other external code. This is what
-    I call a "pure" unit test:  a test for a single function, for example,
-    written in such a way that only that function can make it fail.  If the
-    function depends on another system, and breaking that system breaks our
-    test, we have an 'integrated' test. That system could be an external
-    system, like a database, but it could also be another function which we
-    don't control.  In either case, if breaking the system makes our test fail,
-    our test is not properly isolated, it is not a "pure" unit test.  That's
-    not necessarily a bad thing, but it may mean the test is doing two jobs at
-    once.
-    ((("isolated tests", "vs. integrated tests", sortas="integratedtests")))
-    ((("integrated tests", "vs. isolated tests", sortas="isolatedtests")))
-    ((("pure unit tests", see="isolated tests")))
-
-Integration tests::
-    An integration test checks that the code you control is integrated
-    correctly with some external system which you don't control. 
-    'Integration' tests are typically also 'integrated' tests. 
-    ((("integration tests")))
-
-System tests::
-    If an integration test checks the integration with one external system,
-    a system test checks the integration of multiple systems in your
-    application--for example, checking that we've wired up our database,
-    static files, and server config together in such a way that they all work.
-    ((("system tests")))
-    
-Functional tests and acceptance tests::
-    An acceptance test is meant to test that our system works from the point
-    of view of the user ("would the user accept this behaviour?").  It's 
-    hard to write an acceptance test that's not a full-stack, end-to-end test.
-    We've been using our functional tests to play the role of both acceptance
-    tests and system tests.
-    ((("acceptance tests")))
-    ((("functional tests/testing (FT)")))
-    
-******************************************************************************
-
-
-If you'll forgive me the pretentious philosophical terminology, I'm going to
-follow a Hegelian dialectical structure: 
- 
-* The Thesis: the case for "pure" unit tests that are fast.
-
-* The Antithesis: some of the risks associated with a (naive) pure unit testing
-  approach.
-
-* The Synthesis: a discussion of best practices like "Ports and Adapters"
-  or "Functional Core, Imperative Shell", and of just what it is that we want
-  from our tests, anyway.
-
-
-Thesis: Unit Tests Are Superfast and Good Besides That
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("unit tests", "pros and cons of", id="ix_unittestproscons", range="startofrange")))
-One of the things you often hear about unit tests is that they're much faster.
-I don't think that's actually the primary benefit of unit tests, but it's worth
-exploring the theme of speed.
-
-
-Faster Tests Mean Faster Development
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Other things being equal, the faster your unit tests run, the better.  To a 
-lesser extent, the faster 'all' your tests run, the better.
-
-I've outlined the TDD test/code cycle in this book.  You've started to get a 
-feel for the TDD workflow, the way you flick between writing tiny amounts of
-code, and running your tests.  You end up running your unit tests several times
-a minute, and your functional tests several times a day. 
+There's nothing that cements learning like taking the training wheels off,
+and getting something working on your own, so I hope you'll give this a go.
 
-So, on a very basic level, the longer they take, the more time you spend
-waiting for your tests, and that will slow down your development.  But
-there's more to it than that.
+Here's an outline of the steps you could take:
 
+1. We'll need a new section in 'list.html', with, at first, a form with an
+  input box for an email address.  That should get the FT one step further.
 
-The Holy Flow State
-^^^^^^^^^^^^^^^^^^^
+2. Next, we'll need a view for the form to submit to. Start by defining the
+  URL in the template, maybe something like 'lists/<list_id>/share'.
+  
+3. Then, our first unit test. It can be just enough to get a placeholder view
+  in. We want the view to respond to POST requests, and it should respond with
+  a redirect back to the list page, so the test could be called something like
+  `ShareListTest.test_post_redirects_to_lists_page`.
 
-Thinking sociology for a moment, we programmers have our own culture, and our
-own tribal religion in a way. It has many congregations within it, such as the
-cult of TDD to which you are now initiated.  There are the followers of vi and
-the heretics of emacs. But one thing we all agree on, one particular spiritual
-practice, our own transcendental meditation, is the holy flow state.  That
-feeling of pure focus, of concentration, where hours pass like no time at all,
-where code flows naturally from our fingers, where problems are just tricky
-enough to be interesting but not so hard that they defeat us...
+4. We build out our placeholder view, as just a two-liner that finds a list and
+  redirects to it.
 
-There is absolutely no hope of achieving flow if you spend your time waiting
-for a slow test suite to run.  Anything longer than a few seconds and you're
-going to let your attention wander, you context-switch, and the flow state is
-gone.  And the flow state is a fragile dream. Once it's gone, it takes at
-least 15 minutes to live again.
+5. We can then write a new unit test which creates a user and a list,
+  does a POST with their email address, and checks the user is added to
+  `list_.shared_with.all()` (a similar ORM usage to "My Lists").  That
+  `shared_with` attribute won't exist yet, we're going outside-in.
 
+6. So before we can get this test to pass, we have to move down to the model
+  layer.  The next test, in 'test_models.py', can check that a list has a
+  `shared_with.add` method, which can be called with a user's email address and
+  then check the lists' `shared_with.all()` queryset, which will subsequently
+  contain that user.  
 
-Slow Tests Don't Get Run as Often, Which Causes Bad Code
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7. You'll then need a `ManyToManyField`.  You'll probably see an error message
+  about a clashing `related_name`, which you'll find a solution to if you look
+  around the Django docs.
 
-If your test suite is slow and ruins your concentration, the danger is that
-you'll start to avoid running your tests, which may lead to bugs getting
-through. Or, it may lead to our being shy of refactoring the code,
-since we know that any refactor will mean having to wait ages while all the
-tests run. In either case, bad code can be the result.
+8. It will need a database migration.
 
+9. That should get the model tests passing. Pop back up to fix the view test.
 
-We're Fine Now, but Integrated Tests Get Slower Over Time
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10. You may find the redirect view test fails, because it's not sending a valid
+  POST request.  You can either choose to ignore invalid inputs, or adjust the
+  test to send a valid POST.
 
-You might be thinking, OK, but our test suite has lots of integrated
-tests in it--over 50 of them, and it only takes 0.2 seconds to run.
+11. Then back up to the template level; on the "My Lists" page we'll want a
+  `<ul>` with a for loop of the lists shared with the user. On the lists
+  page, we also want to show who the list is shared with, as well as
+  mention of who the list owner is. Look back at the FT for the correct classes
+  and IDs to use. You could have brief unit tests for each of these if you
+  like, as well.
 
-But remember, we've got a very simple app. Once it starts to get more
-complex, as your database grows more and more tables and columns, integrated
-tests will get slower and slower.  Having Django reset the database between
-each test will take longer and longer.
+12. You might find that spinning up the site with `runserver` will help you 
+  iron out any bugs, as well as fine-tune the layout and aesthetics.
+  If you use a private browser session, you'll be able to log multiple users
+  in.
 
 
-Don't Take It from Me
-^^^^^^^^^^^^^^^^^^^^^
+By the end, you might end up with something that looks like
+<<list-sharing-example>>.
 
-((("Bernhardt, Gary")))
-Gary Bernhardt, a man with far more experience of testing than me, put these
-points eloquently in a talk called
-https://www.youtube.com/watch?v=RAxiiRPHS9k[Fast Test, Slow Test]. I encourage
-you to watch it.  
+[[list-sharing-example]]
+.Sharing lists
+image::images/twdp_2101.png["Screenshot of list sharing UI"]
 
 
-And Unit Tests Drive Good Design
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-But perhaps more importantly than any of this, remember the lesson from
-<<isolation-chapter>>.  Going through the process of writing good, isolated
-unit tests can help us drive out better designs for our code, by forcing us
-to identify dependencies, and encouraging us towards a decoupled architecture
-in a way that integrated tests don't.
-
-
-
-The Problems with "Pure" Unit Tests
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-All of this comes with a huge "but". Writing isolated united tests comes with
-its own hazards, particularly if, like you or I, we are not yet advanced
-TDD'ers.
-
-
-Isolated Tests Can Be Harder to Read and Write
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-((("isolated tests", "problems with")))
-Cast your mind back to the first isolated unit test we wrote.  Wasn't it ugly?
-Admittedly, things improved when we refactored things out into the forms, but
-imagine if we hadn't followed through?  We'd have been left with a rather
-unreadable test in our codebase.  And even the final version of the tests we
-ended up with contain some pretty mind-bending bits.
-
-
-Isolated Tests Don't Automatically Test Integration
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-As we saw a little later on, isolated tests by their nature only test the
-unit under test, in isolation.  They won't test the integration between 
-your units.
-
-This problem is well known, and there are ways of mitigating it. But, as
-we saw, those mitigations involve a fair bit of hard work on the part of
-the programmer--you need to remember to keep track of the interfaces
-between your units, to identify the implicit contract that each component
-needs to honour, and you need to write tests for those contracts as well
-as for the internal functionality of your unit.
-
-
-Unit Tests Seldom Catch Unexpected Bugs
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Unit tests will help you catch off-by-one errors and logic snafus, which are
-the kinds of bugs we know we introduce all the time, so in a way we are 
-expecting them. But they don't warn you about some of the more unexpected
-bugs.  They won't remind you when you forgot to create a database migration.
-They won't tell you when the middleware layer is doing some clever HTML-entity
-escaping that's interfering with the way your data is rendered...something
-like Donald Rumsfeld's unknown unknowns?
-
-
-Mocky Tests Can Become Closely Tied to Implementation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-And finally, mocky tests can become very tightly coupled with the implementation.
-If you choose to use `List.objects.create()` to build your objects but your
-mocks are expecting you to use `List()` and `.save()`, you'll get failing tests
-even though the actual effect of the code would be the same.   If you're not
-careful, this can start to work against one of the supposed benefits of having
-tests, which was to encourage refactoring.  You can find yourself having to
-change dozens of mocky tests and contract tests when you want to change an
-internal API.
-
-Notice that this may be more of a problem when you're dealing with an API 
-you don't control.  You may remember the contortions we had to go through
-to test our form, mocking out two Django model classes and using `side_effect`
-to check on the state of the world.  If you're writing code that's totally
-under your own control, you're likely to design your internal APIs so that 
-they are cleaner and require less contortions to test.
-
-
-
-But All These Problems Can Be Overcome
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-But, isolation advocates will come back and say, all that stuff can be
-mitigated, you just need to get better at writing isolated tests, and, remember
-the holy flow state?  The holy flow state!
-
-So where are we?
-(((range="endofrange", startref="ix_unittestproscons")))
-
-Synthesis: What Do We Want from Our Tests, Anyway?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-((("unit tests", "desired features of")))
-Let's step back and have a think about what benefits we want our tests to
-deliver.  Why are we writing them in the first place?
-
-
-Correctness
-^^^^^^^^^^^
-
-We want our application to be free of bugs--both low-level logic errors,
-like off-by-one errors, and high-level bugs like the software ultimately
-should deliver what our users want.  We want to find out if we ever introduce
-regressions which break something that used to work, and we want to find 
-that out before our users see something broken.  We expect our tests to
-tell us our application is correct.
-
-
-Clean, Maintainable Code
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-We want our code to obey rules like "YAGNI" and "DRY".  We want code that
-clearly expresses its intentions, which is broken up into sensible components
-that have well-defined responsibilities and are easily understood.  We expect
-our tests to give us the confidence to refactor our application constantly,
-so that we're never scared to try and improve its design, and we would also
-like it if they would actively help us to find the right design.
-
-
-Productive Workflow
-^^^^^^^^^^^^^^^^^^^
-
-Finally, we want our tests to help enable a fast and productive workflow. 
-We want them to help take some of the stress out of development, we want
-them to protect us from stupid mistakes.  We want them to help keep us
-in the "flow" state not just because we enjoy it, but because it's highly
-productive.  We want our tests to give us feedback about our work as quickly
-as possible, so that we can try out new ideas and evolve them quickly.  And
-we don't want to feel like our tests are more of a hindrance than a help when
-it comes to evolving our codebase.
-
-
-Evaluate Your Tests Against the Benefits You Want from Them
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-I don't think there are any universal rules about how many tests you should
-write and what the correct balance between functional, integrated, and isolated
-tests should be.  Circumstances vary between projects.  But, by thinking about
-all of your tests and asking whether they are delivering the benefits you want,
-you can make some decisions.
-
-
-[cols="1,5a",options="header"]
-|================
-
-|Objective|Some considerations
-
-|'Correctness'|
-
-* Do I have enough functional tests to reassure myself that my application
-  'really' works, from the point of view of the user?
-
-* Am I testing all the edge cases thoroughly?  This feels like a job for 
-  low-level, isolated tests.
-
-* Do I have tests that check whether all my components fit together properly?
-  Could some integrated tests do this, or are functional tests enough?
-
-|'Clean, maintainable code'|
-
-* Are my tests giving me the confidence to refactor my code, fearlessly and
-  frequently?
-
-* Are my tests helping me to drive out a good design?  If I have a lot of
-  integrated tests and few isolated tests, are there any parts of my application
-  where putting in the effort to write more isolated tests would give me better
-  feedback about my design?
-
-|'Productive workflow'|
-
-* Are my feedback cycles as fast as I would like them?  When do I get warned
-  about bugs, and is there any practical way to make that happen sooner?
-
-* If I have a lot of high-level, functional tests, that take a long time to
-  run, and I have to wait overnight to get feedback about accidental
-  regressions, is there some way I could write some faster tests, integrated
-  tests perhaps, that would get me feedback quicker?  
-
-* Can I run a subset of the full test suite when I need to?
-
-* Am I spending too much time waiting for tests to run, and thus less time
-  in a productive flow state?
-
-|================
-
-
-
-Architectural Solutions
-~~~~~~~~~~~~~~~~~~~~~~~
-((("architectural solutions to test problems")))
-((("unit tests", "architectural solutions for")))
-There are also some architectural solutions that can help to get the most
-out of your test suite, and particularly that help avoid some of the
-disadvantages of isolated tests.
-
-Mainly these involve trying to identify the boundaries of your system--the points at which your code interacts with external systems, like
-the database or the filesystem, or the Internet, or the UI--and trying
-to keep them separate from the core business logic of your application.
-
-
-Ports and Adapters/Hexagonal/Clean Architecture
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-((("integrated tests")))
-((("isolated tests")))
-((("boundaries")))
-((("system boundaries")))
-Integrated tests are most useful at the 'boundaries' of a system--at
-the points where our code integrates with external systems, like a
-database, filesystem, or UI components.
-
-Similarly, it's at the boundaries that the downsides of test isolation and
-mocks are at their worst, because it's at the boundaries that you're most
-likely to be annoyed if your tests are tightly coupled to an implementation, 
-or to need more reassurance that things are integrated properly.
-
-Conversely, code at the 'core' of our application--code that's purely
-concerned with our business domain and business rules, code that's 
-entirely under our control--this code has less need for integrated
-tests, since we control and understand all of it.
-
-So one way of getting what we want is to try and minimise the amount
-of our code that has to deal with boundaries. Then we test our core business
-logic with isolated tests and test our integration points with integrated
-tests.
-
-Steve Freeman and Nat Pryce, in their book <<GOOSGBT, Growing Object-Oriented
-Software, Guided By Tests>>, call this approach "Ports and Adapters" (see
-<<ports-and-adapters>>).
-
-We actually started moving towards a ports and adapters architecture in
-<<isolation-chapter>>, when we found that writing isolated unit tests was
-encouraging us to push ORM code out of the main application, and hide it
-in helper functions from the model layer.
-
-This pattern is also sometimes known as "The Clean architecture" or "Hexagonal
-Architecture".  See the further reading section at the end for more info.
-((("clean architecture")))
-((("hexagonal architecture")))
-
-
-
-Functional Core, Imperative Shell
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("Functional Core, Imperative Shell architecture")))
-((("Bernhardt, Gary")))
-Gary Bernhardt pushes this further, recommending an architecture he calls
-"Functional Core, Imperative Shell", whereby the "shell" of the application,
-the place where interaction with boundaries happens, follows the imperative
-programming paradigm, and can be tested by integrated tests, acceptance tests,
-or even (gasp!) not at all, if it's kept minimal enough. But the core of the
-application is actually written following the functional programming paradigm
-(complete with the "no side effects" corollary), which actually allows fully
-isolated, "pure" unit tests, 'entirely without mocks'.
-
-Check out Gary's presentation titled
-https://www.youtube.com/watch?v=eOYal8elnZk["Boundaries"] for more on this
-approach.
-
-
-[[ports-and-adapters]]
-.Ports and Adapters (diagram by Nat Pryce)
-image::images/twdp_2201.png["Illustration of ports and adapaters architecture, with isolated core and integration points"]
-
-
-Conclusion
-~~~~~~~~~~
-
-I've tried to give an overview of some of the more advanced considerations
-that come into the TDD process. Mastery of these topics is something 
-that comes from long years of practice, and therefore I'm grossly underqualified
-to talk about these things.  So I heartily encourage you to take everything
-I've said with a pinch of salt, to go out there and find out what works for
-you, and most importantly to go and find the opinions of some real experts!
-
-Here are some places to go for further reading.
-(((range="endofrange", startref="ix_tddadvanced")))
-((("test-driven development (TDD)", "further reading on")))
-
-.Further Reading
+.The Page Pattern, and the Real Exercise for the Reader
 *******************************************************************************
 
-Fast Test, Slow Test and Boundaries:: 
-    Gary Bernhardt's talks from Pycon https://www.youtube.com/watch?v=RAxiiRPHS9k[2012] and https://www.youtube.com/watch?v=eOYal8elnZk[2013].  His http://www.destroyallsoftware.com[screencasts] are also well worth a look.
+Apply DRY to your functional tests::
+    Once your FT suite starts to grow, you'll find that different tests will
+    inevitably find themselves using similar parts of the UI. Try to avoid 
+    having constants, like the HTML IDs or classes of particular UI elements
+    duplicated between your FTs.
+    ((("DRY (don't repeat yourself)")))
 
-Ports and Adapters:: 
-    Steve Freeman and Nat Pryce wrote about this in <<GOOSGBT, their book>>.
-    You can also catch a good discussion of the idea in http://vimeo.com/83960706[this talk]. See also
-    http://blog.8thlight.com/uncle-bob/2012/08/13/the-clean-architecture.html[Uncle
-    Bob's description of the clean architecture], and 
-    http://alistair.cockburn.us/Hexagonal+architecture[Alistair Cockburn
-    coining the term Hexagonal Architecture].
+The Page pattern::
+    Moving helper methods into a base `FunctionalTest` class can become 
+    unwieldy.  Consider using individual Page objects to hold all the
+    logic for dealing with particular parts of your site. 
+    ((("Page pattern")))
 
-Hot Lava::
-    https://www.youtube.com/watch?v=bsmFVb8guMU[Casey Kinsey's memorable warning about avoiding the database whenever
-    you can].
-
-Inverting the Pyramid::
-    The idea that projects end up with too great a ratio of slow, high-level
-    tests to unit tests, and a http://watirmelon.com/tag/testing-pyramid/[visual metaphor for the effort to invert that
-    ratio].
-
-Integrated tests are a scam::
-    J.B. Rainsberger has a famous rant about the way integrated tests will
-    ruin your life, http://blog.thecodewhisperer.com/2010/10/16/integrated-tests-are-a-scam/[here].
-    Watch the video presentation 
-    http://www.infoq.com/presentations/integration-tests-scam[here] or 
-    http://vimeo.com/80533536[here] (there are two videos available, though
-    neither has perfect cinematography). Then check out a couple of 
-    follow-up posts, particularly 
-    http://www.jbrains.ca/permalink/using-integration-tests-mindfully-a-case-study[this
-    defence of acceptance tests] (what I call functional tests), and
-    http://www.jbrains.ca/permalink/part-2-some-hidden-costs-of-integration-tests[this
-    analysis of how slow tests kill productivity].
-
-The Test-Double testing wiki::
-    Justin Searls' online resource is a great source of definitions and discussions of
-    testing pros & cons, and arrives at its own conclusions of the right
-    way to do things: https://github.com/testdouble/contributing-tests/wiki/Test-Driven-Development[testing wiki].
-
-A pragmatic view::
-    Martin Fowler (author of 'Refactoring') presents a
-    http://martinfowler.com/bliki/UnitTest.html[reasonably balanced, pragmatic
-    approach].
+An exercise for the reader::
+    I hope you've actually tried this out!  Try to follow the "Outside-In"
+    method, and occasionally try things out manually if you get stuck. 
+    The real exercise for the reader, of course, is to apply TDD to your
+    next project.  I hope you'll enjoy it!
 
 *******************************************************************************
+
+In the next chapter, we'll wrap up with a discussion of testing "best
+practices".
 

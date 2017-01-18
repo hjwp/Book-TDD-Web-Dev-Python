@@ -1,602 +1,952 @@
-[[page-pattern-chapter]]
-The Token Social Bit, the Page Pattern, and an Exercise for the Reader
-----------------------------------------------------------------------
+[[CI-chapter]]
+Continuous Integration (CI)
+---------------------------
+
+((("CI server", see="continuous integration (CI)")))
+((("functional tests/testing (FT)", "automation of", see="continuous integration (CI)")))
+((("continuous integration (CI)", id="ix_continuousintegration", range="startofrange")))
+As our site grows, it takes longer and longer to run all of our functional
+tests.  If this continues, the danger is that we're going to stop bothering.
+
+Rather than let that happen, we can automate the running of functional tests
+by setting up a "Continuous Integration" or CI server.  That way, in day-to-day
+development, we can just run the FT that we're working on at that time, and
+rely on the CI server to run all the tests automatically, and let us know if
+we've broken anything accidentally.  The unit tests should stay fast enough
+that we can keep running them every few seconds.
+
+The CI server of choice these days is called Jenkins. It's a bit Java, a bit
+crashy, a bit ugly, but it's what everyone uses, and it has a great plugin
+ecosystem, so let's get it up and running.
+
+NOTE: this chapter has not yet been updated for the new edition. Some of the
+    specific problems discussed with Persona in CI may not be relevant, but
+    the basic lessons of the chapter are all still correct.
+
+Installing Jenkins
+~~~~~~~~~~~~~~~~~~
+
+((("Jenkins Security", "installing")))
+((("continuous integration (CI)", "installing Jenkins")))
+((("Jenkins Security", id="ix_jenkins", seealso="continuous integration (CI)", range="startofrange")))
+There are several hosted-CI services out there that essentially provide you
+with a Jenkins server, ready to go.  I've come across Sauce Labs, Travis,
+Circle-CI, ShiningPanda, and there are probably lots more.  But I'm going to
+assume we're installing everything on a server we control.
+
+NOTE: It's not a good idea to install Jenkins on the same server as our
+staging or production servers.  Apart from anything else, we may want 
+Jenkins to be able to reboot the staging server!
+
+We'll install the latest version from the official Jenkins apt repo, because the 
+Ubuntu default still has a few annoying bugs with locale/unicode support,
+and it also doesn't set itself up to listen on the public Internet by default:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+# instructions taken from jenkins site
+user@server:$ *wget -q -O - https://pkg.jenkins.io/debian/jenkins-ci.org.key |\
+     sudo apt-key add -*
+user@server:$ *echo deb http://pkg.jenkins.io/debian-stable binary/ | sudo tee \
+    /etc/apt/sources.list.d/jenkins.list*
+user@server:$ *sudo apt-get update*
+user@server:$ *sudo apt-get install jenkins*
+----
+
+While we're at we'll install a few other dependencies:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+user@server:$ *sudo apt-get install firefox python3-venv xvfb*
+----
+
+You should then be able to visit it at the URL for your server on port `8080`,
+as in <<jenkin-welcome>>.
+
+[[jenkin-welcome]]
+.A butler! How quaint...
+image::images/twdp_2001.png["Jenkins' default welcome screen"]
 
 
-Are jokes about how "everything has to be social now" slightly old hat?
-Everything has to be all A/B tested big data get-more-clicks lists of 10 Things
-This Inspiring Teacher Said That Will Make You Change Your Mind About Blah Blah
-now...anyway. Lists, be they Inspirational or otherwise, are often better
-shared. Let's allow our users to collaborate on their lists with other users.
+Configuring Jenkins Security
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("Selenium", "wait patterns")))
-((("waits")))
-Along the way we'll improve our FTs by starting to implement the interact/wait
-Selenium pattern that we learned in the last chapter.  We'll also experiment
-with something called the Page Object pattern.
+((("Jenkins Security", "configuring")))
+((("continuous integration (CI)", "configuring Jenkins")))
+The first thing we'll do is set up some authentication, since our server is
+available on the public Internet:
 
-Then, rather than showing you explicitly what to do, I'm going to let you write
-your unit tests and application code by yourself.  Don't worry, you won't be
-totally on your own!  I'll give an outline of the steps to take, as well as
-some hints and tips.
+* Manage Jenkins -> Configure Global Security -> Enable security.
+
+* Choose "Jenkins' own user database", "Matrix-based security".
+
+* Disable all permissions for Anonymous.
+
+* And add a user for yourself; give it all the permissions
+  (<<jenkins-security>>).
+
+* The next screen offers you the option to create an account that matches that
+  username, and set a password.footnote:[If you miss that screen, you can still hit "signup", and as long as
+you use the same username you specified earlier, you'll have an account set up.]
+
+[[jenkins-security]]
+.Locking it down...
+image::images/twdp_2002.png["Jenkins security config screnshot"]
 
 
-NOTE: this chapter has not yet been updated for the new edition, but it
-    should not be changing substantially.
+
+Adding Required Plugins
+^^^^^^^^^^^^^^^^^^^^^^^
+
+((("Jenkins Security", "adding required plugins")))
+((("continuous integration (CI)", "adding required plugins")))
+Next we install a few plugins, to help us work with Git, Python, and virtual
+displays; see <<installing-plugins>>:
+
+* Manage Jenkins -> Manage Plugins -> Available
 
 
-An FT with Multiple Users, and addCleanup
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We'll want the plugins for:
 
-((("functional tests/testing (FT)", "multiple users")))
-((("functional tests/testing (FT)", "cleanup")))
-Let's get started--we'll need two users for this FT:
+* Git
+* ShiningPanda
+* Xvfb
+
+
+[[installing-plugins]]
+.Installing plugins...
+image::images/twdp_2003.png["Jenkins installing plugins"]
+
+Restart afterwards using either the tick-box on that last screen, or
+from the command line with a `sudo service jenkins restart`.
+
+
+Telling Jenkins where to find Python 3 and Xvfb
++++++++++++++++++++++++++++++++++++++++++++++++
+
+We need to tell the ShiningPanda plugin where Python 3 is installed 
+(usually '/usr/bin/python3', but you can check with a `which python3`):
+((("Python", "adding to Jenkins")))
+((("Shining Panda")))
+((("Xvfb")))
+* Manage Jenkins -> Configure System.
+
+* Python -> Python installations -> Add Python (<<add-python-to-jenkins>>).
+
+* Xvfb installation -> Add Xvfb installation; enter *`/usr/bin`* as the
+  installation directory.
+
+[[add-python-to-jenkins]]
+.Where did I leave that Python?
+image::images/twdp_2004.png["Adding Python 3"]
+
+
+
+Setting Up Our Project
+~~~~~~~~~~~~~~~~~~~~~~
+
+((("continuous integration (CI)", "project setup")))
+Now we've got the basic Jenkins configured, let's set up our project:
+
+* New Job -> Build a free-style software project.
+
+* Add the Git repo, as in <<choose-git-repo>>.
+
+[[choose-git-repo]]
+.Get it from Git
+image::images/twdp_2005.png["Setting the git repo"]
+
+* Set it to poll every hour (<<poll-hourly>>) (check out the help text here--there are many other options for ways of triggering builds).
+
+[[poll-hourly]]
+.Poll Github for changes
+image::images/twdp_2006.png["Config polling github"]
+
+* Run the tests inside a Python 3 virtualenv.
+
+* Run the unit tests and functional tests separately.  See
+  <<virtualenv-buildstep>>.
+
+[[virtualenv-buildstep]]
+.Virtualenv build steps
+image::images/twdp_2007.png["Adding Python 3"]
+
+
+
+First Build!
+~~~~~~~~~~~~
+
+Hit "Build Now!", then go and take a look at the "Console Output". You
+should see something like this:
+
+[role="skipme small-code"]
+----
+Started by user harry
+Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
+Fetching changes from the remote Git repository
+Fetching upstream changes from https://github.com/hjwp/book-example.git
+Checking out Revision d515acebf7e173f165ce713b30295a4a6ee17c07 (origin/master)
+[workspace] $ /bin/sh -xe /tmp/shiningpanda7260707941304155464.sh
++ pip install -r requirements.txt
+Requirement already satisfied (use --upgrade to upgrade): Django==1.10 in
+/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
+(from -r requirements.txt (line 1))
+    
+Requirement already satisfied (use --upgrade to upgrade): gunicorn==17.5 in
+/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.3/site-packages
+(from -r requirements.txt (line 3))
+Downloading/unpacking requests==2.0.0 (from -r requirements.txt (line 4))
+  Running setup.py egg_info for package requests
+    
+Installing collected packages: requests
+  Running setup.py install for requests
+    
+Successfully installed requests
+Cleaning up...
++ python manage.py test lists accounts
+...................................................
+ ---------------------------------------------------------------------
+Ran 51 tests in 0.323s
+
+OK
+Creating test database for alias 'default'...
+Destroying test database for alias 'default'...
++ python manage.py test functional_tests
+ImportError: No module named 'selenium'
+Build step 'Virtualenv Builder' marked build as failure
+----
+
+Ah.  We need Selenium in our virtualenv.
+
+((("Selenium", "in continuous integration")))
+Let's add a manual installation of Selenium to our build 
+steps:footnote:[At the time of writing, the latest Selenium (2.41) was causing me
+https://code.google.com/p/selenium/issues/detail?id=7073[some trouble], so
+that's why I'm pinning it to 2.39 here.  By all means experiment with newer
+versions!]
+
+[role="skipme"]
+----
+    pip install -r requirements.txt
+    pip install selenium==2.39
+    python manage.py test accounts lists
+    python manage.py test functional_tests
+----
+
+
+//REMINDER: check on this when newer seleniae come out
+
+TIP: Some people like to use a file called 'test-requirements.txt' to specify 
+packages that are needed for the tests, but not the main app.
+
+
+Now what?
+
+[role="skipme"]
+----
+  File
+  "/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.
+  line 100, in _wait_until_connectable
+    self._get_firefox_output())
+selenium.common.exceptions.WebDriverException: Message: 'The browser appears to
+have exited before we could connect. The output was: b"\\n(process:19757):
+GLib-CRITICAL **: g_slice_set_config: assertion \'sys_page_size == 0\'
+failed\\nError: no display specified\\n"' 
+----
+
+
+Setting Up a Virtual Display so the FTs Can Run Headless
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("continuous integration (CI)", "virtual display setup", id="ix_contintegvirtdisp", range="startofrange")))
+((("virtual displays")))
+As you can see from the traceback, Firefox is unable to start because the
+server doesn't have a display.
+
+((("headless browsers")))
+((("browsers, headless")))
+There are two ways to deal with this problem. The first is to switch to using
+a headless browser, like PhantomJS or SlimerJS.  Those tools definitely have
+their place--they're faster, for one thing--but they also have
+disadvantages.  The first is that they're not "real" web browsers, so you can't
+be sure you're going to catch all the strange quirks and behaviours of the
+actual browsers your users use.  The second is that they behave quite
+differently inside Selenium, and will require substantial amounts of rewriting
+of FT code.
+
+TIP: I would look into using headless browsers as a "dev-only" tool, to speed
+up the running of FTs on the developer's machine, while the tests on the CI
+server use actual browsers.
+
+((("Xvfb")))
+The alternative is to set up a virtual display:  we get the server to pretend
+it has a screen attached to it, so Firefox runs happily. There's a few tools
+out there to do this; we'll use one called "Xvfb" 
+(X Virtual Framebuffer)footnote:[Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
+as a way of controlling virtual displays from Python.]
+because it's easy to install and use, and because it has a convenient Jenkins
+plugin.
+
+
+We go back to our project and hit "Configure" again, then find the section
+called "Build Environment".  Using the virtual display is as simple as
+ticking the box marked "Start Xvfb before the build, and shut it down after,"
+as in <<xvfb-tickbox>>.
+
+[[xvfb-tickbox]]
+.Sometimes config is easy
+image::images/twdp_2008.png["Tickbox saying we want Xvfb"]
+
+
+The build does much better now:
+
+[role="skipme small-code"]
+----
+[...]
+Xvfb starting$ /usr/bin/Xvfb :2 -screen 0 1024x768x24 -fbdir
+/var/lib/jenkins/2013-11-04_03-27-221510012427739470928xvfb
+[...]
++ python manage.py test lists accounts
+...................................................
+ ---------------------------------------------------------------------
+Ran 51 tests in 0.410s
+
+OK
+Creating test database for alias 'default'...
+Destroying test database for alias 'default'...
++ pip install selenium
+Requirement already satisfied (use --upgrade to upgrade): selenium in
+/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.5/site-packages
+Cleaning up...
+
++ python manage.py test functional_tests
+......F.
+======================================================================
+FAIL: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File
+"/var/lib/jenkins/jobs/Superlists/.../functional_tests/test_my_lists.py",
+line 44, in test_logged_in_users_lists_are_saved_as_my_lists
+    self.assertEqual(self.browser.current_url, first_list_url)
+AssertionError: 'http://localhost:8081/accounts/edith@example.com/' !=
+'http://localhost:8081/lists/1/'
+- http://localhost:8081/accounts/edith@example.com/
++ http://localhost:8081/lists/1/
+
+ ---------------------------------------------------------------------
+Ran 8 tests in 89.275s
+
+FAILED (errors=1)
+Creating test database for alias 'default'...
+[{'secure': False, 'domain': 'localhost', 'name': 'sessionid', 'expiry':
+1920011311, 'path': '/', 'value': 'a8d8bbde33nreq6gihw8a7r1cc8bf02k'}]
+Destroying test database for alias 'default'...
+Build step 'Virtualenv Builder' marked build as failure
+Xvfb stopping
+Finished: FAILURE
+----
+(((range="endofrange", startref="ix_contintegvirtdisp")))
+Pretty close!  To debug that failure, we'll need screenshots though.
+
+NOTE: As we'll see, this error is due to a race condition, which means it's
+not always reproducible.  You may see a different error, or none at all. In
+any case, the tools below for taking screenshots and dealing with race
+conditions will come in useful. Read on!
+((("race conditions")))
+
+
+Taking Screenshots
+~~~~~~~~~~~~~~~~~~
+
+((("continuous integration (CI)", "debugging with screenshots", id="ix_contintegdebug", range="startofrange")))
+((("debugging", "in continuous integration", id="ix_debugcontinteg", range="startofrange")))
+((("screenshots, for debugging", sortas="debugging", id="ix_screenshots", range="startofrange")))
+To be able to debug unexpected failures that happen on a remote PC, it
+would be good to see a picture of the screen at the moment of the failure,
+and maybe also a dump of the HTML of the page.  We can do that using some
+custom logic in our FT class `tearDown`. We have to do a bit of introspection of
+`unittest` internals, a private attribute called `_outcomeForDoCleanups`, but
+this will work:
+
+[role="sourcecode"]
+.functional_tests/base.py (ch20l006)
+[source,python]
+----
+import os
+from datetime import datetime
+[...]
+
+SCREEN_DUMP_LOCATION = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'screendumps'
+)
+[...]
+
+    def tearDown(self):
+        if self._test_has_failed():
+            if not os.path.exists(SCREEN_DUMP_LOCATION):
+                os.makedirs(SCREEN_DUMP_LOCATION)
+            for ix, handle in enumerate(self.browser.window_handles):
+                self._windowid = ix
+                self.browser.switch_to_window(handle)
+                self.take_screenshot()
+                self.dump_html()
+        self.browser.quit()
+        super().tearDown()
+
+
+    def _test_has_failed(self):
+        # slightly obscure but couldn't find a better way!
+        return any(error for (method, error) in self._outcome.errors)
+----
+
+
+We first create a directory for our screenshots if necessary. Then we 
+iterate through all the open browser tabs and pages, and use some Selenium
+methods, `get_screenshot_as_file` and `browser.page_source`, for our image and
+HTML dumps:
+
+[role="sourcecode"]
+.functional_tests/base.py (ch20l007)
+[source,python]
+----
+    def take_screenshot(self):
+        filename = self._get_filename() + '.png'
+        print('screenshotting to', filename)
+        self.browser.get_screenshot_as_file(filename)
+
+
+    def dump_html(self):
+        filename = self._get_filename() + '.html'
+        print('dumping page HTML to', filename)
+        with open(filename, 'w') as f:
+            f.write(self.browser.page_source)
+----
+
+And finally here's a way of generating a unique filename identifier, which
+includes the name of the test and its class, as well as a timestamp:
 
 [role="sourcecode small-code"]
-.functional_tests/test_sharing.py
+.functional_tests/base.py (ch20l008)
 [source,python]
 ----
-from selenium import webdriver
-from .base import FunctionalTest
-
-def quit_if_possible(browser):
-    try: browser.quit()
-    except: pass
-
-
-class SharingTest(FunctionalTest):
-
-    def test_logged_in_users_lists_are_saved_as_my_lists(self):
-        # Edith is a logged-in user
-        self.create_pre_authenticated_session('edith@example.com')
-        edith_browser = self.browser
-        self.addCleanup(lambda: quit_if_possible(edith_browser))
-
-        # Her friend Oniciferous is also hanging out on the lists site
-        oni_browser = webdriver.Firefox()
-        self.addCleanup(lambda: quit_if_possible(oni_browser))
-        self.browser = oni_browser
-        self.create_pre_authenticated_session('oniciferous@example.com')
-
-        # Edith goes to the home page and starts a list
-        self.browser = edith_browser
-        self.browser.get(self.server_url)
-        self.get_item_input_box().send_keys('Get help\n')
-
-        # She notices a "Share this list" option
-        share_box = self.browser.find_element_by_css_selector('input[name=email]')
-        self.assertEqual(
-            share_box.get_attribute('placeholder'),
-            'your-friend@example.com'
+    def _get_filename(self):
+        timestamp = datetime.now().isoformat().replace(':', '.')[:19]
+        return '{folder}/{classname}.{method}-window{windowid}-{timestamp}'.format(
+            folder=SCREEN_DUMP_LOCATION,
+            classname=self.__class__.__name__,
+            method=self._testMethodName,
+            windowid=self._windowid,
+            timestamp=timestamp
         )
 ----
-//IDEA: rename Oni to Francis, as per ch. 6?
 
-The interesting feature to note about this section is the `addCleanup`
-function, whose documentation you can find 
-http://bit.ly/SuW8Hv[here].
-It can be used as an alternative to the `tearDown` function as a way of
-cleaning up resources used during the test.  It's most useful when the resource
-is only allocated halfway through a test, so you don't have to spend time in
-`tearDown` figuring out what does or doesn't need cleaning up.
+You can test this first locally by deliberately breaking one of the tests, with
+a `self.fail()` for example, and you'll see something like this:
 
-`addCleanup` is run after `tearDown`, which is why we need that `try/except`
-formulation for `quit_if_possible`&mdash;whichever of `edith_browser` and 
-`oni_browser` is also assigned to `self.browser` at the point at which the 
-test ends will already have been quit by the `tearDown` function.
-
-We'll also need to move `create_pre_authenticated_session` from
-'test_my_lists.py' into 'base.py'.
-
-OK, let's see if that all works:
-
-[role="dofirst-ch21l002"]
-[subs="specialcharacters,macros"]
+[role="dofirst-ch20l009"]
 ----
-$ pass:quotes[*python manage.py test functional_tests.test_sharing*]
 [...]
-Traceback (most recent call last):
-  File "/.../superlists/functional_tests/test_sharing.py", line 29, in
-test_logged_in_users_lists_are_saved_as_my_lists
-    share_box = self.browser.find_element_by_css_selector('input[name=email]')
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"css selector","selector":"input[name=email]"}
+screenshotting to /.../superlists/functional_tests/screendumps/MyListsTest.test
+_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.19.12.png
+dumping page HTML to /.../superlists/functional_tests/screendumps/MyListsTest.t
+est_logged_in_users_lists_are_saved_as_my_lists-window0-[...]
 ----
 
-Great! It seems to have got through creating the two user sessions, and
-it gets onto an expected failure--there is no input for an email address
-of a person to share a list with on the page.
+Revert the `self.fail()`, then commit and push:
 
-Let's do a commit at this point, because we've got at least a placeholder 
-for our FT, we've got a useful modification of the
-`create_pre_authenticated_session` function, and we're about to embark on
-a bit of an FT refactor:
-
+[role="dofirst-ch20l010"]
 [subs="specialcharacters,quotes"]
 ----
-$ *git add functional_tests*
-$ *git commit -m "New FT for sharing, move session creation stuff to base"*
+$ *git diff*  # changes in base.py
+$ *echo "functional_tests/screendumps" >> .gitignore*
+$ *git commit -am "add screenshot on failure to FT runner"*
+$ *git push*
+----
+
+And when we rerun the build on Jenkins, we see something like this:
+
+[role="skipme"]
+----
+screenshotting to /var/lib/jenkins/jobs/Superlists/.../functional_tests/
+screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.png
+dumping page HTML to /var/lib/jenkins/jobs/Superlists/.../functional_tests/
+screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.html
 ----
 
 
-Implementing the Selenium Interact/Wait Pattern
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We can go and visit these in the "workspace", which is the folder which Jenkins
+uses to store our source code and run the tests in, as in
+<<screenshots-in-workspace>>.
 
-((("Selenium", "wait patterns")))
-((("waits")))
-Before we continue, let's take a closer look at the interactions with the site
-which we have in our FT so far:
+[[screenshots-in-workspace]]
+.Visiting the project workspace
+image::images/twdp_2009.png["workspace files including screenshot"]
 
-[role="sourcecode currentcontents small-code"]
-.functional_tests/test_sharing.py
+
+And then we look at the screenshot, as shown in <<normal-screenshot>>.
+
+[[normal-screenshot]]
+.Screenshot looking normal
+image::images/twdp_2010.png["Screenshot of site page"]
+
+
+Well, that didn't help much.
+(((range="endofrange", startref="ix_contintegdebug")))
+(((range="endofrange", startref="ix_debugcontinteg")))
+(((range="endofrange", startref="ix_screenshots")))
+
+A Common Selenium Problem: Race Conditions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Selenium", "in continuous integration", sortas="continuousintegration", id="ix_seleniumcontintegration", range="startofrange")))
+((("Selenium", "race conditions in", id="ix_seleniumrace", range="startofrange")))
+((("continuous integration (CI)", "Selenium race conditions", id="ix_contintegracecond", range="startofrange")))
+Whenever you see an inexplicable failure in a Selenium test, one of the most
+likely explanations is a hidden race condition. Let's look at the line that
+failed:
+
+[role="sourcecode currentcontents"]
+.functional_tests/test_my_lists.py
 [source,python]
 ----
-    # Edith goes to the home page and starts a list
-    self.browser = edith_browser
-    self.browser.get(self.server_url)
-    self.get_item_input_box().send_keys('Get help\n')  #<1>
-
-    # She notices a "Share this list" option
-    share_box = self.browser.find_element_by_css_selector('input[name=email]')  #<2>
-    self.assertEqual(
-        share_box.get_attribute('placeholder'),
-        'your-friend@example.com'
-    )
+    # She sees that her list is in there, named according to its
+    # first list item
+    self.browser.find_element_by_link_text('Reticulate splines').click()
+    self.assertEqual(self.browser.current_url, first_list_url)
 ----
 
-<1> Interaction with site
+Immediately after we click the "Reticulate splines" link, we ask Selenium
+to check whether the current URL matches the URL for our first list.  But
+it doesn't:
 
-<2> Assumption about updated state of page
+[role="skipme"]
+----
+AssertionError: 'http://localhost:8081/accounts/edith@example.com/' !=
+'http://localhost:8081/lists/1/'
+----
 
-We learned in the last chapter that it's dangerous to assume too much about
-the state of the browser after we do an interaction (like `send_keys`). In
-theory, `implicitly_wait` will make sure that, if the call to
-`find_element_by_css_selector` doesn't find our `input[name=email]` at first,
-it will silently retry a few times.  But it can also go wrong--imagine if
-there was an input on the previous page, with the same `name=email`, but a
-different placeholder text?  We'd get a strange failure, because Selenium
-could theoretically pick up the element from the previous page while the
-new page is loading.  That tends to raise a `StaleElementException`.
+It looks like the current URL is still the URL of the "My Lists" page.  What's
+going on?
 
-TIP: Unexpected `StaleElementException` errors from Selenium often mean you
-    have some kind of race condition.  You should probably specify an explicit
-    interaction/wait pattern.
-    ((("race conditions")))
-    ((("Selenium", "race conditions")))
+((("Selenium", "waits in", id="ix_seleniumwaits", range="startofrange")))
+((("waits", id="ix_waits", range="startofrange")))
+Do you remember that we set an `implicitly_wait` on the browser, way back in
+<<chapter-2>>?  Do you remember I mentioned it was unreliable?
 
-Instead, it's always prudent to follow the "wait-for" pattern whenever we
-want to check on the effects of an interaction that we've just triggered.
-Something like this:
+`implicitly_wait` works reasonably well for any calls to any of the 
+Selenium `find_element_` calls, but it doesn't apply to `browser.current_url`.
+Selenium doesn't "wait" after you tell it to click an element, so what's
+happened is that the browser hasn't finished loading the new page yet, so
+`current_url` is still the old page.  We need to use some more wait code, like
+we did for the various Persona pages.
+
+At this point it's time for a "wait for" helper function. To see how this
+is going to work, it helps to see how I expect to use it (outside-in!):
 
 
-[role="sourcecode skipme"]
-.functional_tests/test_sharing.py
+[role="sourcecode"]
+.functional_tests/test_my_lists.py (ch20l012)
 [source,python]
 ----
-    self.get_item_input_box().send_keys('Get help\n')
-
-    # She notices a "Share this list" option
+    # She sees that her list is in there, named according to its
+    # first list item
+    self.browser.find_element_by_link_text('Reticulate splines').click()
     self.wait_for(
-        lambda:  self.assertEqual(
-            self.browser.find_element_by_css_selector(
-                'input[name=email]'
-            ).get_attribute('placeholder'),
-            'your-friend@example.com'
-        )
+        lambda: self.assertEqual(self.browser.current_url, first_list_url)
     )
 ----
 
-
-The Page Pattern
-~~~~~~~~~~~~~~~~
-
-((("helper functions/methods", id="ix_helperfunctions", range="startofrange")))
-((("Page pattern", id="ix_pagepattern", range="startofrange")))
-But do you know what would be even better?  This is an occasion for a "three
-strikes and refactor".  This test, and many others, all begin off with the user
-starting a new list.  What if we had a helper function called "start new list"
-that would do the `wait_for` as well as the list item input?  
-
-We've already seen how to use helper methods on the base `FunctionalTest`
-class, but if we continue using too many of them, it's going to get very
-crowded. I've worked on a base FT class that was over 1,500 lines long, and
-that got pretty unwieldy.
-
-One accepted pattern for splitting up your FT helper code is called the 
-http://www.seleniumhq.org/docs/06_test_design_considerations.jsp#page-object-design-pattern[Page
-pattern], and it involves having objects to represent the different pages on
-your site, and to be the single place to store information about how to 
-interact with them.
-
-Let's see how we would create Page objects for the home and lists pages. Here's one
-for the home page:
-
+We're going to take our `assertEqual` call and turn it into a lambda function,
+then pass it into our `wait_for` helper.
 
 [role="sourcecode"]
-.functional_tests/home_and_list_pages.py
+.functional_tests/base.py (ch20l013)
 [source,python]
 ----
-class HomePage(object):
+import time
+[...]
+from selenium.common.exceptions import WebDriverException
+[...]
 
-    def __init__(self, test):
-        self.test = test  #<1>
-
-
-    def go_to_home_page(self):  #<2>
-        self.test.browser.get(self.test.server_url)
-        self.test.wait_for(self.get_item_input)
-        return self  #<3>
-
-
-    def get_item_input(self):
-        return self.test.browser.find_element_by_id('id_text')
-
-
-    def start_new_list(self, item_text):  #<4>
-        self.go_to_home_page()
-        inputbox = self.get_item_input()
-        inputbox.send_keys(item_text + '\n')
-        list_page = ListPage(self.test)  #<5>
-        list_page.wait_for_new_item_in_list(item_text, 1)  #<6>
-        return list_page  #<7>
+    def wait_for(self, function_with_assertion, timeout=DEFAULT_WAIT):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                return function_with_assertion()
+            except (AssertionError, WebDriverException):
+                time.sleep(0.1)
+        # one more try, which will raise any errors if they are outstanding
+        return function_with_assertion()
 ----
 
-<1> It's initialised with an object that represents the current test.  That
-    gives us the ability to make assertions, access the browser instance via
-    `self.test.browser`, and use the `wait_for` function.
+`wait_for` then tries to execute that function, but instead of letting the 
+test fail if the assertion fails, it catches the `AssertionError` that
+`assertEqual` would ordinarily raise, waits for a brief moment, and then loops
+around retrying it.  The `while` loop lasts until a given timeout.  It also catches any
+`WebDriverException` that might happen if, say, an element hasn't appeared on
+the page yet.  It tries one last time after the timeout has expired, this time
+without the `try/except`, so that if there really is still an `AssertionError`, the
+test will fail appropriately.
 
-<2> Most Page objects have a "go to this page" function.  Notice that it
-    implements the interaction/wait pattern--first we `get` the page URL,
-    then we wait for an element that we know is on the home page.
-//IDEA: consider the fact that the lists page has that too...
+NOTE: We've seen that Selenium provides `WebdriverWait` as a tool for doing
+waits, but it's a little restrictive.  This hand-rolled version lets us pass a
+function that does a `unittest` assertion, with all the benefits of the
+readable error messages that it gives us.
 
-<3> Returning `self` is just a convenience. It enables 
-    https://en.wikipedia.org/wiki/Method_chaining[method chaining].
+I've added the timeout there as an optional argument, and I'm basing it on 
+a constant we'll add to 'base.py'.  We'll also use it in our original 
+`implicitly_wait`:
 
-<4> Here's our function that starts a new list.  It goes to the home page,
-    finds the input box, and sends the new item text to it, as well as a
-    carriage return.  Then it uses a wait to check that the interaction
-    has completed, but as you can see that wait is actually on a different
-    Page object:
-
-<5> The `ListPage`, which we'll see the code for shortly. It's initialised just
-    like a `HomePage`.
-
-<6> We use the `ListPage` to `wait_for_new_item_in_list`.  We specify the
-    expected text of the item, and its expected position in the list.
-
-<7> Finally, we return the `list_page` object to the caller, because they
-    will probably find it useful (as we'll see shortly).
-
-
-
-Here's how `ListPage` looks:
 
 [role="sourcecode"]
-.functional_tests/home_and_list_pages.py (ch21l006)
+.functional_tests/base.py (ch20l014)
 [source,python]
 ----
 [...]
-
-class ListPage(object):
-
-    def __init__(self, test):
-        self.test = test
-
-    def get_list_table_rows(self):
-        return self.test.browser.find_elements_by_css_selector(
-            '#id_list_table tr'
-        )
-
-    def wait_for_new_item_in_list(self, item_text, position):
-        expected_row = '{}: {}'.format(position, item_text)
-        self.test.wait_for(lambda: self.test.assertIn(
-            expected_row,
-            [row.text for row in self.get_list_table_rows()]
-        ))
-----
-
-NOTE: It's usually best to have a separate file for each Page object. 
-    In this case, `HomePage` and `ListPage` are so closely related it's
-    easier to keep them together.
+DEFAULT_WAIT = 5
+SCREEN_DUMP_LOCATION = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'screendumps'
+)
 
 
-Let's see how to use it in our test:
-
-
-[role="sourcecode"]
-.functional_tests/test_sharing.py (ch21l007)
-[source,python]
-----
-from .home_and_list_pages import HomePage
-[...]
-
-        # Edith goes to the home page and starts a list
-        self.browser = edith_browser
-        list_page = HomePage(self).start_new_list('Get help')
-----
-
-Let's continue rewriting our test, using the Page object whenever
-we want to access elements from the lists page:
-
-[role="sourcecode"]
-.functional_tests/test_sharing.py (ch21l008)
-[source,python]
-----
-        # She notices a "Share this list" option
-        share_box = list_page.get_share_box()
-        self.assertEqual(
-            share_box.get_attribute('placeholder'),
-            'your-friend@example.com'
-        )
-
-        # She shares her list.
-        # The page updates to say that it's shared with Oniciferous:
-        list_page.share_list_with('oniciferous@example.com')
-----
-
-We add the following three functions to our `ListPage`:
-
-
-[role="sourcecode"]
-.functional_tests/home_and_list_pages.py (ch21l009)
-[source,python]
-----
-    def get_share_box(self):
-        return self.test.browser.find_element_by_css_selector(
-            'input[name=email]'
-        )
-
-
-    def get_shared_with_list(self):
-        return self.test.browser.find_elements_by_css_selector(
-            '.list-sharee'
-        )
-
-
-    def share_list_with(self, email):
-        self.get_share_box().send_keys(email + '\n')
-        self.test.wait_for(lambda: self.test.assertIn(
-            email,
-            [item.text for item in self.get_shared_with_list()]
-        ))
-----
-
-The idea behind the Page pattern is that it should capture all the information
-about a particular page in your site, so that if, later, you want to go and
-make changes to that page--even just simple tweaks to its HTML layout for
-example--you have a single place to go and look for to adjust your functional
-tests, rather than having to dig through dozens of FTs.
-
-The next step would be to pursue the FT refactor through our other tests. I'm
-not going to show that here, but it's something you could do, for practice, 
-to get a feel for what the trade-offs between D.R.Y. and test readability
-are like...
-(((range="endofrange", startref="ix_helperfunctions")))
-(((range="endofrange", startref="ix_pagepattern")))
-
-
-Extend the FT to a Second User, and the "My Lists" Page
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("functional tests/testing (FT)", "multiple users", id="ix_ftmult", range="startofrange")))
-Let's spec out just a little more detail of what we want our sharing user
-story to be.  Edith has seen on her list page that the list is now "shared
-with" Oniciferous, and then we can have Oni log in and see the list on his "My
-Lists" page, maybe in a section called "lists shared with me":
-
-[role="sourcecode"]
-.functional_tests/test_sharing.py (ch21l010)
-[source,python]
-----
-    [...]
-    list_page.share_list_with('oniciferous@example.com')
-
-    # Oniciferous now goes to the lists page with his browser
-    self.browser = oni_browser
-    HomePage(self).go_to_home_page().go_to_my_lists_page()
-
-    # He sees Edith's list in there!
-    self.browser.find_element_by_link_text('Get help').click()
-----
-
-That means another function in our `HomePage` class:
-
-[role="sourcecode"]
-.functional_tests/home_and_list_pages.py (ch21l011)
-[source,python]
-----
-class HomePage(object):
+class FunctionalTest(StaticLiveServerTestCase):
 
     [...]
 
-    def go_to_my_lists_page(self):
-        self.test.browser.find_element_by_link_text('My lists').click()
-        self.test.wait_for(lambda: self.test.assertEqual(
-            self.test.browser.find_element_by_tag_name('h1').text,
-            'My Lists'
-        ))
+    def setUp(self):
+        self.browser = webdriver.Firefox()
+        self.browser.implicitly_wait(DEFAULT_WAIT)
 ----
 
-Once again, this is a function that would be good to carry across into
-'test_my_lists.py', along with maybe a `MyListsPage` object. Exercise
-for the reader!
 
-In the meantime, Oniciferous can also add things to the list:
-
-[role="sourcecode"]
-.functional_tests/test_sharing.py (ch21l012)
-[source,python]
-----
-    # On the list page, Oniciferous can see says that it's Edith's list
-    self.wait_for(lambda: self.assertEqual(
-        list_page.get_list_owner(),
-        'edith@example.com'
-    ))
-
-    # He adds an item to the list
-    list_page.add_new_item('Hi Edith!')
-
-    # When Edith refreshes the page, she sees Oniciferous's addition
-    self.browser = edith_browser
-    self.browser.refresh()
-    list_page.wait_for_new_item_in_list('Hi Edith!', 2)
-----
-
-That's a couple more additions to our Page object:
-
-[role="sourcecode"]
-.functional_tests/home_and_list_pages.py (ch21l013)
-[source,python]
-----
-ITEM_INPUT_ID = 'id_text'
-[...]
-
-class HomePage(object):
-    [...]
-
-    def get_item_input(self):
-        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
-
-
-class ListPage(object):
-    [...]
-
-    def get_item_input(self):
-        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
-
-
-    def add_new_item(self, item_text):
-        current_pos = len(self.get_list_table_rows())
-        self.get_item_input().send_keys(item_text + '\n')
-        self.wait_for_new_item_in_list(item_text, current_pos + 1)
-
-
-    def get_list_owner(self):
-        return self.test.browser.find_element_by_id('id_list_owner').text
-----
-
-It's long past time to run the FT and check if all of this works!
+Now we can rerun the test to confirm it still works locally:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests.test_sharing*]
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+[...]
+.
 
-    share_box = list_page.get_share_box()
-    [...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"css selector","selector":"input[name=email]"}
+Ran 1 test in 9.594s
+
+OK
 ----
 
-That's the expected failure; we don't have an input for email addresses
-of people to share with. Let's do a commit:
+And, just to be sure, we'll deliberately break our test to see it fail
+too:
 
+
+[role="sourcecode"]
+.functional_tests/test_my_lists.py (ch20l015)
+[source,python]
+----
+    self.wait_for(
+        lambda: self.assertEqual(self.browser.current_url, 'barf')
+    )
+----
+
+Sure enough, that gives:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+[...]
+AssertionError: 'http://localhost:8081/lists/1/' != 'barf'
+----
+
+And we see it pause on the page for three seconds.  Let's revert that last 
+change, and then commit our changes:
+
+
+[role="dofirst-ch20l016"]
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* # base.py, test_my_lists.py
+$ *git commit -am "use wait_for function for URL checks in my_lists"*
+$ *git push*
+----
+(((range="endofrange", startref="ix_seleniumwaits")))
+(((range="endofrange", startref="ix_waits")))
+Then we can rerun the build on Jenkins using "Build now", and confirm it now
+works, as in <<outlook-brighter>>.
+
+[[outlook-brighter]]
+.The outlook is brighter
+image::images/twdp_2011.png["Build showing a recent pass and sun-peeking-through-clouds logo"]
+
+Jenkins uses blue to indicate passing builds rather than green, which is a bit
+disappointing, but look at the sun peeking through the clouds:  that's cheery!
+It's an indicator of a moving average ratio of passing builds to failing
+builds.  Things are looking up!
+(((range="endofrange", startref="ix_seleniumcontintegration")))
+(((range="endofrange", startref="ix_contintegracecond")))
+(((range="endofrange", startref="ix_seleniumrace")))
+
+Running Our QUnit JavaScript Tests in Jenkins with PhantomJS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("continuous integration (CI)", "JavaScript tests", id="ix_cijavatests", range="startofrange")))
+((("PhantomJS", id="ix_phantomjs", range="startofrange")))
+((("JavaScript", "running tests in continuous integration", id="ix_javatestsinci", range="startofrange")))
+There's a set of tests we almost forgot--the JavaScript tests. Currently
+our "test runner" is an actual web browser.  To get Jenkins to run them, we
+need a command-line test runner.  Here's a chance to use PhantomJS.
+
+Installing node
+^^^^^^^^^^^^^^^
+
+It's time to stop pretending we're not in the JavaScript game.  We're doing
+web development.  That means we do JavaScript.  That means we're going to end
+up with node.js on our computers.  It's just the way it has to be.
+
+Follow the instructions on the http://nodejs.org/download/[node.js download
+page]. There are installers for Windows and Mac, and repositories for popular
+Linux distros.footnote:[Make sure you get the latest version. On Ubuntu, use the PPA rather
+than the default package.]
+
+Once we have node, we can install phantom:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *npm install -g phantomjs*  # the -g means "system-wide". May need sudo.
+----
+
+Next we pull down a QUnit/PhantomJS test runner.  There are several out there
+(I even wrote a basic one to be able to test the QUnit listings in this book), 
+but the best one to get is probably the one that's linked from the
+http://qunitjs.com/plugins/[QUnit plugins page]. At the time of writing, its
+repo was at https://github.com/jonkemp/qunit-phantomjs-runner.  The only file
+you need is 'runner.js'.
+
+You should end up with this:
+
+[role="dofirst-ch20l017"]
+[subs="specialcharacters,quotes"]
+----
+$ *tree lists/static/tests/*
+lists/static/tests/
+├── qunit-2.0.1.css
+├── qunit-2.0.1.js
+├── runner.js
+└── tests.html
+
+0 directories, 4 files
+----
+
+Let's try it out:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add functional_tests*
-$ *git commit -m "Create Page objects for Home and List pages, use in sharing FT"*
+$ *phantomjs lists/static/tests/runner.js lists/static/tests/tests.html*
+Took 24ms to run 2 tests. 2 passed, 0 failed.
 ----
-(((range="endofrange", startref="ix_ftmult")))
+
+//TODO: rest api tests, if there are any
+
+Just to be sure, let's deliberately break something:
+
+[role="sourcecode"]
+.lists/static/list.js (ch20l019)
+[source,javascript]
+----
+  $('input[name="text"]').on('keypress', function () {
+    // $('.has-error').hide();
+  });
+----
+
+Sure enough:
+
+[subs="specialcharacters,quotes"]
+----
+$ *phantomjs lists/static/tests/runner.js lists/static/tests/tests.html*
+
+Test failed: errors should be hidden on keypress
+    Failed assertion: expected: false, but was: true
+file:///.../superlists/lists/static/tests/tests.html:27:15
+
+Took 27ms to run 2 tests. 1 passed, 1 failed.
+----
+
+All right!  Let's unbreak that, commit and push the runner, and then add it to
+our Jenkins build:
+
+[role="dofirst-ch20l020"]
+[subs="specialcharacters,quotes"]
+----
+$ *git checkout lists/static/list.js*
+$ *git add lists/static/tests/runner.js*
+$ *git commit -m "Add phantomjs test runner for javascript tests"*
+$ *git push* 
+----
+
+Adding the Build Steps to Jenkins
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Edit the project configuration again, and add a step for each set of 
+JavaScript tests, as per <<js-unit-tests-jenkey>>.
 
 
-An Exercise for the Reader
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+[[js-unit-tests-jenkey]]
+.Add a build step for our JavaScript unit tests
+image::images/twdp_2012.png["Jenkins' default welcome screen"]
 
-[quote, Iain H. (reader)]
-______________________________________________________________
-I probably didn’t really understand what I was doing until after having
-completed the "Exercise for the reader" in Chapter 21." 
-______________________________________________________________
+You'll also need to install PhantomJS on the server:
 
-There's nothing that cements learning like taking the training wheels off,
-and getting something working on your own, so I hope you'll give this a go.
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo add-apt-repository -y ppa:chris-lea/node.js*
+elspeth@server:$ *sudo apt-get update*
+elspeth@server:$ *sudo apt-get install nodejs*
+elspeth@server:$ *sudo npm install -g phantomjs*
+----
 
-Here's an outline of the steps you could take:
-
-1. We'll need a new section in 'list.html', with, at first, a form with an
-  input box for an email address.  That should get the FT one step further.
-
-2. Next, we'll need a view for the form to submit to. Start by defining the
-  URL in the template, maybe something like 'lists/<list_id>/share'.
-  
-3. Then, our first unit test. It can be just enough to get a placeholder view
-  in. We want the view to respond to POST requests, and it should respond with
-  a redirect back to the list page, so the test could be called something like
-  `ShareListTest.test_post_redirects_to_lists_page`.
-
-4. We build out our placeholder view, as just a two-liner that finds a list and
-  redirects to it.
-
-5. We can then write a new unit test which creates a user and a list,
-  does a POST with their email address, and checks the user is added to
-  `list_.shared_with.all()` (a similar ORM usage to "My Lists").  That
-  `shared_with` attribute won't exist yet, we're going outside-in.
-
-6. So before we can get this test to pass, we have to move down to the model
-  layer.  The next test, in 'test_models.py', can check that a list has a
-  `shared_with.add` method, which can be called with a user's email address and
-  then check the lists' `shared_with.all()` queryset, which will subsequently
-  contain that user.  
-
-7. You'll then need a `ManyToManyField`.  You'll probably see an error message
-  about a clashing `related_name`, which you'll find a solution to if you look
-  around the Django docs.
-
-8. It will need a database migration.
-
-9. That should get the model tests passing. Pop back up to fix the view test.
-
-10. You may find the redirect view test fails, because it's not sending a valid
-  POST request.  You can either choose to ignore invalid inputs, or adjust the
-  test to send a valid POST.
-
-11. Then back up to the template level; on the "My Lists" page we'll want a
-  `<ul>` with a for loop of the lists shared with the user. On the lists
-  page, we also want to show who the list is shared with, as well as
-  mention of who the list owner is. Look back at the FT for the correct classes
-  and IDs to use. You could have brief unit tests for each of these if you
-  like, as well.
-
-12. You might find that spinning up the site with `runserver` will help you 
-  iron out any bugs, as well as fine-tune the layout and aesthetics.
-  If you use a private browser session, you'll be able to log multiple users
-  in.
+And there we are!  A complete CI build featuring all of our tests!
 
 
-By the end, you might end up with something that looks like
-<<list-sharing-example>>.
+[role="skipme"]
+----
+Started by user harry
+Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
+Fetching changes from the remote Git repository
+Fetching upstream changes from https://github.com/hjwp/book-example.git
+Checking out Revision 936a484038194b289312ff62f10d24e6a054fb29 (origin/chapter_1
+Xvfb starting$ /usr/bin/Xvfb :1 -screen 0 1024x768x24 -fbdir /var/lib/jenkins/20
+[workspace] $ /bin/sh -xe /tmp/shiningpanda7092102504259037999.sh
 
-[[list-sharing-example]]
-.Sharing lists
-image::images/twdp_2101.png["Screenshot of list sharing UI"]
++ pip install -r requirements.txt
+[...]
+
++ python manage.py test lists
+.................................
+ ---------------------------------------------------------------------
+Ran 33 tests in 0.229s
+
+OK
+Creating test database for alias 'default'...
+Destroying test database for alias 'default'...
+
++ python manage.py test accounts
+..................
+ ---------------------------------------------------------------------
+Ran 18 tests in 0.078s
+
+OK
+Creating test database for alias 'default'...
+Destroying test database for alias 'default'...
+
+[workspace] $ /bin/sh -xe /tmp/hudson2967478575201471277.sh
++ phantomjs lists/static/tests/runner.js lists/static/tests/tests.html
+Took 32ms to run 2 tests. 2 passed, 0 failed.
++ phantomjs lists/static/tests/runner.js accounts/static/tests/tests.html
+Took 47ms to run 11 tests. 11 passed, 0 failed.
+
+[workspace] $ /bin/sh -xe /tmp/shiningpanda7526089957247195819.sh
++ pip install selenium
+Requirement already satisfied (use --upgrade to upgrade): selenium in /var/lib/
+
+Cleaning up...
+[workspace] $ /bin/sh -xe /tmp/shiningpanda2420240268202055029.sh
++ python manage.py test functional_tests
+........
+ ---------------------------------------------------------------------
+Ran 8 tests in 76.804s
+
+OK
+----
+(((range="endofrange", startref="ix_cijavatests")))
+(((range="endofrange", startref="ix_javatestsinci")))
+(((range="endofrange", startref="ix_phantomjs")))
+Nice to know that, no matter how lazy I get about running the full test suite
+on my own machine, the CI server will catch me.  Another one of the Testing
+Goat's agents in cyberspace, watching over us...
+(((range="endofrange", startref="ix_jenkins")))
+
+More Things to Do with a CI Server
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+I've only scratched the surface of what you can do with Jenkins and CI servers.
+For example, you can make it much smarter about how it monitors your repo for
+new commits.  
+
+((("staging server", "test automation with CI")))
+((("continuous integration (CI)", "for staging server test automation", sortas="stagingserver")))
+Perhaps more interestingly, you can use your CI server to automate your staging
+tests as well as your normal functional tests.  If all the FTs pass, you can
+add a build step that deploys the code to staging, and then reruns the FTs 
+against that--automating one more step of the process, and ensuring that your
+staging server is automatically kept up to date with the latest code.
+
+Some people even use a CI server as the way of deploying their production
+releases!
 
 
-.The Page Pattern, and the Real Exercise for the Reader
+.Tips on CI and Selenium Best Practices
 *******************************************************************************
 
-Apply DRY to your functional tests::
-    Once your FT suite starts to grow, you'll find that different tests will
-    inevitably find themselves using similar parts of the UI. Try to avoid 
-    having constants, like the HTML IDs or classes of particular UI elements
-    duplicated between your FTs.
-    ((("DRY (don't repeat yourself)")))
+Set up CI as soon as possible for your project::
+    As soon as your functional tests take more than a few seconds to run,
+    you'll find yourself avoiding running them all. Give this job to a CI
+    server, to make sure that all your tests are getting run somewhere.
+    ((("continuous integration (CI)", "best practices")))
 
-The Page pattern::
-    Moving helper methods into a base `FunctionalTest` class can become 
-    unwieldy.  Consider using individual Page objects to hold all the
-    logic for dealing with particular parts of your site. 
-    ((("Page pattern")))
+Set up screenshots and HTML dumps for failures::
+    Debugging test failures is easier if you can see what the page looked
+    at when the failure occurs.  This is particularly useful for debugging
+    CI failures, but it's also very useful for tests that you run locally.
 
-An exercise for the reader::
-    I hope you've actually tried this out!  Try to follow the "Outside-In"
-    method, and occasionally try things out manually if you get stuck. 
-    The real exercise for the reader, of course, is to apply TDD to your
-    next project.  I hope you'll enjoy it!
+Use waits in Selenium tests::
+    Selenium's `implicitly_wait` only applies to uses of its `find_element` 
+    functions, and even that can be unreliable (it can find an element that's
+    still on the old page).  Build a `wait_for` helper function, and alternate
+    between actions on the site, and then some sort of wait to see that they've
+    taken effect.
+    ((("waits")))
+    ((("Selenium", "waits in")))
+    ((("Selenium", "best practices")))
+
+Look in to hooking up CI and staging::
+    Tests that use `LiveServerTestCase` are all very well for dev boxes,
+    but the true reassurance comes from running your tests against a real 
+    server.  Look into getting your CI server to deploy to your staging server,
+    and run the functional tests against that instead.  It has the side benefit
+    of testing your automated deploy scripts.
+    (((range="endofrange", startref="ix_continuousintegration")))
 
 *******************************************************************************
 
-In the next chapter, we'll wrap up with a discussion of testing "best
-practices".
+
+
+=== Notes for latest jenkins
+
+* follow screens to set up user
+
+* nginx + self signed cert guides
+
+https://wiki.jenkins-ci.org/display/JENKINS/Installing+Jenkins+on+Ubuntu
+
+https://www.digitalocean.com/community/tutorials/how-to-create-an-ssl-certificate-on-nginx-for-ubuntu-14-04
+
+http://serverfault.com/questions/250476/how-to-force-or-redirect-to-ssl-in-nginx#424016
+
+
+    curl -L 'https://download.mozilla.org/?product=firefox-45.4.0esr-SSL&os=linux64&lang=en-US' | tar -xvj -C /usr/share
+
+    apt-get remove firefox  # otherwise it found the old one somehow
+    ln -s /usr/share/firefox/firefox /usr/bin/firefox
+
+Global Tool Configuration --> add python3
+
+
+    apt-get install python3-venv python-virtualenv
+
+
+// # for me
+// apt-get install rubygems, tree
+// apt-get install phantomjs
 
