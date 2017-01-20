@@ -7,8 +7,8 @@ import time
 from book_tester import ChapterTest
 LOCAL = False
 
-class Chapter8Test(ChapterTest):
-    chapter_no = 8
+class Chapter9Test(ChapterTest):
+    chapter_no = 9
 
     def hack_hosts_file(self):
         with open('/etc/hosts', 'r') as f:

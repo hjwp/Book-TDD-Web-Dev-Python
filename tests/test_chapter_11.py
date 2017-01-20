@@ -4,8 +4,8 @@ import unittest
 
 from book_tester import ChapterTest
 
-class Chapter10Test(ChapterTest):
-    chapter_no = 10
+class Chapter11Test(ChapterTest):
+    chapter_no = 11
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -24,7 +24,7 @@ class Chapter10Test(ChapterTest):
         if skip:
             self.pos = 62
             self.sourcetree.run_command('git checkout {}'.format(
-                self.sourcetree.get_commit_spec('ch10l019')
+                self.sourcetree.get_commit_spec('ch11l019')
             ))
 
         while self.pos < len(self.listings):
