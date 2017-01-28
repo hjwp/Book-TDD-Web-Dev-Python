@@ -4,8 +4,8 @@ import unittest
 
 from book_tester import ChapterTest
 
-class Chapter11Test(ChapterTest):
-    chapter_no = 11
+class Chapter12Test(ChapterTest):
+    chapter_no = 12
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -23,7 +23,7 @@ class Chapter11Test(ChapterTest):
         self.prep_database()
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
             self.pos = 59
             self.sourcetree.run_command('git checkout {}'.format(
