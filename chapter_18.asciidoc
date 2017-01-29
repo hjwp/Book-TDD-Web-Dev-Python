@@ -1,5 +1,5 @@
 [[testfixtures-and-logging]]
-== Test Fixtures, and Server-Side Debugging
+== Test Fixtures, Server-Side Debugging, and a Decorator for Explicit Waits
 
 Now that we have a functional authentication system, we want to use it to
 identify users, and be able to show them all the lists they have created.
@@ -148,53 +148,66 @@ sessions].
 **********************************************************************
 
 
-
 Checking It Works
 ^^^^^^^^^^^^^^^^^
 
 To check it works, it would be good to use some of the code from our previous
-test.  Let's make a couple of functions called `assert_logged_in` and
-`assert_logged_out`. To access them from a different test, we'll need
+test.  Let's make a couple of functions called `wait_to_be_logged_in` and
+`wait_to_be_logged_out`. To access them from a different test, we'll need
 to pull them up into `FunctionalTest`. We'll also tweak them slightly so that
 they can take an arbitrary email address as a parameter:
 
 [role="sourcecode"]
-.functional_tests/base.py (ch17l002)
+.functional_tests/base.py (ch18l002)
 [source,python]
 ----
 class FunctionalTest(StaticLiveServerTestCase):
     [...]
 
-    def assert_logged_in(self, email):
-        self.browser.find_element_by_link_text('Log out')
+    def wait_to_be_logged_in(self, email):
+        self.wait_for(
+            lambda: self.browser.find_element_by_link_text('Log out')
+        )
         navbar = self.browser.find_element_by_css_selector('.navbar')
         self.assertIn(email, navbar.text)
 
 
-    def assert_logged_out(self, email):
-        self.browser.find_element_by_name('email')
+    def wait_to_be_logged_out(self, email):
+        self.wait_for(
+            lambda: self.browser.find_element_by_name('email')
+        )
         navbar = self.browser.find_element_by_css_selector('.navbar')
         self.assertNotIn(email, navbar.text)
 ----
 
 
-That means a small tweak in 'test_login.py':
+Hm, that's not bad, but I'm not quite happy with the amount of duplication
+of `wait_for` stuff in here.  Let's make a note to come back to it, and
+get these helpers working.
+
+[role="scratchpad"]
+*****
+* 'Clean up wait_for stuff in base.py'
+*****
+
+
+First we use them in 'test_login.py':
 
 
 [role="sourcecode"]
-.functional_tests/test_login.py (ch17l003)
+.functional_tests/test_login.py (ch18l003)
 [source,python]
 ----
     def test_can_get_email_link_to_log_in(self):
         [...]
         # she is logged in!
-        self.assert_logged_in(email=TEST_EMAIL)
+        self.wait_to_be_logged_in(email=TEST_EMAIL)
 
         # Now she logs out
         self.browser.find_element_by_link_text('Log out').click()
 
         # She is logged out
-        self.assert_logged_out(email=TEST_EMAIL)
+        self.wait_to_be_logged_out(email=TEST_EMAIL)
 ----
 
 Just to check we haven't broken anything, we rerun the login test:
@@ -211,18 +224,18 @@ And now we can write a placeholder for the "My Lists" test, to see if
 our pre-authenticated session creator really does work:
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py (ch17l004)
+.functional_tests/test_my_lists.py (ch18l004)
 [source,python]
 ----
     def test_logged_in_users_lists_are_saved_as_my_lists(self):
         email = 'edith@example.com'
         self.browser.get(self.server_url)
-        self.assert_logged_out(email)
+        self.wait_to_be_logged_out(email)
 
         # Edith is a logged-in user
         self.create_pre_authenticated_session(email)
         self.browser.get(self.server_url)
-        self.assert_logged_in(email)
+        self.wait_to_be_logged_in(email)
 ----
 
 That gets us:
@@ -268,9 +281,192 @@ TIP: Once you have more than a few related models, even using the Django ORM
 *******************************************************************************
 
 
+Our final explicit wait helper:  a wait_for decorator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We've used decorators a few times in our code so far, it's time to learn
+how they actually work by making one of our own.
+
+First, let's imagine how we might want our decorator to work.  It would be
+nice to be able to replace all the custom wait/retry/timeout logic in
+`wait_for_row_in_list_table` and the in-line `self.wait_fors` in the 
+`wait_to_be_logged_in/out`.   Something like this would look lovely:
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l005)
+[source,python]
+----
+    @wait
+    def wait_for_row_in_list_table(self, row_text):
+        table = self.browser.find_element_by_id('id_list_table')
+        rows = table.find_elements_by_tag_name('tr')
+        self.assertIn(row_text, [row.text for row in rows])
+
+
+    @wait
+    def wait_to_be_logged_in(self, email):
+        self.browser.find_element_by_link_text('Log out')
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertIn(email, navbar.text)
+
+
+    @wait
+    def wait_to_be_logged_out(self, email):
+        self.browser.find_element_by_name('email')
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertNotIn(email, navbar.text)
+----
+
+
+Are you ready to dive in?  Although decorators are quite difficult to
+wrap your head around (I know it took me a long time before I was 
+comfortable with them, and I still have to think about them quite
+carefully whenever I make one), the nice thing is that we've already
+dipped our toes into functional programming in our `self.wait_for`
+helper function.  That's a function that takes another function as
+an argument, and a decorator is the same.  The difference is that the
+decorator doesn't actually execute any code itself -- it returns a
+modified version of the function that it was given.
+
+Our decorator wants to return a new function which will keep calling
+the function it was given, catching our usual exceptions, until a
+timeout occurs.  Here's a first cut:
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l006)
+[source,python]
+----
+def wait(fn):  #<1>
+    def modified_fn():  #<3>
+        start_time = time.time()
+        while True:  #<4>
+            try:
+                return fn()  #<5>
+            except (AssertionError, WebDriverException) as e:  #<4>
+                if time.time() - start_time > MAX_WAIT:
+                    raise e
+                time.sleep(0.1)
+    return modified_fn  #<2>
+----
+
+<1> A decorator is a way of modifying a function; it takes a function
+    an argument...
+
+<2> and returns another function as the modified (or "decorated") version.
+
+<3> Here's where we create our modified function. 
+
+<4> And here's our familiar loop, which will keep going, catching the usual
+    exceptions, until our timeout expires
+
+<5> And as always, we call our function and return immediately if there are
+    no exceptions.
+
+
+That's 'almost' right, but not quite;  try running it?
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+[...]
+    self.wait_to_be_logged_out(email)
+TypeError: modified_fn() takes 0 positional arguments but 2 were given
+----
+
+
+Unlike in `self.wait_for`, the decorator is being applied to functions
+that have arguments:
+
+
+
+[role="sourcecode currentcontents"]
+.functional_tests/base.py
+[source,python]
+----
+    @wait
+    def wait_to_be_logged_in(self, email):
+        self.browser.find_element_by_link_text('Log out')
+----
+
+`wait_to_be_logged_in` takes `self` and `email` as positional arguments.
+But when it's decorated, it's replaced with `modified_fn`, which takes 
+no arguments.  How do we magically make it so our `modified_fn` can handle
+the same arguments as whatever `fn` the decorator gets given has?
+
+The answer is a bit of Python magic, `*args` and `**kwargs`, more formally
+known as
+https://docs.python.org/3/tutorial/controlflow.html#keyword-arguments["variadic arguments"]:
+
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l007)
+[source,python]
+----
+def wait(fn):
+    def modified_fn(*args, **kwargs):  #<1>
+        start_time = time.time()
+        while True:
+            try:
+                return fn(*args, **kwargs)  #<2>
+            except (AssertionError, WebDriverException) as e:
+                if time.time() - start_time > MAX_WAIT:
+                    raise e
+                time.sleep(0.1)
+    return modified_fn
+----
+
+<1> Using `*args` and `**kwargs`, we specify that `modified_fn` may take
+    any arbitrary positional and keyword arguments
+
+<2> As we've captured them in the function definition, we make sure to
+    pass those same arguments to `fn` when we actually call it.
+
+One of the fun things this can be used for is to make a decorator that changes
+the arguments of a funciton.  But we won't get into that now.  The main thing
+is that our decorator now works:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+[...]
+OK
+----
+
+
+And do you know what's truly satisfying?  We can use our `wait` decorator
+for our `self.wait_for` helper as well!  Like this:
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l008)
+[source,python]
+----
+    @wait
+    def wait_for(self, fn):
+        return fn()
+----
+
+
+Lovely!  Now all our wait/retry logic is encapsulated in a single place,
+and we have a nice easy way of applying those waits, either inline in our
+FTs using `self.wait_for`, or on any helper function using the `@wait`
+decorator.
+
+
 
 The Proof Is in the Pudding: Using Staging to Catch Final Bugs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Popping a few layers of our stack of things we're working on, we have nice
+waiting helpers, what were we using them for?  Oh yes, waiting to be logged
+in. And why was that?  Ah yes, we had just built a way of pre-authenticating
+a user.
 
 ((("debugging", "staging for", id="ix_debugstaging", range="startofrange")))
 ((("staging server", "debugging in", id="ix_stagingdebug", range="startofrange")))
@@ -279,7 +475,8 @@ the staging server?  Let's try and deploy our site.  Along the way we'll catch
 an unexpected bug (that's what staging is for!), and then we'll have to figure
 out a way of managing the database on the test server.
 
-//IDEA: unskip all these
+
+//TODO: unskip all these
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
@@ -323,8 +520,8 @@ ERROR: test_logged_in_users_lists_are_saved_as_my_lists
 Traceback (most recent call last):
   File "/home/harry/.../book-example/functional_tests/test_my_lists.py",
   line 34, in test_logged_in_users_lists_are_saved_as_my_lists
-    self.assert_logged_in(email)
-  File "/worskpace/functional_tests/base.py", line 42, in assert_logged_in
+    self.wait_to_be_logged_in(email)
+  File "/worskpace/functional_tests/base.py", line 42, in wait_to_be_logged_in
     self.browser.find_element_by_link_text('Log out')
     [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
@@ -509,7 +706,7 @@ the staging server or not.  Let's populate a variable `self.against_staging`
 in 'base.py':
 
 [role="sourcecode"]
-.functional_tests/base.py (ch17l005)
+.functional_tests/base.py (ch18l009)
 [source,diff]
 ----
 @@ -9,8 +9,10 @@ class FunctionalTest(StaticLiveServerTestCase):
@@ -528,7 +725,7 @@ email server, using the horrifically tortuous Python standard library POP3
 client:
 
 [role="sourcecode"]
-.functional_tests/test_login.py (ch17l006)
+.functional_tests/test_login.py (ch18l010)
 [source,python]
 ----
 import os
@@ -581,12 +778,12 @@ as a result:
 
 
 
-[role="sourcecode"]
-.functional_tests/test_login.py (ch17l007)
+[role="sourcecode small-code"]
+.functional_tests/test_login.py (ch18l011)
 [source,diff]
 ----
-@@ -5,7 +5,7 @@ import time
- from django.core import mail
+@@ -7,7 +7,7 @@ from selenium.webdriver.common.keys import Keys
+ 
  from .base import FunctionalTest
  
 -TEST_EMAIL = 'edith@example.com'
@@ -594,12 +791,15 @@ as a result:
  SUBJECT = 'Your login link for Superlists'
  
  
-@@ -42,13 +42,19 @@ class LoginTest(FunctionalTest):
-                 inbox.dele(email_id)
-             inbox.quit()
- 
-+
-     def test_can_get_email_link_to_log_in(self):
+@@ -33,7 +33,6 @@ class LoginTest(FunctionalTest):
+                     print('getting msg', i)
+                     _, lines, __ = inbox.retr(i)
+                     lines = [l.decode('utf8') for l in lines]
+-                    print(lines)
+                     if subject_line in lines:
+                         email_id = i
+                         body = '\n'.join(lines)
+@@ -49,8 +48,13 @@ class LoginTest(FunctionalTest):
          # Edith goes to the awesome superlists site
          # and notices a "Log in" section in the navbar for the first time
          # It's telling her to enter her email address, so she does
@@ -609,14 +809,13 @@ as a result:
 +            test_email = 'edith@example.com'
 +
          self.browser.get(self.server_url)
-         self.browser.find_element_by_name('email').send_keys(
--            TEST_EMAIL + '\n'
-+            test_email + '\n'
-         )
+-        self.browser.find_element_by_name('email').send_keys(TEST_EMAIL)
++        self.browser.find_element_by_name('email').send_keys(test_email)
+         self.browser.find_element_by_name('email').send_keys(Keys.ENTER)
  
          # A message appears telling her an email has been sent
-@@ -56,16 +62,14 @@ class LoginTest(FunctionalTest):
-         self.assertIn('Check your email', body.text)
+@@ -60,16 +64,14 @@ class LoginTest(FunctionalTest):
+         ))
  
          # She checks her email and finds a message
 -        email = mail.outbox[0]
@@ -636,19 +835,19 @@ as a result:
              )
          url = url_search.group(0)
          self.assertIn(self.server_url, url)
-@@ -74,11 +78,11 @@ class LoginTest(FunctionalTest):
+@@ -78,11 +80,11 @@ class LoginTest(FunctionalTest):
          self.browser.get(url)
  
          # she is logged in!
--        self.assert_logged_in(email=TEST_EMAIL)
-+        self.assert_logged_in(email=test_email)
+-        self.wait_to_be_logged_in(email=TEST_EMAIL)
++        self.wait_to_be_logged_in(email=test_email)
  
          # Now she logs out
          self.browser.find_element_by_link_text('Log out').click()
  
          # She is logged out
--        self.assert_logged_out(email=TEST_EMAIL)
-+        self.assert_logged_out(email=test_email)
+-        self.wait_to_be_logged_out(email=TEST_EMAIL)
++        self.wait_to_be_logged_out(email=test_email)
 ----
 
 
@@ -662,6 +861,7 @@ TIP: I've just hacked this email-checking code together, and it's currently
     could grow into something more reliable. Alternatively, services like
     'mailinator.com' will give you throwaway email addresses and an API to
     check them, for a small fee.
+
 
 
 Managing the Test Database on Staging
@@ -755,7 +955,7 @@ def create_pre_authenticated_session(email):
     session.save()
     return session.session_key
 ----
-//15
+//12
 
 We've taken the code for `create_pre_authenticated_session` code from
 'test_my_lists.py'. `handle` will pick up an email address from the parser,  
@@ -785,6 +985,7 @@ well as tests:
 +    'functional_tests',
  ]
 ----
+//14
 
 Now it works:
 
@@ -808,7 +1009,7 @@ when we're on the local server, and make it run the management command
 on the staging server if we're on that:
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py (ch17l016)
+.functional_tests/test_my_lists.py (ch18l016)
 [source,python]
 ----
 from django.conf import settings
@@ -841,7 +1042,7 @@ when we populate `self.against_staging`:
 
 
 [role="sourcecode"]
-.functional_tests/base.py (ch17l017)
+.functional_tests/base.py (ch18l017)
 [source,python]
 ----
 from .server_tools import reset_database  #<2>
@@ -1110,7 +1311,7 @@ good, after all.
 Let's start by saving the Gunicorn config to our template file in 'deploy_tools':
 
 [role="sourcecode"]
-.deploy_tools/gunicorn-systemd.template.service (ch17l020)
+.deploy_tools/gunicorn-systemd.template.service (ch18l020)
 [source,ini]
 ----
 [...]
@@ -1128,7 +1329,7 @@ the email password environment variable via that gunicorn config file:
 note in our 
 
 [role="sourcecode"]
-.deploy_tools/provisioning_notes.md (ch17l021)
+.deploy_tools/provisioning_notes.md (ch18l021)
 [source,rst]
 ----
 ## Upstart Job
@@ -1195,9 +1396,16 @@ Be very careful when resetting data on your servers::
     A command that can remotely wipe the entire database on one of your
     servers is a dangerous weapon, and you want to be really, really sure
     it's never accidentally going to hit your production data.
-    
+
+
+Decorators are nice::
+    Decorators can be a great way of abstracting out different levels of
+    concerns.  They let us write our test assertions without having to
+    think about waits at the same time.
 
 *******************************************************************************
+
+TODO: separate this out into two chapters.
 
 
 Stuff from the old edition that we might want to save
@@ -1206,8 +1414,8 @@ Stuff from the old edition that we might want to save
 Using Hierarchical Logging Config
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-
-TODO: this section has not yet been adapted to the new version
+NOTE: this section has not yet been adapted to the new version, feel free to 
+    ignore it
 
 ((("logging configuration", id="ix_loggingconfig", range="startofrange")))
 When we hacked in the `logging.warning` earlier, we were using the root logger.
@@ -1267,7 +1475,7 @@ the root logger), so you have to define one logger per app.
 Here's how to write a test for logging behaviour:
 
 [role="sourcecode skipme"]
-.accounts/tests/test_authentication.py (ch17l023)
+.accounts/tests/test_authentication.py (ch18l023)
 [source,python]
 ----
 import logging
@@ -1315,7 +1523,7 @@ Let's just try it out, to make sure we really are testing what we think
 we are:
 
 [role="sourcecode skipme"]
-.accounts/authentication.py (ch17l024)
+.accounts/authentication.py (ch18l024)
 [source,python]
 ----
 import logging
@@ -1342,7 +1550,7 @@ Actual call: warning('foo')
 And so we settle in with our real implementation:
 
 [role="sourcecode skipme"]
-.accounts/authentication.py (ch17l025)
+.accounts/authentication.py (ch18l025)
 [source,python]
 ----
     else:
