@@ -3,8 +3,8 @@ import unittest
 
 from book_tester import ChapterTest
 
-class Chapter16Test(ChapterTest):
-    chapter_no = 16
+class Chapter17Test(ChapterTest):
+    chapter_no = 17
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
