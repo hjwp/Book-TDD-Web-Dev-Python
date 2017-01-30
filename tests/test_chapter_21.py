@@ -4,8 +4,8 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter20Test(ChapterTest):
-    chapter_no = 20
+class Chapter21Test(ChapterTest):
+    chapter_no = 21
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
