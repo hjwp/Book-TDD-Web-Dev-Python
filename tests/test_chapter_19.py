@@ -23,7 +23,7 @@ class Chapter19Test(ChapterTest):
         self.prep_database()
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 53
             self.sourcetree.run_command('git checkout {}'.format(

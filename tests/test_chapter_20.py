@@ -4,8 +4,8 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter19Test(ChapterTest):
-    chapter_no = 19
+class Chapter20Test(ChapterTest):
+    chapter_no = 20
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -42,7 +42,7 @@ class Chapter19Test(ChapterTest):
             if check_head:
                 print('checking chapter started from correct tag')
                 revision = self.sourcetree.run_command('git rev-parse HEAD')
-                assert "b966425" in revision
+                assert "9e516e2" in revision
                 print('OK')
 
         self.assert_all_listings_checked(self.listings)
