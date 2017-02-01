@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import unittest
 
 from book_tester import ChapterTest
 
-class Chapter10Test(ChapterTest):
-    chapter_no = 10
+class Chapter14Test(ChapterTest):
+    chapter_no = 14
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
+        self.sourcetree.start_with_checkout(self.chapter_no)
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing with git ref')
         self.assertEqual(self.listings[1].type, 'code listing with git ref')
-        self.assertEqual(self.listings[2].type, 'test')
+        self.assertEqual(self.listings[2].type, 'code listing with git ref')
 
-        # other prep
-        self.sourcetree.start_with_checkout(self.chapter_no)
-        self.prep_database()
+        # skips
+        #self.skip_with_check(30, '# review changes') # diff
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 62
-            self.sourcetree.run_command('git checkout {}'.format(
-                self.sourcetree.get_commit_spec('ch10l019')
+            self.pos = 5
+            self.sourcetree.run_command('git checkout {0}'.format(
+                self.sourcetree.get_commit_spec('ch14l003')
             ))
 
         while self.pos < len(self.listings):
-            print(self.pos, self.listings[self.pos].type)
+            print(self.pos)
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
+        self.sourcetree.run_command('git add . && git commit -m"final commit"')
         self.check_final_diff()
 
 

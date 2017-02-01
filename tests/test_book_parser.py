@@ -341,7 +341,7 @@ class ParseCodeListingTest(unittest.TestCase):
         )
 
 
-    def test_strips_asciidoctor_callouts(self):
+    def test_strips_asciidoctor_callouts_from_code(self):
         code_html = examples.CODE_LISTING_WITH_ASCIIDOCTOR_CALLOUTS.replace('\n', '\r\n')
         node = html.fromstring(code_html)
         listings = parse_listing(node)
@@ -352,6 +352,17 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertNotIn('(3)', listing.contents)
         self.assertNotIn('(4)', listing.contents)
         self.assertNotIn('(7)', listing.contents)
+
+
+    def test_strips_asciidoctor_callouts_from_output(self):
+        listing_html = examples.OUTPUT_WITH_CALLOUTS.replace('\n', '\r\n')
+        node = html.fromstring(listing_html)
+        listings = parse_listing(node)
+        self.fail(listings)
+        output = listings[1]
+        self.assertEqual(type(output), Output)
+        self.assertNotIn('(1)', output)
+        self.assertIn('assertEqual(\n', output)
 
 
     def test_strip_callouts_helper(self):

@@ -185,3 +185,35 @@ test(<span class="string"><span class="delimiter">&quot;</span><span class="cont
 </div>
 </div>
 """
+
+OUTPUT_WITH_CALLOUTS = '''<div class="listingblock">
+<div class="content">
+<pre>$ <strong>python manage.py test functional_tests.test_list_item_validation</strong>
+Creating test database for alias 'default'...
+E
+======================================================================
+ERROR: test_cannot_add_empty_list_items
+(functional_tests.test_list_item_validation.ItemValidationTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/.../superlists/functional_tests/test_list_item_validation.py", line
+15, in test_cannot_add_empty_list_items
+    self.wait_for(lambda: self.assertEqual(  <i class="conum" data-value="1"></i><b>(1)</b>
+  File "/.../superlists/functional_tests/base.py", line 37, in wait_for
+    raise e  <i class="conum" data-value="2"></i><b>(2)</b>
+  File "/.../superlists/functional_tests/base.py", line 34, in wait_for
+    return fn()  <i class="conum" data-value="2"></i><b>(2)</b>
+  File "/.../superlists/functional_tests/test_list_item_validation.py", line
+16, in &lt;lambda&gt;  <i class="conum" data-value="3"></i><b>(3)</b>
+    self.browser.find_element_by_css_selector('.has-error').text,  <i class="conum" data-value="3"></i><b>(3)</b>
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: .has-error
+
+
+ ---------------------------------------------------------------------
+Ran 1 test in 10.575s
+
+FAILED (errors=1)</pre>
+</div>
+</div>'''

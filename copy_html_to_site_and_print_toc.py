@@ -149,8 +149,8 @@ def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
 
 
 def extract_toc_from_book():
-    subprocess.check_call(['make', 'book.harry.html'], stdout=subprocess.PIPE)
-    parsed = html.fromstring(open('book.harry.html').read())
+    subprocess.check_call(['make', 'book.html'], stdout=subprocess.PIPE)
+    parsed = html.fromstring(open('book.html').read())
     return parsed.cssselect('#toc')[0]
 
 

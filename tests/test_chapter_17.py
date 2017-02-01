@@ -3,32 +3,31 @@ import unittest
 
 from book_tester import ChapterTest
 
-
 class Chapter17Test(ChapterTest):
     chapter_no = 17
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
+        self.sourcetree.start_with_checkout(self.chapter_no)
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing')
-        self.assertEqual(self.listings[1].type, 'other command')
-        self.assertEqual(self.listings[2].type, 'output')
+        self.assertEqual(self.listings[1].type, 'code listing')
+        self.assertEqual(self.listings[2].type, 'test')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
 
-        # prep
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.prep_virtualenv()
         self.prep_database()
         self.sourcetree.run_command('rm accounts/tests.py')
 
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 10
+            self.pos = 100
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch17l004')
+                self.sourcetree.get_commit_spec('ch16l047')
             ))
 
         while self.pos < len(self.listings):
@@ -38,8 +37,6 @@ class Chapter17Test(ChapterTest):
         self.assert_all_listings_checked(self.listings)
 
         # tidy up any .origs from patches
-        self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
-        self.sourcetree.run_command('git add . && git commit -m"final commit ch17"')
         self.check_final_diff(ignore=["moves"])
 
 

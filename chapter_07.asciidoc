@@ -1,1006 +1,2197 @@
-== Prettification: Layout and Styling, and What to Test About It
+[[chapter-6]]
+Working Incrementally
+---------------------
 
-((("layout and style", id="ix_layoutandstyle", range="startofrange")))
-((("aesthetics", see="layout and style")))
-((("style", see="layout and style")))
-We're starting to think about releasing the first version of our site, but
-we're a bit embarrassed by how ugly it looks at the moment.  In this 
-chapter, we'll cover some of the basics of styling, including integrating an
-HTML/CSS framework called Bootstrap.  We'll learn how static files work
-in Django, and what we need to do about testing them.
-
-
-
-What to Functionally Test About Layout and Style
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("functional tests/testing (FT)", "for layout and style", sortas="layoutandstyle", id="ix_FTlayoutstyle", range="startofrange")))
-((("layout and style", "what to functionally test  for")))
-Our site is undeniably a bit unattractive at the moment
-(<<homepage-looking-ugly>>).
+WARNING: Major update released for Selenium 3.
+    If you started this book on or before Jan 30th 2017,
+    be aware: chapters have been renumbered,
+    so check this is the one you think it is,
+    and have a look at the new <<explicit-waits-chapter>>
+    for an indication of the changes you'll need in your FTs.
+    You should do a `pip install --upgrade selenium` too.
 
 
-NOTE: If you spin up your dev server with `manage.py runserver`, you 
-    may run into a database error "table lists_item has no column named
-    list_id". You need to update your local database to reflect the changes we
-    made in 'models.py'.  Use `manage.py migrate`.  If it gives you any
-    grief about `IntegrityErrors`, just
-    deletefootnote:[What? Delete the database?  Are you crazy?  Not completely.
-    The local dev database often gets out of sync with its migrations as we
-    go back and forth in our development, and it doesn't have any important
-    data in it, so it's OK to blow it away now and again.  We'll be much more
-    careful once we have a "production" database on the server.  More on this
-    in <<data-migrations-appendix>>]
-    the database file and try again.
+Now let's address our real problem, which is that our design only allows for
+one global list.  In this chapter I'll demonstrate a critical TDD technique:
+how to adapt existing code using an incremental, step-by-step process which
+takes you from working state to working state. Testing Goat, not Refactoring
+Cat.
 
-We can't be adding to Python's reputation for being
-http://grokcode.com/746/dear-python-why-are-you-so-ugly/[ugly],
-so let's do a tiny bit of polishing.  Here's a few things we might want:
+Small Design When Necessary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* A nice large input field for adding new and existing lists
-* A large, attention-grabbing, centered box to put it in
+Let's have a think about how we want support for multiple lists to
+work.  Currently the FT (which is the closest we have to a design document)
+says this:
 
-How do we apply TDD to these things?  Most people will tell you you
-shouldn't test aesthetics, and they're right.  It's a bit like testing a
-constant, in that tests usually wouldn't add any value.  
-
-
-[[homepage-looking-ugly]]
-.Our homepage, looking a little ugly...
-image::images/twdp_0701.png["Our homepage, looking a little ugly."]
-
-((("static files")))
-((("CSS (Cascading Style Sheets) framework")))
-But we can test the implementation of our aesthetics--just enough to
-reassure ourselves that things are working.  For example, we're going to use
-Cascading Style Sheets (CSS) for our styling, and they are loaded as static
-files.  Static files can be a bit tricky to configure (especially, as we'll see
-later, when you move off your own PC and onto a hosting site), so we'll want
-some kind of simple "smoke test" that the CSS has loaded.  We don't have to
-test fonts and colours and every single pixel, but we can do a quick check that
-the main input box is aligned the way we want it on each page, and that will
-give us confidence that the rest of the styling for that page is probably
-loaded too.
-
-We start with a new test method inside our functional test:
-
-[role="sourcecode"]
-.functional_tests/tests.py (ch07l001)
+[role="sourcecode currentcontents"]
+.functional_tests/tests.py
 [source,python]
 ----
-class NewVisitorTest(LiveServerTestCase):
-    [...]
+    # Edith wonders whether the site will remember her list. Then she sees
+    # that the site has generated a unique URL for her -- there is some
+    # explanatory text to that effect.
+    self.fail('Finish the test!')
 
+    # She visits that URL - her to-do list is still there.
 
-    def test_layout_and_styling(self):
-        # Edith goes to the home page
-        self.browser.get(self.live_server_url)
-        self.browser.set_window_size(1024, 768)
-
-        # She notices the input box is nicely centered
-        inputbox = self.browser.find_element_by_id('id_new_item')
-        self.assertAlmostEqual(
-            inputbox.location['x'] + inputbox.size['width'] / 2,
-            512,
-            delta=5
-        )
+    # Satisfied, she goes back to sleep
 ----
 
+But really we want to expand on this, by saying that different users
+don't see each other's wait_for_row_in_list_tablelists, and each get their own URL as a way of
+going back to their saved lists.  What might a new design look like?
 
-A few new things here.  We start by setting the window size to a fixed
-size. We then find the input element, look at its size and location, and
-do a little maths to check whether it seems to be positioned in the middle
-of the page.  `assertAlmostEqual` helps us to deal with rounding errors by
-letting us specify that we want our arithmetic to work to within plus or
-minus five pixels.
 
-If we run the functional tests, we get:
+Not Big Design Up Front
+^^^^^^^^^^^^^^^^^^^^^^^
 
+
+((("agile movement in software development")))
+((("Big Design Up Front")))
+TDD is closely associated with the agile movement in software development,
+which includes a reaction against 'Big Design Up Front' the
+traditional software engineering practice whereby, after a lengthy requirements
+gathering exercise, there is an equally lengthy design stage where the
+software is planned out on paper. The agile philosophy is that you learn more
+from solving problems in practice than in theory, especially when you confront
+your application with real users as soon as possible. Instead of a long
+up-front design phase, we try and put a 'minimum viable application' out
+there early, and let the design evolve gradually based on feedback from
+real-world usage.
+
+((("minimum viable application")))
+But that doesn't mean that thinking about design is outright banned! In the
+last chapter we saw how just blundering ahead without thinking can 'eventually'
+get us to the right answer, but often a little thinking about design can help
+us get there faster. So, let's think about our minimum viable lists app, and
+what kind of design we'll need to deliver it.
+
+* We want each user to be able to store their own list--at least one, for now.
+* A list is made up of several items, whose primary attribute is a bit of
+descriptive text.
+* We need to save lists from one visit to the next.  For now, we can give
+each user a unique URL for their list.  Later on we may want some way of
+automatically recognising users and showing them their lists.
+
+To deliver the "for now" items, it sounds like we're going to store
+lists and their items in a database.  Each list will have a unique URL,
+and each list item will be a bit of descriptive text, associated with a
+particular list.
+
+YAGNI!
+^^^^^^
+
+((("YAGNI")))
+Once you start thinking about design, it can be hard to stop. All sorts of
+other thoughts are occurring to us--we might want to give each list
+a name or title, we might want to recognise users using usernames and
+passwords, we might want to add a longer notes field as well as short
+descriptions to our list, we might want to store some kind of ordering, and so
+on.  But we obey another tenet of the agile gospel:  "YAGNI" (pronounced
+yag-knee), which stands for "You aint gonna need it!"  As software
+developers, we have fun creating things, and sometimes it's hard to resist
+the urge to build things just because an idea occurred to us and we 'might'
+need it.  The trouble is that more often than not, no matter how cool the idea
+was, you 'won't' end up using it. Instead you have a load of unused code,
+adding to the complexity of your application. YAGNI is the mantra we use to
+resist our overenthusiastic creative urges.
+
+
+REST (ish)
+^^^^^^^^^^
+
+We have an idea of the data structure we want--the Model part of
+Model-View-Controller (MVC).  What about the View and Controller parts?
+How should the user interact with Lists and their Items using a web browser?
+
+((("REST (Representational Site Transfer)")))
+Representational State Transfer (REST) is an approach to web design that's
+usually used to guide the design of web-based APIs. When designing a
+user-facing site, it's not possible to stick 'strictly' to the REST rules,
+but they still provide some useful inspiration (skip ahead to 
+<<appendix-rest-api-backend>> if you want to see a real REST API).
+
+REST suggests that we have a URL structure that matches our data structure,
+in this case lists and list items.  Each list can have its own URL:
+
+[role="skipme"]
+----
+    /lists/<list identifier>/
+----
+
+That will fulfill the requirement we've specified in our FT. To view a list, we
+use a GET request (a normal browser visit to the page).
+
+To create a brand new list, we'll have a special URL that accepts POST
+requests:
+
+[role="skipme"]
+----
+    /lists/new
+----
+
+To add a new item to an existing list, we'll have a separate URL, to which
+we can send POST requests:
+
+[role="skipme"]
+----
+    /lists/<list identifier>/add_item
+----
+
+(Again, we're not trying to perfectly follow the rules of REST, which would
+use a PUT request here--we're just using REST for inspiration.)
+
+In summary, our scratchpad for this chapter looks something like this:
+
+[role="scratchpad"]
+*****
+* '[strikethrough line-through]#Get FTs to clean up after themselves#'
+* 'Adjust model so that items are associated with different lists'
+* 'Add unique URLs for each list'
+* 'Add a URL for creating a new list via POST'
+* 'Add URLs for adding a new item to an existing list via POST'
+*****
+
+
+Implementing the New Design Incrementally using TDD
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("test-driven development (TDD)", "process flowchart")))
+((("test-driven development (TDD)", "new design implementation with", id="ix_TDDndimp", range="startofrange")))
+How do we use TDD to implement the new design? Let's take another look at
+the flowchart for the TDD process in <<TDD-double-loop>>.
+
+At the top level, we're going to use a combination of adding new functionality
+(by adding a new FT and writing new application code), and refactoring our
+application--i.e., rewriting some of the existing implementation so that it
+delivers the same functionality to the user but using aspects of our new
+design. We'll be able to use the existing functional test to verify we don't
+break what already works, and the new functional test to drive the new 
+features.
+
+At the unit test level, we'll be adding new tests or modifying existing ones to
+test for the changes we want, and we'll be able to similarly use the unit tests
+we don't touch to help make sure we don't break anything in the process.
+
+[[TDD-double-loop]]
+.The TDD process with functional and unit tests
+image::images/twdp_0601.png["A flowchart showing functional tests as the overall cycle, and unit tests helping to code. Tests passing and failing are marked as green and red respectively."]
+
+
+
+Ensuring we have a regression test
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's translate our scratchpad into a new functional test method, which
+introduces a second user a checks that their to-do list is separate from
+Edith's.
+
+We'll start out very similarly to the first, Edith adds a first item to
+create a to-do list, but we introduce our first new assertion:  Edith's
+list should live at its own, unique URL:
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch07l005)
+[source,python]
+----
+def test_can_start_a_list_for_one_user(self):
+    # Edith has heard about a cool new online to-do app. She goes
+    [...]
+    # The page updates again, and now shows both items on her list
+    self.wait_for_row_in_list_table('2: Use peacock feathers to make a fly')
+    self.wait_for_row_in_list_table('1: Buy peacock feathers')
+
+    # Satisfied, she goes back to sleep
+    
+
+def test_multiple_users_can_start_lists_at_different_urls(self):
+    # Edith start a new todo list
+    self.browser.get(self.live_server_url)
+    inputbox = self.browser.find_element_by_id('id_new_item')
+    inputbox.send_keys('Buy peacock feathers')
+    inputbox.send_keys(Keys.ENTER)
+    self.wait_for_row_in_list_table('1: Buy peacock feathers')
+
+    # She notices that her list has a unique URL
+    edith_list_url = self.browser.current_url
+    self.assertRegex(edith_list_url, '/lists/.+')  #<1>
+----
+
+<1> `assertRegex` is a helper function from `unittest` that checks
+    whether a string matches a regular expression. We use it to check that our
+    new REST-ish design has been implemented. Find out more in the
+    ((("assertRegex")))
+    http://docs.python.org/3/library/unittest.html[`unittest` documentation].
+
+
+Next we imagine a new user coming along. We want to check that they don't see
+any of Edith's items when they visit the home page, and that they get their own
+unique URL for their list.
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch07l006)
+[source,python]
+----
+    [...]
+    self.assertRegex(edith_list_url, '/lists/.+')  #<1>
+
+    # Now a new user, Francis, comes along to the site.
+
+    ## We use a new browser session to make sure that no information
+    ## of Edith's is coming through from cookies etc
+    self.browser.quit()
+    self.browser = webdriver.Firefox()
+
+    # Francis visits the home page.  There is no sign of Edith's
+    # list
+    self.browser.get(self.live_server_url)
+    page_text = self.browser.find_element_by_tag_name('body').text
+    self.assertNotIn('Buy peacock feathers', page_text)
+    self.assertNotIn('make a fly', page_text)
+
+    # Francis starts a new list by entering a new item. He
+    # is less interesting than Edith...
+    inputbox = self.browser.find_element_by_id('id_new_item')
+    inputbox.send_keys('Buy milk')
+    inputbox.send_keys(Keys.ENTER)
+    self.wait_for_row_in_list_table('1: Buy milk')
+
+    # Francis gets his own unique URL
+    francis_list_url = self.browser.current_url
+    self.assertRegex(francis_list_url, '/lists/.+')
+    self.assertNotEqual(francis_list_url, edith_list_url)
+
+    # Again, there is no trace of Edith's list
+    page_text = self.browser.find_element_by_tag_name('body').text
+    self.assertNotIn('Buy peacock feathers', page_text)
+    self.assertIn('Buy milk', page_text)
+
+    # Satisfied, they both go back to sleep
+----
+
+<1> I'm using the convention of double-hashes (`##`) to indicate
+    "meta-comments"&mdash;comments about 'how' the test is working and why--so
+    that we can distinguish them from regular comments in FTs which explain the
+    User Story. They're a message to our future selves, which might otherwise
+    be wondering why the heck we're quitting the browser and starting a new
+    one...
+    ((("comments")))
+    ((("meta-comments")))
+
+Other than that, the new test is fairly self-explanatory. Let's see how we do
+when we run our FTs:
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test functional_tests*]
 Creating test database for alias 'default'...
-.F.
+.F
 ======================================================================
-FAIL: test_layout_and_styling (functional_tests.tests.NewVisitorTest)
+FAIL: test_multiple_users_can_start_lists_at_different_urls
+(functional_tests.tests.NewVisitorTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/.../superlists/functional_tests/tests.py", line 117, in
-test_layout_and_styling
-    delta=5
-AssertionError: 112.0 != 512 within 5 delta
+  File "/.../superlists/functional_tests/tests.py", line 84, in
+test_multiple_users_can_start_lists_at_different_urls
+    self.assertRegex(edith_list_url, '/lists/.+')
+AssertionError: Regex didn't match: '/lists/.+' not found in
+'http://localhost:8081/'
 
  ---------------------------------------------------------------------
-Ran 3 tests in 9.188s
+Ran 2 tests in 5.786s
 
 FAILED (failures=1)
 Destroying test database for alias 'default'...
 ----
 
-That's the expected failure.  Still, this kind of FT is easy to get wrong, so
-let's use a quick-and-dirty "cheat" solution, to check that the FT also passes
-when the input box is centered.  We'll delete this code again almost as soon
-as we've used it to check the FT:
+Good, our first test still passes, and the second one fails where we might
+expect.  Let's do a commit, and then go and build some new models and views:
 
-[role="sourcecode small-code"]
-.lists/templates/home.html (ch07l002)
-[source,html]
+[subs="specialcharacters,quotes"]
 ----
-<form method="POST" action="/lists/new">
-    <p style="text-align: center;">
-        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
-    </p>
-    {% csrf_token %}
-</form>
+$ *git commit -a*
 ----
 
-That passes, which means the FT works.  Let's extend it to make sure that the
-input box is also center-aligned on the page for a new list:
+NOTE: I found the FTs hung when I tried to run them today.  It turns out I
+    needed to upgrade Selenium, with a `pip install --upgrade "selenium<3"`.
+    You may remember from the preface that it's important to have the latest
+    version of Selenium installed--it's only been a couple of months since I
+    last upgraded, and Selenium had gone up by six point versions.  If
+    something weird is happening, always try upgrading Selenium!
+    ((("Selenium", "upgrading")))(((range="endofrange", startref="ix_TDDndimp")))
+
+
+Iterating Towards the New Design
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("test-driven development (TDD)", "iterating towards new design")))
+((("test-driven development (TDD)", "Working state to working state")))
+Being all excited about our new design, I had an overwhelming urge to dive in
+at this point and start changing 'models.py', which would have broken half the
+unit tests, and then pile in and change almost every single line of code, all
+in one go.  That's a natural urge, and TDD, as a discipline, is a constant
+fight against it. Obey the Testing Goat, not Refactoring Cat!  We don't need to
+implement our new, shiny design in a single big bang. Let's make small changes
+that take us from a working state to a working state, with our design guiding
+us gently at each stage.
+
+There are four items on our to-do list. The FT, with its `Regexp didn't
+match`, is telling us that the second item--giving lists their own URL and
+identifier--is the one we should work on next. Let's have a go at fixing
+that, and only that.
+
+The URL comes from the redirect after POST.  In 'lists/tests.py', find
+`test_home_page_redirects_after_POST`, and change the expected redirect
+location:
 
 [role="sourcecode"]
-.functional_tests/tests.py (ch07l003)
+.lists/tests.py
 [source,python]
 ----
-    # She starts a new list and sees the input is nicely
-    # centered there too
-    inputbox.send_keys('testing\n')
-    inputbox = self.browser.find_element_by_id('id_new_item')
-    self.assertAlmostEqual(
-        inputbox.location['x'] + inputbox.size['width'] / 2,
-        512,
-        delta=5
-    )
+self.assertEqual(response.status_code, 302)
+self.assertEqual(response['location'], '/lists/the-only-list-in-the-world/')
 ----
 
-That gives us another test failure:
+Does that seem slightly strange?  Clearly, '/lists/the-only-list-in-the-world'
+isn't a URL that's going to feature in the final design of our application. But
+we're committed to changing one thing at a time.  While our application only
+supports one list, this is the only URL that makes sense.  We're still moving
+forwards, in that we'll have a different URL for our list and our home page,
+which is a step along the way to a more REST-ful design. Later, when we have
+multiple lists, it will be easy to change.
 
-----
-  File "/.../superlists/functional_tests/tests.py", line 127, in
-test_layout_and_styling
-    delta=5
-AssertionError: 112.0 != 512 within 5 delta
-----
+NOTE: Another way of thinking about it is as a problem-solving technique: our
+    new URL design is currently not implemented, so it works for 0 items.
+    Ultimately, we want to solve for 'n' items, but solving for 1 item is a
+    good step along the way.
 
-Let's commit just the FT:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add functional_tests/tests.py*
-$ *git commit -m "first steps of FT for layout + styling"*
-----
-
-Now it feels like we're justified in finding a "proper" solution to our need
-for some better styling for our site.  We can back out our hacky 
-`<p style="text-align: center">`:
-(((range="endofrange", startref="ix_FTlayoutstyle")))
-
-[subs="specialcharacters,quotes"]
-----
-$ *git reset --hard*
-----
-
-WARNING: `git reset --hard` is the "take off and nuke the site from orbit" Git
-    command, so be careful with it--it blows away all your un-committed
-    changes. Unlike almost everything else you can do with Git, there's no way
-    of going back after this one.
-    ((("Git", "reset --hard")))
-
-
-Prettification: Using a CSS Framework
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("CSS (Cascading Style Sheets) framework", seealso="Bootstrap")))
-((("layout and style", "using a CSS framework for", seealso="Bootstrap")))
-Design is hard, and doubly so now that we have to deal with mobile, tablets, and
-so forth.  That's why many programmers, particularly lazy ones like me, are
-turning to CSS frameworks to solve some of those problems for them.  There are
-lots of frameworks out there, but one of the earliest and most popular is
-Twitter's Bootstrap.  Let's use that.
-
-((("Bootstrap", id="ix_bootstrap", range="startofrange")))
-You can find bootstrap at http://getbootstrap.com/.
-
-We'll download it and put it in a new folder called 'static' inside the `lists`
-app:footnote:[On Windows, you may not have `wget` and `unzip`, but I'm sure you
-can figure out how to download Bootstrap, unzip it, and put the contents of the
-'dist' folder into the 'lists/static/bootstrap' folder.]
-
-[subs="specialcharacters,quotes"]
-----
-$ *wget -O bootstrap.zip https://github.com/twbs/bootstrap/releases/download/\
-v3.3.4/bootstrap-3.3.4-dist.zip*
-$ *unzip bootstrap.zip*
-$ *mkdir lists/static*
-$ *mv bootstrap-3.3.4-dist lists/static/bootstrap*
-$ *rm bootstrap.zip*
-----
-
-Bootstrap comes with a plain, uncustomised installation in the 'dist' folder.
-We're going to use that for now, but you should really never do this for a
-real site--vanilla Bootstrap is instantly recognisable, and a big signal
-to anyone in the know that you couldn't be bothered to style your site. Learn
-how to use LESS and change the font, if nothing else!  There is info in
-Bootstrap's docs, or there's a 
-http://coding.smashingmagazine.com/2013/03/12/customizing-bootstrap/[good guide here].
-
-
-Our 'lists' folder will end up looking like this:
+Running the unit tests gives us an expected fail:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:[<strong>tree lists</strong>]
-lists
-├── __init__.py
-├── __pycache__
-│   └── [...]
-├── admin.py
-├── models.py
-├── static
-│   └── bootstrap
-│       ├── css
-│       │   ├── bootstrap.css
-│       │   ├── bootstrap.css.map
-│       │   ├── bootstrap.min.css
-│       │   ├── bootstrap-theme.css
-│       │   ├── bootstrap-theme.css.map
-│       │   └── bootstrap-theme.min.css
-│       ├── fonts
-│       │   ├── glyphicons-halflings-regular.eot
-│       │   ├── glyphicons-halflings-regular.svg
-│       │   ├── glyphicons-halflings-regular.ttf
-│       │   ├── glyphicons-halflings-regular.woff
-│       │   └── glyphicons-halflings-regular.woff2
-│       └── js
-│           ├── bootstrap.js
-│           ├── bootstrap.min.js
-│           └── npm.js
-├── templates
-│   ├── home.html
-│   └── list.html
-├── tests.py
-├── urls.py
-└── views.py
-----
-//ch07l004
-
-If we have a look at the "Getting Started" section of the 
-http://getbootstrap.com/getting-started/#template[Bootstrap documentation],
-you'll see it wants our HTML template to include something like this:
-
-
-[role="skipme"]
-[source,html]
-----
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta http-equiv="X-UA-Compatible" content="IE=edge">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Bootstrap 101 Template</title>
-        <!-- Bootstrap -->
-        <link href="css/bootstrap.min.css" rel="stylesheet">
-      </head>
-      <body>
-        <h1>Hello, world!</h1>
-        <script src="http://code.jquery.com/jquery.js"></script>
-        <script src="js/bootstrap.min.js"></script>
-      </body>
-    </html>
-----
-
-We already have two HTML templates.  We don't want to be adding a whole load
-of boilerplate code to each, so now feels like the right time to apply
-the "Don't repeat yourself" rule, and bring all the common parts together.
-Thankfully, the Django template language makes that easy using something
-called template inheritance.
-
-
-Django Template Inheritance
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("Django", "template inheritance", id="ix_Django_ti", range="startofrange")))
-((("template inheritance", id="ix_ti", range="startofrange")))
-Let's have a little review of what the differences are between 'home.html' and
-'list.html':
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*diff lists/templates/home.html lists/templates/list.html*]
-<         <h1>Start a new To-Do list</h1>
-<         <form method="POST" action="/lists/new">
----
->         <h1>Your To-Do list</h1>
->         <form method="POST" action="/lists/{{ list.id }}/add_item">
+$ pass:quotes[*python manage.py test lists*]
 [...]
->         <table id="id_list_table">
->             {% for item in list.item_set.all %}
->                 <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
->             {% endfor %}
->         </table>
+AssertionError: '/' != '/lists/the-only-list-in-the-world/'
 ----
 
-They have different header texts, and their forms use different URLs. On top
-of that, 'list.html' has the additional `<table>` element.
+We can go adjust our `home_page` view in 'lists/views.py':
 
-Now that we're clear on what's in common and what's not, we can make the two 
-templates inherit from a common "superclass" template.  We'll start by 
-making a copy of 'home.html':
-
-[subs="specialcharacters,quotes"]
+[role="sourcecode"]
+.lists/views.py
+[source,python]
 ----
-$ *cp lists/templates/home.html lists/templates/base.html*
+def home_page(request):
+    if request.method == 'POST':
+        Item.objects.create(text=request.POST['item_text'])
+        return redirect('/lists/the-only-list-in-the-world/')
+
+    items = Item.objects.all()
+    return render(request, 'home.html', {'items': items})
 ----
 
-We make this into a base template which just contains the common boilerplate,
-and mark out the "blocks", places where child templates can customise it:
+Of course, that will now totally break the functional tests, because there is
+no such URL on our site yet.  Sure enough, if you run them, you'll find they
+fail just after trying to submit the first item, saying that they can't find
+the list table; it's because URL '/the-only-list-in-the-world/' doesn't exist
+yet!
+
+----
+  File "/.../superlists/functional_tests/tests.py", line 58, in
+test_can_start_a_list_for_one_user
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]
+
+[...]
+
+  File "/.../superlists/functional_tests/tests.py", line 80, in
+test_multiple_users_can_start_lists_at_different_urls
+    self.wait_for_row_in_list_table('1: Buy peacock feathers')
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]
+----
+//IDEA: improve FT for better error messages when table missing
+
+Not only is our new test failing, but the old one is too.  That tells
+us we've introduce a 'regression'.  Let's try and get back to a working
+state as quickly as possible by building a URL for our one and only list.
+
+
+Taking a first, self-contained step: one new URL
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Open up 'lists/tests.py', and add a new test class called `ListViewTest`.  Then
+copy the method called `test_displays_all_list_items` across from
+`HomePageTest` into our new class, rename it, and adapt it slightly:
+
+[role="sourcecode"]
+.lists/tests.py (ch07l009)
+[source,python]
+----
+class ListViewTest(TestCase):
+
+    def test_displays_all_items(self):
+        Item.objects.create(text='itemey 1')
+        Item.objects.create(text='itemey 2')
+
+        response = self.client.get('/lists/the-only-list-in-the-world/')
+
+        self.assertContains(response, 'itemey 1')  #<1>
+        self.assertContains(response, 'itemey 2')  #<1>
+
+----
+
+<1> Here's a new helper method: instead of using the slightly annoying
+    `assertIn`/`response.content.decode()` dance, Django provides the
+    `assertContains` method which knows how to deal with responses and the
+    bytes of their content.
+
+
+Let's try running this test now:
+
+----
+    self.assertContains(response, 'itemey 1')
+[...]
+AssertionError: 404 != 200 : Couldn't retrieve content: Response code was 404
+----
+
+Here's a nice side-effect of using `assertContains`: it tells us straight
+away that the test is failing because our new URL doesn't exist yet, and
+is returning a 404.
+
+
+A New URL
+^^^^^^^^^
+
+((("Django", "URLs in")))
+((("URLs", "in Django")))
+Our singleton list URL doesn't exist yet.  We fix that in 'superlists/urls.py'.
+
+TIP: Watch out for trailing slashes in URLs, both here in the tests and in
+    'urls.py'. They're a common source of bugs.
+
 
 [role="sourcecode small-code"]
-.lists/templates/base.html
+.superlists/urls.py
+[source,python]
+----
+urlpatterns = [
+    url(r'^$', views.home_page, name='home'),
+    url(r'^lists/the-only-list-in-the-world/$', views.view_list, name='view_list'),
+]
+----
+//010-1
+
+
+Running the tests again, we get:
+
+----
+AttributeError: module 'lists.views' has no attribute 'view_list'
+[...]
+FAILED (errors=6)
+----
+
+
+A New View Function
+^^^^^^^^^^^^^^^^^^^
+
+((("Django", "view functions in")))
+((("view functions, in Django")))
+Nicely self-explanatory.  Let's create a dummy view function in
+'lists/views.py':
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def view_list(request):
+    pass
+----
+
+Now we get:
+
+----
+ValueError: The view lists.views.view_list didn't return an HttpResponse
+object. It returned None instead.
+
+[...]
+FAILED (errors=1)
+----
+
+Down to just one failure, and it's pointing us in the right direction. Let's
+copy the two last lines from the `home_page` view and see if they'll do the
+trick:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def view_list(request):
+    items = Item.objects.all()
+    return render(request, 'home.html', {'items': items})
+----
+
+Rerun the unit tests and they should pass:
+
+----
+Ran 7 tests in 0.016s
+OK
+----
+
+Now let's try the FTs again and see what they tell us:
+
+----
+FAIL: test_can_start_a_list_for_one_user
+[...]
+  File "/.../superlists/functional_tests/tests.py", line 68, in
+test_can_start_a_list_for_one_user
+[...]
+AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
+peacock feathers']
+
+FAIL: test_multiple_users_can_start_lists_at_different_urls
+[...]
+AssertionError: 'Buy peacock feathers' unexpectedly found in 'Your To-Do
+list\n1: Buy peacock feathers'
+[...]
+----
+
+Both of them are getting a little further than they were before, but they're
+still failing.  It would be nice to get back to a working state and get that
+first one passing again.  What's it trying to tell us?
+
+It's failing when we try to add the second item.  We have to put our debugging
+hats on here.  We know the home page is working, because the test has got all
+the way down to line 68 in the FT, so we've at least added a first item.  And
+our unit tests are all passing, so we're pretty sure the URLs and views are
+doing what they should -- the home page displays the right template, and
+can handle POST requests, and the 'only-list-in-the-world' view knows how
+to display all items...  But it doesn't know how to handle POST requests. Ah,
+that gives us a clue.
+
+A second clue is the rule of thumb that, when all the unit tests are passing
+but the functional tests aren't, it's often pointing at a problem that's not
+covered by the unit tests, and in our case, that's often a template problem.
+
+The answer is that our 'home.html' input form currently doesn't specify an
+explicit URL to POST to.
+
+[role="sourcecode currentcontents"]
+.lists/templates/home.html
 [source,html]
 ----
-<html>
-<head>
-    <title>To-Do lists</title>
-</head>
-
-<body>
-    <h1>{% block header_text %}{% endblock %}</h1>
-    <form method="POST" action="{% block form_action %}{% endblock %}">
-        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
-        {% csrf_token %}
-    </form>
-    {% block table %}
-    {% endblock %}
-</body>
-</html>
+        <form method="POST">
 ----
 
-The base template defines a series of areas called "blocks", which will be 
-places that other templates can hook in and add their own content.  Let's
-see how that works in practice, by changing 'home.html' so that it "inherits
-from" 'base.html':
+By default the browser sends the POST data back to the same URL it's currently
+on.  When we're on the home page that works fine, but when we're on our
+'only-list-in-the-world' page, it doesn't.
+
+Now we could dive in and add POST request handling to our new view, but that
+would involve writing a bunch more tests and code, and at this point we'd like
+to get back to a working state as quickly as possible.  Actually the quickest
+thing we can do to get things fixed is to just use the existing home page view,
+which already works, for all POST requests:
 
 [role="sourcecode"]
 .lists/templates/home.html
 [source,html]
 ----
-{% extends 'base.html' %}
-
-{% block header_text %}Start a new To-Do list{% endblock %}
-
-{% block form_action %}/lists/new{% endblock %}
+        <form method="POST" action="/">
 ----
 
-You can see that lots of the boilerplate HTML disappears, and we just
-concentrate on the bits we want to customise. We do the same for 'list.html':
+Try that, and we'll see our FTs get back to a happier place:
 
-[role="sourcecode"]
-.lists/templates/list.html
-[source,html]
+[subs="specialcharacters,macros"]
 ----
-{% extends 'base.html' %}
+FAIL: test_multiple_users_can_start_lists_at_different_urls
+[...]
+AssertionError: 'Buy peacock feathers' unexpectedly found in 'Your To-Do
+list\n1: Buy peacock feathers'
 
-{% block header_text %}Your To-Do list{% endblock %}
-
-{% block form_action %}/lists/{{ list.id }}/add_item{% endblock %}
-
-{% block table %}
-    <table id="id_list_table">
-        {% for item in list.item_set.all %}
-            <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
-        {% endfor %}
-    </table>
-{% endblock %}
+Ran 2 tests in 8.541s
+FAILED (failures=1)
 ----
 
+Our original test passes once again, so we know we're back to a working state.
+The new functionality may not be working yet, but at least the old stuff works
+as well as it used to.
 
-That's a refactor of the way our templates work.  We rerun the FTs to make
-sure we haven't broken anything...
 
-----
-AssertionError: 112.0 != 512 within 5 delta
-----
+Green? Refactor
+~~~~~~~~~~~~~~~
 
-(((range="endofrange", startref="ix_Django_ti")))
-(((range="endofrange", startref="ix_ti")))
-Sure enough, they're still getting to exactly where they were before.  That's 
-worthy of a commit:
+((("Red, Green, Refactor")))
+((("refactoring", "Red, Green, Refactor")))
+Time for a little tidying up.  
+
+In the 'Red/Green/Refactor' dance, we've arrived at green, so we should see
+what needs a refactor.  We now have two views, one for the home page, and one
+for an individual list.  Both are currently using the same template, and
+passing it all the list items currently in the database.  If we look through
+our unit test methods, we can see some stuff we probably want to change:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git diff -b*
-# the -b means ignore whitespace, useful since we've changed some html indenting
-$ *git status*
-$ *git add lists/templates* # leave static, for now
-$ *git commit -m "refactor templates to use a base template"*
+$ *grep -E "class|def" lists/tests.py*
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+    def test_displays_all_list_items(self):
+    def test_can_save_a_POST_request(self):
+    def test_redirects_after_POST(self):
+    def test_only_saves_items_when_necessary(self):
+class ListViewTest(TestCase):
+    def test_displays_all_items(self):
+class ItemModelTest(TestCase):
+    def test_saving_and_retrieving_items(self):
+
 ----
 
+We can definitely delete the `test_displays_all_list_items` method from 
+`HomePageTest`, it's no longer needed.  If you run *`manage.py test lists`*
+now, it should say it ran 6 tests instead of 7:
+
+[role="dofirst-ch07l012"]
+----
+Ran 6 tests in 0.016s
+OK
+----
+
+Next, since we don't actually need the home page template to display all list
+items any more; it should just show a single input box inviting you to start a
+new list.
 
 
-Integrating Bootstrap
-~~~~~~~~~~~~~~~~~~~~~
+Another Small Step: A Separate Template for Viewing Lists
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Now it's much easier to integrate the boilerplate code that Bootstrap wants--we
-won't add the JavaScript yet, just the CSS:
+((("templates", "separate")))
+((("Django", "templates")))
+Since the home page and the list view are now quite distinct pages,
+they should be using different HTML templates; 'home.html' can have the
+single input box, whereas a new template, 'list.html', can take care
+of showing the table of existing items.
+
+Let's add a new test to check that it's using a different template:
+
+//13
+[role="sourcecode"]
+.lists/tests.py
+[source,python]
+----
+class ListViewTest(TestCase):
+
+    def test_uses_list_template(self):
+        response = self.client.get('/lists/the-only-list-in-the-world/')
+        self.assertTemplateUsed(response, 'list.html')
+
+
+    def test_displays_all_items(self):
+        [...]
+
+----
+
+((("assertTemplateUsed")))
+`assertTemplateUsed` is one of the more useful functions that the Django test
+client gives us.  Let's see what it says:
+
+----
+AssertionError: False is not true : Template 'list.html' was not a template
+used to render the response. Actual template(s) used: home.html
+----
+
+Great!  Let's change the view:
 
 [role="sourcecode"]
-.lists/templates/base.html (ch07l006)
-[source,html]
+.lists/views.py
+[source,python]
 ----
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>To-Do lists</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
-</head>
-[...]
+def view_list(request):
+    items = Item.objects.all()
+    return render(request, 'list.html', {'items': items})
 ----
-// ch07l006 
 
+But, obviously, that template doesn't exist yet. If we run the unit tests, we
+get:
 
-Rows and Columns
-^^^^^^^^^^^^^^^^
+----
+django.template.exceptions.TemplateDoesNotExist: list.html
+----
 
-((("layout and style", "rows and columns")))
-Finally, let's actually use some of the Bootstrap magic! You'll have to read
-the documentation yourself, but should be able to use a combination
-of the grid system and the `text-center` class to get what we want:
+Let's create a new file at 'lists/templates/list.html':
+
+[subs="specialcharacters,quotes"]
+----
+$ *touch lists/templates/list.html*
+----
+
+A blank template, which gives us this error--good to know the tests are
+there to make sure we fill it in:
+
+----
+AssertionError: False is not true : Couldn't find 'itemey 1' in response
+----
+
+The template for an individual list will reuse quite a lot of the stuff
+we currently have in 'home.html', so we can start by just copying that:
+
+[subs="specialcharacters,quotes"]
+----
+$ *cp lists/templates/home.html lists/templates/list.html*
+----
+
+That gets the tests back to passing (green).  Now let's do a little more
+tidying up (refactoring).  We said the home page doesn't need to list items, it
+only needs the new list input field, so we can remove some lines from
+'lists/templates/home.html', and maybe slightly tweak the `h1` to say "Start a
+new To-Do list":
 
 [role="sourcecode small-code"]
-.lists/templates/base.html (ch07l007)
+.lists/templates/home.html
 [source,html]
 ----
 <body>
-<div class="container">
-
-    <div class="row">
-        <div class="col-md-6 col-md-offset-3">
-            <div class="text-center">
-                <h1>{% block header_text %}{% endblock %}</h1>
-                <form method="POST" action="{% block form_action %}{% endblock %}">
-                    <input name="item_text" id="id_new_item"
-                           placeholder="Enter a to-do item"
-                    />
-                    {% csrf_token %}
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-md-6 col-md-offset-3">
-            {% block table %}
-            {% endblock %}
-        </div>
-    </div>
-
-</div>
+    <h1>Start a new To-Do list</h1>
+    <form method="POST">
+        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
+        {% csrf_token %}
+    </form>
 </body>
 ----
-// ch07l007
+//16
 
-(If you've never seen an HTML tag broken up over several lines, that `<input>`
-may be a little shocking. It is definitely valid, but you don't have to use
-it if you find it offensive. ;)
+We rerun the unit tests to check that hasn't broken anything--good...
 
-TIP: Take the time to browse through the http://getbootstrap.com/[Bootstrap
-documentation], if you've never seen it before.  It's a shopping trolley 
-brimming full of useful tools to use in your site.
+There's actually no need to pass all the items to the 'home.html' template in
+our `home_page` view, so we can simplify that:
 
-Does that work?
-
-----
-AssertionError: 112.0 != 512 within 5 delta
-----
-
-Hmm. No.  Why isn't our CSS loading?
-
-
-Static Files in Django
-~~~~~~~~~~~~~~~~~~~~~~
-
-((("Django", "static files in")))
-((("static files")))
-((("layout and style", "static files")))
-Django, and indeed any web server, needs to know two things to deal with static
-files:
-
-1. How to tell when a URL request is for a static file, as opposed to for some
-   HTML that's going to be served via a view function
-
-2. Where to find the static file the user wants
-
-In other words, static files are a mapping from URLs to files on disk. 
-
-For item 1, Django lets us define a URL "prefix" to say that any URLs which
-start with that prefix should be treated as requests for static files.  By
-default, the prefix is `/static/`. It's defined in 'settings.py':
-
-
-[role="sourcecode currentcontents"]
-.superlists/settings.py
+[role="sourcecode"]
+.lists/views.py
 [source,python]
 ----
-[...]
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/1.10/howto/static-files/
-
-STATIC_URL = '/static/'
+def home_page(request):
+    if request.method == 'POST':
+        Item.objects.create(text=request.POST['item_text'])
+        return redirect('/lists/the-only-list-in-the-world/')
+    return render(request, 'home.html')
 ----
 
-The rest of the settings we will add to this section are all to do with item 2:
-finding the actual static files on disk. 
+Rerun the unit tests once more; they still pass. Time to run the functional
+tests:
 
-While we're using the Django development server (`manage.py runserver`), we can
-rely on Django to magically find static files for us--it'll just look in any
-subfolder of one of our apps called 'static'.
-
-You now see why we put all the Bootstrap static files into
-'lists/static'.  So why are they not working at the moment?  It's because we're
-not using the `/static/` URL prefix.  Have another look at the link to the CSS
-in 'base.html':
-
-[role="sourcecode currentcontents"]
-.lists/templates/base.html
-[source,html]
 ----
-<link href="css/bootstrap.min.css" rel="stylesheet">
+AssertionError: '1: Buy milk' not found in ['1: Buy peacock feathers', '2: Buy
+milk']
 ----
 
-To get this to work, we need to change it to:
+
+Not bad!  Our regression test (the first FT) is passing, and our new test
+is now getting slightly further forwards -- it's telling us that Francis
+isn't getting his own list page (because he still sees some of Edith's
+list items.)
+
+
+It may feel like we haven't made much headway since, functionally, the site
+still behaves almost exactly like it did when we started the chapter, but this
+really is progress. We've started on the road to our new design, and we've
+implemented a number of stepping stones 'without making anything worse than it
+was before'.  Let's commit our progress so far:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* # should show 4 changed files and 1 new file, list.html
+$ *git add lists/templates/list.html*
+$ *git diff* # should show we've simplified home.html,
+           # moved one test to a new class in lists/tests.py added a new view
+           # in views.py, and simplified home_page and made one addition to
+           # urls.py
+$ *git commit -a* # add a message summarising the above, maybe something like
+                # "new URL, view and template to display lists"
+----
+
+
+A Third Small Step: a URL for Adding List Items
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Where are we with our own to-do list?
+
+[role="scratchpad"]
+*****
+* '[strikethrough line-through]#Get FTs to clean up after themselves#'
+* 'Adjust model so that items are associated with different lists'
+* 'Add unique URLs for each list'  <-- ...
+* 'Add a URL for creating a new list via POST'
+* 'Add URLs for adding a new item to an existing list via POST'
+*****
+
+We've 'sort of' made progress on the third item, even if there's still only one
+list in the world. Item 2 is a bit scary.  Can we do something about items 4 or
+5?  
+
+Let's have a new URL for adding new list items.  If nothing else, it'll
+simplify the home page view.
+
+
+A Test Class for New List Creation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("Django", "test class in")))
+Open up 'lists/tests.py', and 'move' the
+`test_can_save_a_POST_request` and
+`test_redirects_after_POST` methods into a new class, then change
+the URL they POST to:
 
 [role="sourcecode small-code"]
-.lists/templates/base.html
-[source,html]
+.lists/tests.py (ch07l021-1)
+[source,python]
 ----
-<link href="/static/bootstrap/css/bootstrap.min.css" rel="stylesheet">
-----
-//007-1
+class NewListTest(TestCase):
 
-When `runserver` sees the request, it knows that it's for a static file because
-it begins with `/static/`.  It then tries to find a file called
-`bootstrap/css/bootstrap.min.css`, looking in each of our app folders for
-subfolders called 'static', and it should find it at
-'lists/static/bootstrap/css/bootstrap.min.css'.
-
-So if you take a look manually, you should see it works, as in
-<<list-page-centered>>.
-
-[[list-page-centered]]
-.Our site starts to look a little better...
-image::images/twdp_0702.png["The list page with centered header."]
+    def test_can_save_a_POST_request(self):
+        self.client.post('/lists/new', data={'item_text': 'A new list item'})
+        self.assertEqual(Item.objects.count(), 1)
+        new_item = Item.objects.first()
+        self.assertEqual(new_item.text, 'A new list item')
 
 
-
-Switching to StaticLiveServerTestCase
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("Django", "static live server case")))
-((("static live server case")))
-If you run the FT though, it won't pass:
-
-----
-AssertionError: 112.0 != 512 within 5 delta
+    def test_redirects_after_POST(self):
+        response = self.client.post('/lists/new', data={'item_text': 'A new list item'})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['location'], '/lists/the-only-list-in-the-world/')
 ----
 
-That's because, although `runserver` automagically finds static files,
-`LiveServerTestCase` doesn't.  Never fear though, the Django developers have
-made a more magical test class called `StaticLiveServerTestCase` (see
-http://bit.ly/Suv4Ip[the
-docs]).
+TIP: This is another place to pay attention to trailing slashes, incidentally.
+    It's `/new`, with no trailing slash.  The convention I'm using is that URLs
+    without a trailing slash are "action" URLs which modify the database.
 
-Let's switch to that:
+While we're at it, let's learn a new Django Test Client method, `assertRedirects`:
+
+[role="sourcecode small-code"]
+.lists/tests.py (ch07l021-2)
+[source,python]
+----
+    def test_redirects_after_POST(self):
+        response = self.client.post('/lists/new', data={'item_text': 'A new list item'})
+        self.assertRedirects(response, '/lists/the-only-list-in-the-world/')
+----
+
+There's not much to it, but it just nicely replaces two asserts with a single
+one...
+
+Try running that:
+
+----
+    self.assertEqual(Item.objects.count(), 1)
+AssertionError: 0 != 1
+[...]
+    self.assertRedirects(response, '/lists/the-only-list-in-the-world/')
+[...]
+AssertionError: 404 != 302 : Response didn't redirect as expected: Response
+code was 404 (expected 302)
+----
+
+The first failure tells us we're not saving a new item to the database, and the
+second says that, instead of returning a 302 redirect, our view is returning 
+a 404. That's because we haven't built a URL for '/lists/new', so the
+`client.post` is just getting a "not found" response.
+
+NOTE: Do you remember how we split this out into two tests in the last chapter?
+    If we only had one test that checked both the saving and the redirect, it
+    would have failed on the `0 != 1` failure, which would have been much
+    harder to debug.  Ask me how I know this.
+
+
+A URL and View for New List Creation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("Django", "view functions in")))
+((("view functions, in Django")))
+((("URLs", "in Django")))
+((("Django", "URLs in")))
+Let's build our new URL now:
+
+
+//22
+[role="sourcecode"]
+.superlists/urls.py
+[source,python]
+----
+urlpatterns = [
+    url(r'^$', views.home_page, name='home'),
+    url(r'^lists/new$', views.new_list, name='new_list'),
+    url(r'^lists/the-only-list-in-the-world/$', views.view_list, name='view_list'),
+]
+----
+
+Next we get a `no attribute 'new_list'`, so let's fix that, in
+'lists/views.py':
 
 [role="sourcecode"]
-.functional_tests/tests.py
-[source,diff]
+.lists/views.py
+[source,python]
 ----
-@@ -1,8 +1,8 @@
--from django.test import LiveServerTestCase
-+from django.contrib.staticfiles.testing import StaticLiveServerTestCase
- from selenium import webdriver
- from selenium.webdriver.common.keys import Keys
- 
--class NewVisitorTest(LiveServerTestCase):
-+class NewVisitorTest(StaticLiveServerTestCase):
-----
-//008
-
-And now it will now find the new CSS, which will get our test to pass:
-
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test functional_tests*]
-Creating test database for alias 'default'...
-...
- ---------------------------------------------------------------------
-Ran 3 tests in 9.764s
+def new_list(request):
+    pass
 ----
 
-NOTE: At this point, Windows users may see some (harmless, but distracting)
-    error messages that say `socket.error: [WinError 10054] An existing
-    connection was forcibly closed by the remote host`.  Add a 
-    `self.browser.refresh()` just before the `self.browser.quit()` in
-    `tearDown` to get rid of them.  The issue is being tracked in this
-    https://code.djangoproject.com/ticket/21227[bug on the Django tracker].
-
-Hooray!
-
-
-Using Bootstrap Components to Improve the Look of the Site
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Let's see if we can do even better, using some of the other tools in
-Bootstrap's panoply.
-
-
-Jumbotron!
-^^^^^^^^^^
-
-((("Bootstrap", "jumbotron")))
-((("jumbotron")))
-Bootstrap has a class called `jumbotron` for things that are meant to be
-particularly prominent on the page.  Let's use that to embiggen the main
-page header and the input form:
+Then we get "The view lists.views.new_list didn't return an HttpResponse
+object".  (This is getting rather familiar!)  We could return a raw
+`HttpResponse`, but since we know we'll need a redirect, let's borrow a line
+from `home_page`:
 
 [role="sourcecode"]
-.lists/templates/base.html (ch07l009)
-[source,html]
+.lists/views.py
+[source,python]
 ----
-    <div class="col-md-6 col-md-offset-3 jumbotron">
-        <div class="text-center">
-            <h1>{% block header_text %}{% endblock %}</h1>
-            <form method="POST" action="{% block form_action %}{% endblock %}">
-                [...]
+def new_list(request):
+    return redirect('/lists/the-only-list-in-the-world/')
 ----
 
-TIP: When hacking about with design and layout, it's best to have a window open
-    that we can hit refresh on, frequently.  Use `python manage.py runserver`
-    to spin up the dev server, and then browse to 'http://localhost:8000' to
-    see your work as we go.
+That gives:
 
+----
+    self.assertEqual(Item.objects.count(), 1)
+AssertionError: 0 != 1
+----
 
-//IDEA: screenshot here?
-
-Large Inputs
-^^^^^^^^^^^^
-
-((("layout and style", "large inputs")))
-((("Bootstrap", "large inputs")))
-The jumbotron is a good start, but now the input box has tiny text compared to
-everything else.  Thankfully, Bootstrap's form control classes offer an option
-to set an input to be "large":
-
+Seems reasonably straightforward. We borrow another line from `home_page`:
 
 [role="sourcecode"]
-.lists/templates/base.html (ch07l010)
-[source,html]
+.lists/views.py
+[source,python]
 ----
-<input name="item_text" id="id_new_item" 
-       class="form-control input-lg" 
-       placeholder="Enter a to-do item" 
-/>
+def new_list(request):
+    Item.objects.create(text=request.POST['item_text'])
+    return redirect('/lists/the-only-list-in-the-world/')
 ----
+//24
+//TODO: new_list gets into the wrong order here.  Maybe use a commit?
 
+And everything now passes:
 
-Table Styling
-^^^^^^^^^^^^^
-
-((("layout and style", "table styling")))
-((("Bootstrap", "table styling")))
-((("table styling")))
-((("layout and style", "Bootstrap for", see="Bootstrap")))
-The table text also looks too small compared to the rest of the page now.
-Adding the Bootstrap `table` class improves things:
-
-
-[role="sourcecode"]
-.lists/templates/list.html (ch07l011)
-[source,html]
 ----
-    <table id="id_list_table" class="table">
+Ran 7 tests in 0.030s
+
+OK
 ----
 
 
+And the FTs show me that I'm back to the working state:
 
-Using Our Own CSS
-~~~~~~~~~~~~~~~~~
-
-((("CSS (Cascading Style Sheets) framework", "where Bootstrap won't work")))
-((("layout and style", "using our own CSS in")))
-Finally I'd like to just offset the input from the title text slightly. There's
-no ready-made fix for that in Bootstrap, so we'll make one ourselves.  That
-will require specifying our own CSS file:
-
-
-[role="sourcecode"]
-.lists/templates/base.html
-[source,html]
 ----
 [...]
-    <title>To-Do lists</title>
-    <link href="/static/bootstrap/css/bootstrap.min.css" rel="stylesheet">
-    <link href="/static/base.css" rel="stylesheet">
-</head>
+AssertionError: '1: Buy milk' not found in ['1: Buy peacock feathers', '2: Buy
+milk']
+Ran 2 tests in 8.972s
+FAILED (failures=1)
 ----
 
-We create a new file at 'lists/static/base.css', with our new CSS rule.
-We'll use the `id` of the input element, `id_new_item`, to find it and give it
-some styling:
 
+Removing Now-Redundant Code and Tests
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("functional tests/testing (FT)","cleanup")))
+We're looking good. Since our new views are now doing most of the work that
+`home_page` used to do, we should be able to massively simplify it. Can we
+remove the whole `if request.method == 'POST'` section, for example?
 
 [role="sourcecode"]
-.lists/static/base.css
+.lists/views.py
+[source,python]
+----
+def home_page(request):
+    return render(request, 'home.html')
+----
+//24
+
+Yep!
+
+----
+OK
+----
+
+And while we're at it, we can remove the now-redundant
+`test_only_saves_items_when_necessary` test too!
+
+Doesn't that feel good?  The view functions are looking much simpler. We rerun
+the tests to make sure...
+
+[role="dofirst-ch07l025"]
+----
+Ran 6 tests in 0.016s
+OK
+----
+
+and the FTs?
+
+
+A regression! Pointing Our Forms at the New URL
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Oops:
+
+----
+ERROR: test_can_start_a_list_for_one_user
+[...]
+  File "/.../superlists/functional_tests/tests.py", line 58, in
+test_can_start_a_list_for_one_user
+    self.wait_for_row_in_list_table('1: Buy peacock feathers')
+  File "/.../superlists/functional_tests/tests.py", line 24, in
+wait_for_row_in_list_table
+    table = self.browser.find_element_by_id('id_list_table')
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]
+
+ERROR: test_multiple_users_can_start_lists_at_different_urls
+[...]
+  File "/.../superlists/functional_tests/tests.py", line 80, in
+test_multiple_users_can_start_lists_at_different_urls
+    self.wait_for_row_in_list_table('1: Buy peacock feathers')
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]
+[...]
+
+Ran 2 tests in 11.592s
+FAILED (errors=2)
+----
+
+((("URLs", "pointing forms to")))
+((("Django", "URLs in")))
+((("URLs", "in Django")))
+It's because our forms are still pointing to the old URL. In 'both' 'home.html'
+and 'lists.html', let's change them to:
+
+//ch07l026
+[role="sourcecode"]
+.lists/templates/home.html, lists/templates/list.html
 [source,html]
 ----
-#id_new_item {
-    margin-top: 2ex;
-}
+    <form method="POST" action="/lists/new">
 ----
 
-All that took me a few goes, but I'm reasonably happy with it now (<<homepage-looking-better>>).
+And that should get us back to working again:
 
-If you want to go further with customising Bootstrap, you need to get into
-compiling LESS. I 'definitely' recommend taking the time to do that some
-day. LESS and other pseudo-CSS-alikes like SCSS are a great improvement on
-plain old CSS, and a useful tool even if you don't use Bootstrap. I won't cover
-it in this book, but you can find resources on the Internets.  
-http://coding.smashingmagazine.com/2013/03/12/customizing-bootstrap/[Here's one],
-for example.
+----
+AssertionError: '1: Buy milk' not found in ['1: Buy peacock feathers', '2: Buy
+milk']
+[...]
+FAILED (failures=1)
+----
 
-(((range="endofrange", startref="ix_bootstrap")))
-A last run of the functional tests, to see if everything still works OK?
+
+That's another nicely self-contained commit, in that we've made a bunch
+of changes to our URLs, our 'views.py' is looking much neater and tidier, and
+we're sure the application is still working as well as it did before.  We're
+getting good at this working-state-to-working-state malarkey!
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* # 5 changed files
+$ *git diff* # URLs for forms x2, moved code in views + tests, new URL
+$ *git commit -a*
+----
+
+And we can cross out an item on the to-do list:
+
+[role="scratchpad"]
+*****
+* '[strikethrough line-through]#Get FTs to clean up after themselves#'
+* 'Adjust model so that items are associated with different lists'
+* 'Add unique URLs for each list'
+* '[strikethrough line-through]#Add a URL for creating a new list via POST#'
+* 'Add URLs for adding a new item to an existing list via POST'
+*****
+
+
+Biting the bullet: Adjusting Our Models
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Django", "model adjustment in")))
+Enough housekeeping with our URLs. It's time to bite the bullet and
+change our models.  Let's adjust the model unit test. Just for a change, I'll
+present the changes in the form of a diff:
+
+//(ch07l027)
+[role="sourcecode"]
+.lists/tests.py
+[source,diff]
+----
+@@ -1,5 +1,5 @@
+ from django.test import TestCase
+-from lists.models import Item
++from lists.models import Item, List
+ 
+ 
+ class HomePageTest(TestCase):
+@@ -44,22 +44,32 @@ class ListViewTest(TestCase):
+ 
+ 
+ 
+-class ItemModelTest(TestCase):
++class ListAndItemModelsTest(TestCase):
+ 
+     def test_saving_and_retrieving_items(self):
++        list_ = List()
++        list_.save()
++
+         first_item = Item()
+         first_item.text = 'The first (ever) list item'
++        first_item.list = list_
+         first_item.save()
+ 
+         second_item = Item()
+         second_item.text = 'Item the second'
++        second_item.list = list_
+         second_item.save()
+ 
++        saved_list = List.objects.first()
++        self.assertEqual(saved_list, list_)
++
+         saved_items = Item.objects.all()
+         self.assertEqual(saved_items.count(), 2)
+ 
+         first_saved_item = saved_items[0]
+         second_saved_item = saved_items[1]
+         self.assertEqual(first_saved_item.text, 'The first (ever) list item')
++        self.assertEqual(first_saved_item.list, list_)
+         self.assertEqual(second_saved_item.text, 'Item the second')
++        self.assertEqual(second_saved_item.list, list_)
+
+----
+
+We create a new `List` object, and then we assign each item to it
+by assigning it as its `.list` property.  We check the list is properly
+saved, and we check that the two items have also saved their relationship
+to the list.  You'll also notice that we can compare list objects with each
+other directly (`saved_list` and `list_`)&mdash;behind the scenes, these
+will compare themselves by checking their primary key (the `.id` attribute)
+is the same.
+
+NOTE: I'm using the variable name `list_` to avoid "shadowing" the Python
+    built-in `list` function.  It's ugly, but all the other options I tried
+    were equally ugly or worse (`my_list`, `the_list`, `list1`, `listey`...).
+
+Time for another unit-test/code cycle.   
+
+For the first couple of iterations, rather than explicitly showing you what
+code to enter in between every test run, I'm only going to show you the
+expected error messages from running the tests.  I'll let you figure out what
+each minimal code change should be on your own:
+
+TIP: Need a hint?  Go back and take a look at the steps we took to introduce
+    the `Item` model in <<chapter_05, the last chapter>>.
+
+Your first error should be:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests*]
+ImportError: cannot import name 'List'
+----
+
+Fix that, then you should see:
+
+[role="dofirst-ch07l028-1"]
+----
+AttributeError: 'List' object has no attribute 'save'
+----
+
+Next you should see:
+
+[role="dofirst-ch07l028-2"]
+----
+django.db.utils.OperationalError: no such table: lists_list
+----
+
+So we run a `makemigrations`:
+
+//29
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py makemigrations*]
+Migrations for 'lists':
+  lists/migrations/0003_list.py:
+    - Create model List
+----
+
+And then you should see:
+
+----
+    self.assertEqual(first_saved_item.list, list_)
+AttributeError: 'Item' object has no attribute 'list'
+----
+
+
+A Foreign Key Relationship
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("migrations")))
+((("Django", "foreign key relationship")))
+((("foreign key relationship")))
+How do we give our `Item` a list attribute?  Let's just try naively making it
+like the `text` attribute:
+
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+from django.db import models
+
+class List(models.Model):
+    pass
+
+class Item(models.Model):
+    text = models.TextField(default='')
+    list = models.TextField(default='')
+----
+//030-1
+
+As usual, the tests tell us we need a migration:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+django.db.utils.OperationalError: no such column: lists_item.list
+
+$ pass:quotes[*python manage.py makemigrations*]
+Migrations for 'lists':
+  lists/migrations/0004_item_list.py:
+    - Add field list to item
+----
+
+
+Let's see what that gives us:
+
+----
+AssertionError: 'List object' != <List: List object>
+----
+
+
+We're not quite there. Look closely at each side of the `!=`.  Django has only
+saved the string representation of the `List` object. To save the relationship to
+the object itself, we tell Django about the relationship between the two
+classes using a `ForeignKey`:
+
+[role="sourcecode"]
+.lists/models.py
+[source,python]
+----
+from django.db import models
+
+class List(models.Model):
+    pass
+
+
+class Item(models.Model):
+    text = models.TextField(default='')
+    list = models.ForeignKey(List, default=None)
+----
+//030-2
+
+
+((("migrations", "deleting")))
+That'll need a migration too.  Since the last one was a red herring, let's
+delete it and replace it with a new one:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*rm lists/migrations/0004_item_list.py*]
+$ pass:quotes[*python manage.py makemigrations*]
+Migrations for 'lists':
+  lists/migrations/0004_item_list.py:
+    - Add field list to item
+----
+//31
+
+
+WARNING: Deleting migrations is dangerous. If you delete a migration that's
+    already been applied to a database somewhere, Django will be confused about
+    what state it's in, and how to apply future migrations. You should only do
+    it when you're sure the migration hasn't been used.  A good rule of thumb
+    is that you should never delete a migration that's been committed to your
+    VCS. 
+
+
+
+Adjusting the Rest of the World to Our New Models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Back in our tests, now what happens?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+ERROR: test_displays_all_items (lists.tests.ListViewTest)
+django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id
+[...]
+ERROR: test_redirects_after_POST (lists.tests.NewListTest)
+django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id
+[...]
+ERROR: test_can_save_a_POST_request (lists.tests.NewListTest)
+django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id
+
+Ran 6 tests in 0.021s
+
+FAILED (errors=3)
+----
+
+Oh dear!  
+
+There is some good news. Although it's hard to see, our model tests are
+passing.  But three of our view tests are failing nastily.
+
+The reason is because of the new relationship we've introduced between
+Items and Lists, which requires each item to have a parent list, which 
+our old tests and code aren't prepared for.
+
+Still, this is exactly why we have tests! Let's get them working again.  The
+easiest is the `ListViewTest`; we just create a parent list for our two test
+items:
+
+
+[role="sourcecode"]
+.lists/tests.py (ch07l031)
+[source,python]
+----
+class ListViewTest(TestCase):
+
+    def test_displays_all_items(self):
+        list_ = List.objects.create()
+        Item.objects.create(text='itemey 1', list=list_)
+        Item.objects.create(text='itemey 2', list=list_)
+----
+
+That gets us down to two failing tests, both on tests that try to POST to our
+`new_list` view. Decoding the tracebacks using our usual technique, working back
+from error, to line of test code, to, buried in there somewhere, the line of
+our own code that caused the failure:
+
+[subs="specialcharacters,macros"]
+----
+File "/.../superlists/lists/views.py", line 14, in new_list
+Item.objects.create(text=request.POST['item_text'])
+----
+
+//TODO: line 14 shld be line 9, because new_list is in wrong place, see todo above.
+
+It's when we try and create an item without a parent list. So we make a similar
+change in the view:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+from lists.models import Item, List
+[...]
+def new_list(request):
+    list_ = List.objects.create()
+    Item.objects.create(text=request.POST['item_text'], list=list_)
+    return redirect('/lists/the-only-list-in-the-world/')
+----
+
+And that gets our tests passing again:
+
+----
+Ran 6 tests in 0.030s
+
+OK
+----
+
+Are you cringing internally at this point?  'Arg! This feels so wrong, we
+create a new list for every single new item submission, and we're still just
+displaying all items as if they belong to the same list!'
+I know, I feel the same.  The step-by-step approach, in which you go
+from working code to working code, is counterintuitive. I always feel like
+just diving in and trying to fix everything all in one go, instead of going
+from one weird half-finished state to another.  But remember the Testing Goat!
+When you're up a mountain, you want to think very carefully about where you put
+each foot, and take one step at a time, checking at each stage that the place
+you've put it hasn't caused you to fall off a cliff.
+
+So just to reassure ourselves that things have worked, we rerun the FT.
+
+----
+AssertionError: '1: Buy milk' not found in ['1: Buy peacock feathers', '2: Buy
+milk']
+[...]
+----
+
+
+Sure enough, it gets all the way through to where we were before.  We haven't broken
+anything, and we've made a change to the database.  That's something to be
+pleased with! Let's commit:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* # 3 changed files, plus 2 migrations
+$ *git add lists*
+$ *git diff --staged*
+$ *git commit*
+----
+
+And we can cross out another item on the to-do list:
+
+[role="scratchpad"]
+*****
+* '[strikethrough line-through]#Get FTs to clean up after themselves#'
+* '[strikethrough line-through]#Adjust model so that items are associated with different lists#'
+* 'Add unique URLs for each list'
+* '[strikethrough line-through]#Add a URL for creating a new list via POST#'
+* 'Add URLs for adding a new item to an existing list via POST'
+*****
+
+
+Each List Should Have Its Own URL
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Django", "URLs in")))
+((("URLs", "in Django")))
+((("URLs", "distinct")))
+What shall we use as the unique identifier for our lists?  Probably the
+simplest thing, for now, is just to use the auto-generated `id` field from the
+database. Let's change `ListViewTest` so that the two tests point at new
+URLs.
+
+We'll also change the old `test_displays_all_items` test and call it
+`test_displays_only_items_for_that_list` instead, and make it check that
+only the items for a specific list are displayed:
+
+[role="sourcecode"]
+.lists/tests.py (ch07l033)
+[source,python]
+----
+class ListViewTest(TestCase):
+
+    def test_uses_list_template(self):
+        list_ = List.objects.create()
+        response = self.client.get('/lists/%d/' % (list_.id,))
+        self.assertTemplateUsed(response, 'list.html')
+
+
+    def test_displays_only_items_for_that_list(self):
+        correct_list = List.objects.create()
+        Item.objects.create(text='itemey 1', list=correct_list)
+        Item.objects.create(text='itemey 2', list=correct_list)
+        other_list = List.objects.create()
+        Item.objects.create(text='other list item 1', list=other_list)
+        Item.objects.create(text='other list item 2', list=other_list)
+
+        response = self.client.get('/lists/%d/' % (correct_list.id,))
+
+        self.assertContains(response, 'itemey 1')
+        self.assertContains(response, 'itemey 2')
+        self.assertNotContains(response, 'other list item 1')
+        self.assertNotContains(response, 'other list item 2')
+----
+
+
+NOTE: If you're not familiar with Python string substitutions, or the
+    `printf` function from C, maybe that `%d` is a little confusing?
+    http://www.diveintopython.net/['Dive Into Python'] has a good overview, if
+    you want to go look them up quickly.  We'll see an alternative string
+    substitution syntax later in the book too.
+    ((("string substitutions")))
+
+Running the unit tests gives an expected 404, and another related error:
+
+----
+FAIL: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+AssertionError: 404 != 200 : Couldn't retrieve content: Response code was 404
+(expected 200)
+[...]
+FAIL: test_uses_list_template (lists.tests.ListViewTest)
+AssertionError: No templates used to render the response
+----
+
+
+Capturing Parameters from URLs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("URLs", "capturing parameters in")))
+It's time to learn how we can pass parameters from URLs to views:
+
+
+[role="sourcecode"]
+.superlists/urls.py
+[source,python]
+----
+urlpatterns = [
+    url(r'^$', views.home_page, name='home'),
+    url(r'^lists/new$', views.new_list, name='new_list'),
+    url(r'^lists/(.+)/$', views.view_list, name='view_list'),
+]
+----
+//34
+
+
+We adjust the regular expression for our URL to include a 'capture group',
+`(.+)`, which will match any characters, up to the following `/`. The captured
+text will get passed to the view as an argument.
+
+In other words, if we go to the URL '/lists/1/', `view_list` will get a second
+argument after the normal `request` argument, namely the string `"1"`.
+If we go to '/lists/foo/', we get `view_list(request, "foo")`.
+
+But our view doesn't expect an argument yet! Sure enough, this causes problems:
+
+----
+ERROR: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+[...]
+TypeError: view_list() takes 1 positional argument but 2 were given
+[...]
+ERROR: test_uses_list_template (lists.tests.ListViewTest)
+[...]
+TypeError: view_list() takes 1 positional argument but 2 were given
+[...]
+ERROR: test_redirects_after_POST (lists.tests.NewListTest)
+[...]
+TypeError: view_list() takes 1 positional argument but 2 were given
+FAILED (errors=3)
+----
+
+We can fix that easily with a dummy parameter in 'views.py':
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def view_list(request, list_id):
+    [...]
+----
+
+Now we're down to our expected failure:
+
+----
+FAIL: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+[...]
+AssertionError: 1 != 0 : Response should not contain 'other list item 1'
+----
+
+Let's make our view discriminate over which items it sends to the
+template:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    items = Item.objects.filter(list=list_)
+    return render(request, 'list.html', {'items': items})
+----
+//35-2
+
+
+Adjusting new_list to the New World
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Oops, now we get errors in another test:
+
+----
+ERROR: test_redirects_after_POST (lists.tests.NewListTest)
+ValueError: invalid literal for int() with base 10:
+'the-only-list-in-the-world'
+----
+
+Let's take a look at this test then, since it's moaning:
+
+
+[role="sourcecode currentcontents"]
+.lists/tests.py
+[source,python]
+----
+class NewListTest(TestCase):
+    [...]
+
+    def test_redirects_after_POST(self):
+        response = self.client.post('/lists/new', data={'item_text': 'A new list item'})
+        self.assertRedirects(response, '/lists/the-only-list-in-the-world/')
+----
+
+It looks like it hasn't been adjusted to the new world of Lists and Items.
+The test should be saying that this view redirects to the URL of the specific
+new list it just created:
+
+[role="sourcecode"]
+.lists/tests.py (ch07l036-1)
+[source,python]
+----
+    def test_redirects_after_POST(self):
+        response = self.client.post('/lists/new', data={'item_text': 'A new list item'})
+        new_list = List.objects.first()
+        self.assertRedirects(response, '/lists/%d/' % (new_list.id,))
+----
+
+That still gives us the 'invalid literal' error. We take a look at the view
+itself, and change it so it redirects to a valid place:
+
+//IDEA: explain more exactly why this is happening?
+
+[role="sourcecode"]
+.lists/views.py (ch07l036-2)
+[source,python]
+----
+def new_list(request):
+    list_ = List.objects.create()
+    Item.objects.create(text=request.POST['item_text'], list=list_)
+    return redirect('/lists/%d/' % (list_.id,))
+----
+
+That gets us back to passing unit tests.  
+
+----
 Creating test database for alias 'default'...
-...
+......
  ---------------------------------------------------------------------
-Ran 3 tests in 10.084s
+Ran 6 tests in 0.033s
 
 OK
 Destroying test database for alias 'default'...
 ----
 
 
-[[homepage-looking-better]]
-.The lists page, with all big chunks...
-image::images/twdp_0703.png["Screenshot of lists page with big styling."]
-
-That's it! Definitely time for a commit:
+What about the functional tests?  We must be almost there?
 
 
-[subs="specialcharacters,quotes"]
+The functional tests detect another regression
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Well, almost:
+
 ----
-$ *git status* # changes tests.py, base.html, list.html + untracked lists/static
-$ *git add .*
-$ *git status* # will now show all the bootstrap additions
-$ *git commit -m "Use Bootstrap to improve layout"*
-----
+F.
+======================================================================
+FAIL: test_can_start_a_list_for_one_user
+(functional_tests.tests.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/.../superlists/functional_tests/tests.py", line 68, in
+test_can_start_a_list_for_one_user
+    self.wait_for_row_in_list_table('2: Use peacock feathers to make a fly')
+[...]
+AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Use
+peacock feathers to make a fly']
 
+ ---------------------------------------------------------------------
+Ran 2 tests in 8.617s
 
-What We Glossed Over: collectstatic and Other Static Directories
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("manage.py")))
-((("layout and style", "static files", id="ix_layoutandstylestatic", range="startofrange")))
-((("Django", "collectstatic", id="ix_Djangocollectstatic", range="startofrange")))
-((("collectstatic", id="ix_collectstatic", range="startofrange")))
-We saw earlier that the Django dev server will magically find all your static
-files inside app folders, and serve them for you. That's fine during
-development, but when you're running on a real web server, you don't want
-Django serving your static content--using Python to serve raw files is
-slow and inefficient, and a web server like Apache or Nginx can do this all for
-you. You might even decide to upload all your static files to a CDN, instead
-of hosting them yourself.
-
-For these reasons, you want to be able to gather up all your static files from
-inside their various app folders, and copy them into a single location, ready
-for deployment. This is what the `collectstatic` command is for.
-
-The destination, the place where the collected static files go, is defined in
-'settings.py' as `STATIC_ROOT`. In the next chapter we'll be doing some 
-deployment, so let's actually experiment with that now.  We'll change its value
-to a folder just outside our repo--I'm going to make it a folder just next to
-the main source folder:
-
-[role="skipme"]
-----
-workspace
-│    ├── superlists
-│    │    ├── lists
-│    │    │     ├── models.py
-│    │    │
-│    │    ├── manage.py
-│    │    ├── superlists
-│    │    
-│    ├── static
-│    │    ├── base.css 
-│    │    ├── etc...
+FAILED (failures=1)
 ----
 
-The logic is that the static files folder shouldn't be a part of your
-repository--we don't want to put it under source control, because it's a
-duplicate of all the files that are inside 'lists/static'.
+Our new test is actually passing, and different users can get different lists,
+but the old test is warning us of a regression.  It looks like you can't
+add a second item to a list any more.  It's because of our quick-and dirty hack
+where create a new list for every single POST submission. This is exactly what
+we have functional tests for!
 
-Here's a neat way of specifying that folder, making it relative to the location
-of project base directory:
+And it correlates nicely with the last item on our to-do list:
+
+[role="scratchpad"]
+*****
+* '[strikethrough line-through]#Get FTs to clean up after themselves#'
+* '[strikethrough line-through]#Adjust model so that items are associated with different lists#'
+* '[strikethrough line-through]#Add unique URLs for each list#'
+* '[strikethrough line-through]#Add a URL for creating a new list via POST#'
+* 'Add URLs for adding a new item to an existing list via POST'
+*****
+
+
+One More View to Handle Adding Items to an Existing List
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Django", "view functions in", id="ix_Djangoviewfunctions", range="startofrange")))
+((("view functions, in Django", id="ix_viewfunctions", range="startofrange")))
+We need a URL and view to handle adding a new item to an existing list
+('/lists/<list_id>/add_item').  We're getting pretty good at these now, so
+let's knock one together quickly:
 
 [role="sourcecode"]
-.superlists/settings.py (ch07l018)
+.lists/tests.py
 [source,python]
 ----
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/1.10/howto/static-files/
+class NewItemTest(TestCase):
 
-STATIC_URL = '/static/'
-STATIC_ROOT = os.path.abspath(os.path.join(BASE_DIR, '../static'))
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        self.client.post(
+            '/lists/%d/add_item' % (correct_list.id,),
+            data={'item_text': 'A new item for an existing list'}
+        )
+
+        self.assertEqual(Item.objects.count(), 1)
+        new_item = Item.objects.first()
+        self.assertEqual(new_item.text, 'A new item for an existing list')
+        self.assertEqual(new_item.list, correct_list)
+
+
+    def test_redirects_to_list_view(self):
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        response = self.client.post(
+            '/lists/%d/add_item' % (correct_list.id,),
+            data={'item_text': 'A new item for an existing list'}
+        )
+
+        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))
 ----
 
-Take a look at the top of the settings file, and you'll see how that `BASE_DIR`
-variable is helpfully defined for us, using `__file__` (which itself is a
-really, really useful Python built-in).
+NOTE: Are you wondering about `other_list`?  A bit like in the tests for
+    viewing a specific list, it's important that we add items to a specific
+    list.  Adding this second object to the database prevents me from using
+    a hack like List.objects.first() in the implementation.  That would be
+    a stupid thing to do, and you can't go too far down the road of testing
+    for all the stupid things you must not do (there are an infinite number
+    of those after all). It's a judgement call, but this one feels worth it.
+    There's some more discussion of this in <<Chapter
+    12,testing-for-stupidity>>
 
-Anyway, let's try running `collectstatic`:
+We get:
 
-[subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py collectstatic*]
-
-You have requested to collect static files at the destination
-location as specified in your settings:
-
-/.../static
-
-This will overwrite existing files!
-Are you sure you want to do this?
-
-Type 'yes' to continue, or 'no' to cancel: 
-pass:quotes[*yes*]
-
+AssertionError: 0 != 1
 [...]
-Copying '/.../superlists/lists/static/bootstrap/css/bootstrap-theme.css'
-Copying '/.../superlists/lists/static/bootstrap/css/bootstrap.min.css'
-
-
-76 static files copied to '/.../static'.
+AssertionError: 301 != 302 : Response didn't redirect as expected: Response
+code was 301 (expected 302)
 ----
 
-And if we look in '../static', we'll find all our CSS files:
 
-[subs="specialcharacters,quotes"]
+Beware of Greedy Regular Expressions!
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("greedy regular expressions")))
+That's a little strange. We haven't actually specified a URL for
+'/lists/1/add_item' yet, so our expected failure is `404 != 302`.  Why are we
+getting a 301?
+
+This was a bit of a puzzler! It's because we've used a very "greedy"
+regular expression in our URL:
+
+
+[role="sourcecode currentcontents"]
+.superlists/urls.py
+[source,python]
 ----
-$ *tree ../static/*
-../static/
-├── admin
-│   ├── css
-│   │   ├── base.css
-
-[...]
-
-│               └── xregexp.min.js
-├── base.css
-└── bootstrap
-    ├── css
-    │   ├── bootstrap.css
-    │   ├── bootstrap.css.map
-    │   ├── bootstrap.min.css
-    │   ├── bootstrap-theme.css
-    │   ├── bootstrap-theme.css.map
-    │   └── bootstrap-theme.min.css
-    ├── fonts
-    │   ├── glyphicons-halflings-regular.eot
-    │   ├── glyphicons-halflings-regular.svg
-    │   ├── glyphicons-halflings-regular.ttf
-    │   ├── glyphicons-halflings-regular.woff
-    │   └── glyphicons-halflings-regular.woff2
-    └── js
-        ├── bootstrap.js
-        ├── bootstrap.min.js
-        └── npm.js
-
-
-14 directories, 76 files
+    url(r'^lists/(.+)/$', views.view_list, name='view_list'),
 ----
 
-`collectstatic` has also picked up all the CSS for the admin site. It's one of
-Django's powerful features, and we'll find out all about it one day, but we're
-not ready to use that yet, so let's disable it for now:
+Django has some built-in code to issue a permanent redirect (301) whenever
+someone asks for a URL which is 'almost' right, except for a missing slash.
+In this case, '/lists/1/add_item/' would be a match for `lists/(.+)/`, with
+the `(.+)` capturing `1/add_item`.  So Django "helpfully" guesses that we
+actually wanted the URL with a trailing slash.
+
+We can fix that by making our URL pattern explicitly capture only numerical
+digits, by using the regular expression `\d`:
 
 [role="sourcecode"]
-.superlists/settings.py 
+.superlists/urls.py
 [source,python]
 ----
-INSTALLED_APPS = [
-    #'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'lists',
+    url(r'^lists/(\d+)/$', views.view_list, name='view_list'),
+----
+//38
+
+That gives us the failure we expected:
+
+----
+AssertionError: 0 != 1
+[...]
+AssertionError: 404 != 302 : Response didn't redirect as expected: Response
+code was 404 (expected 302)
+----
+
+The Last New URL
+^^^^^^^^^^^^^^^^
+
+((("URLs", "in Django")))
+((("Django", "URLs in")))
+Now we've got our expected 404, let's add a new URL for adding new items to
+existing lists:
+
+[role="sourcecode"]
+.superlists/urls.py
+[source,python]
+----
+urlpatterns = [
+    url(r'^$', views.home_page, name='home'),
+    url(r'^lists/new$', views.new_list, name='new_list'),
+    url(r'^lists/(\d+)/$', views.view_list, name='view_list'),
+    url(r'^lists/(\d+)/add_item$', views.add_item, name='add_item'),
 ]
 ----
 
+Three very similar-looking URLs there.  Let's make a note on our
+to-do list; they look like good candidates for a refactoring.
 
-And we try again:
+[role="scratchpad"]
+*****
+* '[strikethrough line-through]#Get FTs to clean up after themselves#'
+* '[strikethrough line-through]#Adjust model so that items are associated with different lists#'
+* '[strikethrough line-through]#Add unique URLs for each list#'
+* '[strikethrough line-through]#Add a URL for creating a new list via POST#'
+* 'Add URLs for adding a new item to an existing list via POST'
+* 'Refactor away some duplication in urls.py'
+*****
 
+
+Back to the tests, we get the usual missing module view objects:
+
+----
+AttributeError: module 'lists.views' has no attribute 'add_item'
+----
+
+
+The Last New View
+^^^^^^^^^^^^^^^^^
+
+Let's try:
+
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def add_item(request):
+    pass
+----
+
+Aha:
+
+----
+TypeError: add_item() takes 1 positional argument but 2 were given
+----
+
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def add_item(request, list_id):
+    pass
+----
+
+And then:
+
+----
+ValueError: The view lists.views.add_item didn't return an HttpResponse object.
+It returned None instead.
+----
+
+We can copy the `redirect` from `new_list` and the `List.objects.get` from
+`view_list`:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def add_item(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    return redirect('/lists/%d/' % (list_.id,))
+----
+
+That takes us to:
+
+----
+    self.assertEqual(Item.objects.count(), 1)
+AssertionError: 0 != 1
+----
+
+Finally we make it save our new list item:
+
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def add_item(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    Item.objects.create(text=request.POST['item_text'], list=list_)
+    return redirect('/lists/%d/' % (list_.id,))
+----
+
+And we're back to passing tests.
+(((range="endofrange", startref="ix_Djangoviewfunctions")))
+(((range="endofrange", startref="ix_viewfunctions")))
+
+----
+Ran 8 tests in 0.050s
+
+OK
+----
+
+
+Testing the response context objects directly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("URLs", "in Django")))
+((("Django", "URLs in")))
+Now we just need to use this URL in our 'list.html' template.  Open it up and
+adjust the form tag...
+
+[role="sourcecode skipme"]
+.lists/templates/list.html
+[source,html]
+----
+    <form method="POST" action="but what should we put here?">
+----
+
+
+\... oh. To get the URL for adding to the current list, the template needs to
+know what list it's rendering, as well as what the items are.  We want to
+be able to do something like this:
+
+[role="sourcecode skipme"]
+.lists/templates/list.html
+[source,html]
+----
+    <form method="POST" action="/lists/{{ list.id }}/add_item">
+----
+
+
+For that to work, the view will have to pass the list to the template.
+Let's create a new unit test in `ListViewTest`:
+
+[role="sourcecode"]
+.lists/tests.py (ch07l041)
+[source,python]
+----
+    def test_passes_correct_list_to_template(self):
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+        response = self.client.get('/lists/%d/' % (correct_list.id,))
+        self.assertEqual(response.context['list'], correct_list)  #<1>
+----
+
+//IDEA: explain correct_list, other_list
+
+<1> `response.context` represents the context we're going to pass into
+    the render function--the Django test client puts it on the `response`
+    object for us, to help with testing.
+
+That gives us:
+
+----
+KeyError: 'list'
+----
+
+because we're not passing `list` into the template.  It actually gives us an
+opportunity to simplify a little:
+
+[role="sourcecode"]
+.lists/views.py
+[source,python]
+----
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    return render(request, 'list.html', {'list': list_})
+----
+
+That, of course, will break one of our old tests, because the template
+needed `items`:
+
+----
+FAIL: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+[...]
+AssertionError: False is not true : Couldn't find 'itemey 1' in response
+----
+
+But we can fix it in 'list.html', as well as adjusting the form's POST action:
+
+[role="sourcecode"]
+.lists/templates/list.html (ch07l043)
+[source,html]
+----
+    <form method="POST" action="/lists/{{ list.id }}/add_item">  <1>
+
+    [...]
+
+        {% for item in list.item_set.all %}  <2>
+            <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+        {% endfor %}
+----
+
+<1> There's our new form action.
+
+<2> `.item_set` is called a 
+    https://docs.djangoproject.com/en/1.10/topics/db/queries/#following-relationships-backward[reverse lookup].
+    It's one of Django's incredibly useful bits of ORM that lets you look up an
+    object's related items from a different table...
+
+So that gets the unit tests to pass:
+
+----
+Ran 9 tests in 0.040s
+
+OK
+----
+
+How about the FTs?
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*rm -rf ../static/*]
-$ pass:quotes[*python manage.py collectstatic --noinput*]
-Copying '/.../superlists/lists/static/base.css'
-[...]
-Copying '/.../superlists/lists/static/bootstrap/css/bootstrap-theme.css'
-Copying '/.../superlists/lists/static/bootstrap/css/bootstrap.min.css'
+$ pass:quotes[*python manage.py test functional_tests*]
+Creating test database for alias 'default'...
+..
+ ---------------------------------------------------------------------
+Ran 2 tests in 9.771s
 
-
-15 static files copied to '/.../static'.
+OK
+Destroying test database for alias 'default'...
 ----
 
-Much better.
-(((range="endofrange", startref="ix_layoutandstylestatic")))
-(((range="endofrange", startref="ix_Djangocollectstatic")))
-(((range="endofrange", startref="ix_collectstatic")))
+HOORAY!  Oh, and a quick check on our to-do list:
 
-Anyway, now we know how to collect all the static files into a single folder,
-where it's easy for a web server to find them. We'll find out all about that,
-including how to test it, in the next chapter!
+[role="scratchpad"]
+*****
+* '[strikethrough line-through]#Get FTs to clean up after themselves#'
+* '[strikethrough line-through]#Adjust model so that items are associated with different lists#'
+* '[strikethrough line-through]#Add unique URLs for each list#'
+* '[strikethrough line-through]#Add a URL for creating a new list via POST#'
+* '[strikethrough line-through]#Add URLs for adding a new item to an existing list via POST#'
+* 'Refactor away some duplication in urls.py'
+*****
 
-For now let's save our changes to 'settings.py':
+((("Testing Goat")))
+Irritatingly, the Testing Goat is a stickler for tying up loose ends too, so
+we've got to do this one final thing.
+
+((("test-driven development (TDD)", "Working state to working state")))
+((("commits")))
+Before we start, we'll do a commit--always make sure you've got a commit
+of a working state before embarking on a refactor:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git diff* # should show changes in settings.py*
-$ *git commit -am "set STATIC_ROOT in settings and disable admin"*
+$ *git diff*
+$ *git commit -am "new URL + view for adding to existing lists. FT passes :-)"*
 ----
 
+A Final Refactor Using URL includes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A Few Things That Didn't Make It
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+((("Django", "URLs in")))
+'superlists/urls.py' is really meant for URLs that apply to your
+entire site.  For URLs that only apply to the `lists` app, Django encourages us
+to use a separate 'lists/urls.py', to make the app more self-contained.  The
+simplest way to make one is to use a copy of the existing 'urls.py':
 
-Inevitably this was only a whirlwind tour of styling and CSS, and there were 
-several topics that I'd hoped to cover in more depth that didn't make it.
-Here's a few candidates for further study:
+[subs="specialcharacters,quotes"]
+----
+$ *cp superlists/urls.py lists/*
+----
+//44
 
-* Customising bootstrap with LESS
-* The `{% static %}` template tag, for more DRY and less hard-coded URLs
-* Client-side packaging tools, like bower
-(((range="endofrange", startref="ix_layoutandstyle")))
-((("design", see="layout and style")))
+Then we replace three lines in 'superlists/urls.py' with an `include`.
 
-.Recap: On Testing Design and Layout
+[role="sourcecode"]
+.superlists/urls.py
+[source,python]
+----
+from django.conf.urls import include, url
+from lists import views as list_views  #<1>
+from lists import urls as list_urls  #<1>
+
+urlpatterns = [
+    url(r'^$', list_views.home_page, name='home'),
+    url(r'^lists/', include(list_urls)),  #<2>
+]
+----
+//45
+
+<1> While we're at it, we use the `import x as y` syntax to alias `views` and
+    `urls`.  This is good practice in your top-level 'urls.py', because it will
+    let us import views and urls from multiple apps if we want--and indeed we
+    will need to later on in the book.
+
+<2> Here's the `include`. Notice that it can take a part of a URL regex as a
+    prefix, which will be applied to all the included URLs (this is the bit
+    where we reduce duplication, as well as giving our code a better
+    structure):
+
+
+Back in 'lists/urls.py' we can trim down to only include the latter part
+of our three URLs, and none of the other stuff from the parent 'urls.py':
+
+
+[role="sourcecode"]
+.lists/urls.py (ch07l046)
+[source,python]
+----
+from django.conf.urls import url
+from lists import views
+
+urlpatterns = [
+    url(r'^new$', views.new_list, name='new_list'),
+    url(r'^(\d+)/$', views.view_list, name='view_list'),
+    url(r'^(\d+)/add_item$', views.add_item, name='add_item'),
+]
+----
+
+Rerun the unit tests to check everything worked.  
+
+
+When I did it, I couldn't quite believe I did it correctly on the first go. It
+always pays to be skeptical of your own abilities, so I deliberately changed
+one of the URLs slightly, just to check if it broke a test. It did. We're
+covered.
+
+Feel free to try it yourself!  Remember to change it back, check the tests
+all pass again, and then a final commit:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status*
+$ *git add lists/urls.py*
+$ *git add superlists/urls.py*
+$ *git diff --staged*
+$ *git commit*
+----
+
+Phew. A marathon chapter. But we covered a number of important topics, starting
+with test isolation, and then some thinking about design. We covered some rules
+of thumb like "YAGNI" and "three strikes then refactor". But, most importantly,
+we saw how to adapt an existing site step by step, going from working state to
+working state, in order to iterate towards a new design.
+
+I'd say we're pretty close to being able to ship this site, as the very first
+beta of the superlists website that's going to take over the world.  Maybe it
+needs a little prettification first...let's look at what we need to do to
+deploy it in the next couple of chapters.
+
+
+.Some more TDD Philosophy
 *******************************************************************************
-((("layout and style", "overview")))
-The short answer is: you shouldn't write tests for design and layout.  It's too
-much like testing a constant, and any tests you write are likely to be brittle.
 
-With that said, the 'implementation' of design and layout involves something 
-quite tricky: CSS and static files.   As a result, it is valuable to have some
-kind of minimal "smoke test" which checks that your static files and CSS are
-working.  As we'll see in the next chapter, it can help pick up problems when
-you deploy your code to production.
+Working State to Working State (aka The Testing Goat vs. Refactoring Cat)::
+    Our natural urge is often to dive in and fix everything at once...but if
+    we're not careful, we'll end up like Refactoring Cat, in a situation with
+    loads of changes to our code and nothing working.  The Testing Goat
+    encourages us to take one step at a time, and go from working state to
+    working state.
+    ((("test-driven development (TDD)", "Working state to working state")))
+    ((("Testing Goat")))
+    ((("Refactoring Cat")))
 
-Similarly, if a particular piece of styling required a lot of client-side 
-JavaScript code to get it to work (dynamic resizing is one I've spent a bit
-of time on), you'll definitely want some tests for that.
 
-So be aware that this is a dangerous area.  Try and write the minimal tests 
-that will give you confidence that your design and layout is working, without
-testing 'what' it actually is.  Try and leave yourself in a position where you
-can freely make changes to the design and layout, without having to go back and
-adjust tests all the time.
+Split work out into small, achievable tasks::
+    Sometimes this means starting with "boring" work rather than diving
+    straight in with the fun stuff, but you'll have to trust that YOLO-you
+    in the parallel universe is probably having a bad time, having broken
+    everything, and struggling to get their app working again.
+    
+
+YAGNI::
+    You ain't gonna need it!  Avoid the temptation to write code that you 
+    think 'might' be useful, just because it suggests itself at the time.
+    Chances are, you won't use it, or you won't have anticipated your
+    future requirements correctly.  See <<outside-in-chapter>> for one
+    methodology that helps us avoid this trap.
 
 *******************************************************************************
-

@@ -1,1519 +1,659 @@
-[[manual-validation-chapter]]
-Input Validation and Test Organisation
---------------------------------------
+[[fabric-chapter]]
+Automating Deployment with Fabric
+---------------------------------
 
-Over the next few chapters we'll talk about testing and implementing validation
-of user inputs. We'll also take the opportunity to do a little tidying up--both
-in our application code, and also in our tests.
-
-In terms of content, there's going to be quite a lot of material here that's
-more about the specifics of Django, and less discussion of TDD philosophy. That
-doesn't mean you won't be learning anything about testing--there are plenty of
-little testing tidbits in here, but perhaps it's more about really getting into
-the swing of things, the rhythm of TDD and how we get things done.
-
-Once we get through these three chapters, I've saved a bit of fun with
-JavaScript for the end of Part 2, and then it's on to <<part3,Part 3>>, where I
-promise we'll get right back into some of the real core discussions in
-TDD methodology--unit tests vs integrated tests, mocking and more.  Stay tuned!
-
-But for now, a little validation.
+WARNING: Major update released for Selenium 3.
+    If you started this book on or before Jan 30th 2017,
+    be aware: chapters have been renumbered,
+    so check this is the one you think it is,
+    and have a look at the new <<explicit-waits-chapter>>
+    for an indication of the changes you'll need in your FTs.
+    You should do a `pip install --upgrade selenium` too.
 
 
-Validation FT: Preventing Blank Items
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("validation", seealso="functional tests/testing (FT)")))
-As our first few users start using the site, we've noticed they sometimes make 
-mistakes that mess up their lists, like accidentally submitting blank list
-items, or accidentally inputting two identical items to a list.  Computers are
-meant to help stop us from making silly mistakes, so let's see if we can get
-our site to help.
-
-Here's the outline of an FT: 
+[quote, 'Cay Horstman']
+______________________________________________________________
+Automate, automate, automate.
+______________________________________________________________
 
 
-[role="sourcecode"]
-.functional_tests/tests.py (ch10l001)
-[source,python]
-----
-def test_cannot_add_empty_list_items(self):
-    # Edith goes to the home page and accidentally tries to submit
-    # an empty list item. She hits Enter on the empty input box
-
-    # The home page refreshes, and there is an error message saying
-    # that list items cannot be blank
-
-    # She tries again with some text for the item, which now works
-
-    # Perversely, she now decides to submit a second blank list item
-
-    # She receives a similar warning on the list page
-
-    # And she can correct it by filling some text in
-    self.fail('write me!')
-----
-
-That's all very well, but before we go any further--our functional tests
-file is beginning to get a little crowded.  Let's split it out into several
-files, in which each has a single test method.  
-
-((("user stories")))
-Remember that functional tests are closely linked to "user stories". If you
-were using some sort of project management tool like an issue tracker, you
-might make it so that each file matched one issue or ticket, and its filename
-contained the ticket ID.  Or, if you prefer to think about things in terms of
-"features", where one feature may have several user stories, then you might
-have one file and class for the feature, and several methods for each of its
-user stories.
-
-We'll also have one base test class which they can all inherit from.  Here's 
-how to get there step by step.
+((("automation, in deployment", seealso="deployment", id="ix_autodeploy", range="startofrange")))
+((("deployment", "automating", id="ix_deploymentauto", range="startofrange")))
+Automating deployment is critical for our staging tests to mean anything.
+By making sure the deployment procedure is repeatable, we give ourselves
+assurances that everything will go well when we deploy to production.
 
 
-Skipping a Test
-^^^^^^^^^^^^^^^
-
-((("skips")))
-((("test skips")))
-It's always nice, when doing refactoring, to have a fully passing test suite.
-We've just written a test with a deliberate failure. Let's temporarily switch
-it off, using a decorator called "skip" from `unittest`:
-
-[role="sourcecode"]
-.functional_tests/tests.py (ch10l001-1)
-[source,python]
-----
-from unittest import skip
-[...]
-
-    @skip
-    def test_cannot_add_empty_list_items(self):
-----
-
-This tells the test runner to ignore this test.  You can see it works--if we rerun the tests, it'll say it passes:
+((("Fabric", "installing")))
+Fabric is a tool which lets you automate commands that you want to run on
+servers. You can install fabric systemwide--it's not part of the core
+functionality of our site, so it doesn't need to go into our virtualenv and
+'requirements.txt'. So, on your local PC:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python manage.py test functional_tests*
-[...]
-Ran 4 tests in 11.577s
-OK
+$ *pip2 install --user fabric*
 ----
 
-WARNING: Skips are dangerous--you need to remember to remove them 
-before you commit your changes back to the repo.  This is why line-by-line 
-reviews of each of your diffs are a good idea!
+NOTE: At the time of writing, Fabric had not been ported to Python 3, so
+we have to use the Python 2 version.  Thankfully, the Fabric code is totally
+separate from the rest of our codebase, so it's not a problem.
 
+//TODO: investigate new Python 3 version?
 
-.Don't Forget the "Refactor" in "Red, Green, Refactor"
-**********************************************************************
-((("refactoring", "Red, Green, Refactor")))
-((("Red, Green, Refactor")))
-A criticism that's sometimes levelled at TDD is that it leads to badly
-architected code, as the developer just focuses on getting tests to pass
-rather than stopping to think about how the whole system should be designed.
-I think it's slightly unfair.
 
-'TDD is no silver bullet'. You still have to spend time thinking about good
-design.  But what often happens is that people forget the "Refactor" in "Red,
-Green, Refactor". The methodology allows you to throw together any old code to
-get your tests to pass, but it 'also' asks you to then spend some time
-refactoring it to improve its design.
+.Installing Fabric on Windows
+*******************************************************************************
+Fabric depends on pycrypto, which is a package that needs compiling. Compiling
+on Windows is a rather fraught process; it's often quicker to try and
+get hold of precompiled binaries put out there by some kindly soul.  In this
+case the excellent Michael 
+Foordfootnote:[Author of the Mock library and maintainer of `unittest`; if the
+Python testing world has a rock star, it is he.]
+has provided some
+http://bit.ly/Suxt67[Windows binaries].
+(Don't forget to giggle at the mention of absurd US munitions export controls.)
 
-Often, however, the best ideas for how to refactor code don't occur to you
-straight away. They may occur to you days, weeks, even months after you 
-wrote a piece of code, when you're working on something totally unrelated
-and you happen to see some old code again with fresh eyes. But if you're
-halfway through something else, should you stop to refactor the old code?
+So the instructions, for Windows, are:
 
-The answer is that it depends.  In the case at the beginning of the chapter,
-we haven't even started writing our new code. We know we are in a working
-state, so we can justify putting a skip on our new FT (to get back to fully
-passing tests) and do a bit of refactoring straight away.
+1. Download and install pycrypto from the previous URL.
+2. pip install Fabric.
 
-Later in the chapter we'll spot other bits of code we want to alter.
-In those cases, rather than taking the risk of refactoring an application
-that's not in a working state, we'll make a note of the thing we want to
-change on our scratchpad and wait until we're back to a fully passing test
-suite before refactoring.
-**********************************************************************
+Another amazing source of precompiled Python packages for Windows is maintained
+by http://www.lfd.uci.edu/~gohlke/pythonlibs/[Christoph Gohlke].
 
-
-
-Splitting Functional Tests out into Many Files
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("functional tests/testing (FT)", "splitting")))
-We start putting each test into its own class, still in the same file:
-
-[role="sourcecode"]
-.functional_tests/tests.py (ch10l002)
-[source,python]
-----
-class FunctionalTest(StaticLiveServerTestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        [...]
-    def setUp(self):
-        [...]
-    def tearDown(self):
-        [...]
-    def check_for_row_in_list_table(self, row_text):
-        [...]
-
-
-class NewVisitorTest(FunctionalTest):
-
-    def test_can_start_a_list_for_one_user(self):
-        [...]
-    def test_multiple_users_can_start_lists_at_different_urls(self):
-        [...]
-
-
-class LayoutAndStylingTest(FunctionalTest):
-
-    def test_layout_and_styling(self):
-        [...]
-
-
-
-class ItemValidationTest(FunctionalTest):
-
-    @skip
-    def test_cannot_add_empty_list_items(self):
-        [...]
-----
-
-At this point we can rerun the FTs and see they all still work:
-
-----
-Ran 4 tests in 11.577s
-
-OK
-----
-
-That's labouring it a little bit, and we could probably get away doing this
-stuff in fewer steps, but, as I keep saying, practising the step-by-step method
-on the easy cases makes it that much easier when we have a complex case.
-
-Now we switch from a single tests file to using one for each class, and one
-"base" file to contain the base class all the tests will inherit from.  We'll
-make four copies of 'tests.py', naming them appropriately, and then delete the
-parts we don't need from each:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git mv functional_tests/tests.py functional_tests/base.py*
-$ *cp functional_tests/base.py functional_tests/test_simple_list_creation.py*
-$ *cp functional_tests/base.py functional_tests/test_layout_and_styling.py*
-$ *cp functional_tests/base.py functional_tests/test_list_item_validation.py*
-----
-
-((("helper functions/methods")))
-'base.py' can be cut down to just the `FunctionalTest` class.  We leave the
-helper method on the base class, because we suspect we're about to reuse
-it in our new FT:
-
-[role="sourcecode"]
-.functional_tests/base.py (ch10l003)
-[source,python]
-----
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from selenium import webdriver
-import sys
-
-class FunctionalTest(StaticLiveServerTestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        [...]
-    def setUp(self):
-        [...]
-    def tearDown(self):
-        [...]
-    def check_for_row_in_list_table(self, row_text):
-        [...]
-----
-
-NOTE: Keeping helper methods in a base `FunctionalTest` class is one useful way
-    of preventing duplication in FTs.  Later in the book (in
-    <<page-pattern-chapter>>) we'll use the "Page pattern", which is related, but
-    prefers composition over inheritance.
-
-Our first FT is now in its own file, and should be just one class and one test
-method:
-
-[role="sourcecode"]
-.functional_tests/test_simple_list_creation.py (ch10l004)
-[source,python]
-----
-from .base import FunctionalTest
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-
-
-class NewVisitorTest(FunctionalTest):
-
-    def test_can_start_a_list_for_one_user(self):
-        [...]
-    def test_multiple_users_can_start_lists_at_different_urls(self):
-        [...]
-----
-
-((("relative import")))
-I used a relative import (`from .base`). Some people like to use them a lot
-in Django code (e.g., your views might import models using `from .models import
-List`, instead of `from list.models`). Ultimately this is a
-matter of personal preference.  I prefer to use relative imports only when I'm
-super-super sure that the relative position of the thing I'm importing won't
-change.  That applies in this case because I know for sure all the tests will
-sit next to 'base.py', which they inherit from.
-
-((("functional tests/testing (FT)", "for layout and style", sortas="layoutandstyle")))
-((("layout and style", "functional tests (FT) for")))
-The layout and styling FT should now be one file and one class:
-
-[role="sourcecode"]
-.functional_tests/test_layout_and_styling.py (ch10l005)
-[source,python]
-----
-from .base import FunctionalTest
-
-class LayoutAndStylingTest(FunctionalTest):
-        [...]
-----
-
-
-Lastly our new validation test is in a file of its own too:
-
-
-[role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch10l006)
-[source,python]
-----
-from unittest import skip
-from .base import FunctionalTest
-
-
-class ItemValidationTest(FunctionalTest):
-
-    @skip
-    def test_cannot_add_empty_list_items(self):
-        [...]
-----
-
-And we can test everything worked by rerunning `manage.py test
-functional_tests`, and checking once again that all four tests are run:
-
-----
-Ran 4 tests in 11.577s
-
-OK
-----
-
-Now we can remove our skip:
-
-[role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch10l007)
-[source,python]
-----
-class ItemValidationTest(FunctionalTest):
-
-    def test_cannot_add_empty_list_items(self):
-        [...]
-----
-
-
-Running a Single Test File
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-As a side bonus, we're now able to run an individual test file, like this:
-
-[subs="specialcharacters,quotes"]
-----
-$ *python manage.py test functional_tests.test_list_item_validation*
-[...]
-AssertionError: write me!
-----
-
-Brilliant, no need to sit around waiting for all the FTs when we're only
-interested in a single one. Although we need to remember to run all of them
-now and again, to check for regressions.  Later in the book we'll see how
-to give that task over to an automated Continuous Integration loop. For now
-let's commit!
-
-[subs="specialcharacters,quotes"]
-----
-$ *git status* 
-$ *git add functional_tests* 
-$ *git commit -m "Moved Fts into their own individual files"*
-----
-
-
-Fleshing Out the FT
-^^^^^^^^^^^^^^^^^^^
-
-Now let's start implementing the test, or at least the beginning of it:
-
-
-[role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch10l008)
-[source,python]
-----
-def test_cannot_add_empty_list_items(self):
-    # Edith goes to the home page and accidentally tries to submit
-    # an empty list item. She hits Enter on the empty input box
-    self.browser.get(self.server_url)
-    self.browser.find_element_by_id('id_new_item').send_keys('\n')
-
-    # The home page refreshes, and there is an error message saying
-    # that list items cannot be blank
-    error = self.browser.find_element_by_css_selector('.has-error')  #<1>
-    self.assertEqual(error.text, "You can't have an empty list item")
-
-    # She tries again with some text for the item, which now works
-    self.browser.find_element_by_id('id_new_item').send_keys('Buy milk\n')
-    self.check_for_row_in_list_table('1: Buy milk')  #<2>
-
-    # Perversely, she now decides to submit a second blank list item
-    self.browser.find_element_by_id('id_new_item').send_keys('\n')
-
-    # She receives a similar warning on the list page
-    self.check_for_row_in_list_table('1: Buy milk')
-    error = self.browser.find_element_by_css_selector('.has-error')
-    self.assertEqual(error.text, "You can't have an empty list item")
-
-    # And she can correct it by filling some text in
-    self.browser.find_element_by_id('id_new_item').send_keys('Make tea\n')
-    self.check_for_row_in_list_table('1: Buy milk')
-    self.check_for_row_in_list_table('2: Make tea')
-----
-
-A couple of things to note about this test:
-
-<1> We specify we're going to use a CSS class from Bootstrap called `.has-error` to mark our
-error text.  We'll see that Bootstrap has some useful styling for those
-<2> As predicted, we are reusing the `check_for_row_in_list_table` helper
-function when we want to confirm that list item submission 'does' work.
-
-((("helper functions/methods")))
-The technique of keeping helper methods in a parent class is meant to prevent
-duplication across your functional test code.  The day we decide to change the
-implementation of how our list table works, we want to make sure we only have
-to change our FT code in one place, not in dozens of places across loads of
-FTs...
-
-And we're off!
-
-----
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"css selector","selector":".has-error"}
-----
-
-I'll let you do your own "first-cut FT" commit.
-
-
-Using Model-Layer Validation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("validation", "model-layer", seealso="model-layer validation", id="ix_validationml", range="startofrange")))
-((("model-layer validation", id="ix_mlvalidation", range="startofrange")))
-((("Django", "model-layer validation", id="ix_Djangomlval", range="startofrange")))
-There are two levels at which you can do validation in Django. One is
-at the model level, and the other is higher up at the forms level.  I
-like to use the lower level whenever possible, partially because I'm
-a bit too fond of databases and database integrity rules, and partially
-because it's safer--you can sometimes forget which form you use to 
-validate input, but you're always going to use the same database.
-
-
-Refactoring Unit Tests into Several Files
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("model-layer validation", "refactoring")))
-((("unit tests", "refactoring")))
-((("refactoring", "unit tests")))
-We're going to want to add another test for our model, but before we
-do so, it's time to tidy up our unit tests in a similar way to the
-functional tests.  A difference will be that, because the `lists`
-app contains real application code as well as tests, we'll separate
-out the tests into their own folder:
-
-[subs=""]
-----
-$ <strong>mkdir lists/tests</strong>
-$ <strong>touch lists/tests/__init__.py</strong>
-$ <strong>git mv lists/tests.py lists/tests/test_all.py</strong>
-$ <strong>git status</strong>
-$ <strong>git add lists/tests</strong>
-$ <strong>python manage.py test lists</strong>
-[...]
-Ran 9 tests in 0.034s
-
-OK
-$ <strong>git commit -m "Move unit tests into a folder with single file"</strong>
-----
-
-If you get a message saying "Ran 0 tests", you probably forgot to add the
-dunderinit--it needs to be there or else the tests folder isn't a valid Python
-package...footnote:["Dunder" is shorthand for double-underscore, so
-"dunderinit" means +++<i>__init__.py</i>+++.]
-
-Now we turn 'test_all.py' into two files, one called 'test_views.py', which
-only contains view tests, and one called 'test_models.py':
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *git mv lists/tests/test_all.py lists/tests/test_views.py*
-$ *cp lists/tests/test_views.py lists/tests/test_models.py*
-----
-
-We strip 'test_models.py' down to being just the one test--it means
-it needs far fewer imports:
-
-[role="sourcecode"]
-.lists/tests/test_models.py (ch10l009)
-[source,python]
-----
-from django.test import TestCase
-from lists.models import Item, List
-
-
-class ListAndItemModelsTest(TestCase):
-        [...]
-----
-
-Whereas 'test_views.py'  just loses one class:
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch10l010)
-[source,diff]
-----
---- a/lists/tests/test_views.py
-+++ b/lists/tests/test_views.py
-@@ -103,34 +104,3 @@ class ListViewTest(TestCase):
-         self.assertNotContains(response, 'other list item 1')
-         self.assertNotContains(response, 'other list item 2')
- 
--
--
--class ListAndItemModelsTest(TestCase):
--
--    def test_saving_and_retrieving_items(self):
-[...]
-----
-
-We rerun the tests to check everything is still there:
-
-[subs="specialcharacters,quotes"]
-----
-$ *python manage.py test lists*
-[...]
-Ran 9 tests in 0.040s
-
-OK
-----
-
-Great!  
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add lists/tests*
-$ *git commit -m "Split out unit tests into two files"*
-----
-
-NOTE: Some people like to make their unit tests into a tests folder straight
-away, as soon as they start a project, with the addition of another file,
-'test_forms.py'. That's a perfectly good idea; I just thought I'd wait until it
-became necessary, to avoid doing too much housekeeping all in the first
-chapter!
-
-
-
-Unit Testing Model Validation and the self.assertRaises Context Manager
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("model-layer validation", "unit testing", id="ix_mlvalut", range="startofrange")))
-((("context managers")))
-((("unit tests", "context manager")))
-Let's add a new test method to `ListAndItemModelsTest`, which tries to create
-a blank list item:
-
-[role="sourcecode"]
-.lists/tests/test_models.py (ch10l012-1)
-[source,python]
-----
-from django.core.exceptions import ValidationError
-[...]
-
-class ListAndItemModelsTest(TestCase):
-    [...]
-
-    def test_cannot_save_empty_list_items(self):
-        list_ = List.objects.create()
-        item = Item(list=list_, text='')
-        with self.assertRaises(ValidationError):
-            item.save()
-----
-
-TIP: If you're new to Python, you may never have seen the `with` statement.
-It's used with what are called "context managers", which wrap a block of code,
-usually with some kind of setup, cleanup, or error-handling code.  There's a
-good write-up in the 
-http://docs.python.org/release/2.5/whatsnew/pep-343.html[Python 2.5 release
-notes].
-
-This is a new unit testing technique: when we want to check that doing
-something will raise an error, we can use the `self.assertRaises` context
-manager.  We could have used something like this instead:
-
-[role="skipme"]
-[source,python]
-----
-try:
-    item.save()
-    self.fail('The save should have raised an exception')
-except ValidationError:
-    pass
-----
-
-But the `with` formulation is neater.  Now, we can try running the test, 
-and see it fail:
-
-----
-    item.save()
-AssertionError: ValidationError not raised
-----
-
-
-A Django Quirk: Model Save Doesn't Run Validation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("Django", "validation quirk")))
-And now we discover one of Django's little quirks. 'This test should already
-pass'.  If you take a look at the
-http://bit.ly/SuxPJO[docs for the
-Django model fields], you'll see that `TextField` actually defaults to
-`blank=False`, which means that it 'should' disallow empty values.
-
-So why is the test not failing?  Well, for 
-https://groups.google.com/forum/#!topic/django-developers/uIhzSwWHj4c[slightly
-counterintuitive historical reasons], Django models don't run full validation on
-save.  As we'll see later, any constraints that are actually implemented in the
-database will raise errors on save, but SQLite doesn't support enforcing
-emptiness constraints on text columns, and so our save method is letting this
-invalid value through silently.
-
-There's a way of checking whether the constraint will happen at the database
-level or not:  if it was at the database level, we would need a migration to
-apply the constraint. But, Django knows that SQLite doesn't support this type
-of constraint, so if we try and run `makemigrations`, it will report there's
-nothing to do:
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py makemigrations*]
-No changes detected
-----
-
-
-Django does have a method to manually run full validation however, called
-`full_clean`.  Let's hack it in to see it work:
-
-
-[role="sourcecode"]
-.lists/tests/test_models.py
-[source,python]
-----
-    with self.assertRaises(ValidationError):
-        item.save()
-        item.full_clean()
-----
-//12-2
-
-That gets the test to pass:
-
-----
-OK
-----
-
-That taught us a little about Django validation, and the test is there to
-warn us if we ever forget our requirement and set `blank=True` on the `text`
-field (try it!).
-(((range="endofrange", startref="ix_mlvalut")))
-
-
-Surfacing Model Validation Errors in the View
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("model-layer validation", "errors in View", id="ix_mlvalerrors", range="startofrange")))
-((("views layer", "model validation errors in", id="ix_viewsmvalerrors", range="startofrange")))
-Let's try and enforce our model validation in the views layer and bring it up
-through into our templates, so the user can see them. Here's how we can
-optionally display an error in our HTML--we check whether the template has
-been passed an error variable, and if so, we display it next to the form:
-
-[role="sourcecode"]
-.lists/templates/base.html (ch10l013)
-[source,html]
-----
-<form method="POST" action="{% block form_action %}{% endblock %}">
-    <input name="item_text" id="id_new_item"
-           class="form-control input-lg"
-           placeholder="Enter a to-do item"
-    />
-    {% csrf_token %}
-    {% if error %}
-        <div class="form-group has-error">
-            <span class="help-block">{{ error }}</span>
-        </div>
-    {% endif %}
-</form>
-----
-
-Take a look at the http://getbootstrap.com/css/#forms[Bootstrap docs] for more
-info on form controls. 
-
-Passing this error to the template is the job of the view function. Let's take
-a look at the unit tests in the `NewListTest` class.  I'm going to use two
-slightly different error-handling patterns here.
-
-In the first case, our URL and view for new lists will optionally render the
-same template as the home page, but with the addition of an error message.
-Here's a unit test for that:
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch10l014)
-[source,python]
-----
-class NewListTest(TestCase):
-    [...]
-
-    def test_validation_errors_are_sent_back_to_home_page_template(self):
-        response = self.client.post('/lists/new', data={'item_text': ''})
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'home.html')
-        expected_error = "You can't have an empty list item"
-        self.assertContains(response, expected_error)
-----
-
-As we're writing this test, we might get slightly offended by the '/lists/new'
-URL, which we're manually entering as a string. We've got a lot of URLs
-hardcoded in our tests, in our views, and in our templates, which violates the
-DRY principle.  I don't mind a bit of duplication in tests, but we should
-definitely be on the lookout for hardcoded URLs in our views and templates,
-and make a note to refactor them out.  But we won't do them straight away,
-because right now our application is in a broken state. We want to get back
-to a working state first.  
-
-Back to our test, which is failing because the view is currently returning a
-302 redirect, rather than a "normal" 200 response:
-
-----
-AssertionError: 302 != 200
-----
-
-Let's try calling `full_clean()` in the view:
-
-[role="sourcecode"]
-.lists/views.py
-[source,python]
-----
-def new_list(request):
-    list_ = List.objects.create()
-    item = Item.objects.create(text=request.POST['item_text'], list=list_)
-    item.full_clean()
-    return redirect('/lists/%d/' % (list_.id,))
-----
-
-As we're looking at the view code, we find a good candidate for a hardcoded
-URL to get rid of.  Let's add that to our scratchpad:
-
-[role="scratchpad"]
-*****
-* 'Remove hardcoded URLs from views.py'
-*****
-
-Now the model validation raises an exception, which comes up through our view:
-
-----
-[...]
-  File "/.../superlists/lists/views.py", line 11, in new_list
-    item.full_clean()
-[...]
-django.core.exceptions.ValidationError: {'text': ['This field cannot be
-blank.']}
-----
-
-So we try our first approach:  using a `try/except` to detect errors. Obeying the
-Testing Goat, we start with just the `try/except` and nothing else.  The tests
-should tell us what to code next...
-
-[role="sourcecode"]
-.lists/views.py (ch10l015)
-[source,python]
-----
-from django.core.exceptions import ValidationError
-[...]
-
-def new_list(request):
-    list_ = List.objects.create()
-    item = Item.objects.create(text=request.POST['item_text'], list=list_)
-    try:
-        item.full_clean()
-    except ValidationError:
-        pass
-    return redirect('/lists/%d/' % (list_.id,))
-----
-
-That gets us back to the 302 != 200:
-
-----
-AssertionError: 302 != 200
-----
-
-Let's return a rendered template then, which should take care of the template
-check as well:
-
-[role="sourcecode"]
-.lists/views.py (ch10l016)
-[source,python]
-----
-    except ValidationError:
-        return render(request, 'home.html')
-----
-
-And the tests now tell us to put the error message into the template:
-
-----
-AssertionError: False is not true : Couldn't find 'You can't have an empty list
-item' in response
-----
-
-
-We do that by passing a new template variable in:
-
-[role="sourcecode"]
-.lists/views.py (ch10l017)
-[source,python]
-----
-    except ValidationError:
-        error = "You can't have an empty list item"
-        return render(request, 'home.html', {"error": error})
-----
-
-
-Hmm, it looks like that didn't quite work:
-
-----
-AssertionError: False is not true : Couldn't find 'You can't have an empty list
-item' in response
-----
-
-A little print-based debug...
-
-[role="sourcecode"]
-.lists/tests/test_views.py
-[source,python]
-----
-expected_error = "You can't have an empty list item"
-print(response.content.decode())
-self.assertContains(response, expected_error)
-----
-
-...will show us the cause: Django has 
-http://bit.ly/SuxUgF[HTML-escaped]
-the apostrophe:
-
-----
-[...]
-<span class="help-block">You can&#39;t have an 
-empty list item</span>
-----
-
-We could hack something like this into our test:
-
-[role="skipme"]
-[source,python]
-----
-    expected_error = "You can&#39;t have an empty list item"
-----
-
-But using Django's helper function is probably a better idea:
-
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch10l019)
-[source,python]
-----
-from django.utils.html import escape
-[...]
-
-        expected_error = escape("You can't have an empty list item")
-        self.assertContains(response, expected_error)
-----
-
-That passes!  
-
-----
-Ran 11 tests in 0.047s
-
-OK
-----
-
-Checking Invalid Input Isn't Saved to the Database
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Before we go further though, did you notice a little logic error we've allowed
-to creep into our implementation?  We're currently creating an object, even
-if validation fails:
-
-[role="sourcecode currentcontents"]
-.lists/views.py
-[source,python]
-----
-    item = Item.objects.create(text=request.POST['item_text'], list=list_)
-    try:
-        item.full_clean()
-    except ValidationError:
-        [...]
-----
-
-Let's add a new unit test to make sure that empty list items don't get
-saved:
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch10l020-1)
-[source,python]
-----
-class NewListTest(TestCase):
-    [...]
-
-    def test_validation_errors_are_sent_back_to_home_page_template(self):
-        [...]
-
-    def test_invalid_list_items_arent_saved(self):
-        self.client.post('/lists/new', data={'item_text': ''})
-        self.assertEqual(List.objects.count(), 0)
-        self.assertEqual(Item.objects.count(), 0)
-----
-
-That gives:
-
-
-----
-[...]
-Traceback (most recent call last):
-  File "/.../superlists/lists/tests/test_views.py", line 40, in
-test_invalid_list_items_arent_saved
-    self.assertEqual(List.objects.count(), 0)
-AssertionError: 1 != 0
-----
-
-We fix it like this:
-
-[role="sourcecode"]
-.lists/views.py (ch10l020-2)
-[source,python]
-----
-def new_list(request):
-    list_ = List.objects.create()
-    item = Item(text=request.POST['item_text'], list=list_)
-    try:
-        item.full_clean()
-        item.save()
-    except ValidationError:
-        list_.delete()
-        error = "You can't have an empty list item"
-        return render(request, 'home.html', {"error": error})
-    return redirect('/lists/%d/' % (list_.id,))
-----
-
-
-Do the FTs pass?
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test functional_tests.test_list_item_validation*] 
-[...]
-  File "/.../superlists/functional_tests/test_list_item_validation.py", line
-26, in test_cannot_add_empty_list_items
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"css selector","selector":".has-error"}
-----
-
-Not quite, but they did get a little further.  Checking the `line 25`, we can
-see that we've got past the first part of the test, and are now onto the second
-check--that submitting a second empty item also shows an error.
-
-We've got some working code though, so let's have a commit:
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "Adjust new list view to do model validation"*
-----
-(((range="endofrange", startref="ix_mlvalerrors")))
-(((range="endofrange", startref="ix_viewsmvalerrors")))
-
-Django Pattern: Processing POST Requests in the Same View as Renders the Form
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("model-layer validation", "POST requests", id="ix_mlvalpost", range="startofrange")))
-((("Django", "POST requests", see="POST requests")))
-((("POST requests", "processing", id="ix_postreqproc", range="startofrange")))
-This time we'll use a slightly different approach, one that's actually a very
-common pattern in Django, which is to use the same view to process POST
-requests as to render the form that they come from.  Whilst this doesn't fit
-the REST-ful URL model quite as well, it has the important advantage that the
-same URL can display a form, and display any errors encountered in processing
-the user's input.
-
-The current situation is that we have one view and URL for displaying a list,
-and one view and URL for processing additions to that list.  We're going to
-combine them into one. So, in 'list.html', our form will have a different
-target:
-
-[role="sourcecode"]
-.lists/templates/list.html (ch10l020)
-[source,html]
-----
-{% block form_action %}/lists/{{ list.id }}/{% endblock %}
-----
-
-Incidentally, that's another hardcoded URL.  Let's add it to our to-do list,
-and while we're thinking about it, there's one in 'home.html' too:
-
-[role="scratchpad"]
-*****
-* 'Remove hardcoded URLs from views.py'
-* 'Remove hardcoded URL from forms in list.html and home.html'
-*****
-
-
-This will immediately break our original functional test, because the
-`view_list` page doesn't know how to process POST requests yet:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test functional_tests*]
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"css selector","selector":".has-error"}
-[...]
-AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
-peacock feathers']
-----
-
-NOTE: In this section we're performing a refactor at the application level.
-We execute our application-level refactor by changing or adding unit tests, and
-then adjusting our code. We use the functional tests to tell us when our
-refactor is complete and things are back to working as before.  Have
-another look at the diagram from the end of <<chapter-4>> if you need to get your
-bearings.
-((("refactoring", "at application level", id="ix_refactorapp", range="startofrange")))
-
-
-Refactor: Transferring the new_item Functionality into view_list
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("model-layer validation", "refactoring", id="ix_mlvalrefactor", range="startofrange")))
-Let's take all the old tests from `NewItemTest`, the ones that are about saving
-POST requests to existing lists, and move them into `ListViewTest`. As we do
-so, we also make them point at the base list URL, instead of '.../add_item':
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch10l021)
-[source,python]
-----
-class ListViewTest(TestCase):
-
-    def test_uses_list_template(self):
-        [...]
-
-    def test_passes_correct_list_to_template(self):
-        [...]
-
-    def test_displays_only_items_for_that_list(self):
-        [...]
-
-    def test_can_save_a_POST_request_to_an_existing_list(self):
-        other_list = List.objects.create()
-        correct_list = List.objects.create()
-
-        self.client.post(
-            '/lists/%d/' % (correct_list.id,),
-            data={'item_text': 'A new item for an existing list'}
-        )
-
-        self.assertEqual(Item.objects.count(), 1)
-        new_item = Item.objects.first()
-        self.assertEqual(new_item.text, 'A new item for an existing list')
-        self.assertEqual(new_item.list, correct_list)
-
-
-    def test_POST_redirects_to_list_view(self):
-        other_list = List.objects.create()
-        correct_list = List.objects.create()
-
-        response = self.client.post(
-            '/lists/%d/' % (correct_list.id,),
-            data={'item_text': 'A new item for an existing list'}
-        )
-        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))
-----
-
-Note that the `NewItemTest` class disappears completely.  I've also changed the
-name of the redirect test to make it explicit that it only applies to POST
-requests. 
-
-That gives:
-
-----
-FAIL: test_POST_redirects_to_list_view (lists.tests.test_views.ListViewTest)
-AssertionError: 200 != 302 : Response didn't redirect as expected: Response
-code was 200 (expected 302)
-[...]
-FAIL: test_can_save_a_POST_request_to_an_existing_list
-(lists.tests.test_views.ListViewTest)
-AssertionError: 0 != 1
-----
-
-We change the `view_list` function to handle two types of request:
-
-
-[role="sourcecode"]
-.lists/views.py (ch10l022-1)
-[source,python]
-----
-def view_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    if request.method == 'POST':
-        Item.objects.create(text=request.POST['item_text'], list=list_)
-        return redirect('/lists/%d/' % (list_.id,))
-    return render(request, 'list.html', {'list': list_})
-----
-
-That gets us passing tests:
-
-----
-Ran 12 tests in 0.047s
-
-OK
-----
-
-Now we can delete the `add_item` view, since it's no longer needed...oops, a
-couple of unexpected failures:
-
-[role="dofirst-ch10l022-2"]
-----
-[...]
-AttributeError: module 'lists.views' has no attribute 'add_item'
-[...]
-FAILED (errors=10)
-----
-
-It's because we've deleted the view, but it's still being referred to in
-'urls.py'.  We remove it from there:
-
-[role="sourcecode"]
-.lists/urls.py (ch10l023)
-[source,python]
-----
-urlpatterns = [
-    url(r'^new$', views.new_list, name='new_list'),
-    url(r'^(\d+)/$', views.view_list, name='view_list'),
-]
-----
-
-And that gets us to the `OK`. Let's try a full FT run:
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *python manage.py test*
-[...]
-ERROR: test_cannot_add_empty_list_items
-[...]
-
-Ran 16 tests in 15.276s
-FAILED (errors=1)
-----
-
-We're back to the one failure in our new functional test. Our refactor of the 
-`add_item` functionality is complete. We should commit there:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "Refactor list view to handle new item POSTs"*
-----
-
-NOTE: So did I break the rule about never refactoring against failing tests?
-    In this case, it's allowed, because the refactor is required to get our new
-    functionality to work.  You should definitely never refactor against
-    failing 'unit' tests.  But in my book it's OK for the FT for the current
-    story you're working on to be failing. If you prefer a clean test run, you
-    could add a skip to the current FT.
-    (((range="endofrange", startref="ix_refactorapp")))
-    (((range="endofrange", startref="ix_mlvalrefactor")))
-
-
-
-Enforcing Model Validation in view_list
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("model-layer validation", "enforcing")))
-We still want the addition of items to existing lists to be subject to our
-model validation rules. Let's write a new unit test for that; it's very similar
-to the one for the home page, with just a couple of tweaks:
-
-[role="sourcecode"]
-.lists/tests/test_views.py (ch10l024)
-[source,python]
-----
-class ListViewTest(TestCase):
-    [...]
-
-    def test_validation_errors_end_up_on_lists_page(self):
-        list_ = List.objects.create()
-        response = self.client.post(
-            '/lists/%d/' % (list_.id,),
-            data={'item_text': ''}
-        ) 
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'list.html')
-        expected_error = escape("You can't have an empty list item")
-        self.assertContains(response, expected_error)
-----
-
-That should fail, because our view currently does not do any validation, and 
-just redirects for all POSTs:
-
-----
-    self.assertEqual(response.status_code, 200)
-AssertionError: 302 != 200
-----
-
-Here's an implementation:
-
-
-[role="sourcecode"]
-.lists/views.py (ch10l025)
-[source,python]
-----
-def view_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    error = None
-
-    if request.method == 'POST':
-        try:
-            item = Item(text=request.POST['item_text'], list=list_)
-            item.full_clean()
-            item.save()
-            return redirect('/lists/%d/' % (list_.id,))
-        except ValidationError:
-            error = "You can't have an empty list item"
-
-    return render(request, 'list.html', {'list': list_, 'error': error})
-----
-
-It's not deeply satisfying is it? There's definitely some duplication of code
-here, that `try/except` occurs twice in 'views.py', and in general things are 
-feeling clunky.
-
-----
-Ran 13 tests in 0.047s
-
-OK
-----
-
-Let's wait a bit before we do more refactoring though, because we know we're
-about to do some slightly different validation coding for duplicate items.
-We'll just add it to our scratchpad for now:
-
-[role="scratchpad"]
-*****
-* 'Remove hardcoded URLs from views.py'
-* 'Remove hardcoded URL from forms in list.html and home.html'
-* 'Remove duplication of validation logic in views'
-*****
-
-
-NOTE: One of the reasons that the "three strikes and refactor" rule exists is
-    that, if you wait until you have three use cases, each might be slightly
-    different, and it gives you a better view for what the common functionality
-    is. If you refactor too early, you may find that the third use case doesn't
-    quite fit with your refactored code...
-
-At least our functional tests are back to passing:
-
-[subs="specialcharacters,quotes"]
-----
-$ *python manage.py test functional_tests*
-[...]
-OK
-----
-
-We're back to a working state, so we can take a look at some of the items on
-our scratchpad.  This would be a good time for a commit. And possibly a
-tea break.
-(((range="endofrange", startref="ix_postreqproc")))
-(((range="endofrange", startref="ix_validationml")))
-(((range="endofrange", startref="ix_Djangomlval")))
-(((range="endofrange", startref="ix_mlvalidation")))
-(((range="endofrange", startref="ix_mlvalpost")))
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "enforce model validation in list view"*
-----
-
-
-Refactor: Removing Hardcoded URLs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("refactoring", "removing hard-coded URLs")))
-Do you remember those `name=` parameters in 'urls.py'? We just copied
-them across from the default example Django gave us, and I've been giving
-them some reasonably descriptive names. Now we find out what they're for.
-
-[role="sourcecode currentcontents"]
-.lists/urls.py
-[source,python]
-----
-    url(r'^new$', views.new_list, name='new_list'),
-    url(r'^(\d+)/$', views.view_list, name='view_list'),
-----
-
-
-The {% url %} Template Tag
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-We can replace the hardcoded URL in 'home.html' with a Django template tag
-which refers to the URL's "name":
-
-[role="sourcecode"]
-.lists/templates/home.html (ch10l026-1)
-[source,html]
-----
-{% block form_action %}{% url 'new_list' %}{% endblock %}
-----
-
-We check that doesn't break the unit tests:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test lists*]
-OK
-----
-
-Let's do the other template.  This one is more interesting, because we pass it
-a parameter:
-
-
-[role="sourcecode"]
-.lists/templates/list.html (ch10l026-2)
-[source,html]
-----
-{% block form_action %}{% url 'view_list' list.id %}{% endblock %}
-----
-
-Check out the 
-https://docs.djangoproject.com/en/1.10/topics/http/urls/#reverse-resolution-of-urls[Django
-docs on reverse URL resolution] for more info.
-
-We run the tests again, and check they all pass:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test lists*]
-OK
-$ pass:quotes[*python manage.py test functional_tests*]
-OK
-----
-
-Excellent:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "Refactor hard-coded URLs out of templates"*
-----
-
-[role="scratchpad"]
-*****
-* 'Remove hardcoded URLs from views.py'
-* '[strikethrough line-through]#Remove hardcoded URL from forms in list.html and home.html#'
-* 'Remove duplication of validation logic in views'
-*****
-
-
-
-
-Using get_absolute_url for Redirects
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("redirects")))
-Now let's tackle 'views.py'. One way of doing it is just like in the
-template, passing in the name of the URL and a positional argument:
-
-[role="sourcecode"]
-.lists/views.py (ch10l026-3)
-[source,python]
-----
-def new_list(request):
-    [...]
-    return redirect('view_list', list_.id)
-----
-
-That would get the unit and functional tests passing, but the `redirect`
-function can do even better magic than that!  In Django, because model objects
-are often associated with a particular URL, you can define a special function
-called `get_absolute_url` which says what page displays the item.  It's useful
-in this case, but it's also useful in the Django admin (which I don't cover in
-the book, but you'll soon discover for yourself): it will let you jump from
-looking at an object in the admin view to looking at the object on the live
-site. I'd always recommend defining a `get_absolute_url` for a model whenever
-there is one that makes sense; it takes no time at all.
-
-All it takes is a super-simple unit test in 'test_models.py':
-
-[role="sourcecode"]
-.lists/tests/test_models.py (ch10l026-4)
-[source,python]
-----
-    def test_get_absolute_url(self):
-        list_ = List.objects.create()
-        self.assertEqual(list_.get_absolute_url(), '/lists/%d/' % (list_.id,))
-----
-
-
-Which gives:
-
-----
-AttributeError: 'List' object has no attribute 'get_absolute_url'
-----
-
-And the implementation is to use Django's `reverse` function, which
-essentially does the reverse of what Django normally does with 'urls.py'
-(see
-https://docs.djangoproject.com/en/1.10/topics/http/urls/#reverse-resolution-of-urls[docs]):
-
-
-[role="sourcecode"]
-.lists/models.py (ch10l026-5)
-[source,python]
-----
-from django.core.urlresolvers import reverse
-
-
-class List(models.Model):
-
-    def get_absolute_url(self):
-        return reverse('view_list', args=[self.id])
-----
-
-And now we can use it in the view--the `redirect` function just takes the
-object we want to redirect to, and it uses `get_absolute_url` under the
-hood automagically!
-
-
-[role="sourcecode"]
-.lists/views.py (ch10l026-6)
-[source,python]
-----
-def new_list(request):
-    [...]
-    return redirect(list_)
-----
-
-There's more info in the
-https://docs.djangoproject.com/en/1.10/topics/http/shortcuts/#redirect[Django
-docs].  Quick check that the unit tests still pass:
-
-[subs="specialcharacters,macros"]
-----
-OK
-----
-
-Then we do the same to `view_list`:
-
-[role="sourcecode"]
-.lists/views.py (ch10l026-7)
-[source,python]
-----
-def view_list(request, list_id):
-    [...]
-
-            item.save()
-            return redirect(list_)
-        except ValidationError:
-            error = "You can't have an empty list item"
-----
-
-And a full unit test and functional test run to assure ourselves that
-everything still works:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python manage.py test lists*]
-OK
-$ pass:quotes[*python manage.py test functional_tests*]
-OK
-----
-
-Cross off our to-dos:
-
-[role="scratchpad"]
-*****
-* '[strikethrough line-through]#Remove hardcoded URLs from views.py#'
-* '[strikethrough line-through]#Remove hardcoded URL from forms in list.html and home.html#'
-* 'Remove duplication of validation logic in views'
-*****
-
-Let's do a commit:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "Use get_absolute_url on List model to DRY urls in views"*
-----
-
-That final to-do item will be the subject of the next chapter...
-((("refactoring", "tips")))
-((("test organisation")))
-
-.Tips on Organising Tests and Refactoring
 *******************************************************************************
 
-Use a tests folder::
-    Just as you use multiple files to hold your application code, you should
-    split your tests out into multiple files.
-    +
-    * Use a folder called 'tests', with a +++<i>__init__.py</i>+++.
-    * For functional tests, group them into tests for a particular feature or
-      user story.
-    * For unit tests, you want a separate test file for each tested source code
-      file. For Django, that's typically 'test_models.py', 'test_views.py', and
-      'test_forms.py'.
-    * Have at least a placeholder test for 'every' function and class.
+The usual setup is to have a file called 'fabfile.py', which will
+contain one or more functions that can later be invoked from a command-line
+tool called `fab`, like this:
 
-Don't forget the "Refactor" in "Red, Green, Refactor"::
-    The whole point of having tests is to allow you to refactor your code!
-    Use them, and make your code as clean as you can.  
+----
+fab function_name,host=SERVER_ADDRESS
+----
 
-Don't refactor against failing tests::
-    * In general!
-    * But the FT you're currently working on doesn't count.
-    * You can occasionally put a skip on a test which is testing something you
-      haven't written yet.  
-    * More commonly, make a note of the refactor you want to do, finish what
-      you're working on, and do the refactor a little later, when you're back
-      to a working state.
-    * Don't forget to remove any skips before you commit your code! You should
-      always review your diffs line by line to catch things like this.
+That will invoke the function called `function_name`, passing in a connection
+to the server at `SERVER_ADDRESS`.  There are many other options for specifying
+usernames and passwords, which you can find out about using `fab --help`.
+
+
+Breakdown of a Fabric Script for Our Deployment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("deployment", "sample script", id="ix_deploymentsample", range="startofrange")))
+((("Fabric", "sample deployment script", id="ix_Fabricsample", range="startofrange")))
+The best way to see how it works is with an example.
+http://www.bbc.co.uk/cult/classic/bluepeter/valpetejohn/trivia.shtml[Here's one
+I made earlier], automating all the deployment steps we've been going through.
+The main function is called `deploy`; that's the one we'll invoke from the
+command line. It uses several helper functions.  `env.host` will contain the
+server address that we've passed in:
+
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+from fabric.contrib.files import append, exists, sed
+from fabric.api import env, local, run
+import random
+
+REPO_URL = 'https://github.com/hjwp/book-example.git'  #<1>
+
+def deploy():
+    site_folder = '/home/%s/sites/%s' % (env.user, env.host)  #<2><3>
+    source_folder = site_folder + '/source'
+    _create_directory_structure_if_necessary(site_folder)
+    _get_latest_source(source_folder)
+    _update_settings(source_folder, env.host)
+    _update_virtualenv(source_folder)
+    _update_static_files(source_folder)
+    _update_database(source_folder)
+
+----
+
+<1> You'll want to update the `REPO_URL` variable with the URL of your
+    own Git repo on its code sharing site.
+
+<2> `env.host` will contain the address of the server we've specified at the 
+    command line, e.g., 'superlists.ottg.eu'.
+
+<3> `env.user` will contain the username you're using to log in to the server.
+
+
+Hopefully each of those helper functions have fairly self-descriptive names.
+Because any function in a fabfile can theoretically be invoked from the
+command line, I've used the convention of a leading underscore to indicate
+that they're not meant to be part of the "public API" of the fabfile. Here
+they are in chronological order.
+
+Here's how we build our directory structure, in a way that doesn't fall 
+down if it already exists:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _create_directory_structure_if_necessary(site_folder):
+    for subfolder in ('database', 'static', 'virtualenv', 'source'):
+        run('mkdir -p %s/%s' % (site_folder, subfolder))  #<1><2>
+----
+
+<1> `run` is the most common Fabric command.  It says "run this shell command
+    on the server".
+
+<2> `mkdir -p` is a useful flavor of `mkdir`, which is better in two ways: it 
+    can create directories several levels deep, and it only creates them 
+    if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory 'bar'
+    but also its parent directory 'foo' if it needs to.  It also won't complain
+    if 'bar' already 
+    exists.footnote:[If you're wondering why we're building up paths manually
+with `%s` instead of the `os.path.join` command we saw earlier, it's because
+`path.join` will use backslashes if you run the script from Windows, but we
+definitely want forward slashes on the server]
+
+
+Next we want to pull down our source code:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _get_latest_source(source_folder):
+    if exists(source_folder + '/.git'):  #<1>
+        run('cd %s && git fetch' % (source_folder,))  #<2><3>
+    else:
+        run('git clone %s %s' % (REPO_URL, source_folder))  #<4>
+    current_commit = local("git log -n 1 --format=%H", capture=True)  #<5>
+    run('cd %s && git reset --hard %s' % (source_folder, current_commit))  #<6>
+----
+
+<1> `exists` checks whether a directory or file already exists on the server.
+    We look for the '.git' hidden folder to check whether the repo has already
+    been cloned in that folder.
+
+<2> Many commands start with a `cd` in order to set the current working
+    directory. Fabric doesn't have any state, so it doesn't remember what
+    directory you're in from one `run` to the next.footnote:[There is a Fabric "cd" command, but I figured it was one thing
+    too many to add in this chapter.]
+
+<3> `git fetch` inside an existing repository pulls down all the latest commits
+    from the Web.
+
+<4> Alternatively we use `git clone` with the repo URL to bring down a fresh
+    source tree.
+
+<5> Fabric's `local` command runs a command on your local machine--it's just
+    a wrapper around `subprocess.Popen` really, but it's quite convenient.
+    Here we capture the output from that `git log` invocation to get the hash
+    of the current commit that's in your local tree.  That means the server
+    will end up with whatever code is currently checked out on your machine
+    (as long as you've pushed it up to the server).
+
+<6> We `reset --hard` to that commit, which will blow away any current changes
+    in the server's code directory.  
+
+NOTE: For this script to work, you need to have done a `git push` of your 
+current local commit, so that the server can pull it down and `reset` to it.
+If you see an error saying `Could not parse object`, try doing a `git push`.
+
+
+Next we update our settings file, to set the `ALLOWED_HOSTS` and `DEBUG`, and
+to create a new secret key:
+((("secret key")))
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_settings(source_folder, site_name):
+    settings_path = source_folder + '/superlists/settings.py'
+    sed(settings_path, "DEBUG = True", "DEBUG = False")  #<1>
+    sed(settings_path,
+        'ALLOWED_HOSTS =.+$',
+        'ALLOWED_HOSTS = ["%s"]' % (site_name,)  #<2>
+    )
+    secret_key_file = source_folder + '/superlists/secret_key.py'
+    if not exists(secret_key_file):  #<3>
+        chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
+        key = ''.join(random.SystemRandom().choice(chars) for _ in range(50))
+        append(secret_key_file, "SECRET_KEY = '%s'" % (key,))
+    append(settings_path, '\nfrom .secret_key import SECRET_KEY')  #<4><5>
+----
+
+<1> The Fabric `sed` command does a string substitution in a file; here it's
+    changing DEBUG from `True` to `False`.  
+
+<2> And here it is adjusting `ALLOWED_HOSTS`, using a regex to match the 
+    right line.
+
+<3> Django uses `SECRET_KEY` for some of its crypto--cookies and CSRF
+    protection. It's good practice to make sure the secret key on the server
+    is different from the one in your (possibly public) source code repo. This
+    code will generate a new key to import into settings, if there isn't one
+    there already (once you have a secret key, it should stay the same between
+    deploys).  Find out more in the
+    https://docs.djangoproject.com/en/1.10/topics/signing/[Django docs].
+
+<4> `append` just adds a line to the end of a file. (It's clever enough not to
+    bother if the line is already there, but not clever enough to automatically
+    add a newline if the file doesn't end in one. Hence the back-n.)
+
+<5> I'm using a 'relative import' (`from .secret_key` instead of `from
+    secret_key`) to be absolutely sure we're importing the local module,
+    rather than one from somewhere else on `sys.path`. I'll talk a bit
+    more about relative imports in the next chapter.
+    ((("relative import")))
+    
+NOTE: Other people, such as the eminent authors of the excellent
+    <<twoscoops,Two Scoops of Django>>, suggest using environment variables to
+    set things like secret keys; you should use whatever you feel is most
+    secure in your environment.
+
+Next we create or update the virtualenv:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_virtualenv(source_folder):
+    virtualenv_folder = source_folder + '/../virtualenv'
+    if not exists(virtualenv_folder + '/bin/pip'): #<1>
+        run('python3 -m venv %s' % (virtualenv_folder,))
+    run('%s/bin/pip install -r %s/requirements.txt' % ( #<2>
+            virtualenv_folder, source_folder
+    ))
+----
+
+
+<1> We look inside the virtualenv folder for the `pip` executable as a way of
+    checking whether it already exists.
+
+<2> Then we use `pip install -r` like we did earlier.
+
+
+Updating static files is a single command:
+
+[role="sourcecode small-code"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_static_files(source_folder):
+    run('cd %s && ../virtualenv/bin/python manage.py collectstatic --noinput' % ( # <1>
+        source_folder,
+    ))
+----
+
+<1> We use the virtualenv binaries folder whenever we need to run a Django 
+    'manage.py' command, to make sure we get the virtualenv version of Django,
+    not the system one.
+
+(((range="endofrange", startref="ix_deploymentsample")))
+(((range="endofrange", startref="ix_Fabricsample")))
+Finally, we update the database with `manage.py migrate`:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_database(source_folder):
+    run('cd %s && ../virtualenv/bin/python manage.py migrate --noinput' % (
+        source_folder,
+    ))
+----
+
+
+Trying It Out
+~~~~~~~~~~~~~
+
+We can try this command out on our existing staging site--the script should
+work for an existing site as well as for a new one.  If you like words with
+Latin roots, you might describe it as idempotent, which means it does nothing
+if run twice...
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*cd deploy_tools*]
+$ pass:quotes[*fab deploy:host=elspeth@superlists-staging.ottg.eu*]
+
+[superlists-staging.ottg.eu] Executing task 'deploy'
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: cd /home/elspeth/sites/superlists-staging.ottg
+[localhost] local: git log -n 1 --format=%H
+[superlists-staging.ottg.eu] run: cd /home/elspeth/sites/superlists-staging.ottg
+[superlists-staging.ottg.eu] out: HEAD is now at 85a6c87 Add a fabfile for autom
+[superlists-staging.ottg.eu] out: 
+
+[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False
+[superlists-staging.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists-staging.ott
+[superlists-staging.ottg.eu] run: echo 'SECRET_KEY = '\\''4p2u8fi6)bltep(6nd_3tt
+[superlists-staging.ottg.eu] run: echo 'from .secret_key import SECRET_KEY' >> "
+
+[superlists-staging.ottg.eu] run: /home/elspeth/sites/superlists-staging.ottg.eu
+[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade t
+[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade t
+[superlists-staging.ottg.eu] out: Cleaning up...
+[superlists-staging.ottg.eu] out: 
+
+[superlists-staging.ottg.eu] run: cd /home/elspeth/sites/superlists-staging.ottg
+[superlists-staging.ottg.eu] out: 
+[superlists-staging.ottg.eu] out: 0 static files copied, 11 unmodified.
+[superlists-staging.ottg.eu] out: 
+
+[superlists-staging.ottg.eu] run: cd /home/elspeth/sites/superlists-staging.ottg
+[superlists-staging.ottg.eu] out: Creating tables ...
+[superlists-staging.ottg.eu] out: Installing custom SQL ...
+[superlists-staging.ottg.eu] out: Installing indexes ...
+[superlists-staging.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
+[superlists-staging.ottg.eu] out: 
+Done.
+Disconnecting from superlists-staging.ottg.eu... done.
+----
+
+Awesome.  I love making computers spew out pages and pages of output like that
+(in fact I find it hard to stop myself from making little \'70s computer '<brrp,
+brrrp, brrrp>' noises like Mother in 'Alien').  If we look through it
+we can see it is doing our bidding: the `mkdir -p` commands go through
+happily, even though the directories already exist.  Next `git pull` pulls down
+the couple of commits we just made.  The `sed` and `echo >>` modify our
+'settings.py'. Then `pip install -r requirements.txt`, completes happily,
+noting that the existing virtualenv already has all the packages we need.
+`collectstatic` also notices that the static files are all already there, and
+finally the `migrate` completes without a hitch.
+((("Fabric", "configuration")))
+
+
+.Fabric Configuration
+*******************************************************************************
+If you are using an SSH key to log in, are storing it in the default location,
+and are using the same username on the server as locally, then Fabric should
+"just work".  If you aren't there are several tweaks you may need to apply
+in order to get the `fab` command to do your bidding. They revolve around the
+username, the location of the SSH key to use, or the password.
+
+You can pass these in to Fabric at the command line.  Check out:
+
+[subs="specialcharacters,quotes"]
+----
+$ *fab --help*
+----
+
+Or see the http://docs.fabfile.org[Fabric documentation] for more info.
+
+*******************************************************************************
+
+
+
+Deploying to Live
+^^^^^^^^^^^^^^^^^
+
+((("deployment", "deploying to live")))
+So, let's try using it for our live site!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*fab deploy:host=elspeth@superlists.ottg.eu*]
+
+$ fab deploy --host=superlists.ottg.eu
+[superlists.ottg.eu] Executing task 'deploy'
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu/databa
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu/static
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu/virtua
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu/source
+[superlists.ottg.eu] run: git clone https://github.com/hjwp/book-example.git /ho
+[superlists.ottg.eu] out: Cloning into '/home/elspeth/sites/superlists.ottg.eu/s
+[superlists.ottg.eu] out: remote: Counting objects: 3128, done.
+[superlists.ottg.eu] out: Receiving objects:   0% (1/3128)   
+[...]
+[superlists.ottg.eu] out: Receiving objects: 100% (3128/3128), 2.60 MiB | 829 Ki
+[superlists.ottg.eu] out: Resolving deltas: 100% (1545/1545), done.
+[superlists.ottg.eu] out: 
+
+[localhost] local: git log -n 1 --format=%H
+[superlists.ottg.eu] run: cd /home/elspeth/sites/superlists.ottg.eu/source && gi
+[superlists.ottg.eu] out: HEAD is now at 6c8615b use a secret key file
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' "$(e
+[superlists.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists.ottg.eu"]' >> "$(ec
+[superlists.ottg.eu] run: echo 'SECRET_KEY = '\\''mqu(ffwid5vleol%ke^jil*x1mkj-4
+[superlists.ottg.eu] run: echo 'from .secret_key import SECRET_KEY' >> "$(echo /
+[superlists.ottg.eu] run: python3 -m venv /home/elspeth/sites/superl
+[superlists.ottg.eu] out: Already using interpreter /usr/bin/python3
+[superlists.ottg.eu] out: Using base prefix '/usr'
+[superlists.ottg.eu] out: New python executable in /home/elspeth/sites/superlist
+[superlists.ottg.eu] out: Also creating executable in /home/elspeth/sites/superl
+[superlists.ottg.eu] out: Installing Setuptools............................done.
+[superlists.ottg.eu] out: Installing Pip...................................done.
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: /home/elspeth/sites/superlists.ottg.eu/source/../virtu
+[superlists.ottg.eu] out: Downloading/unpacking Django==1.10.4 (from -r /home/el
+[superlists.ottg.eu] out:   Downloading Django-1.10.4.tar.gz (8.0MB): 
+[...]
+[superlists.ottg.eu] out:   Downloading Django-1.10.4.tar.gz (8.0MB): 100%  8.0M
+[superlists.ottg.eu] out:   Running setup.py egg_info for package Django
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     warning: no previously-included files matching '__
+[superlists.ottg.eu] out:     warning: no previously-included files matching '*.
+[superlists.ottg.eu] out: Downloading/unpacking gunicorn==17.5 (from -r /home/el
+[superlists.ottg.eu] out:   Downloading gunicorn-17.5.tar.gz (367kB): 100%  367k
+[...]
+[superlists.ottg.eu] out:   Downloading gunicorn-17.5.tar.gz (367kB): 367kB down
+[superlists.ottg.eu] out:   Running setup.py egg_info for package gunicorn
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out: Installing collected packages: Django, gunicorn
+[superlists.ottg.eu] out:   Running setup.py install for Django
+[superlists.ottg.eu] out:     changing mode of build/scripts-3.3/django-admin.py
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     warning: no previously-included files matching '__
+[superlists.ottg.eu] out:     warning: no previously-included files matching '*.
+[superlists.ottg.eu] out:     changing mode of /home/elspeth/sites/superlists.ot
+[superlists.ottg.eu] out:   Running setup.py install for gunicorn
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     Installing gunicorn_paster script to /home/elspeth
+[superlists.ottg.eu] out:     Installing gunicorn script to /home/elspeth/sites/
+[superlists.ottg.eu] out:     Installing gunicorn_django script to /home/elspeth
+[superlists.ottg.eu] out: Successfully installed Django gunicorn
+[superlists.ottg.eu] out: Cleaning up...
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: cd /home/elspeth/sites/superlists.ottg.eu/source && ..
+[superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/source
+[superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/source
+[...]
+[superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/source
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] out: 11 static files copied.
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: cd /home/elspeth/sites/superlists.ottg.eu/source && ..
+[superlists.ottg.eu] out: Creating tables ...
+[superlists.ottg.eu] out: Creating table auth_permission
+[...]
+[superlists.ottg.eu] out: Creating table lists_item
+[superlists.ottg.eu] out: Installing custom SQL ...
+[superlists.ottg.eu] out: Installing indexes ...
+[superlists.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
+[superlists.ottg.eu] out: 
+
+
+Done.
+Disconnecting from superlists.ottg.eu... done.
+
+----
+
+
+'Brrp brrp brpp'. You can see the script follows a slightly different path,
+doing a `git clone` to bring down a brand new repo instead of a `git pull`.
+It also needs to set up a new virtualenv from scratch, including a fresh
+install of pip and Django. The `collectstatic` actually creates new files this
+time, and the `migrate` seems to have worked too.
+
+
+Nginx and Gunicorn Config Using sed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("sed (stream editor)")))
+((("Nginx")))
+((("Gunicorn")))
+What else do we need to do to get our live site into production? We refer to
+our provisioning notes, which tell us to use the template files to create our
+Nginx virtual host and the Systemd service.  How about a little Unix
+command-line magic?
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sed "s/SITENAME/superlists.ottg.eu/g" \
+    deploy_tools/nginx.template.conf | sudo tee \
+    /etc/nginx/sites-available/superlists.ottg.eu*
+----
+
+`sed` ("stream editor") takes a stream of text and performs edits on it. It's
+no accident that the fabric string substitution command has the same name.  In
+this case we ask it to substitute the string 'SITENAME' for the address of our
+site, with the `s/replaceme/withthis/g` syntax.  We pipe (`|`) the output of
+that to a root-user process (`sudo`), which uses `tee` to write what's piped to it
+to a file, in this case the Nginx sites-available virtualhost config file.
+
+We can now activate that file:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo ln -s ../sites-available/superlists.ottg.eu \
+    /etc/nginx/sites-enabled/superlists.ottg.eu*
+----
+
+Then we write the Systemd service:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server: *sed "s/SITENAME/superlists.ottg.eu/g" \
+    deploy_tools/gunicorn-systemd.template.service | sudo tee \
+    /etc/systemd/system/gunicorn-superlists.ottg.eu.service*
+----
+
+Finally we start both services:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo systemctl daemon-reload*
+elspeth@server:$ *sudo systemctl reload nginx*
+elspeth@server:$ *sudo systemctl enable gunicorn-superlists.ottg.eu*
+elspeth@server:$ *sudo systemctl start gunicorn-superlists.ottg.eu*
+----
+
+And we take a look at our site.  It works, hooray! 
+//IDEA: screenshot here
+
+Let's add the fabfile to our repo:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add deploy_tools/fabfile.py*
+$ *git commit -m "Add a fabfile for automated deploys"*
+----
+
+
+Git Tag the Release
+~~~~~~~~~~~~~~~~~~~
+
+((("Git", "tags")))
+One final bit of admin.  In order to preserve a historical marker,
+we'll use Git tags to mark the state of the codebase that reflects
+what's currently live on the server:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git tag LIVE*
+$ *export TAG=`date +DEPLOYED-%F/%H%M`*  # this generates a timestamp
+$ *echo $TAG* # should show "DEPLOYED-" and then the timestamp
+$ *git tag $TAG*
+$ *git push origin LIVE $TAG* # pushes the tags up
+----
+
+Now it's easy, at any time, to check what the difference is between
+our current codebase and what's live on the servers.  This will come
+in useful in a few chapters, when we look at database migrations. Have
+a look at the tag in the history:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git log --graph --oneline --decorate*
+----
+
+
+Anyway, you now have a live website!  Tell all your friends!  Tell your mum, if
+no one else is interested! And, in the next chapter, it's back to coding
+again.
+
+
+Further Reading
+~~~~~~~~~~~~~~~
+
+((("deployment", "further reading")))
+There's no such thing as the One True Way in deployment, and I'm no grizzled
+expert in any case.  I've tried to set you off on a reasonably sane path, but
+there's plenty of things you could do differently, and lots, lots more to learn
+besides.  Here are some resources I used for inspiration:
+
+
+* http://hynek.me/talks/python-deployments[Solid Python Deployments for Everybody] by Hynek Schlawack
+
+* http://bit.ly/U6tUo5[Git-based fabric deployments are awesome] by Dan Bravender
+
+* The deployment chapter of <<twoscoops,Two Scoops of Django>> by Dan
+  Greenfeld and Audrey Roy
+
+* http://12factor.net/[The 12-factor App] by the Heroku team
+
+(((range="endofrange", startref="ix_autodeploy")))
+(((range="endofrange", startref="ix_deploymentauto")))
+((("provisioning", "automation in")))
+((("Ansible")))
+((("automation, in provisioning")))
+For some ideas on how you might go about automating the provisioning step,
+and an alternative to Fabric called Ansible, go check out <<appendix3>>.
+
+.Automated Deployments
+*******************************************************************************
+
+Fabric::
+    Fabric lets you run commands on servers from inside Python scripts. This
+    is a great tool for automating server admin tasks.
+    ((("Fabric")))
+
+Idempotency::
+    If your deployment script is deploying to existing servers, you need to
+    design them so that they work against a fresh installation 'and' against
+    a server that's already configured.
+    ((("Idempotency")))
+
+Keep config files under source control::
+    Make sure your only copy of a config file isn't on the server!  They
+    are critical to your application, and should be under version control
+    like anything else.
+
+Automating provisioning::
+    Ultimately, 'everything' should be automated, and that includes spinning up
+    brand new servers and ensuring they have all the right software installed.
+    This will involve interacting with the API of your hosting provider.
+
+Configuration management tools::
+    Fabric is very flexible, but its logic is still based on scripting. More
+    advanced tools take a more "declarative" approach, and can make your life
+    even easier.  Ansible and Vagrant are two worth checking out (see
+    <<appendix3>>), but there are many more (Chef, Puppet, Salt, Juju...).
+    ((("configuration management tools", seealso="Fabric")))
+    
 *******************************************************************************
 

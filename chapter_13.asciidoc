@@ -1,866 +1,969 @@
-[[javascript-chapter]]
-== Dipping Our Toes, Very Tentatively, into JavaScript
+[[advanced-forms-chapter]]
+More Advanced Forms 
+-------------------
+
+WARNING: Major update released for Selenium 3.
+    If you started this book on or before Jan 30th 2017,
+    be aware: chapters have been renumbered,
+    so check this is the one you think it is,
+    and have a look at the new <<explicit-waits-chapter>>
+    for an indication of the changes you'll need in your FTs.
+    You should do a `pip install --upgrade selenium` too.
 
 
-[quote, 'John Calvin (as portrayed in http://onemillionpoints.blogspot.co.uk/2008/08/calvin-and-chipmunks.html[Calvin and the Chipmunks])']
-______________________________________________________________
-If the Good Lord had wanted us to enjoy ourselves, he wouldn't have granted us
-his precious gift of relentless misery.
-______________________________________________________________
+((("forms", "advanced", id="ix_formsadv", range="startofrange")))
+Now let's look at some more advanced forms usage.  We've helped our users
+to avoid blank list items, now let's help them avoid duplicate items.
 
-((("JavaScript", id="ix_Javascript", range="startofrange")))
-Our new validation logic is good, but wouldn't it be nice if the error messages
-disappeared once the user started fixing the problem? For that we'd need a
-teeny-tiny bit of JavaScript.
+This chapter goes into more intricate details of Django's form validation, and
+you have my official permission to skip it if you already know all about
+customising Django forms, or if you're reading this book for the TDD rather
+than for the Django.
 
-We are utterly spoiled by programming every day in such a joyful language as
-Python.  JavaScript is our punishment. So let's dip our toes in, very gingerly.
-
-WARNING: I'm going to assume you know the basics of JavaScript syntax. If you
-haven't read <<jsgoodparts,'JavaScript: The Good Parts'>>, go and get yourself
-a copy right away!  It's not a very long book.
+If you're still learning Django, there's good stuff in here.  If you
+want to skip ahead, that's OK too. Make sure you take a quick look at the aside
+on developer stupidity, and the recap on testing views at the end.
 
 
-Starting with an FT
-~~~~~~~~~~~~~~~~~~~
+Another FT for Duplicate Items
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's add a new functional test to the `ItemValidationTest` class:
+((("duplicates, eliminating", id="ix_duplicateselim", range="startofrange")))
+((("functional tests/testing (FT)", "for duplicate items", sortas="duplicateitems", id="ix_FTduplicates", range="startofrange")))
+We add a second test method to `ItemValidationTest`:
 
 [role="sourcecode"]
 .functional_tests/test_list_item_validation.py (ch13l001)
 [source,python]
 ----
-def test_error_messages_are_cleared_on_input(self):
-    # Edith starts a list and causes a validation error:
+def test_cannot_add_duplicate_items(self):
+    # Edith goes to the home page and starts a new list
     self.browser.get(self.server_url)
-    self.get_item_input_box().send_keys('Banter too thick\n')
-    self.check_for_row_in_list_table('1: Banter too thick')
-    self.get_item_input_box().send_keys('Banter too thick\n')
+    self.get_item_input_box().send_keys('Buy wellies')
+    self.get_item_input_box().send_keys(Keys.ENTER)
+    self.wait_for_row_in_list_table('1: Buy wellies')
 
-    error = self.browser.find_element_by_css_selector('.has-error')
-    self.assertTrue(error.is_displayed())  #<1>
+    # She accidentally tries to enter a duplicate item
+    self.get_item_input_box().send_keys('Buy wellies')
+    self.get_item_input_box().send_keys(Keys.ENTER)
 
-    # She starts typing in the input box to clear the error
-    self.get_item_input_box().send_keys('a')
-
-    # She is pleased to see that the error message disappears
-    error = self.browser.find_element_by_css_selector('.has-error')
-    self.assertFalse(error.is_displayed())  #<1>
+    # She sees a helpful error message
+    self.wait_for(lambda: self.assertEqual(
+        self.browser.find_element_by_css_selector('.has-error').text,
+        "You've already got this in your list"
+    ))
 ----
 
-<1> `is_displayed()` tells you whether an element is visible or not. We
-    can't just rely on checking whether the element is present in the DOM,
-    because now we're starting to hide elements.
+Why have two test methods rather than extending one, or having a new file
+and class?  It's a judgement call.  These two feel closely related; they're
+both about validation on the same input field, so it feels right to
+keep them in the same file.  On the other hand, they're logically separate
+enough that it's practical to keep them in different methods:
 
-((("helper functions/methods")))
-That fails appropriately, but before we move on:  three strikes and refactor! 
-We've got several places where we find the error element using CSS. Let's 
-move it to a helper function:
-
-[role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch13l002)
-[source,python]
-----
-    def get_error_element(self):
-        return self.browser.find_element_by_css_selector('.has-error')
-----
-
-TIP: I like to keep helper functions in the FT class that's using them, and
-    only promote them to the base class when they're actually needed elsewhere.
-    It stops the base class from getting too cluttered. YAGNI.
-
-And we then make three replacements in 'test_list_item_validation', like this
-one for example:
-
-[role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch13l003)
-[source,python]
-----
-    # She is pleased to see that the error message disappears
-    error = self.get_error_element()
-    self.assertFalse(error.is_displayed())
-----
-
-We have an expected failure:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests.test_list_item_validation*]
+$ pass:quotes[*python manage.py test functional_tests.test_list_item_validation*] 
 [...]
-    self.assertFalse(error.is_displayed())
-AssertionError: True is not false
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: .has-error
+
+Ran 2 tests in 9.613s
 ----
 
-And we can commit this as the first cut of our FT.
+OK, so we know the first of the two tests passes now. Is there a way to run
+just the failing one, I hear you ask?  Why yes indeed:
 
-
-Setting Up a Basic JavaScript Test Runner
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("JavaScript", "test runner setup")))
-Choosing your testing tools in the Python and Django world is fairly
-straightforward.  The standard library `unittest` package is perfectly
-adequate, and the Django test runner also makes a good default choice. 
-There are some alternatives out there&mdash;http://nose.readthedocs.org/[nose]
-is popular, https://github.com/CleanCut/green[Green] is the new kid on the
-block, and I've personally found http://pytest.org/[pytest] to be very
-impressive.  But there is a clear default option, and it's just
-fine.footnote:[Admittedly once you start looking for Python BDD tools, things
-are a little more confusing.]
-
-Not so in the JavaScript world!  We use YUI at work, but I thought I'd go out
-and see whether there were any new tools out there.  I was overwhelmed with
-options--jsUnit, Qunit, Mocha, Chutzpah, Karma, Jasmine, and many more.  And it
-doesn't end there either: as I had almost settled on one of them,
-Mocha,footnote:[Purely because it features the
-https://mochajs.org/#nyan[NyanCat] test runner.]
-I find out that I now need to choose an 'assertion framework' and a
-'reporter', and maybe a 'mocking library', and it never ends!
-
-((("JavaScript", "QUnit")))
-((("QUnit")))
-In the end I decided we should use http://qunitjs.com/[QUnit] because it's
-simple, has a similar look and feel to Python unit tests,  and it works well
-with jQuery.  
-
-Make a directory called 'tests' inside 'lists/static', and download the Qunit
-JavaScript and CSS files into it. We'll also put a file called 'tests.html' in
-there:
-
-[role="dofirst-ch13l004"]
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *tree lists/static/tests/*
-lists/static/tests/
-├── qunit-2.0.1.css
-├── qunit-2.0.1.js
-└── tests.html
+$ pass:quotes[*python manage.py test functional_tests.\
+test_list_item_validation.ItemValidationTest.test_cannot_add_duplicate_items*] 
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: .has-error
 ----
 
-The boilerplate for a QUnit HTML file looks like this, including a smoke test:
+
+Preventing Duplicates at the Model Layer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("model-layer validation", "preventing duplicates")))
+Here's what we really wanted to do.  It's a new test that checks that duplicate
+items in the same list raise an error:
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
-[source,html]
+.lists/tests/test_models.py (ch09l028)
+[source,python]
 ----
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width">
-  <title>Javascript tests</title>
-  <link rel="stylesheet" href="qunit-2.0.1.css">
-</head>
-<body>
-  <div id="qunit"></div>
-  <div id="qunit-fixture"></div>
-  <script src="qunit-2.0.1.js"></script>
-
-  <script>
-
-QUnit.test("smoke test", function (assert) {
-  assert.equal(1, 1, "Maths works!");
-});
-
-  </script>
-</body>
-</html>
+def test_duplicate_items_are_invalid(self):
+    list_ = List.objects.create()
+    Item.objects.create(list=list_, text='bla')
+    with self.assertRaises(ValidationError):
+        item = Item(list=list_, text='bla')
+        item.full_clean()
 ----
 
-Dissecting that, the important things to pick up are the fact that we pull
-in 'qunit-2.0.1.js' using the first `<script>` tag, and then use the second one
-to write the main body of tests.
+And, while it occurs to us, we add another test to make sure we don't 
+overdo it on our integrity constraints:
 
-If you open up the file using your web browser (no need to run the dev
-server, just find the file on disk) you should see something like 
-<<basic-qunit-screen>>.
 
-[[basic-qunit-screen]]
-.Basic QUnit screen
-image::images/qunit_smoke_test.png["Qunit screen showing 1 passing test"]
+[role="sourcecode"]
+.lists/tests/test_models.py (ch09l029)
+[source,python]
+----
+def test_CAN_save_same_item_to_different_lists(self):
+    list1 = List.objects.create()
+    list2 = List.objects.create()
+    Item.objects.create(list=list1, text='bla')
+    item = Item(list=list2, text='bla')
+    item.full_clean()  # should not raise
+----
 
-Looking at the test itself, we'll find many similarities with the Python
-tests we've been writing so far:
+I always like to put a little comment for tests which are checking 
+that a particular use case should 'not' raise an error; otherwise
+it can be hard to see what's being tested.
+
+----
+AssertionError: ValidationError not raised
+----
+
+If we want to get it deliberately wrong, we can do this:
+
+
+[role="sourcecode"]
+.lists/models.py (ch09l030)
+[source,python]
+----
+class Item(models.Model):
+    text = models.TextField(default='', unique=True)
+    list = models.ForeignKey(List, default=None)
+----
+
+That lets us check that our second test really does pick up on this
+problem:
+
+----
+Traceback (most recent call last):
+  File "/.../superlists/lists/tests/test_models.py", line 63, in
+test_CAN_save_same_item_to_different_lists
+    item.full_clean()  # should not raise
+    [...]
+django.core.exceptions.ValidationError: {'text': ['Item with this Text already
+exists.']}
+----
+
+
+[[testing-for-stupidity]]
+.An Aside on When to Test for Developer Stupidity
+*******************************************************************************
+
+One of the judgement calls in testing is when you should write tests that sound
+like "check we haven't done something stupid".  In general, you should be wary
+of these.
+((("test-driven development (TDD)", "and developer stupidity")))
+
+In this case, we've written a test to check that you can't save duplicate items
+to the same list.  Now, the simplest way to get that test to pass, the way in
+which you'd write the least lines of code, would be to make it impossible to
+save 'any' duplicate items.  That justifies writing another test, despite the
+fact that it would be a "stupid" or "wrong" thing for us to code.
+
+But you can't be writing tests for every possible way we could have coded
+something wrong.  If you have a function that adds two numbers, you can write
+a couple of tests:
 
 [role="skipme"]
-[source,javascript]
+[source,python]
 ----
-QUnit.test("smoke test", function (assert) { // <1>
-    assert.equal(1, 1, "Maths works!"); // <2>
-});
-----
-
-<1> The `QUnit.test` function defines a test case, a bit like 
-    `def test_something(self)` did in Python. Its first argument is a name for
-    the test, and the second is a function for the body of the test.
-
-<2> The `assert.equal` function is an assertion; very much like `assertEqual`,
-    it compares two arguments. Unlike in Python, though, the message is
-    displayed both for failures and for passes, so it should be phrased as a
-    positive rather than a negative.
-
-Why not try changing those arguments to see a deliberate failure?
-
-
-Using jQuery and the Fixtures Div
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("JavaScript", "jQuery and Fixtures Div", id="ix_JSjQuery", range="startofrange")))
-((("jQuery", id="ix_jQuery", range="startofrange")))
-((("fixtures", "in JavaScript tests")))
-Let's get a bit more comfortable with what our testing framework can do,
-and start using a bit of jQuery -- an almost indispensable library that
-gives you a cross-browser compatible API for manipulating the DOM.
-
-NOTE: If you've never seen jQuery before, I'm going to try and explain it as we
-    go, just enough so that you won't be totally lost; but this isn't a jQuery
-    tutorial.  You may find it helpful to spend an hour or two investigating
-    jQuery at some point during this chapter.
-
-Download the latest jQuery from https://jquery.com/download/[jquery.com] and
-save it into the *lists/static* folder.
-
-Then let's start using it in our tests file, along with adding a couple of
-HTML elements:
-
-[role="sourcecode dofirstch13l005"]
-.lists/static/tests/tests.html
-[source,html]
-----
-  <div id="qunit-fixture"></div>
-
-  <form>  <1>
-    <input name="text" />
-    <div class="has-error">Error text</div>
-  </form>
-
-  <script src="../jquery-3.1.1.min.js"></script> <2>
-  <script src="qunit-2.0.1.js"></script>
-
-  <script>
-
-QUnit.test("smoke test", function (assert) {
-  assert.equal($('.has-error').is(':visible'), true);  //<3><4>
-  $('.has-error').hide();  //<5>
-  assert.equal($('.has-error').is(':visible'), false);  //<6>
-});
-
-  </script>
-----
-//ch13l006
-
-<1> The `<form>` and its contents are there to represent what will be
-    on the real list page.
-
-<2> Here's where we load jquery.
-
-<3> jQuery magic starts here!  `$` is the jQuery Swiss Army knife. It's
-    used to find bits of the DOM.  Its first argument is a CSS selector; here,
-    we're telling it to find all elements that have the class "error".  It
-    returns an object that represents one or more DOM elements. That, in turn,
-    has various useful methods that allow us to manipulate or find out about
-    those elements. 
-
-<4> One of which is `.is`, which can tell us whether an element matches a
-    particular CSS property. Here we use `:visible` to check whether the
-    element is displayed or hidden.
-
-<5> We then use jQuery's `.hide()` method to hide the div.  Behind the
-    scenes, it dynamically sets a `style="display: none"` on the element. 
-
-<6> And finally we check that it's worked, with a second `assert.equal`.
-
-
-If you refresh the browser, you should see that all passes:
-
-.Expected results from QUnit in the browser
-[role="qunit-output"]
-----
-2 assertions of 2 passed, 0 failed.
-1. smoke test (2)
+assert adder(1, 1) == 2
+assert adder(2, 1) == 3
 ----
 
-Time to see how fixtures work. Let's just dupe up this test:
+But you have the right to assume that the implementation isn't deliberately
+screwey or perverse:
+
+[role="skipme"]
+[source,python]
+----
+def adder(a, b):
+    # unlikely code!
+    if a == 3:
+        return 666
+    else:
+        return a + b
+----
+
+One way of putting it is that you should trust yourself not to do something
+'deliberately' stupid, but not something 'accidentally' stupid.
+*******************************************************************************
+
+Just like `ModelForm`'s, models have a `class Meta`, and that's where we can
+implement a constraint which says that that an item must be unique for a
+particular list, or in other words, that `text` and `list` must be unique
+together:
+
+[role="sourcecode"]
+.lists/models.py (ch09l031)
+[source,python]
+----
+class Item(models.Model):
+    text = models.TextField(default='')
+    list = models.ForeignKey(List, default=None)
+
+    class Meta:
+        unique_together = ('list', 'text')
+----
+
+You might want to take a quick peek at the 
+https://docs.djangoproject.com/en/1.10/ref/models/options/[Django docs on model
+`Meta` attributes] at this point.
+
+
+A Little Digression on Queryset Ordering and String Representations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+//TODO: actually, this error will never appear with the new migrations
+// framework. could drop this whole section?
+((("QuerySet", id="ix_quersetordering", range="startofrange")))
+When we run the tests they reveal an unexpected failure:
+
+[role="skipme"]
+----
+======================================================================
+FAIL: test_saving_and_retrieving_items
+(lists.tests.test_models.ListAndItemModelsTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/.../superlists/lists/tests/test_models.py", line 31, in
+test_saving_and_retrieving_items
+    self.assertEqual(first_saved_item.text, 'The first (ever) list item')
+AssertionError: 'Item the second' != 'The first (ever) list item'
+- Item the second
+[...]
+----
+
+NOTE: Depending on your platform and its SQLite installation, you may
+    not see this error. You can follow along anyway; the code and tests are
+    interesting in their own right.
+
+That's a bit of a puzzler. A bit of print-based debugging:
+
+[role="sourcecode skipme"]
+.lists/tests/test_models.py
+[source,python]
+----
+    first_saved_item = saved_items[0]
+    print(first_saved_item.text)
+    second_saved_item = saved_items[1]
+    print(second_saved_item.text)
+    self.assertEqual(first_saved_item.text, 'The first (ever) list item')
+----
+
+Will show us...
+
+[role="skipme"]
+----
+.....Item the second
+The first (ever) list item
+F.....
+----
+
+It looks like our uniqueness constraint has messed with the default ordering
+of queries like `Item.objects.all()`.  Although we already have a failing test,
+it's best to add a new test that explicitly tests for ordering:
 
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
-[source,html]
+.lists/tests/test_models.py (ch09l032)
+[source,python]
 ----
-  <script>
-
-QUnit.test("smoke test", function (assert) {
-  assert.equal($('.has-error').is(':visible'), true);
-  $('.has-error').hide();
-  assert.equal($('.has-error').is(':visible'), false);
-});
-QUnit.test("smoke test 2", function (assert) {
-  assert.equal($('.has-error').is(':visible'), true);
-  $('.has-error').hide();
-  assert.equal($('.has-error').is(':visible'), false);
-});
-
-  </script>
+    def test_list_ordering(self):
+        list1 = List.objects.create()
+        item1 = Item.objects.create(list=list1, text='i1')
+        item2 = Item.objects.create(list=list1, text='item 2')
+        item3 = Item.objects.create(list=list1, text='3')
+        self.assertEqual(
+            Item.objects.all(),
+            [item1, item2, item3]
+        )
 ----
 
-Slightly unexpectedly, we find one of them fails--see <<one-test-is-failing>>.
 
-[[one-test-is-failing]]
-.One of the two tests is failing
-image::images/twdp_1302.png["Qunit screen showing only 1 passing test"]
+That gives us a new failure, but it's not a very readable one:
 
-What's happening here is that the first test hides the error div, so when 
-the second test runs, it starts out invisible. 
-
-NOTE: QUnit tests do not run in a predictable order, so you can't rely on the
-    first test running before the second one.  Try hitting refresh a few times,
-    and you'll find that which test fails changes...
-
-We need some way of tidying up between tests, a bit like `setUp` and
-`tearDown`, or like the Django test runner would reset the database between
-each test.  The `qunit-fixture` div is what we're looking for.  Move the form
-in there:
-
-[role="sourcecode"]
-.lists/static/tests/tests.html
-[source,html]
 ----
-  <div id="qunit"></div>
-  <div id="qunit-fixture">
-      <form>
-          <input name="text" />
-          <div class="has-error">Error text</div>
-      </form>
-  </div>
-
-  <script src="../jquery-3.1.1.min.js"></script>
-----
-//008
-
-(((range="endofrange", startref="ix_jQuery")))
-(((range="endofrange", startref="ix_JSjQuery")))
-As you've probably guessed, jQuery resets the content of the fixtures div
-before each test, so that gets us back to two neatly passing tests:
-
-[role="qunit-output"]
-----
-4 assertions of 4 passed, 0 failed.
-1. smoke test (2)
-2. smoke test 2 (2)
+AssertionError: <QuerySet [<Item: Item object>, <Item: Item object>, <Item:
+Item object>]> != [<Item: Item object>, <Item: Item object>, <Item: Item
+object>]
 ----
 
-Building a JavaScript Unit Test for Our Desired Functionality
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+((("string representation")))
+We need a better string representation for our objects.  Let's add another
+unit test:
 
-((("functional tests/testing (FT)", "in JavaScript", sortas="javascript", id="ix_FTJava", range="startofrange")))
-((("JavaScript", "functional test (FT) building in", id="ix_JavaFT", range="startofrange")))
-Now that we're acquainted with our JavaScript testing tools, we can switch
-back to just one test, and start to write the real thing:
 
-[role="sourcecode"]
-.lists/static/tests/tests.html
-[source,html]
-----
-  <script>
-
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  $('input[name="text"]').trigger('keypress'); // <1>
-  assert.equal($('.has-error').is(':visible'), false); 
-});
-
-  </script>
-----
-
-<1> The jQuery `.trigger` method is mainly used for testing.  It says "fire off
-    a JavScript DOM event on the element(s)".  Here we use the 'keypress'
-    event, which is fired off by the browser behind the scenes whenever a user
-    types something into a particular input element. 
-
-NOTE: jQuery is hiding a lot of complexity behind the scenes here.  Check
-    out http://www.quirksmode.org/dom/events/index.html[Quirksmode.org] for a
-    view on the hideous nest of differences between the different browsers'
-    interpretation of events.  The reason that jQuery is so popular is that it
-    just makes all this stuff go away.
-
-And that gives us:
-
-[role="qunit-output"]
-----
-0 assertions of 1 passed, 1 failed.
-1. errors should be hidden on keypress (1, 0, 1)
-    1. failed
-        Expected: false
-        Result: true
-----
-
-Let's say we want to keep our code in a standalone JavaScript file called
-'list.js'.
+NOTE: Ordinarily you would be wary of adding more failing tests when you
+    already have some--it makes reading test output that much more complicated,
+    and just generally makes you nervous. Will we ever get back to a working
+    state? In this case, they're all quite simple tests, so I'm not worried.
 
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
-[source,html]
+.lists/tests/test_models.py (ch13l008)
+[source,python]
 ----
-  <script src="../jquery-3.1.1.min.js"></script>
-  <script src="../list.js"></script>
-  <script src="qunit-2.0.1.js"></script>
+def test_string_representation(self):
+    item = Item(text='some text')
+    self.assertEqual(str(item), 'some text')
+----
 
-  <script>
+That gives us:
+
+----
+AssertionError: 'Item object' != 'some text'
+----
+
+As well as the other two failures.  Let's start fixing them all now:
+
+
+[role="sourcecode"]
+.lists/models.py (ch09l034)
+[source,python]
+----
+class Item(models.Model):
+    [...]
+
+    def __str__(self):
+        return self.text
+----
+
+NOTE: in Python 2.x versions of Django, the string representation method used
+    to be `__unicode__`. Like much string handling, this is simplified in
+    Python 3. See the
+    https://docs.djangoproject.com/en/1.10/topics/python3/#str-and-unicode-methods[Django docs].
+
+
+Now we're down to two failures, and the ordering test has a more readable
+failure message:
+
+----
+AssertionError: <QuerySet [<Item: i1>, <Item: item 2>, <Item: 3>]> != [<Item:
+i1>, <Item: item 2>, <Item: 3>]
+
+----
+
+We can fix that in the `class Meta`:
+
+[role="sourcecode"]
+.lists/models.py (ch09l035)
+[source,python]
+----
+    class Meta:
+        ordering = ('id',)
+        unique_together = ('list', 'text')
+----
+
+Does that work?
+
+----
+AssertionError: <QuerySet [<Item: i1>, <Item: item 2>, <Item: 3>]> != [<Item:
+i1>, <Item: item 2>, <Item: 3>]
+----
+
+Urp?  It has worked; you can see the items 'are' in the same order, but the
+tests are confused.  I keep running into this problem actually--Django
+querysets don't compare well with lists.  We can fix it by converting the
+queryset to a listfootnote:[You could also check out `assertSequenceEqual` from `unittest`, and
+`assertQuerysetEqual` from Django's test tools, although I confess when I last
+looked at `assertQuerysetEqual` I was quite baffled...]
+in our test:
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch09l036)
+[source,python]
+----
+    self.assertEqual(
+        list(Item.objects.all()),
+        [item1, item2, item3]
+    )
+----
+
+That works; we get a fully passing test suite:
+(((range="endofrange", startref="ix_quersetordering")))
+----
+OK
+----
+
+[[rewrite-model-test]]
+Rewriting the Old Model Test 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("model-layer validation", "changes to test")))
+That long-winded model test did serendipitously help us find an unexpected
+bug, but now it's time to rewrite it. I wrote it in a very verbose style to
+introduce the Django ORM, but in fact, now that we have the explicit test for
+ordering, we can get the same coverage from a couple of much shorter tests. 
+Delete `test_saving_and_retrieving_items` and replace with this:
+
+[role="sourcecode"]
+.lists/tests/test_models.py (ch13l010)
+[source,python]
+----
+class ListAndItemModelsTest(TestCase):
+
+    def test_default_text(self):
+        item = Item()
+        self.assertEqual(item.text, '')
+
+        
+    def test_item_is_related_to_list(self):
+        list_ = List.objects.create()
+        item = Item()
+        item.list = list_
+        item.save()
+        self.assertIn(item, list_.item_set.all())
+
     [...]
 ----
+ 
+That's more than enough really--a check of the default values of attributes
+on a freshly initialized model object is enough to sanity-check that we've
+probably set some fields up in 'models.py'.  The "item is related to list" test
+is a real "belt and braces" test to make sure that our foreign key relationship
+works.
 
-Here's the minimal code to get that test to pass:
-
-[role="sourcecode"]
-.lists/static/list.js
-[source,javascript]
-----
-$('.has-error').hide();
-----
-
-And it works...
-
-[role="qunit-output"]
-----
-1 assertions of 1 passed, 0 failed.
-1. errors should be hidden on keypress (1)
-----
-
-But it has an obvious problem. We'd better add another test:
+While we're at it, we can split this file out into tests for `Item` and tests
+for `List` (there's only one of the latter, `test_get_absolute_url`:
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
-[source,javascript]
+.lists/tests/test_models.py (ch13l011)
+[source,python]
 ----
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  $('input[name="text"]').trigger('keypress');
-  assert.equal($('.has-error').is(':visible'), false); 
-});
+class ItemModelTest(TestCase):
 
-QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
-  assert.equal($('.has-error').is(':visible'), true);
-});
+    def test_default_text(self):
+        [...]
+
+
+
+class ListModelTest(TestCase):
+
+    def test_get_absolute_url(self):
+        [...]
 ----
 
-Now we get an expected failure:
+That's neater and tidier:
 
-[role="qunit-output"]
+[subs="specialcharacters,macros"]
 ----
-1 assertions of 2 passed, 1 failed.
-1. errors should be hidden on keypress (1)
-2. errors aren't hidden if there is no keypress (1, 0, 1)
-    1. failed
-        Expected: true
-        Result: false
+$ pass:quotes[*python manage.py test lists*]
 [...]
-----
-
-And we can make a more realistic implementation:
-
-[role="sourcecode"]
-.lists/static/list.js
-[source,javascript]
-----
-$('input[name="text"]').on('keypress', function () { //<1>
-  $('.has-error').hide();
-});
-----
-
-<1> This line says: find any input elements whose name attribute is "text", and
-    add an event listener which reacts 'on' keypress events.  The event
-    listener is the inline function, which hides all elements that have the
-    class `.has-error`.
-
-
-Does it work?  No.
-
-
-[role="qunit-output"]
-----
-1 assertions of 2 passed, 1 failed.
-1. errors should be hidden on keypress (1, 0, 1)
-    1. failed
-        Expected: false
-        Result: true
-[...]
-2. errors aren't hidden if there is no keypress (1)
-----
-
-Curses!  Why is that?
-
-Fixtures, execution order and global state: key challenges of js testing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-One of the difficulties with JavaScript in general, and testing in particular,
-is in understanding the order of execution of our code, ie, what happens when.
-When does our code in 'list.js' run, and when does each of our tests run?  And
-how does that interact with global state, ie the DOM of our web page, and the
-fixtures that we've already seen are supposed to be cleaned up after each test?
-
-
-console.log for debug printing
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Let's add a couple of debug prints, or "console.logs":
-
-[role="sourcecode"]
-.lists/static/tests/tests.html
-[source,html]
-----
-  <script>
-
-console.log('qunit tests start');
-
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  console.log('in test 1');
-  $('input[name="text"]').trigger('keypress');
-  assert.equal($('.has-error').is(':visible'), false);
-});
-
-QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
-  console.log('in test 2');
-  assert.equal($('.has-error').is(':visible'), true);
-});
-  </script>
-----
-
-And the same in our actual js code:
-
-
-[role="sourcecode"]
-.lists/static/list.js (ch13l015)
-[source,javascript]
-----
-$('input[name="text"]').on('keypress', function () {
-  console.log('in keypress handler');
-  $('.has-error').hide();
-});
-console.log('list.js loaded');
-----
-
-
-Re-run the tests, opening up the browser debug console (Ctrl+Shift+I usually)
-and you should see something like this:
-
-[[qunit-with-js-console]]
-.Qunit tests with console.log debug outputs
-image::images/qunit_with_console_logs.png["Qunit tests with console.log debug outputs"]
-
-What do we see?
-
-* 'list.js' loads first.  So our event listener should be attached to the
-  input element
-* then our QUnit tests file loads
-* then each test runs.
-
-But, thinking it through, each test is going to "reset" the fixtures div, which
-means destroying and recreating the input element.  So the input element that
-'list.js' sees and attaches the event listener to will be replaced with a new
-one by the time each test runs.
-
-
-
-Using an initialize function for more control over execution time
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-We need more control over the order of execution of our JavaScript.  Rather
-than just relying on the code in 'list.js' running whenever it is loaded by
-a `<script>` tag, we can use a common pattern, which is to define an
-"initialize" function, and call that when we want to in our tests (and
-later in real life).
-
-
-[role="sourcecode"]
-.lists/static/list.js
-[source,javascript]
-----
-var initialize = function () {
-  console.log('initialize called');
-  $('input[name="text"]').on('keypress', function () {
-    console.log('in keypress handler');
-    $('.has-error').hide();
-  });
-};
-console.log('list.js loaded');
-----
-
-And in our tests file, we call initialize with each test:
-
-
-[role="sourcecode"]
-.lists/static/tests/tests.html (ch13l017)
-[source,javascript]
-----
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  console.log('in test 1');
-  initialize();
-  $('input[name="text"]').trigger('keypress');
-  assert.equal($('.has-error').is(':visible'), false);
-});
-
-QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
-  console.log('in test 2');
-  initialize();
-  assert.equal($('.has-error').is(':visible'), true);
-});
-
-----
-
-Now we should see our tests pass, and our debug output should make
-more sense:
-
-[role="qunit-output"]
-----
-2 assertions of 2 passed, 0 failed.
-1. errors should be hidden on keypress (1)
-2. errors aren't hidden if there is no keypress (1)
-
-list.js loaded
-qunit tests start
-in test 1
-initialize called
-in keypress handler
-in test 2
-initialize called
-----
-
-Hooray!  Let's strip out those console.logs
-
-[role="sourcecode"]
-.lists/static/list.js
-[source,javascript]
-----
-var initialize = function () {
-  $('input[name="text"]').on('keypress', function () {
-    $('.has-error').hide();
-  });
-};
-----
-
-And from the tests too...
-
-[role="sourcecode"]
-.lists/static/tests/tests.html
-[source,javascript]
-----
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  initialize();
-  $('input[name="text"]').trigger('keypress');
-  assert.equal($('.has-error').is(':visible'), false);
-});
-
-QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
-  initialize();
-  assert.equal($('.has-error').is(':visible'), true);
-});
-----
-
-
-And for the moment of truth, we'll pull in jQuery, our script, and
-invoke our initialize function on our real pages:
-
-
-[role="sourcecode"]
-.lists/templates/base.html (ch13l020)
-[source,html]
-----
-</div>
-<script src="/static/jquery-3.1.1.min.js"></script>
-<script src="/static/list.js"></script>
-
-<script>
-initialize();
-</script>
-
-</body>
-</html>
-----
-
-NOTE: It's good practice to put your script-loads at the end of your
-body HTML, as it means the user doesn't have to wait for all your
-JavaScript to load before they can see something on the page.  It also
-helps to make sure most of the DOM has loaded before any scripts run.
-
-Aaaand we run our FT:
-
-[subs="specialcharacters,quotes"]
-----
-$ *python manage.py test functional_tests.test_list_item_validation.\
-ItemValidationTest.test_error_messages_are_cleared_on_input*
-[...]
-
-Ran 1 test in 3.023s
+Ran 29 tests in 0.092s
 
 OK
 ----
 
-Hooray!  That's a commit!
 
+Some Integrity Errors Do Show Up on Save
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("model-layer validation", "integrity errors")))
+((("integrity errors")))
+A final aside before we move on. Do you remember I mentioned in
+<<manual-validation-chapter>> that some data integrity errors 'are' picked up
+on save?  It all depends on whether the integrity constraint is actually being
+enforced by the database.
+
+Try running `makemigrations` and you'll see that Django wants to add the 
+`unique_together` constraint to the database itself, rather than just having
+it as an application-layer constraint:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py makemigrations*]
+Migrations for 'lists':
+  lists/migrations/0005_auto_20140414_2038.py:
+    - Change Meta options on item
+    - Alter unique_together for item (1 constraint(s))
+----
+
+Now if we change our duplicates test to do a `.save` instead of a
+`.full_clean`...
+
+[role="sourcecode"]
+.lists/tests/test_models.py
+[source,python]
+----
+    def test_duplicate_items_are_invalid(self):
+        list_ = List.objects.create()
+        Item.objects.create(list=list_, text='bla')
+        with self.assertRaises(ValidationError):
+            item = Item(list=list_, text='bla')
+            # item.full_clean()
+            item.save()
+----
+
+It gives:
+
+----
+ERROR: test_duplicate_items_are_invalid (lists.tests.test_models.ItemModelTest)
+[...]
+    return Database.Cursor.execute(self, query, params)
+sqlite3.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
+lists_item.text
+[...]
+django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
+lists_item.text
+----
+
+You can see that the error bubbles up from SQLite, and it's a different
+error to the one we want, an `IntegrityError` instead of a `ValidationError`.
+
+
+Let's revert our changes to the test, and see them all passing again:
+
+[role="dofirst-ch13l013"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+Ran 29 tests in 0.092s
+OK
+----
+
+And now it's time to commit our model-layer changes:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:[<strong>git status</strong>] # should show changes to tests + models and new migration
+# let's give our new migration a better name
+$ pass:[<strong>mv lists/migrations/0005_auto* lists/migrations/0005_list_item_unique_together.py</strong>]
+$ pass:[<strong>git add lists</strong>]
+$ pass:[<strong>git diff --staged</strong>]
+$ pass:[<strong>git commit -am "Implement duplicate item validation at model layer"</strong>]
+----
+
+
+Experimenting with Duplicate Item Validation at the Views Layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("model-layer validation", "at views level", sortas="views")))
+Let's try running our FT, just to see where we are:
+
+----
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: .has-error
+
+----
+
+In case you didn't see it as it flew past, the site is 500ing.footnote:[It's showing a server error, code 500.  Gotta get with the jargon!]
+A quick unit test at the view level ought to clear this up:
+
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch13l014)
+[source,python]
+----
+class ListViewTest(TestCase):
+    [...]
+
+    def test_for_invalid_input_shows_error_on_page(self):
+        [...]
+
+
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+        list1 = List.objects.create()
+        item1 = Item.objects.create(list=list1, text='textey')
+        response = self.client.post(
+            '/lists/%d/' % (list1.id,),
+            data={'text': 'textey'}
+        )
+
+        expected_error = escape("You've already got this in your list")
+        self.assertContains(response, expected_error)
+        self.assertTemplateUsed(response, 'list.html')
+        self.assertEqual(Item.objects.all().count(), 1)
+----
+
+Gives:
+
+----
+django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
+lists_item.text
+----
+
+We want to avoid integrity errors! Ideally, we want the call to `is_valid` to
+somehow notice the duplication error before we even try to save, but to do
+that, our form will need to know what list it's being used for, in advance.
+
+Let's put a skip on that test for now:
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch13l015)
+[source,python]
+----
+from unittest import skip
+[...]
+
+    @skip
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+----
+
+
+A More Complex Form to Handle Uniqueness Validation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The form to create a new list only needs to know one thing, the new item text.
+A form which validates that list items are unique needs to know the list too.
+Just like we overrode the save method on our `ItemForm`, this time we'll
+override the constructor on our new form class so that it knows what list it
+applies to.
+
+We duplicate our tests for the previous form, tweaking them slightly:
+
+[role="sourcecode"]
+[source,python]
+.lists/tests/test_forms.py (ch13l016)
+----
+from lists.forms import (
+    DUPLICATE_ITEM_ERROR, EMPTY_ITEM_ERROR,
+    ExistingListItemForm, ItemForm
+)
+[...]
+
+class ExistingListItemFormTest(TestCase):
+
+    def test_form_renders_item_text_input(self):
+        list_ = List.objects.create()
+        form = ExistingListItemForm(for_list=list_)
+        self.assertIn('placeholder="Enter a to-do item"', form.as_p())
+
+
+    def test_form_validation_for_blank_items(self):
+        list_ = List.objects.create()
+        form = ExistingListItemForm(for_list=list_, data={'text': ''})
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['text'], [EMPTY_ITEM_ERROR])
+
+
+    def test_form_validation_for_duplicate_items(self):
+        list_ = List.objects.create()
+        Item.objects.create(list=list_, text='no twins!')
+        form = ExistingListItemForm(for_list=list_, data={'text': 'no twins!'})
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
+----
+
+We can iterate through a few TDD cycles (I won't show them all, but I'm sure
+you'll do them, right? Remember, the Goat sees all.) until we get a form with a
+custom constructor, which just ignores its `for_list` argument:
+
+[role="sourcecode"]
+.lists/forms.py (ch09l071)
+[source,python]
+----
+DUPLICATE_ITEM_ERROR = "You've already got this in your list"
+[...]
+class ExistingListItemForm(forms.models.ModelForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+----
+
+Gives:
+
+----
+ValueError: ModelForm has no model class specified.
+----
+
+Now let's see if making it inherit from our existing form helps:
+
+[role="sourcecode"]
+.lists/forms.py (ch09l072)
+[source,python]
+----
+class ExistingListItemForm(ItemForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+----
+
+That takes us down to just one failure:
+
+----
+FAIL: test_form_validation_for_duplicate_items
+(lists.tests.test_forms.ExistingListItemFormTest)
+    self.assertFalse(form.is_valid())
+AssertionError: True is not false
+----
+
+The next step requires a little knowledge of Django's internals, but you
+can read up on it in the Django docs on 
+https://docs.djangoproject.com/en/1.10/ref/models/instances/#validating-objects[model
+validation] and
+https://docs.djangoproject.com/en/1.10/ref/forms/validation/[form validation].
+
+Django uses a method called `validate_unique`, both on forms and models, and
+we can use both, in conjunction with the `instance` attribute:
+
+[role="sourcecode"]
+.lists/forms.py
+[source,python]
+----
+from django.core.exceptions import ValidationError
+[...]
+
+class ExistingListItemForm(ItemForm):
+
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.list = for_list
+
+
+    def validate_unique(self):
+        try:
+            self.instance.validate_unique()
+        except ValidationError as e:
+            e.error_dict = {'text': [DUPLICATE_ITEM_ERROR]}
+            self._update_errors(e)
+----
+//ch10l018
+
+That's a bit of Django voodoo right there, but we basically take the validation
+error, adjust its error message, and then pass it back into the form.
+(((range="endofrange", startref="ix_duplicateselim")))
+(((range="endofrange", startref="ix_FTduplicates")))
+And we're there!  A quick commit:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add lists/static*
-$ *git commit -m"add jquery, qunit tests, list.js with keypress listeners"*
+$ *git diff*
+$ *git commit -a*
 ----
 
 
+Using the Existing List Item Form in the List View
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Columbo Says: Onload Boilerplate and Namespacing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Now let's see if we can put this form to work in our view.
 
-((("JavaScript", "namespacing")))
-'Oh, and one more thing'.  Our `initialize` function name is too generic--what
-if we include some third-party JavaScript tool later that also defines a 
-function called `initialize`? Let's give ourselves a "namespace" that's
-unlikely to be used by anyone else.
+We remove the skip, and while we're at it, we can use our new constant. Tidy.
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch13l049)
+[source,python]
+----
+from lists.forms import (
+    DUPLICATE_ITEM_ERROR, EMPTY_ITEM_ERROR,
+    ExistingListItemForm, ItemForm,
+)
+[...]
+
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+        [...]
+        expected_error = escape(DUPLICATE_ITEM_ERROR)
+----
+
+That brings back out integrity error:
+
+----
+django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
+lists_item.text
+----
+
+Our fix for this is to switch to using the new form class.  Before we implement
+it, let's find the tests where we check the form class, and adjust them:
+
+[role="sourcecode"]
+.lists/tests/test_views.py (ch13l050)
+[source,python]
+----
+class ListViewTest(TestCase):
+[...]
+
+    def test_displays_item_form(self):
+        list_ = List.objects.create()
+        response = self.client.get('/lists/%d/' % (list_.id,))
+        self.assertIsInstance(response.context['form'], ExistingListItemForm)
+        self.assertContains(response, 'name="text"')
+
+    [...]
+
+    def test_for_invalid_input_passes_form_to_template(self):
+        response = self.post_invalid_input()
+        self.assertIsInstance(response.context['form'], ExistingListItemForm)
+----
+
+That gives us:
+
+----
+AssertionError: <ItemForm bound=False, valid=False, fields=(text)> is not an
+instance of <class 'lists.forms.ExistingListItemForm'>
+----
+
+So we can adjust the view:
+
+[role="sourcecode"]
+.lists/views.py (ch13l051)
+[source,python]
+----
+from lists.forms import ExistingListItemForm, ItemForm
+[...]
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    form = ExistingListItemForm(for_list=list_)
+    if request.method == 'POST':
+        form = ExistingListItemForm(for_list=list_, data=request.POST)
+        if form.is_valid():
+            form.save()
+            [...]
+----
+
+
+And that 'almost' fixes everything, except for an unexpected fail:
+
+----
+TypeError: save() missing 1 required positional argument: 'for_list'
+----
+
+Our custom save method from the parent `ItemForm` is no longer needed. 
+Let's make a quick unit test for that:
 
 
 [role="sourcecode"]
-.lists/static/list.js
-[source,javascript]
+.lists/tests/test_forms.py (ch13l053)
+[source,python]
 ----
-window.Superlists = {}; //<1>
-window.Superlists.initialize = function () { //<2>
-  $('input[name="text"]').on('keypress', function () {
-    $('.has-error').hide();
-  });
-};
+def test_form_save(self):
+    list_ = List.objects.create()
+    form = ExistingListItemForm(for_list=list_, data={'text': 'hi'})
+    new_item = form.save()
+    self.assertEqual(new_item, Item.objects.all()[0])
 ----
 
-<1> We explicitly declare an object as a property of the "window" global,
-    giving it a name that we think no-one else is likely to use
-
-<2> Then we make our `initialize` function an attribute of that namespace
-    object.
-
-TIP: there are lots of other, much cleverer ways of dealing with namespaces in
-    JavaScript, but they are all more complicated, and I'm not enough of an
-    expert to be able to steer you around them.  If you do want to learn
-    more, search for 'require.js', which seemed to be the done thing, or at
-    least it was in the last JavaScript femtosecond.
-
+We can make our form call the grandparent save method:
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
-[source,html]
+.lists/forms.py (ch13l054)
+[source,python]
 ----
-  <script>
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  window.Superlists.initialize();
-  $('input[name="text"]').trigger('keypress');
-  assert.equal($('.has-error').is(':visible'), false);
-});
-
-QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
-  window.Superlists.initialize();
-  assert.equal($('.has-error').is(':visible'), true);
-});
-  </script>
+    def save(self):
+        return forms.models.ModelForm.save(self)
 ----
 
+NOTE: Personal opinion here: I could have used `super`, but I prefer not to use
+`super` when it requires arguments, eg to get a grandparent method. I find
+Python 3's `super()` with no args awesome to get the immediate parent. Anything
+else is too error-prone, and I find it ugly besides. YMMV.
 
-((("JavaScript", "onload boilerplate")))
-Finally, whenever you have some JavaScript that interacts with the DOM, it's
-always good to wrap it in some "onload" boilerplate code to make sure that the
-page has fully loaded before it tries to do anything. Currently it works
-anyway, because we've placed the `<script>` tag right at the bottom of the
-page, but we shouldn't rely on that.  
 
-((("jQuery")))
-The jQuery `onload` boilerplate is quite minimal:
+And we're there!  All the unit tests pass:
 
-[role="sourcecode"]
-.lists/templates/base.html
-[source,javascript]
+[subs="specialcharacters,macros"]
 ----
-<script>
+$ pass:quotes[*python manage.py test lists*]
+[...]
+Ran 34 tests in 0.082s
 
-$(document).ready(function () {
-  window.Superlists.initialize();
-});
-
-</script>
+OK
 ----
 
-Read more in the http://api.jquery.com/ready/[jQuery `.ready()` docs].
+And so does our FT for validation:
 
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_list_item_validation*]
+Creating test database for alias 'default'...
+..
+ ---------------------------------------------------------------------
+Ran 2 tests in 12.048s
 
-Javascript Testing in the TDD Cycle
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+OK
+Destroying test database for alias 'default'...
+----
 
-((("test-driven development (TDD)", "Java testing in")))
-((("JavaScript", "in TDD Cycle", sortas="TDDcycle")))
-You may be wondering how these JavaScript tests fit in with our "double loop" 
-TDD cycle.  The answer is that they play exactly the same role as our
-Python unit tests.
+As a final check, we rerun 'all' the FTs:
 
-1. Write an FT and see it fail.
-2. Figure out what kind of code you need next: Python or JavaScript?
-3. Write a unit test in either language, and see it fail.
-4. Write some code in either language, and make the test pass.
-5. Rinse and repeat.
-(((range="endofrange", startref="ix_FTJava")))
-(((range="endofrange", startref="ix_JavaFT")))
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests*]
+Creating test database for alias 'default'...
+.....
+ ---------------------------------------------------------------------
+Ran 5 tests in 19.048s
 
-NOTE: Want a little more practice with JavaScript?  See if you can get our
-    error messages to be hidden when the user clicks inside the input element,
-    as well as just when they type in it.  You should be able to FT it too.
+OK
+Destroying test database for alias 'default'...
+----
 
+Hooray! Time for a final commit, and a wrap-up of what we've learned about
+testing views over the last few chapters.
+(((range="endofrange", startref="ix_formsadv")))
+((("functional tests/testing (FT)", "in views", sortas="views")))
+((("views, what to test in")))
 
-We're almost ready to move on to <<part3>>.  The last step is to deploy our
-new code to our servers. Don't forget to do a final commit including
-'base.html' first!
+.Recap: What to Test in Views
+******************************************************************************
 
+[role="sourcecode skipme small-code"]
+.Partial listing showing all view tests and assertions
+[source,python]
+----
+class ListViewTest(TestCase):
+    def test_uses_list_template(self):
+        response = self.client.get('/lists/%d/' % (list_.id,)) #<1>
+        self.assertTemplateUsed(response, 'list.html') #<2>
+    def test_passes_correct_list_to_template(self):
+        self.assertEqual(response.context['list'], correct_list) #<3>
+    def test_displays_item_form(self):
+        self.assertIsInstance(response.context['form'], ExistingListItemForm) #<4>
+        self.assertContains(response, 'name="text"')
+    def test_displays_only_items_for_that_list(self):
+        self.assertContains(response, 'itemey 1') #<5>
+        self.assertContains(response, 'itemey 2') #<5>
+        self.assertNotContains(response, 'other list item 1') #<5>
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        self.assertEqual(Item.objects.count(), 1) #<6>
+        self.assertEqual(new_item.text, 'A new item for an existing list') #<6>
+    def test_POST_redirects_to_list_view(self):
+        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,)) #<6>
+    def test_for_invalid_input_nothing_saved_to_db(self):
+        self.assertEqual(Item.objects.count(), 0) #<6>
+    def test_for_invalid_input_renders_list_template(self):
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'list.html') #<6>
+    def test_for_invalid_input_passes_form_to_template(self):
+        self.assertIsInstance(response.context['form'], ExistingListItemForm) #<7>
+    def test_for_invalid_input_shows_error_on_page(self):
+        self.assertContains(response, escape(EMPTY_ITEM_ERROR)) #<7>
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+        self.assertContains(response, expected_error)
+        self.assertTemplateUsed(response, 'list.html')
+        self.assertEqual(Item.objects.all().count(), 1)
+----
 
-A Few Things That Didn't Make It
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<1> Use the Django test client.
 
-* At the moment, our test only checks that the JavaScript works on one page.
-  It works because we're including it in 'base.html', but if we'd only
-  added it to 'home.html' the tests would still pass.  It's a judgement 
-  call, but you could choose to write an extra test here.
+<2> Check the template used.  Then, check each item in the template context.
 
-* When writing JavaScript, get as much help from your editor as you can to
-  avoid common "gotchas".  Check out syntax/error-checking tools like
-  "jslint" and "jshint", also known as "linters". ((("JavaScript", "linters")))
+<3> Check any objects are the right ones, or querysets have the
+    correct items.
 
-* QUnit mainly expects you to "run" your tests using an actual web browser.
-  This has the advantage that it's easy to create some HTML fixtures that 
-  match the kind of HTML your site actually contains, for tests to run against.
-  But it's also possible to run JS tests from the command-line.  We'll see
-  an example in <<CI-chapter>>.
+<4> Check any forms are of the correct class.
 
-* The new shiny thing in the world of front-end development are MVC frameworks
-  like 'angular.js'.  Most tutorials for Angular use a test runner called
-  Karma, and an RSpec-like assertion library called
-  https://jasmine.github.io/[Jasmine].  If you're going
-  to use Angular, you'll probably find life easier if you use those rather than
-  Qunit. ((("JavaScript", "testing notes"))) ((("Selenium", "and JavaScript")))
-  ((("QUnit"))) ((("jQuery")))
+<5> Think about testing template logic:  any `for` or `if` could have a minimal test.
 
+<6> For views that handle POST requests, make sure you test both the valid
+    case and the invalid case.
 
-.JavaScript Testing Notes
-*******************************************************************************
+<7> Optionally, sanity-check that your form is rendered, and its errors are
+    displayed.
 
-* One of the great advantages of Selenium is that it allows you to test that
-  your JavaScript really works, just as it tests your Python code.
+Why these points?  Skip ahead to <<appendix2>>, and I'll show how
+they are sufficient to ensure that our views are still correct if we refactor
+them to start using class-based views.
 
-* There are many JavaScript test running libraries out there.  QUnit is closely
-  tied to jQuery, which is the main reason I chose it.  
+******************************************************************************
 
-* No matter which testing library you use, you'll always need to find solutions
-  to the main challenge of JavaScript testing, which is about 'managing global
-  state'.  That includes:
-    - the DOM / HTML fixtures
-    - namespacing
-    - understanding and controlling execution order.
-
-* I don't really mean it when I say that JavaScript is awful. It can actually
-  be quite fun.  But I'll say it again: make sure you've read
-  <<jsgoodparts,'JavaScript: The Good Parts'>>.
-
-*******************************************************************************
-
-//IDEA: take the opportunity to use {% static %} tag in templates?
-
+Next we'll try and make our data validation more friendly by using a bit
+of client-side code.  Uh-oh, you know what that means...
 
