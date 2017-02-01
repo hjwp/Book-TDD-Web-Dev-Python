@@ -9,20 +9,14 @@ This Inspiring Teacher Said That Will Make You Change Your Mind About Blah Blah
 now...anyway. Lists, be they Inspirational or otherwise, are often better
 shared. Let's allow our users to collaborate on their lists with other users.
 
-((("Selenium", "wait patterns")))
-((("waits")))
-Along the way we'll improve our FTs by starting to implement the interact/wait
-Selenium pattern that we learned in the last chapter.  We'll also experiment
-with something called the Page Object pattern.
+((("Selenium", "Page pattern")))
+Along the way we'll improve our FTs by starting to implement something called
+the Page Object pattern.
 
 Then, rather than showing you explicitly what to do, I'm going to let you write
 your unit tests and application code by yourself.  Don't worry, you won't be
 totally on your own!  I'll give an outline of the steps to take, as well as
 some hints and tips.
-
-
-NOTE: this chapter has not yet been updated for the new edition, but it
-    should not be changing substantially.
 
 
 An FT with Multiple Users, and addCleanup
@@ -33,11 +27,12 @@ An FT with Multiple Users, and addCleanup
 Let's get started--we'll need two users for this FT:
 
 [role="sourcecode small-code"]
-.functional_tests/test_sharing.py
+.functional_tests/test_sharing.py (ch22l001)
 [source,python]
 ----
 from selenium import webdriver
 from .base import FunctionalTest
+
 
 def quit_if_possible(browser):
     try: browser.quit()
@@ -46,7 +41,7 @@ def quit_if_possible(browser):
 
 class SharingTest(FunctionalTest):
 
-    def test_logged_in_users_lists_are_saved_as_my_lists(self):
+    def test_can_share_a_list_with_another_user(self):
         # Edith is a logged-in user
         self.create_pre_authenticated_session('edith@example.com')
         edith_browser = self.browser
@@ -61,10 +56,12 @@ class SharingTest(FunctionalTest):
         # Edith goes to the home page and starts a list
         self.browser = edith_browser
         self.browser.get(self.server_url)
-        self.get_item_input_box().send_keys('Get help\n')
+        self.add_list_item('Get help')
 
         # She notices a "Share this list" option
-        share_box = self.browser.find_element_by_css_selector('input[name=email]')
+        share_box = self.browser.find_element_by_css_selector(
+            'input[name="sharee"]'
+        )
         self.assertEqual(
             share_box.get_attribute('placeholder'),
             'your-friend@example.com'
@@ -72,9 +69,10 @@ class SharingTest(FunctionalTest):
 ----
 //IDEA: rename Oni to Francis, as per ch. 6?
 
+(("addCleanup"))
 The interesting feature to note about this section is the `addCleanup`
 function, whose documentation you can find 
-http://bit.ly/SuW8Hv[here].
+https://docs.python.org/3/library/unittest.html#unittest.TestCase.addCleanup[here].
 It can be used as an alternative to the `tearDown` function as a way of
 cleaning up resources used during the test.  It's most useful when the resource
 is only allocated halfway through a test, so you don't have to spend time in
@@ -90,18 +88,17 @@ We'll also need to move `create_pre_authenticated_session` from
 
 OK, let's see if that all works:
 
-[role="dofirst-ch21l002"]
+[role="dofirst-ch22l002"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test functional_tests.test_sharing*]
 [...]
 Traceback (most recent call last):
-  File "/.../superlists/functional_tests/test_sharing.py", line 29, in
-test_logged_in_users_lists_are_saved_as_my_lists
-    share_box = self.browser.find_element_by_css_selector('input[name=email]')
+  File "/.../superlists/functional_tests/test_sharing.py", line 31, in
+test_can_share_a_list_with_another_user
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"css selector","selector":"input[name=email]"}
+element: input[name="sharee"]
 ----
 
 Great! It seems to have got through creating the two user sessions, and
@@ -120,208 +117,98 @@ $ *git commit -m "New FT for sharing, move session creation stuff to base"*
 ----
 
 
-Implementing the Selenium Interact/Wait Pattern
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("Selenium", "wait patterns")))
-((("waits")))
-Before we continue, let's take a closer look at the interactions with the site
-which we have in our FT so far:
-
-[role="sourcecode currentcontents small-code"]
-.functional_tests/test_sharing.py
-[source,python]
-----
-    # Edith goes to the home page and starts a list
-    self.browser = edith_browser
-    self.browser.get(self.server_url)
-    self.get_item_input_box().send_keys('Get help\n')  #<1>
-
-    # She notices a "Share this list" option
-    share_box = self.browser.find_element_by_css_selector('input[name=email]')  #<2>
-    self.assertEqual(
-        share_box.get_attribute('placeholder'),
-        'your-friend@example.com'
-    )
-----
-
-<1> Interaction with site
-
-<2> Assumption about updated state of page
-
-We learned in the last chapter that it's dangerous to assume too much about
-the state of the browser after we do an interaction (like `send_keys`). In
-theory, `implicitly_wait` will make sure that, if the call to
-`find_element_by_css_selector` doesn't find our `input[name=email]` at first,
-it will silently retry a few times.  But it can also go wrong--imagine if
-there was an input on the previous page, with the same `name=email`, but a
-different placeholder text?  We'd get a strange failure, because Selenium
-could theoretically pick up the element from the previous page while the
-new page is loading.  That tends to raise a `StaleElementException`.
-
-TIP: Unexpected `StaleElementException` errors from Selenium often mean you
-    have some kind of race condition.  You should probably specify an explicit
-    interaction/wait pattern.
-    ((("race conditions")))
-    ((("Selenium", "race conditions")))
-
-Instead, it's always prudent to follow the "wait-for" pattern whenever we
-want to check on the effects of an interaction that we've just triggered.
-Something like this:
-
-
-[role="sourcecode skipme"]
-.functional_tests/test_sharing.py
-[source,python]
-----
-    self.get_item_input_box().send_keys('Get help\n')
-
-    # She notices a "Share this list" option
-    self.wait_for(
-        lambda:  self.assertEqual(
-            self.browser.find_element_by_css_selector(
-                'input[name=email]'
-            ).get_attribute('placeholder'),
-            'your-friend@example.com'
-        )
-    )
-----
-
 
 The Page Pattern
 ~~~~~~~~~~~~~~~~
 
 ((("helper functions/methods", id="ix_helperfunctions", range="startofrange")))
 ((("Page pattern", id="ix_pagepattern", range="startofrange")))
-But do you know what would be even better?  This is an occasion for a "three
-strikes and refactor".  This test, and many others, all begin off with the user
-starting a new list.  What if we had a helper function called "start new list"
-that would do the `wait_for` as well as the list item input?  
+Before we go any further, I want to show an alternative method for reducing
+duplication in your FTs, called
+http://www.seleniumhq.org/docs/06_test_design_considerations.jsp#page-object-design-pattern["Page Objects"].
 
-We've already seen how to use helper methods on the base `FunctionalTest`
-class, but if we continue using too many of them, it's going to get very
-crowded. I've worked on a base FT class that was over 1,500 lines long, and
-that got pretty unwieldy.
+We've already built several helper methods for our FTs, including
+`add_list_item`, which we've used here, but if we just keep adding more and
+more, it's going to get very crowded. I've worked on a base FT class that was
+over 1,500 lines long, and that got pretty unwieldy.
 
-One accepted pattern for splitting up your FT helper code is called the 
-http://www.seleniumhq.org/docs/06_test_design_considerations.jsp#page-object-design-pattern[Page
-pattern], and it involves having objects to represent the different pages on
-your site, and to be the single place to store information about how to 
-interact with them.
-
-Let's see how we would create Page objects for the home and lists pages. Here's one
-for the home page:
-
+Page objects are an alternative, which encourage us to store all the information
+and helper methods about the different types of pages on our site in a single place.
+Let's see how that might look for our site, starting with a class to represent any
+lists page:
 
 [role="sourcecode"]
-.functional_tests/home_and_list_pages.py
+.functional_tests/list_page.py
 [source,python]
 ----
-class HomePage(object):
+from selenium.webdriver.common.keys import Keys
+from .base import wait
+
+
+class ListPage(object):
 
     def __init__(self, test):
         self.test = test  #<1>
 
 
-    def go_to_home_page(self):  #<2>
-        self.test.browser.get(self.test.server_url)
-        self.test.wait_for(self.get_item_input)
-        return self  #<3>
+    def get_table_rows(self):  #<3>
+        return self.test.browser.find_elements_by_css_selector('#id_list_table tr')
 
 
-    def get_item_input(self):
+    @wait
+    def wait_for_row_in_list_table(self, item_text, item_number):  #<2>
+        row_text = '{}: {}'.format(item_number, item_text)
+        rows = self.get_table_rows()
+        self.test.assertIn(row_text, [row.text for row in rows])
+
+
+    def get_item_input_box(self):  #<2>
         return self.test.browser.find_element_by_id('id_text')
 
 
-    def start_new_list(self, item_text):  #<4>
-        self.go_to_home_page()
-        inputbox = self.get_item_input()
-        inputbox.send_keys(item_text + '\n')
-        list_page = ListPage(self.test)  #<5>
-        list_page.wait_for_new_item_in_list(item_text, 1)  #<6>
-        return list_page  #<7>
+    def add_list_item(self, item_text):  #<2>
+        new_item_no = len(self.get_table_rows()) + 1
+        self.get_item_input_box().send_keys(item_text)
+        self.get_item_input_box().send_keys(Keys.ENTER)
+        self.wait_for_row_in_list_table(item_text, new_item_no)
+        return self  #<4>
 ----
+//003
 
 <1> It's initialised with an object that represents the current test.  That
     gives us the ability to make assertions, access the browser instance via
-    `self.test.browser`, and use the `wait_for` function.
+    `self.test.browser`, and use the `self.test.wait_for` function.
 
-<2> Most Page objects have a "go to this page" function.  Notice that it
-    implements the interaction/wait pattern--first we `get` the page URL,
-    then we wait for an element that we know is on the home page.
-//IDEA: consider the fact that the lists page has that too...
+<2> I've copied across some of the existing helper methods from 'base.py', but
+    I've tweaked them slightly...
 
-<3> Returning `self` is just a convenience. It enables 
-    https://en.wikipedia.org/wiki/Method_chaining[method chaining].
+<3> For example, they make use of this new method.
 
-<4> Here's our function that starts a new list.  It goes to the home page,
-    finds the input box, and sends the new item text to it, as well as a
-    carriage return.  Then it uses a wait to check that the interaction
-    has completed, but as you can see that wait is actually on a different
-    Page object:
-
-<5> The `ListPage`, which we'll see the code for shortly. It's initialised just
-    like a `HomePage`.
-
-<6> We use the `ListPage` to `wait_for_new_item_in_list`.  We specify the
-    expected text of the item, and its expected position in the list.
-
-<7> Finally, we return the `list_page` object to the caller, because they
-    will probably find it useful (as we'll see shortly).
-
-
-
-Here's how `ListPage` looks:
-
-[role="sourcecode"]
-.functional_tests/home_and_list_pages.py (ch21l006)
-[source,python]
-----
-[...]
-
-class ListPage(object):
-
-    def __init__(self, test):
-        self.test = test
-
-    def get_list_table_rows(self):
-        return self.test.browser.find_elements_by_css_selector(
-            '#id_list_table tr'
-        )
-
-    def wait_for_new_item_in_list(self, item_text, position):
-        expected_row = '{}: {}'.format(position, item_text)
-        self.test.wait_for(lambda: self.test.assertIn(
-            expected_row,
-            [row.text for row in self.get_list_table_rows()]
-        ))
-----
-
-NOTE: It's usually best to have a separate file for each Page object. 
-    In this case, `HomePage` and `ListPage` are so closely related it's
-    easier to keep them together.
+<4> Returning `self` is just a convenience. It enables 
+    https://en.wikipedia.org/wiki/Method_chaining[method chaining],
+    which we'll see in action immediately.
 
 
 Let's see how to use it in our test:
 
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch21l007)
+.functional_tests/test_sharing.py (ch22l004)
 [source,python]
 ----
-from .home_and_list_pages import HomePage
+from .list_page import ListPage
 [...]
 
         # Edith goes to the home page and starts a list
         self.browser = edith_browser
-        list_page = HomePage(self).start_new_list('Get help')
+        list_page = ListPage(self).add_list_item('Get help')
 ----
 
 Let's continue rewriting our test, using the Page object whenever
 we want to access elements from the lists page:
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch21l008)
+.functional_tests/test_sharing.py (ch22l008)
 [source,python]
 ----
         # She notices a "Share this list" option
@@ -340,12 +227,12 @@ We add the following three functions to our `ListPage`:
 
 
 [role="sourcecode"]
-.functional_tests/home_and_list_pages.py (ch21l009)
+.functional_tests/list_page.py (ch22l009)
 [source,python]
 ----
     def get_share_box(self):
         return self.test.browser.find_element_by_css_selector(
-            'input[name=email]'
+            'input[name="sharee"]'
         )
 
 
@@ -356,7 +243,8 @@ We add the following three functions to our `ListPage`:
 
 
     def share_list_with(self, email):
-        self.get_share_box().send_keys(email + '\n')
+        self.get_share_box().send_keys(email)
+        self.get_share_box().send_keys(Keys.ENTER)
         self.test.wait_for(lambda: self.test.assertIn(
             email,
             [item.text for item in self.get_shared_with_list()]
@@ -377,6 +265,7 @@ are like...
 (((range="endofrange", startref="ix_pagepattern")))
 
 
+
 Extend the FT to a Second User, and the "My Lists" Page
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -387,46 +276,51 @@ with" Oniciferous, and then we can have Oni log in and see the list on his "My
 Lists" page, maybe in a section called "lists shared with me":
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch21l010)
+.functional_tests/test_sharing.py (ch22l010)
 [source,python]
 ----
-    [...]
-    list_page.share_list_with('oniciferous@example.com')
+from .my_lists_page import MyListsPage
+[...]
 
-    # Oniciferous now goes to the lists page with his browser
-    self.browser = oni_browser
-    HomePage(self).go_to_home_page().go_to_my_lists_page()
+        list_page.share_list_with('oniciferous@example.com')
 
-    # He sees Edith's list in there!
-    self.browser.find_element_by_link_text('Get help').click()
+        # Oniciferous now goes to the lists page with his browser
+        self.browser = oni_browser
+        MyListsPage(self).go_to_my_lists_page()
+
+        # He sees Edith's list in there!
+        self.browser.find_element_by_link_text('Get help').click()
 ----
 
-That means another function in our `HomePage` class:
+That means another function in our `MyListsPage` class:
 
 [role="sourcecode"]
-.functional_tests/home_and_list_pages.py (ch21l011)
+.functional_tests/my_lists_page.py (ch22l011)
 [source,python]
 ----
-class HomePage(object):
+class MyListsPage(object):
 
-    [...]
+    def __init__(self, test):
+        self.test = test
+
 
     def go_to_my_lists_page(self):
+        self.test.browser.get(self.test.server_url)
         self.test.browser.find_element_by_link_text('My lists').click()
         self.test.wait_for(lambda: self.test.assertEqual(
             self.test.browser.find_element_by_tag_name('h1').text,
             'My Lists'
         ))
+        return self
 ----
 
 Once again, this is a function that would be good to carry across into
-'test_my_lists.py', along with maybe a `MyListsPage` object. Exercise
-for the reader!
+'test_my_lists.py', along with maybe a `MyListsPage` object.
 
 In the meantime, Oniciferous can also add things to the list:
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch21l012)
+.functional_tests/test_sharing.py (ch22l012)
 [source,python]
 ----
     # On the list page, Oniciferous can see says that it's Edith's list
@@ -436,42 +330,23 @@ In the meantime, Oniciferous can also add things to the list:
     ))
 
     # He adds an item to the list
-    list_page.add_new_item('Hi Edith!')
+    list_page.add_list_item('Hi Edith!')
 
     # When Edith refreshes the page, she sees Oniciferous's addition
     self.browser = edith_browser
     self.browser.refresh()
-    list_page.wait_for_new_item_in_list('Hi Edith!', 2)
+    list_page.wait_for_row_in_list_table('Hi Edith!', 2)
 ----
 
-That's a couple more additions to our Page object:
+
+That's another addition to our `ListPage` object:
 
 [role="sourcecode"]
-.functional_tests/home_and_list_pages.py (ch21l013)
+.functional_tests/list_page.py (ch22l013)
 [source,python]
 ----
-ITEM_INPUT_ID = 'id_text'
-[...]
-
-class HomePage(object):
-    [...]
-
-    def get_item_input(self):
-        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
-
-
 class ListPage(object):
     [...]
-
-    def get_item_input(self):
-        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
-
-
-    def add_new_item(self, item_text):
-        current_pos = len(self.get_list_table_rows())
-        self.get_item_input().send_keys(item_text + '\n')
-        self.wait_for_new_item_in_list(item_text, current_pos + 1)
-
 
     def get_list_owner(self):
         return self.test.browser.find_element_by_id('id_list_owner').text
@@ -486,7 +361,7 @@ $ pass:quotes[*python manage.py test functional_tests.test_sharing*]
     share_box = list_page.get_share_box()
     [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"css selector","selector":"input[name=email]"}
+element: input[name="sharee"]
 ----
 
 That's the expected failure; we don't have an input for email addresses
@@ -496,7 +371,7 @@ of people to share with. Let's do a commit:
 [subs="specialcharacters,quotes"]
 ----
 $ *git add functional_tests*
-$ *git commit -m "Create Page objects for Home and List pages, use in sharing FT"*
+$ *git commit -m "Create Page objects for list pages, use in sharing FT"*
 ----
 (((range="endofrange", startref="ix_ftmult")))
 
