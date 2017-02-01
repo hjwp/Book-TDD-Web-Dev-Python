@@ -32,9 +32,9 @@ class Chapter1Test(ChapterTest):
         self.assertEqual(self.listings[1].skip, True)
 
         self.skip_with_check(9, 'Performing system checks...') # after runserver
-        status1_pos = 22
+        status1_pos = 23
         assert self.listings[status1_pos] == 'git status'
-        status2_pos = 28
+        status2_pos = 29
         assert self.listings[status2_pos] == 'git status'
 
         # first code listing
