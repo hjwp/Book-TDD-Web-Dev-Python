@@ -1,5 +1,5 @@
-from unittest.mock import patch
 import unittest
+from unittest.mock import patch
 import subprocess
 from textwrap import dedent
 import os
@@ -59,12 +59,12 @@ class StartWithCheckoutTest(unittest.TestCase):
         sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
         ))
-        sourcetree.start_with_checkout('chapter_20')
+        sourcetree.start_with_checkout('chapter_17', 'chapter_16')
         remotes = sourcetree.run_command('git remote').split()
         assert remotes == ['repo']
         branch = sourcetree.run_command('git branch').strip()
         assert branch == '* master'
-        diff = sourcetree.run_command('git diff repo/chapter_20').strip()
+        diff = sourcetree.run_command('git diff repo/chapter_16').strip()
         assert diff == ''
 
 
@@ -76,7 +76,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
         ))
-        self.sourcetree.start_with_checkout('chapter_17')
+        self.sourcetree.start_with_checkout('chapter_17', 'chapter_16')
         self.sourcetree.run_command('git checkout test-start')
         self.sourcetree.run_command('git reset')
 

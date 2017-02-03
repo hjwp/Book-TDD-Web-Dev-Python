@@ -134,7 +134,7 @@ class SourceTree(object):
         ))
 
 
-    def start_with_checkout(self, chapter):
+    def start_with_checkout(self, chapter, previous_chapter):
         print('starting with checkout')
         self.run_command('mkdir superlists', cwd=self.tempdir)
         self.run_command('git init .')
@@ -142,13 +142,13 @@ class SourceTree(object):
             self.get_local_repo_path(chapter)
         ))
         self.run_command('git fetch repo')
-        self.run_command('git reset --hard repo/{}'.format(chapter))
+        self.run_command('git reset --hard repo/{}'.format(previous_chapter))
         print(self.run_command('git status'))
         self.chapter = chapter
 
 
     def get_commit_spec(self, commit_ref):
-        return 'repo/chapter_{0:02d}^{{/--{1}--}}'.format(self.chapter, commit_ref)
+        return 'repo/{chapter}^{{/--{commit_ref}--}}'.format(chapter=self.chapter, commit_ref=commit_ref)
 
 
     def get_files_from_commit_spec(self, commit_spec):

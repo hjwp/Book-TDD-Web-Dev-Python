@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import unittest
 from unittest.mock import Mock
 from textwrap import dedent
 
@@ -21,7 +22,7 @@ from test_sourcetree import *  # noqa
 
 
 
-class WrapLongLineTest():
+class WrapLongLineTest(unittest.TestCase):
 
     def test_wrap_long_lines_with_words(self):
         self.assertEqual(wrap_long_lines('normal line'), 'normal line')
@@ -915,21 +916,21 @@ class CheckQunitOuptutTest(ChapterTest):
 
     def test_partial_listing_passes(self):
         self.chapter_name = 'chapter_14'
-        self.sourcetree.start_with_checkout('chapter_14')
+        self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
         expected = Output("2 assertions of 2 passed, 0 failed.")
         self.check_qunit_output(expected) # should pass
         assert expected.was_checked
 
     def test_fails_if_lists_fail_and_no_accounts(self):
         self.chapter_name = 'chapter_14'
-        self.sourcetree.start_with_checkout('chapter_14')
+        self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output('arg'))
 
 
     def test_runs_phantomjs_runner_against_lists_tests(self):
         self.chapter_name = 'chapter_14'
-        self.sourcetree.start_with_checkout('chapter_14')
+        self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
         lists_tests = os.path.join(
             os.path.abspath(os.path.dirname(__file__)),
             '../source/chapter_14/superlists/lists/static/tests/tests.html'
@@ -942,7 +943,7 @@ class CheckQunitOuptutTest(ChapterTest):
 
     def DONTtest_runs_against_accounts_if_lists_pass(self):
         self.chapter_name = 'chapter_15'
-        self.sourcetree.start_with_checkout('chapter_15')
+        self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
         lists_tests = os.path.abspath(os.path.join(
             os.path.dirname(__file__),
             '../source/chapter_13/superlists/lists/static/tests/tests.html'
