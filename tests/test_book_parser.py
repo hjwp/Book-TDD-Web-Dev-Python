@@ -2,7 +2,6 @@
 from lxml import html
 import re
 from textwrap import dedent
-import unittest
 
 from book_parser import (
     COMMIT_REF_FINDER,
@@ -16,7 +15,8 @@ from book_parser import (
 import examples
 
 
-class CodeListingTest(unittest.TestCase):
+
+class CodeListingTest():
 
     def test_stringify(self):
         c = CodeListing(filename='a.py', contents='abc\ndef')
@@ -32,7 +32,7 @@ class CodeListingTest(unittest.TestCase):
         assert c.is_server_listing is True
 
 
-class CommitRefFinderTest(unittest.TestCase):
+class CommitRefFinderTest():
 
     def test_base_finder(self):
         assert re.search(COMMIT_REF_FINDER, 'bla bla ch09l027-2')
@@ -48,7 +48,7 @@ class CommitRefFinderTest(unittest.TestCase):
         assert matches.group(2) == 'ch09l027-2'
 
 
-class ParseCodeListingTest(unittest.TestCase):
+class ParseCodeListingTest():
 
     def test_recognises_code_listings(self):
         code_html = examples.CODE_LISTING_WITH_CAPTION.replace('\n', '\r\n')
@@ -418,7 +418,7 @@ class ParseCodeListingTest(unittest.TestCase):
 
 
 
-class GetCommandsTest(unittest.TestCase):
+class GetCommandsTest():
 
     def test_extracting_one_command(self):
         listing = html.fromstring(
@@ -443,8 +443,3 @@ class GetCommandsTest(unittest.TestCase):
             ]
         )
 
-
-
-
-if __name__ == '__main__':
-    unittest.main()

@@ -126,7 +126,7 @@ def parse_output(listing):
             previous_lines = output_before[:last_cr]
             if previous_lines:
                 outputs.append(Output(previous_lines))
-        elif output_before and not '$' in output_before:
+        elif output_before and '$' not in output_before:
             outputs.append(Output(output_before))
 
         command_text = fix_newlines(command.text)
