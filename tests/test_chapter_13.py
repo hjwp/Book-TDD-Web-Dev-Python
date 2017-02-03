@@ -17,7 +17,7 @@ class Chapter13Test(ChapterTest):
         self.assertEqual(self.listings[2].type, 'output')
 
         # prep
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         self.prep_database()
 
         # skips

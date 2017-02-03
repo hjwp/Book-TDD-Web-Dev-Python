@@ -9,7 +9,7 @@ class Chapter14Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing with git ref')

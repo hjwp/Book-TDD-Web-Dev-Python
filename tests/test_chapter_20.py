@@ -22,7 +22,7 @@ class Chapter20Test(ChapterTest):
         self.skip_with_check(112, '# reset master')  # comment
 
         # prep
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
 
         # hack fast-forward
         skip = False

@@ -22,7 +22,7 @@ class Chapter4Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Output)
         self.assertEqual(type(self.listings[2]), CodeListing)
 
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         self.start_dev_server()
 
         self.skip_with_check(8, 'wibble')

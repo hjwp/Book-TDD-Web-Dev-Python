@@ -20,7 +20,7 @@ class Chapter19Test(ChapterTest):
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
 
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         self.prep_database()
 
         # hack fast-forward

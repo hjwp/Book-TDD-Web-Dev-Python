@@ -17,7 +17,7 @@ class Chapter11Test(ChapterTest):
         self.assertEqual(self.listings[2].type, 'test')
 
         # other prep
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         self.prep_database()
 
         # hack fast-forward

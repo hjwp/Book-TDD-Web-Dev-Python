@@ -59,7 +59,7 @@ class StartWithCheckoutTest(unittest.TestCase):
         sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
         ))
-        sourcetree.start_with_checkout('chapter_17', 'chapter_16')
+        self.start_with_checkout()
         remotes = sourcetree.run_command('git remote').split()
         assert remotes == ['repo']
         branch = sourcetree.run_command('git branch').strip()

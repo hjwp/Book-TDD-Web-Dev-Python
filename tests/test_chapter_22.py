@@ -11,7 +11,7 @@ class Chapter22Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         #self.prep_virtualenv()
 
         # sanity checks

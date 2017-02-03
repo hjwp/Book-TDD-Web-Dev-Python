@@ -19,6 +19,7 @@ from book_parser import (
     parse_listing,
 )
 from sourcetree import Commit, SourceTree
+from update_source_repo import update_sources_for_chapter
 
 
 PHANTOMJS_RUNNER = os.path.join(
@@ -201,7 +202,7 @@ class ChapterTest(unittest.TestCase):
 
     def parse_listings(self):
         base_dir = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
-        filename = 'chapter_{0:02d}.html'.format(self.chapter_no)
+        filename = self.chapter_name + '.html'
         with open(os.path.join(base_dir, filename), encoding='utf-8') as f:
             raw_html = f.read()
         parsed_html = html.fromstring(raw_html)
@@ -212,7 +213,7 @@ class ChapterTest(unittest.TestCase):
     def check_final_diff(self, ignore=None, diff=None):
         if diff is None:
             diff = self.run_command(Command(
-                'git diff -w repo/chapter_{0:02d}'.format(self.chapter_no)
+                'git diff -w repo/{}'.format(self.chapter_name)
             ))
         try:
             print('checking final diff', diff)
@@ -240,6 +241,9 @@ class ChapterTest(unittest.TestCase):
             raise error
 
 
+    def start_with_checkout(self):
+        update_sources_for_chapter(self.chapter_name, self.previous_chapter)
+        self.sourcetree.start_with_checkout(self.chapter_name, self.previous_chapter)
 
 
     def write_to_file(self, codelisting):

@@ -19,7 +19,7 @@ class Chapter2Test(ChapterTest):
         self.assertEqual(type(self.listings[0]), CodeListing)
         self.assertEqual(type(self.listings[2]), Command)
 
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
 
         while self.pos < len(self.listings):
             print(self.pos)

@@ -17,7 +17,7 @@ class Chapter8Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         # other prep
         self.sourcetree.run_command('python3 manage.py migrate --noinput')
 

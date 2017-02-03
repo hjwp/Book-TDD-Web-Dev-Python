@@ -23,7 +23,7 @@ class Chapter6Test(ChapterTest):
         self.skip_with_check(15, 'msg eg') # git
 
         # other prep
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         self.run_command(Command('python3 manage.py migrate --noinput'))
 
         # hack fast-forward

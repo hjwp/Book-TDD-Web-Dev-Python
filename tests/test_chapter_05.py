@@ -34,7 +34,7 @@ class Chapter5Test(ChapterTest):
         # skips
         self.skip_with_check(86, "3: Buy peacock feathers")
 
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         self.start_dev_server()
 
         restarted_after_views = False

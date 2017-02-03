@@ -20,7 +20,7 @@ class Chapter12Test(ChapterTest):
         self.skip_with_check(29, '# review changes') # diff
 
         # prep
-        self.sourcetree.start_with_checkout(self.previous_chapter)
+        self.start_with_checkout()
         self.prep_database()
 
         # hack fast-forward
