@@ -6,7 +6,8 @@ from book_parser import Command, Output
 from book_tester import ChapterTest
 
 class Chapter8Test(ChapterTest):
-    chapter_no = 8
+    chapter_name = 'chapter_08'
+    previous_chapter = 'chapter_07'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -16,7 +17,7 @@ class Chapter8Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Command)
         self.assertEqual(type(self.listings[2]), Output)
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.sourcetree.start_with_checkout(self.previous_chapter)
         # other prep
         self.sourcetree.run_command('python3 manage.py migrate --noinput')
 

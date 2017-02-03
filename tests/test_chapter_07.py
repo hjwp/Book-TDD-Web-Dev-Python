@@ -8,7 +8,8 @@ from book_tester import (
 )
 
 class Chapter7Test(ChapterTest):
-    chapter_no = 7
+    chapter_name = 'chapter_07'
+    previous_chapter = 'chapter_06'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -28,7 +29,7 @@ class Chapter7Test(ChapterTest):
         assert 'touch' in touch
 
         # other prep
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.sourcetree.start_with_checkout(self.previous_chapter)
         self.run_command(Command('python3 manage.py migrate --noinput'))
 
         # hack fast-forward

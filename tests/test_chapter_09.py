@@ -8,7 +8,8 @@ from book_tester import ChapterTest
 LOCAL = False
 
 class Chapter9Test(ChapterTest):
-    chapter_no = 9
+    chapter_name = 'chapter_09'
+    previous_chapter = 'chapter_08'
 
     def hack_hosts_file(self):
         with open('/etc/hosts', 'r') as f:
@@ -59,7 +60,7 @@ class Chapter9Test(ChapterTest):
         self.assertEqual(self.listings[1].type, 'code listing with git ref')
         self.assertEqual(self.listings[2].type, 'test')
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.sourcetree.start_with_checkout(self.previous_chapter)
         # other prep
         self.sourcetree.run_command('python3 manage.py migrate --noinput')
 

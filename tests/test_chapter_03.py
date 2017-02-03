@@ -10,7 +10,8 @@ from book_tester import (
 )
 
 class Chapter3Test(ChapterTest):
-    chapter_no = 3
+    chapter_name = 'chapter_03'
+    previous_chapter = 'chapter_02'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -20,7 +21,7 @@ class Chapter3Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Output)
         self.assertEqual(type(self.listings[2]), CodeListing)
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.sourcetree.start_with_checkout(self.previous_chapter)
 
         self.skip_with_check(10, 'will show you')
 

@@ -11,7 +11,8 @@ from book_tester import (
 )
 
 class Chapter4Test(ChapterTest):
-    chapter_no = 4
+    chapter_name = 'chapter_04'
+    previous_chapter = 'chapter_03'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -21,7 +22,7 @@ class Chapter4Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Output)
         self.assertEqual(type(self.listings[2]), CodeListing)
 
-        self.sourcetree.start_with_checkout(4)
+        self.sourcetree.start_with_checkout(self.previous_chapter)
         self.start_dev_server()
 
         self.skip_with_check(8, 'wibble')

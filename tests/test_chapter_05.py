@@ -10,7 +10,8 @@ from book_tester import (
 )
 
 class Chapter5Test(ChapterTest):
-    chapter_no = 5
+    chapter_name = 'chapter_05'
+    previous_chapter = 'chapter_04'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -33,7 +34,7 @@ class Chapter5Test(ChapterTest):
         # skips
         self.skip_with_check(86, "3: Buy peacock feathers")
 
-        self.sourcetree.start_with_checkout(5)
+        self.sourcetree.start_with_checkout(self.previous_chapter)
         self.start_dev_server()
 
         restarted_after_views = False

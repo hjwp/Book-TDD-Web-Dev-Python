@@ -5,7 +5,8 @@ from book_tester import ChapterTest
 
 
 class Chapter18Test(ChapterTest):
-    chapter_no = 18
+    chapter_name = 'chapter_18'
+    previous_chapter = 'chapter_17'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -19,7 +20,7 @@ class Chapter18Test(ChapterTest):
         #self.skip_with_check(22, 'switch back to master') # comment
 
         # prep
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.sourcetree.start_with_checkout(self.previous_chapter)
         self.prep_database()
         self.sourcetree.run_command('rm accounts/tests.py')
 
