@@ -4,11 +4,12 @@ import unittest
 from book_tester import ChapterTest
 
 class Chapter14Test(ChapterTest):
-    chapter_no = 14
+    chapter_name = 'chapter_14'
+    previous_chapter = 'chapter_13'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.start_with_checkout()
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing with git ref')

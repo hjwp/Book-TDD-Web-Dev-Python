@@ -4,7 +4,8 @@ import unittest
 from book_tester import ChapterTest
 
 class Chapter16Test(ChapterTest):
-    chapter_no = 16
+    chapter_name = 'chapter_16'
+    previous_chapter = 'chapter_15'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -20,7 +21,7 @@ class Chapter16Test(ChapterTest):
         self.skip_with_check(31, 'remove any trace') # comment
 
         # prep
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.start_with_checkout()
         self.prep_database()
 
         # hack fast-forward

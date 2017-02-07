@@ -5,11 +5,12 @@ from book_tester import ChapterTest
 
 
 class Chapter21Test(ChapterTest):
-    chapter_no = 21
+    chapter_name = 'chapter_21'
+    previous_chapter = 'chapter_20'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.start_with_checkout()
         #self.prep_virtualenv()
 
         # sanity checks

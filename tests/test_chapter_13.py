@@ -5,7 +5,8 @@ import unittest
 from book_tester import ChapterTest
 
 class Chapter13Test(ChapterTest):
-    chapter_no = 13
+    chapter_name = 'chapter_13'
+    previous_chapter = 'chapter_12'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -16,7 +17,7 @@ class Chapter13Test(ChapterTest):
         self.assertEqual(self.listings[2].type, 'output')
 
         # prep
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.start_with_checkout()
         self.prep_database()
 
         # skips

@@ -1,5 +1,5 @@
-from unittest.mock import patch
 import unittest
+from unittest.mock import patch
 import subprocess
 from textwrap import dedent
 import os
@@ -49,22 +49,22 @@ class StartWithCheckoutTest(unittest.TestCase):
 
     def test_get_local_repo_path(self):
         sourcetree = SourceTree()
-        assert sourcetree.get_local_repo_path(12) == os.path.abspath(os.path.join(
-            os.path.dirname(__file__), '../source/chapter_12/superlists'
+        assert sourcetree.get_local_repo_path('chapter_name') == os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '../source/chapter_name/superlists'
         ))
 
 
-    def test_checks_out_repo_current_chapter_as_master(self):
+    def test_checks_out_repo_chapter_as_master(self):
         sourcetree = SourceTree()
         sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
         ))
-        sourcetree.start_with_checkout(21)
+        self.start_with_checkout()
         remotes = sourcetree.run_command('git remote').split()
         assert remotes == ['repo']
         branch = sourcetree.run_command('git branch').strip()
         assert branch == '* master'
-        diff = sourcetree.run_command('git diff repo/chapter_20').strip()
+        diff = sourcetree.run_command('git diff repo/chapter_16').strip()
         assert diff == ''
 
 
@@ -76,7 +76,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
         ))
-        self.sourcetree.start_with_checkout(17)
+        self.sourcetree.start_with_checkout('chapter_17', 'chapter_16')
         self.sourcetree.run_command('git checkout test-start')
         self.sourcetree.run_command('git reset')
 

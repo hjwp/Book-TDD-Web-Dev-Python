@@ -8,7 +8,8 @@ from book_tester import (
 )
 
 class Chapter6Test(ChapterTest):
-    chapter_no = 6
+    chapter_name = 'chapter_06'
+    previous_chapter = 'chapter_05'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -22,7 +23,7 @@ class Chapter6Test(ChapterTest):
         self.skip_with_check(15, 'msg eg') # git
 
         # other prep
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.start_with_checkout()
         self.run_command(Command('python3 manage.py migrate --noinput'))
 
         # hack fast-forward

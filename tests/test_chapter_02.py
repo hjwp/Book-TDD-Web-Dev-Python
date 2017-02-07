@@ -9,7 +9,8 @@ from book_tester import (
 )
 
 class Chapter2Test(ChapterTest):
-    chapter_no = 2
+    chapter_name = 'chapter_02'
+    previous_chapter = 'chapter_01'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -18,7 +19,7 @@ class Chapter2Test(ChapterTest):
         self.assertEqual(type(self.listings[0]), CodeListing)
         self.assertEqual(type(self.listings[2]), Command)
 
-        self.sourcetree.start_with_checkout(self.chapter_no)
+        self.start_with_checkout()
 
         while self.pos < len(self.listings):
             print(self.pos)

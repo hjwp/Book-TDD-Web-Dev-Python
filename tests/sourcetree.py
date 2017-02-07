@@ -31,15 +31,15 @@ class Commit(object):
 
         commit.lines_to_add = [
             l[1:] for l in commit.all_lines
-            if l.startswith('+')
-            and l[1:].strip()
-            and not l[1] == '+'
+            if l.startswith('+') and
+            l[1:].strip() and
+            not l[1] == '+'
         ]
         commit.lines_to_remove = [
             l[1:] for l in commit.all_lines
-            if l.startswith('-')
-            and l[1:].strip()
-            and not l[1] == '-'
+            if l.startswith('-') and
+            l[1:].strip() and
+            not l[1] == '-'
         ]
         commit.moved_lines = [
             l for l in commit.lines_to_add if l in commit.lines_to_remove
@@ -127,26 +127,28 @@ class SourceTree(object):
         return output
 
 
-    def get_local_repo_path(self, chapter_no):
+    def get_local_repo_path(self, chapter_name):
         return os.path.abspath(os.path.join(
             os.path.dirname(__file__),
-            '../source/chapter_{0:02d}/superlists'.format(chapter_no)
+            '../source/{}/superlists'.format(chapter_name)
         ))
 
 
-    def start_with_checkout(self, chapter):
+    def start_with_checkout(self, chapter, previous_chapter):
         print('starting with checkout')
         self.run_command('mkdir superlists', cwd=self.tempdir)
         self.run_command('git init .')
-        self.run_command('git remote add repo "%s"' % (self.get_local_repo_path(chapter),))
+        self.run_command('git remote add repo "{}"'.format(
+            self.get_local_repo_path(chapter)
+        ))
         self.run_command('git fetch repo')
-        self.run_command('git reset --hard repo/chapter_{0:02d}'.format(chapter - 1))
+        self.run_command('git reset --hard repo/{}'.format(previous_chapter))
         print(self.run_command('git status'))
         self.chapter = chapter
 
 
     def get_commit_spec(self, commit_ref):
-        return 'repo/chapter_{0:02d}^{{/--{1}--}}'.format(self.chapter, commit_ref)
+        return 'repo/{chapter}^{{/--{commit_ref}--}}'.format(chapter=self.chapter, commit_ref=commit_ref)
 
 
     def get_files_from_commit_spec(self, commit_spec):
