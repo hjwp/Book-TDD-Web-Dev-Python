@@ -1,7 +1,7 @@
 SOURCES := $(wildcard *.asciidoc)
 HTML_PAGES := $(patsubst %.asciidoc, %.html, ${SOURCES})
-RUN_ASCIIDOC = asciidoctor -a source-highlighter=coderay -a linkcss -a icons=font -a compat-mode
-
+RUN_ASCIIDOCTOR = asciidoctor -a source-highlighter=coderay -a linkcss -a icons=font -a compat-mode
+RUN_OREILLY_FLAVOURED_ASCIIDOCTOR = ./asciidoc/asciidoctor/bin/asciidoctor -v --trace -d book --safe -b htmlbook --template-dir ./asciidoc/asciidoctor-htmlbook/htmlbook 
 
 book.html: $(SOURCES)
 
@@ -13,7 +13,11 @@ test: build
 	./run_all_tests.sh
 
 %.html: %.asciidoc
-	$(RUN_ASCIIDOC) $<
+	$(RUN_ASCIIDOCTOR) $<
+
+oreilly.%.html: %.asciidoc
+	$(RUN_OREILLY_FLAVOURED_ASCIIDOCTOR) $(subst asciidoc,html,$(subst oreilly.,,$@))
+
 
 test_%: %.html
 	PYTHONHASHSEED=0 \
