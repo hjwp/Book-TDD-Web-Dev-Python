@@ -222,11 +222,12 @@ class ChapterTest(unittest.TestCase):
         self.assertNotIn('fatal:', diff)
         start_marker = 'diff --git a/\n'
         commit = Commit.from_diff(start_marker + diff)
-        error = AssertionError('Final diff was not empty, was:\n{}'.format(diff))
 
         if ignore is None:
-            if commit.lines_to_add or commit.lines_to_remove:
-                raise error
+            if commit.lines_to_add:
+                self.fail('Found lines to add in diff:\n{}'.format(commit.lines_to_add))
+            if commit.lines_to_remove:
+                self.fail('Found lines to remove in diff:\n{}'.format(commit.lines_to_remove))
             return
 
         if "moves" in ignore:
@@ -238,7 +239,7 @@ class ChapterTest(unittest.TestCase):
         for line in difference_lines:
             if any(ignorable in line for ignorable in ignore):
                 continue
-            raise error
+            self.fail('Found divergent line in diff:\n{}'.format(line))
 
 
     def start_with_checkout(self):
