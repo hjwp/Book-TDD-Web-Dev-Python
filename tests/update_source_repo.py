@@ -29,6 +29,9 @@ def update_sources_for_chapter(chapter, previous_chapter):
     )
     print('updating', source_dir)
     subprocess.check_output(['git', 'submodule', 'update', source_dir])
+    commit_specified_by_submodule = subprocess.check_output(
+        ['git', 'log', '-n 1', '--format=%H'], cwd=source_dir
+    ).decode().strip()
 
     connected = fetch_if_possible(source_dir)
     if not connected:
@@ -44,9 +47,6 @@ def update_sources_for_chapter(chapter, previous_chapter):
     if getpass.getuser() == 'jenkins':
         # if in CI, we use the submodule commit, to check that the submodule
         # config is up to date
-        commit_specified_by_submodule = subprocess.check_output(
-            ['git', 'log', '-n 1', '--format=%H'], cwd=source_dir
-        ).decode().strip()
         print('resetting submodule to', commit_specified_by_submodule)
         subprocess.check_output(
             ['git', 'reset', '--hard', commit_specified_by_submodule],
