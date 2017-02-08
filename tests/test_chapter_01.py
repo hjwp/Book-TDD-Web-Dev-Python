@@ -15,7 +15,7 @@ os.environ['LANGUAGE'] = 'en_GB.UTF-8'
 
 
 class Chapter1Test(ChapterTest):
-    chapter_no = 1
+    chapter_name = 'chapter_01'
 
     def write_to_file(self, codelisting):
         # override write to file, in this chapter cwd is root tempdir
