@@ -37,7 +37,7 @@ def update_sources_for_chapter(chapter, previous_chapter):
     if not connected:
         return
 
-    if chapter != 'chapter_01':
+    if previous_chapter is not None:
         # make sure branch for previous chapter is available to start tests
         subprocess.check_output(['git', 'checkout', previous_chapter], cwd=source_dir)
         subprocess.check_output(['git', 'reset', '--hard', '{}/{}'.format(REMOTE, previous_chapter)], cwd=source_dir)
