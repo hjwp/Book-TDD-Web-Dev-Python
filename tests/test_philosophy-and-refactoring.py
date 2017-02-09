@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
+import time
 
 from book_tester import (
     ChapterTest,
@@ -9,9 +10,9 @@ from book_tester import (
     Output,
 )
 
-class Chapter3Test(ChapterTest):
-    chapter_name = 'chapter_03'
-    previous_chapter = 'chapter_02'
+class Chapter4Test(ChapterTest):
+    chapter_name = 'philosophy-and-refactoring'
+    previous_chapter = 'unit-test-first-view'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -21,20 +22,17 @@ class Chapter3Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), Output)
         self.assertEqual(type(self.listings[2]), CodeListing)
 
-        self.skip_with_check(10, 'will show you')
-        final_ft = 41
-        self.assertIn('Finish the test', self.listings[final_ft + 1])
-
         self.start_with_checkout()
         self.start_dev_server()
 
-        while self.pos < final_ft:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
-        self.restart_dev_server()
+        self.skip_with_check(8, 'wibble')
+        self.skip_with_check(9, 'wibble')
+        self.skip_with_check(31, 'add the untracked templates folder')
+        self.skip_with_check(33, 'review the changes')
 
         while self.pos < len(self.listings):
-            print(self.pos)
+            print(self.pos, self.listings[self.pos].type)
+            time.sleep(0.5)  # let runserver fs watcher catch up
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
