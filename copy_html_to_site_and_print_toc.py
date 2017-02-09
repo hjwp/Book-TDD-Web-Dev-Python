@@ -15,7 +15,7 @@ CHAPTERS = [
     "chapter_01.html",
     "chapter_02.html",
     "chapter_03.html",
-    "chapter_04.html",
+    "philosophy-and-refactoring.html",
     "chapter_05.html",
     "chapter_06.html",
 
