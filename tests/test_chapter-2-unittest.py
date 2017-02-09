@@ -9,7 +9,7 @@ from book_tester import (
 )
 
 class Chapter2Test(ChapterTest):
-    chapter_name = 'chapter_02'
+    chapter_name = 'chapter-2-unittest'
     previous_chapter = 'chapter_01'
 
     def test_listings_and_commands_and_output(self):
