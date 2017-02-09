@@ -15,8 +15,8 @@ test: build
 %.html: %.asciidoc
 	$(RUN_ASCIIDOCTOR) $<
 
-oreilly.%.html: %.asciidoc
-	$(RUN_OREILLY_FLAVOURED_ASCIIDOCTOR) $(subst asciidoc,html,$(subst oreilly.,,$@))
+oreilly.%.asciidoc: %.asciidoc
+	$(RUN_OREILLY_FLAVOURED_ASCIIDOCTOR) $(subst oreilly.,,$@)
 
 
 test_%: %.html
