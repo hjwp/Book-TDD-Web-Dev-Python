@@ -8,6 +8,7 @@ from book_tester import (
     CodeListing,
     write_to_file
 )
+from update_source_repo import update_sources_for_chapter
 
 os.environ['LC_ALL'] = 'en_GB.UTF-8'
 os.environ['LANG'] = 'en_GB.UTF-8'
@@ -25,6 +26,7 @@ class Chapter1Test(ChapterTest):
 
 
     def test_listings_and_commands_and_output(self):
+        update_sources_for_chapter(self.chapter_name, previous_chapter=None)
         self.parse_listings()
 
         # sanity checks
