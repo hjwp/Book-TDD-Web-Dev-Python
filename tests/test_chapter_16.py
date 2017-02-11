@@ -5,7 +5,7 @@ from book_tester import ChapterTest
 
 class Chapter16Test(ChapterTest):
     chapter_name = 'chapter_16'
-    previous_chapter = 'chapter_15'
+    previous_chapter = 'chapter_deploying_validation'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()

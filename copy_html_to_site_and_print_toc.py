@@ -30,7 +30,7 @@ CHAPTERS = [
     "chapter_javascript.html",
 
     "part3.harry.html",
-    "chapter_15.html",
+    "chapter_deploying_validation.html",
     "chapter_16.html",
     "chapter_17.html",
     "chapter_18.html",
