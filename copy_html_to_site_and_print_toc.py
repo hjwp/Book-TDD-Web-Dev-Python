@@ -34,7 +34,7 @@ CHAPTERS = [
     "chapter_spiking_custom_auth.html",
     "chapter_mocking.html",
     "chapter_fixtures_and_debugging_staging.html",
-    "chapter_19.html",
+    "chapter_outside_in.html",
     "chapter_20.html",
     "chapter_21.html",
     "chapter_22.html",
