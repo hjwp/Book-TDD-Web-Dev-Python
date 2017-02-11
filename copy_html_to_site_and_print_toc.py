@@ -18,9 +18,9 @@ CHAPTERS = [
     "chapter_04.html",
     "chapter_05.html",
     "chapter_06.html",
+    "chapter_07.html",
 
     "part2.harry.html",
-    "chapter_07.html",
     "chapter_08.html",
     "chapter_09.html",
     "chapter_10.html",
