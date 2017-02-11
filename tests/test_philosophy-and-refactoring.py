@@ -12,7 +12,7 @@ from book_tester import (
 
 class Chapter4Test(ChapterTest):
     chapter_name = 'philosophy-and-refactoring'
-    previous_chapter = 'unit-test-first-view'
+    previous_chapter = 'chapter_unit_test_first_view'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
