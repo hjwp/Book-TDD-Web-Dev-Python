@@ -76,7 +76,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.get_local_repo_path = lambda c: os.path.abspath(os.path.join(
             os.path.dirname(__file__), 'testrepo'
         ))
-        self.sourcetree.start_with_checkout('chapter_17', 'chapter_spiking_custom_auth')
+        self.sourcetree.start_with_checkout('chapter_mocking', 'chapter_spiking_custom_auth')
         self.sourcetree.run_command('git checkout test-start')
         self.sourcetree.run_command('git reset')
 

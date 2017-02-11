@@ -32,7 +32,7 @@ CHAPTERS = [
     "part3.harry.html",
     "chapter_deploying_validation.html",
     "chapter_spiking_custom_auth.html",
-    "chapter_17.html",
+    "chapter_mocking.html",
     "chapter_18.html",
     "chapter_19.html",
     "chapter_20.html",
