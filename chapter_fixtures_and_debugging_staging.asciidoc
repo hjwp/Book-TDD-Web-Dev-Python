@@ -1,0 +1,1623 @@
+[[chapter_fixtures_and_debugging_staging]]
+Test Fixtures, Server-Side Debugging, and a Decorator for Explicit Waits
+------------------------------------------------------------------------
+
+[%autowidth,float="right",caption=,cols="2"]
+|=======
+2+|Chapter info
+|shortname:|chapter_fixtures_and_debugging_staging
+|=======
+
+WARNING: Major update released for Selenium 3.
+    If you started this book on or before Jan 30th 2017,
+    be aware: chapters have been renumbered,
+    so check this is the one you think it is,
+    and have a look at the new <<chapter_explicit_waits_1>>
+    for an indication of the changes you'll need in your FTs.
+    You should do a `pip install --upgrade selenium` too.
+
+
+Now that we have a functional authentication system, we want to use it to
+identify users, and be able to show them all the lists they have created.
+
+To do that, we're going to have to write FTs that have a logged-in user. Rather
+than making each test go through the (time-consuming) login email dance, we
+want to be able to skip that part.
+
+((("functional tests/testing (FT)", "vs. unit tests", sortas="unittests")))
+((("unit tests", "vs. functional tests", sortas="functionaltests")))
+This is about separation of concerns.  Functional tests aren't like unit tests,
+in that they don't usually have a single assertion. But, conceptually, they
+should be testing a single thing.  There's no need for every single FT to test
+the login/logout mechanisms. If we can figure out a way to "cheat" and skip
+that part, we'll spend less time waiting for duplicated test paths.
+
+TIP: Don't overdo de-duplication in FTs.  One of the benefits of an FT is that
+     it can catch strange and unpredictable interactions between different
+     parts of your application.
+
+
+NOTE: This chapter has only just been rewritten for the new edition, so let me
+    know via obeythetestinggoat@gmail.com if you spot any problems or have any
+    suggestions for improvement!
+
+
+Skipping the Login Process by Pre-creating a Session
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("fixtures", "in functional tests")))
+((("authentication", "pre-authentication", id="ix_preauthent", range="startofrange")))
+It's quite common for a user to return to a site and still have a cookie, which
+means they are "pre-authenticated", so this isn't an unrealistic cheat at all.
+Here's how you can set it up:
+
+[role="sourcecode"]
+.functional_tests/test_my_lists.py
+[source,python]
+----
+from django.conf import settings
+from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
+from django.contrib.sessions.backends.db import SessionStore
+from .base import FunctionalTest
+User = get_user_model()
+
+
+class MyListsTest(FunctionalTest):
+
+    def create_pre_authenticated_session(self, email):
+        user = User.objects.create(email=email)
+        session = SessionStore()
+        session[SESSION_KEY] = user.pk #<1>
+        session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
+        session.save()
+        ## to set a cookie we need to first visit the domain.
+        ## 404 pages load the quickest!
+        self.browser.get(self.server_url + "/404_no_such_url/")
+        self.browser.add_cookie(dict(
+            name=settings.SESSION_COOKIE_NAME,
+            value=session.session_key, #<2>
+            path='/',
+        ))
+----
+
+<1> We create a session object in the database.  The session key is the
+    primary key of the user object (which is actually their email address).
+
+<2> We then add a cookie to the browser that matches the session on the
+    server--on our next visit to the site, the server should recognise
+    us as a logged-in user.
+
+((("cookies")))
+((("session key")))
+Note that, as it is, this will only work because we're using
+`LiveServerTestCase`, so the `User` and `Session` objects we create will end up in
+the same database as the test server.  Later we'll need to modify it so that it
+works against the database on the staging server too.
+((("test fixtures")))
+((("Django", "test fixtures")))
+((("JSON fixtures")))
+
+
+.Django Sessions: How a User's Cookies Tell the Server She Is Authenticated
+**********************************************************************
+
+'Being an attempt to explain sessions, cookies, and authentication in Django.'
+((("sessions")))
+((("cookies")))
+((("authentication","in Django", sortas="Django")))
+((("Django", "authentication in")))
+
+Because HTTP is stateless, servers need a way of recognising different clients
+with 'every single request'. IP addresses can be shared, so the usual
+solution is to give each client a unique session ID, which it will store in a
+cookie, and submit with every request.  The server will store that ID somewhere
+(by default, in the database), and then it can recognise each request that
+comes in as being from a particular client.
+
+If you log in to the site using the dev server, you can actually take a look at
+your session ID by hand if you like.  It's stored under the key `sessionid` by
+default. See <<session-cookie-screenshot>>.
+
+[[session-cookie-screenshot]]
+.Examining the session cookie in the Debug toolbar
+image::images/twdp_1601.png[scale="80"]
+
+//TODO: update screenshot for non-persona
+
+These session cookies are set for all visitors to a Django site, whether
+they're logged in or not.
+
+When we want to recognise a client as being a logged-in and authenticated user,
+again, rather asking the client to send their username and password with every
+single request, the server can actually just mark that client's session as
+being an authenticated session, and associate it with a user ID in its
+database.
+
+A session is a dictionary-like data structure, and the user ID is stored under
+the key given by `django.contrib.auth.SESSION_KEY`.  You can check this out
+in a `manage.py` console if you like:
+
+[role="skipme small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py shell*]
+[...]
+In [1]: from django.contrib.sessions.models import Session
+
+# substitute your session id from your browser cookie here
+In [2]: session = Session.objects.get(
+    session_key="8u0pygdy9blo696g3n4o078ygt6l8y0y"
+)
+
+In [3]: print(session.get_decoded())
+{'_auth_user_id': 'obeythetestinggoat@gmail.com', '_auth_user_backend':
+'accounts.authentication.PasswordlessAuthenticationBackend'}
+----
+
+You can also store any other information you like on a user's session,
+as a way of temporarily keeping track of some state. This works for
+non-logged-in users too.  Just use `request.session` inside any
+view, and it works as a dict. There's more information in the 
+https://docs.djangoproject.com/en/1.10/topics/http/sessions/[Django docs on
+sessions].
+
+**********************************************************************
+
+
+Checking It Works
+^^^^^^^^^^^^^^^^^
+
+To check it works, it would be good to use some of the code from our previous
+test.  Let's make a couple of functions called `wait_to_be_logged_in` and
+`wait_to_be_logged_out`. To access them from a different test, we'll need
+to pull them up into `FunctionalTest`. We'll also tweak them slightly so that
+they can take an arbitrary email address as a parameter:
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l002)
+[source,python]
+----
+class FunctionalTest(StaticLiveServerTestCase):
+    [...]
+
+    def wait_to_be_logged_in(self, email):
+        self.wait_for(
+            lambda: self.browser.find_element_by_link_text('Log out')
+        )
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertIn(email, navbar.text)
+
+
+    def wait_to_be_logged_out(self, email):
+        self.wait_for(
+            lambda: self.browser.find_element_by_name('email')
+        )
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertNotIn(email, navbar.text)
+----
+
+
+Hm, that's not bad, but I'm not quite happy with the amount of duplication
+of `wait_for` stuff in here.  Let's make a note to come back to it, and
+get these helpers working.
+
+[role="scratchpad"]
+*****
+* 'Clean up wait_for stuff in base.py'
+*****
+
+
+First we use them in 'test_login.py':
+
+
+[role="sourcecode"]
+.functional_tests/test_login.py (ch18l003)
+[source,python]
+----
+    def test_can_get_email_link_to_log_in(self):
+        [...]
+        # she is logged in!
+        self.wait_to_be_logged_in(email=TEST_EMAIL)
+
+        # Now she logs out
+        self.browser.find_element_by_link_text('Log out').click()
+
+        # She is logged out
+        self.wait_to_be_logged_out(email=TEST_EMAIL)
+----
+
+Just to check we haven't broken anything, we rerun the login test:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_login*]
+[...]
+OK
+----
+
+And now we can write a placeholder for the "My Lists" test, to see if
+our pre-authenticated session creator really does work:
+
+[role="sourcecode"]
+.functional_tests/test_my_lists.py (ch18l004)
+[source,python]
+----
+    def test_logged_in_users_lists_are_saved_as_my_lists(self):
+        email = 'edith@example.com'
+        self.browser.get(self.server_url)
+        self.wait_to_be_logged_out(email)
+
+        # Edith is a logged-in user
+        self.create_pre_authenticated_session(email)
+        self.browser.get(self.server_url)
+        self.wait_to_be_logged_in(email)
+----
+
+That gets us:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+[...]
+OK
+----
+
+That's a good place for a commit:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests*
+$ *git commit -m "test_my_lists: precreate sessions, move login checks into base"*
+----
+(((range="endofrange", startref="ix_preauthent")))
+(((range="endofrange", startref="ix_staging_database")))
+
+
+.JSON Test Fixtures Considered Harmful
+*******************************************************************************
+When we pre-populate the database with test data, as we've done here with the
+`User` object and its associated `Session` object, what we're doing is setting
+up a "test fixture".
+((("JSON fixtures")))
+
+Django comes with built-in support for saving database objects as JSON (using
+the `manage.py dumpdata`), and automatically loading them in your test runs 
+using the `fixtures` class attribute on `TestCase`.
+
+More and more people are starting to say: 
+http://bit.ly/1kSTyrb[don't use JSON fixtures].
+They're a nightmare to maintain when your model changes.  Plus it's difficult
+for the reader to tell which of the many attribute values specified in the
+JSON are critical for the behaviour under test, and which are just filler.
+Finally, even if tests start out sharing fixtures, sooner or later one
+test will want slightly different versions of the data, and you end up copying
+the whole thing around to keep them isolated, and again it's hard to tell
+what's relevant to the test and what is just happenstance.
+
+It's usually much more straightforward to just load the data directly
+using the Django ORM.
+
+TIP: Once you have more than a handful of fields on a model, and/or several
+    related models, even using the ORM can be cumbersome.  In this case,
+    there's a tool that lots of people swear by called
+    https://factoryboy.readthedocs.org/[`factory_boy`].
+
+*******************************************************************************
+
+
+Our final explicit wait helper:  a wait decorator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We've used decorators a few times in our code so far, it's time to learn
+how they actually work by making one of our own.
+
+First, let's imagine how we might want our decorator to work.  It would be
+nice to be able to replace all the custom wait/retry/timeout logic in
+`wait_for_row_in_list_table` and the in-line `self.wait_fors` in the 
+`wait_to_be_logged_in/out`.   Something like this would look lovely:
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l005)
+[source,python]
+----
+    @wait
+    def wait_for_row_in_list_table(self, row_text):
+        table = self.browser.find_element_by_id('id_list_table')
+        rows = table.find_elements_by_tag_name('tr')
+        self.assertIn(row_text, [row.text for row in rows])
+
+
+    @wait
+    def wait_to_be_logged_in(self, email):
+        self.browser.find_element_by_link_text('Log out')
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertIn(email, navbar.text)
+
+
+    @wait
+    def wait_to_be_logged_out(self, email):
+        self.browser.find_element_by_name('email')
+        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.assertNotIn(email, navbar.text)
+----
+
+
+Are you ready to dive in?  Although decorators are quite difficult to
+wrap your head around (I know it took me a long time before I was 
+comfortable with them, and I still have to think about them quite
+carefully whenever I make one), the nice thing is that we've already
+dipped our toes into functional programming in our `self.wait_for`
+helper function.  That's a function that takes another function as
+an argument, and a decorator is the same.  The difference is that the
+decorator doesn't actually execute any code itself -- it returns a
+modified version of the function that it was given.
+
+Our decorator wants to return a new function which will keep calling
+the function it was given, catching our usual exceptions, until a
+timeout occurs.  Here's a first cut:
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l006)
+[source,python]
+----
+def wait(fn):  #<1>
+    def modified_fn():  #<3>
+        start_time = time.time()
+        while True:  #<4>
+            try:
+                return fn()  #<5>
+            except (AssertionError, WebDriverException) as e:  #<4>
+                if time.time() - start_time > MAX_WAIT:
+                    raise e
+                time.sleep(0.5)
+    return modified_fn  #<2>
+----
+
+<1> A decorator is a way of modifying a function; it takes a function
+    an argument...
+
+<2> and returns another function as the modified (or "decorated") version.
+
+<3> Here's where we create our modified function. 
+
+<4> And here's our familiar loop, which will keep going, catching the usual
+    exceptions, until our timeout expires
+
+<5> And as always, we call our function and return immediately if there are
+    no exceptions.
+
+
+That's 'almost' right, but not quite;  try running it?
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+[...]
+    self.wait_to_be_logged_out(email)
+TypeError: modified_fn() takes 0 positional arguments but 2 were given
+----
+
+
+Unlike in `self.wait_for`, the decorator is being applied to functions
+that have arguments:
+
+
+
+[role="sourcecode currentcontents"]
+.functional_tests/base.py
+[source,python]
+----
+    @wait
+    def wait_to_be_logged_in(self, email):
+        self.browser.find_element_by_link_text('Log out')
+----
+
+`wait_to_be_logged_in` takes `self` and `email` as positional arguments.
+But when it's decorated, it's replaced with `modified_fn`, which takes 
+no arguments.  How do we magically make it so our `modified_fn` can handle
+the same arguments as whatever `fn` the decorator gets given has?
+
+The answer is a bit of Python magic, `*args` and `**kwargs`, more formally
+known as
+https://docs.python.org/3/tutorial/controlflow.html#keyword-arguments["variadic
+arguments"], apparently (I only just learned that).
+
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l007)
+[source,python]
+----
+def wait(fn):
+    def modified_fn(*args, **kwargs):  #<1>
+        start_time = time.time()
+        while True:
+            try:
+                return fn(*args, **kwargs)  #<2>
+            except (AssertionError, WebDriverException) as e:
+                if time.time() - start_time > MAX_WAIT:
+                    raise e
+                time.sleep(0.5)
+    return modified_fn
+----
+
+<1> Using `*args` and `**kwargs`, we specify that `modified_fn` may take
+    any arbitrary positional and keyword arguments
+
+<2> As we've captured them in the function definition, we make sure to
+    pass those same arguments to `fn` when we actually call it.
+
+One of the fun things this can be used for is to make a decorator that changes
+the arguments of a function.  But we won't get into that now.  The main thing
+is that our decorator now works:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+[...]
+OK
+----
+
+
+And do you know what's truly satisfying?  We can use our `wait` decorator
+for our `self.wait_for` helper as well!  Like this:
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l008)
+[source,python]
+----
+    @wait
+    def wait_for(self, fn):
+        return fn()
+----
+
+
+Lovely!  Now all our wait/retry logic is encapsulated in a single place,
+and we have a nice easy way of applying those waits, either inline in our
+FTs using `self.wait_for`, or on any helper function using the `@wait`
+decorator.
+
+
+TODO: separate this out into two chapters at this point?
+
+
+The Proof Is in the Pudding: Using Staging to Catch Final Bugs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Popping a few layers of our stack of things we're working on, we have nice
+waiting helpers, what were we using them for?  Oh yes, waiting to be logged
+in. And why was that?  Ah yes, we had just built a way of pre-authenticating
+a user.
+
+((("debugging", "staging for", id="ix_debugstaging", range="startofrange")))
+((("staging server", "debugging in", id="ix_stagingdebug", range="startofrange")))
+That's all very well for running the FTs locally, but how would it work against
+the staging server?  Let's try and deploy our site.  Along the way we'll catch
+an unexpected bug (that's what staging is for!), and then we'll have to figure
+out a way of managing the database on the test server.
+
+
+
+
+//TODO: unskip all these
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *cd deploy_tools*
+$ *fab deploy --host=elspeth@superlists-staging.ottg.eu*
+[...]
+----
+
+And restart Gunicorn...
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo systemctl daemon-reload*
+elspeth@server:$ *sudo systemctl restart gunicorn-superlists-staging.ottg.eu*
+----
+
+Here's what happens when we run the functional tests:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests \
+--liveserver=superlists-staging.ottg.eu*]
+
+======================================================================
+ERROR: test_can_get_email_link_to_log_in
+(functional_tests.test_login.LoginTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/.../functional_tests/test_login.py", line 22, in
+  test_can_get_email_link_to_log_in
+    self.assertIn('Check your email', body.text)
+AssertionError: 'Check your email' not found in 'Server Error (500)'
+
+
+======================================================================
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/harry/.../book-example/functional_tests/test_my_lists.py",
+  line 34, in test_logged_in_users_lists_are_saved_as_my_lists
+    self.wait_to_be_logged_in(email)
+  File "/worskpace/functional_tests/base.py", line 42, in wait_to_be_logged_in
+    self.browser.find_element_by_link_text('Log out')
+    [...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: {"method":"link text","selector":"Log out"}
+Stacktrace:
+[...]
+
+ ---------------------------------------------------------------------
+Ran 8 tests in 27.933s
+
+FAILED (errors=2)
+----
+
+We can't log in--either with the real email system or with our
+pre-authenticated session.  Looks like our nice new authentication
+system is crashing the server.
+
+
+Let's practice a bit of server-side debugging!
+
+
+
+Setting Up Logging
+^^^^^^^^^^^^^^^^^^
+
+
+((("Gunicorn")))
+((("logging")))
+In order to track this problem down, we have to set up Gunicorn to do some
+logging.  Adjust the Gunicorn config on the server, using `vi` or `nano`:
+
+[role="sourcecode small-code skipme"]
+.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
+[source,ini]
+----
+ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
+    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
+    --capture-output \
+    --access-logfile ../access.log \
+    --error-logfile ../error.log \
+    superlists.wsgi:application
+----
+
+That will put an access log and error log into the '~/sites/$SITENAME' folder.
+
+You should also make sure your 'settings.py' still contains the `LOGGING`
+settings which will actually send stuff to the console:
+
+[role="sourcecode currentcontents"]
+.superlists/settings.py
+[source,python]
+----
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+        },
+    },
+    'root': {'level': 'INFO'},
+}
+----
+
+We restart Gunicorn again, and then either rerun the FT, or just try
+to log in manually.  While that happens, we can watch the logs on
+the server with a:
+
+[role="skipme smallcode"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo systemctl daemon-reload*
+elspeth@server:$ *sudo systemctrl restart gunicorn-superlists-staging.ottg.eu*
+elspeth@server:$ *tail -f error.log*  # assumes we are in ~/sites/$SITENAME folder
+----
+
+You should see an error like this:
+[role="skipme smallcode"]
+[subs="specialcharacters,quotes"]
+----
+Internal Server Error: /accounts/send_login_email
+Traceback (most recent call last):
+  File "/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/lib/python3.5/[...]
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File
+"/home/elspeth/sites/superlists-staging.ottg.eu/source/accounts/views.py", line
+20, in send_login_email
+    [email]
+[...]
+    self.connection.sendmail(from_email, recipients, message.as_bytes(linesep='\r\n'))
+  File "/usr/lib/python3.5/smtplib.py", line 862, in sendmail
+    raise SMTPSenderRefused(code, resp, from_addr)
+smtplib.SMTPSenderRefused: (530, b'5.5.1 Authentication Required. Learn more
+at\n5.5.1  https://support.google.com/mail/?p=WantAuthError [...]
+- gsmtp', 'noreply@superlists')
+
+----
+
+Hm, gmail is refusing to send our emails is it?  Now why might that be?  Ah
+yes, we haven't told the server what our password is!
+
+
+//TODO: consider adding a logging.info or similar here, so we can reintroduce
+//the logging stuff?
+
+
+Setting secret environment variables on the server
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the deployment chapter, we've seen one way of setting secret
+values on the server, which we use to populate the Django
+`SECRET_KEY` setting--creating one-off Python files on the server
+filesystem, and importing them.
+
+In these chapters we've been using environment variables in our
+shells to store our email password, so let's replicate that on 
+the server.  We can set the environment variable in the Systemd
+config file:
+
+[role="sourcecode small-code skipme"]
+.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
+[source,ini]
+----
+[Service]
+User=elspeth
+Environment=EMAIL_PASSWORD=yoursekritpasswordhere
+WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu/source
+[...]
+----
+
+NOTE: One arguable security advantage to using this config file is we
+    can restrict its permissions to only be readable by root, something
+    we can't do for our app's Python source files.
+
+
+Saving that file, and doing the usual `daemon-reload` and `restart gunicorn`
+dance, we can re-run our FTs, and...
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests \
+--liveserver=superlists-staging.ottg.eu*]
+
+[...]
+Traceback (most recent call last):
+  File "/.../superlists/functional_tests/test_login.py", line 25, in
+  test_can_get_email_link_to_log_in
+    email = mail.outbox[0]
+IndexError: list index out of range
+
+[...]
+
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: {"method":"link text","selector":"Log out"}
+----
+
+
+The my_lists failure is still the same, but we have more information in our
+login test: the FT gets further, the site now looks like it's sending emails
+correctly, (and the server log shows no errors) but we can't check the email in
+the mail.outbox...
+
+
+Adapting our FT to be able to test real emails via POP3
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ah. That explains it. Now that we're running against a real server rather than
+the `LiveServerTestCase`, we can no longer inspect the local
+`django.mail.outbox` to see sent emails.
+
+
+First, we'll need to know, in our FTs, whether we're running against
+the staging server or not.  Let's populate a variable `self.against_staging`
+in 'base.py':
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l009)
+[source,diff]
+----
+@@ -9,8 +9,10 @@ class FunctionalTest(StaticLiveServerTestCase):
+         for arg in sys.argv:
+             if 'liveserver' in arg:
+                 cls.server_url = 'http://' + arg.split('=')[1]
++                cls.against_staging = True
+                 return
+         super().setUpClass()
++        cls.against_staging = False
+         cls.server_url = cls.live_server_url
+----
+
+Then we build a helper function that can retrieve a real email from a real POP3
+email server, using the horrifically tortuous Python standard library POP3
+client:
+
+[role="sourcecode"]
+.functional_tests/test_login.py (ch18l010)
+[source,python]
+----
+import os
+import poplib
+import re
+import time
+[...]
+
+    def wait_for_email(self, test_email, subject):
+        if not self.against_staging:
+            email = mail.outbox[0]
+            self.assertIn(test_email, email.to)
+            self.assertEqual(email.subject, subject)
+            return email.body
+
+        subject_line = 'Subject: {}'.format(subject)
+        email_id = None
+        start = time.time()
+        inbox = poplib.POP3_SSL('pop.mail.yahoo.com')
+        try:
+            inbox.user(test_email)
+            inbox.pass_(os.environ['YAHOO_PASSWORD'])
+            while time.time() - start < 60:
+                count, _ = inbox.stat()
+                for i in reversed(range(max(1, count - 10), count + 1)):
+                    print('getting msg', i)
+                    _, lines, __ = inbox.retr(i)
+                    lines = [l.decode('utf8') for l in lines]
+                    print(lines)
+                    if subject_line in lines:
+                        email_id = i
+                        body = '\n'.join(lines)
+                        return body
+                time.sleep(5)
+        finally:
+            if email_id:
+                inbox.dele(email_id)
+            inbox.quit()
+----
+
+
+NOTE: I'm using a Yahoo account for testing, but you can use any
+    email service you like, as long as it offers POP3 access.
+    You will need to set the `YAHOO_PASSWORD` environment variable
+    in the console that's running the FT.
+
+
+And feed thru the rest of the changes to the FT that are required
+as a result:
+
+
+
+[role="sourcecode small-code"]
+.functional_tests/test_login.py (ch18l011)
+[source,diff]
+----
+@@ -7,7 +7,7 @@ from selenium.webdriver.common.keys import Keys
+ 
+ from .base import FunctionalTest
+ 
+-TEST_EMAIL = 'edith@example.com'
++
+ SUBJECT = 'Your login link for Superlists'
+ 
+ 
+@@ -33,7 +33,6 @@ class LoginTest(FunctionalTest):
+                     print('getting msg', i)
+                     _, lines, __ = inbox.retr(i)
+                     lines = [l.decode('utf8') for l in lines]
+-                    print(lines)
+                     if subject_line in lines:
+                         email_id = i
+                         body = '\n'.join(lines)
+@@ -49,8 +48,13 @@ class LoginTest(FunctionalTest):
+         # Edith goes to the awesome superlists site
+         # and notices a "Log in" section in the navbar for the first time
+         # It's telling her to enter her email address, so she does
++        if self.against_staging:
++            test_email = 'edith.testuser@yahoo.com'
++        else:
++            test_email = 'edith@example.com'
++
+         self.browser.get(self.server_url)
+-        self.browser.find_element_by_name('email').send_keys(TEST_EMAIL)
++        self.browser.find_element_by_name('email').send_keys(test_email)
+         self.browser.find_element_by_name('email').send_keys(Keys.ENTER)
+ 
+         # A message appears telling her an email has been sent
+@@ -60,16 +64,14 @@ class LoginTest(FunctionalTest):
+         ))
+ 
+         # She checks her email and finds a message
+-        email = mail.outbox[0]
+-        self.assertIn(TEST_EMAIL, email.to)
+-        self.assertEqual(email.subject, SUBJECT)
++        body = self.wait_for_email(test_email, SUBJECT)
+ 
+         # It has a url link in it
+-        self.assertIn('Use this link to log in', email.body)
+-        url_search = re.search(r'http://.+/.+$', email.body)
++        self.assertIn('Use this link to log in', body)
++        url_search = re.search(r'http://.+/.+$', body)
+         if not url_search:
+             self.fail(
+-                'Could not find url in email body:\n{}'.format(email.body)
++                'Could not find url in email body:\n{}'.format(body)
+             )
+         url = url_search.group(0)
+         self.assertIn(self.server_url, url)
+@@ -78,11 +80,11 @@ class LoginTest(FunctionalTest):
+         self.browser.get(url)
+ 
+         # she is logged in!
+-        self.wait_to_be_logged_in(email=TEST_EMAIL)
++        self.wait_to_be_logged_in(email=test_email)
+ 
+         # Now she logs out
+         self.browser.find_element_by_link_text('Log out').click()
+ 
+         # She is logged out
+-        self.wait_to_be_logged_out(email=TEST_EMAIL)
++        self.wait_to_be_logged_out(email=test_email)
+----
+
+
+And, believe it or not, that'll actually work, and give us an FT
+that can actually check for logins that work, involving real emails!
+
+
+TIP: I've just hacked this email-checking code together, and it's currently
+    pretty ugly and brittle (one common problem is picking up the wrong email
+    from a previous test run).  With some cleanup and a few more retry loops it
+    could grow into something more reliable. Alternatively, services like
+    'mailinator.com' will give you throwaway email addresses and an API to
+    check them, for a small fee.
+
+
+
+Managing the Test Database on Staging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("staging server", "managing database on", id="ix_staging_database", range="startofrange")))
+((("fixtures", "on staging server", id="ix_stagingtestdb", range="startofrange")))
+Now we can rerun our FTs, and get to the next failure: our attempt to create
+pre-authenticated sessions doesn't work, so the "My Lists" test fails:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests \
+--liveserver=superlists-staging.ottg.eu*]
+
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest)
+[...]
+selenium.common.exceptions.TimeoutException: Message: Could not find element
+with id id_logout. Page text was:
+Superlists
+Sign in
+Start a new To-Do list
+
+Ran 8 tests in 72.742s
+
+FAILED (errors=1)
+----
+
+
+It's because our test utility function `create_pre_authenticated_session` only
+acts on the local database. Let's find out how our tests can manage the
+database on the server.
+
+
+
+A Django Management Command to Create Sessions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("staging server", "creating sessions")))
+((("Django", "management commands", id="ix_Djangomancommond", range="startofrange")))
+To do things on the server, we'll need to build a self-contained script that
+can be run from the command line on the server, most probably via Fabric.
+
+When trying to build standalone scripts that work with the Django environment,
+can talk to the database and so on, there are some fiddly issues you need to
+get right, like setting the `DJANGO_SETTINGS_MODULE` environment variable
+correctly, and getting the `sys.path` right.  Instead of messing about with all
+that, Django lets you create your own "management commands" (commands you can
+run with `python manage.py`), which will do all that path mangling for you.
+They live in a folder called 'management/commands' inside your apps:
+
+[subs=""]
+----
+$ <strong>mkdir -p functional_tests/management/commands</strong>
+$ <strong>touch functional_tests/management/__init__.py</strong>
+$ <strong>touch functional_tests/management/commands/__init__.py</strong>
+----
+
+The boilerplate in a management command is a class that inherits from 
+`django.core.management.BaseCommand`, and that defines a method called
+`handle`:
+
+[role="sourcecode"]
+.functional_tests/management/commands/create_session.py
+[source,python]
+----
+from django.conf import settings
+from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
+User = get_user_model()
+from django.contrib.sessions.backends.db import SessionStore
+from django.core.management.base import BaseCommand
+
+
+class Command(BaseCommand):
+
+    def add_arguments(self, parser):
+        parser.add_argument('email')
+
+    def handle(self, *args, **options):
+        session_key = create_pre_authenticated_session(options['email'])
+        self.stdout.write(session_key)
+
+
+def create_pre_authenticated_session(email):
+    user = User.objects.create(email=email)
+    session = SessionStore()
+    session[SESSION_KEY] = user.pk
+    session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
+    session.save()
+    return session.session_key
+----
+//12
+
+We've taken the code for `create_pre_authenticated_session` code from
+'test_my_lists.py'. `handle` will pick up an email address from the parser,  
+and then return the session key that we'll want to add to our browser cookies,
+and the management command prints it out at the command line. Try it out:
+
+//IDEA: test commands that have return code
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py create_session a@b.com*]
+Unknown command: 'create_session'
+----
+
+One more step: we need to add `functional_tests` to our 'settings.py'
+for it to recognise it as a real app that might have management commands as
+well as tests:
+
+[role="sourcecode"]
+.superlists/settings.py
+[source,python]
+----
++++ b/superlists/settings.py
+@@ -42,6 +42,7 @@ INSTALLED_APPS = [
+     'lists',
+     'accounts',
++    'functional_tests',
+ ]
+----
+//14
+
+Now it works:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py create_session a@b.com*]
+qnslckvp2aga7tm6xuivyb0ob1akzzwl
+----
+
+NOTE: If you see an error saying the `auth_user` table is missing, you may need
+    to run `manage.py migrate`.  In case that doesn't work, delete the
+    `db.sqlite3` file and run migrate again, to get a clean slate.
+
+
+Getting the FT to Run the Management Command on the Server
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next we need to adjust `test_my_lists` so that it runs the local function
+when we're on the local server, and make it run the management command
+on the staging server if we're on that:
+
+[role="sourcecode"]
+.functional_tests/test_my_lists.py (ch18l016)
+[source,python]
+----
+from django.conf import settings
+from .base import FunctionalTest
+from .server_tools import create_session_on_server
+from .management.commands.create_session import create_pre_authenticated_session
+
+class MyListsTest(FunctionalTest):
+
+    def create_pre_authenticated_session(self, email):
+        if self.against_staging:
+            session_key = create_session_on_server(self.server_host, email)
+        else:
+            session_key = create_pre_authenticated_session(email)
+        ## to set a cookie we need to first visit the domain.
+        ## 404 pages load the quickest!
+        self.browser.get(self.server_url + "/404_no_such_url/")
+        self.browser.add_cookie(dict(
+            name=settings.SESSION_COOKIE_NAME,
+            value=session_key,
+            path='/',
+        ))
+
+    [...]
+----
+
+
+Let's also tweak 'base.py', to gather a bit more information
+when we populate `self.against_staging`:
+
+
+[role="sourcecode"]
+.functional_tests/base.py (ch18l017)
+[source,python]
+----
+from .server_tools import reset_database  #<2>
+
+class FunctionalTest(StaticLiveServerTestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        for arg in sys.argv:
+            if 'liveserver' in arg:
+                cls.server_host = arg.split('=')[1] #<1>
+                cls.server_url = 'http://' + cls.server_host
+                cls.against_staging = True
+                return
+        super().setUpClass()
+        cls.against_staging = False
+        cls.server_url = cls.live_server_url
+
+
+    def setUp(self):
+        if self.against_staging:
+            reset_database(self.server_host) #<2>
+        self.browser = webdriver.Firefox()
+----
+
+<1> Instead of just storing `cls.server_url`, we also store the `server_host` 
+    attributes if we detect the `liveserver` command-line argument.
+
+<2> We also need a way of resetting the server database in between each test. 
+    I'll explain the logic of the session-creation code, which should also 
+    explain how this works.
+(((range="endofrange", startref="ix_Djangomancommond")))
+
+
+An Additional Hop via subprocess
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Because our tests are Python 3, we can't directly call our Fabric functions,
+which are Python 2. Instead, we have to do an extra hop and call the `fab`
+command as a new process, like we do from the command line when we do server
+deploys.  Here's how that looks, in a module called 'server_tools':
+((("Fabric")))
+
+[role="sourcecode"]
+.functional_tests/server_tools.py
+[source,python]
+----
+from os import path
+import subprocess
+THIS_FOLDER = path.dirname(path.abspath(__file__))
+
+def create_session_on_server(host, email):
+    return subprocess.check_output(
+        [
+            'fab',
+            'create_session_on_server:email={}'.format(email),  #<1><2>
+            '--host=elspeth@{}'.format(host),  #<3>
+            '--hide=everything,status',  #<4>
+        ],
+        cwd=THIS_FOLDER
+    ).decode().strip()  #<4>
+
+
+def reset_database(host):
+    subprocess.check_call(
+        ['fab', 'reset_database', '--host=elspeth@{}'.format(host)],  <3>
+        cwd=THIS_FOLDER
+    )
+----
+//18
+
+
+Here we use the `subprocess` module to call some Fabric functions using the
+`fab` command. 
+
+<1> As you can see, the command-line syntax for arguments to `fab` functions is
+    quite simple, a colon and then a variable=argument syntax. 
+
+<2> Incidentally, this is also the first time I've shown the "new-style" string
+    formatting syntax.  As you can see it uses curly brackets `{}` instead of
+    `%s`. I slightly prefer it to the old style, but you're bound to come
+    across both if you spend any time with Python. Take a look at some of the
+    examples in the
+    http://docs.python.org/3/library/string.html#format-examples[Python docs]
+    to learn more.
+
+<3> Replace "elspeth" with your own user account name on your server.
+
+<4> Because of all the hopping around via Fabric and subprocesses, we're forced
+    to be quite careful about extracting the session key as a string from the
+    output of the command as it gets run on the server.
+
+You may need to adapt the call to `subprocess` if you are using a custom
+username or password: make it match the `fab` arguments you use when you run
+the automated deployment script.
+
+NOTE: By the time you read this book, Fabric may well have been fully ported to
+    Python 3. If so, investigate using the Fabric context managers to call
+    Fabric functions directly inline with your code.
+
+Finally, let's look at the fabfile that defines those two commands we want to
+run server side, to reset the database or set up the session:
+
+
+[role="sourcecode"]
+.functional_tests/fabfile.py
+[source,python]
+----
+from fabric.api import env, run
+
+
+def _get_base_folder(host):
+    return '~/sites/' + host
+
+def _get_manage_dot_py(host):
+    return '{path}/virtualenv/bin/python {path}/source/manage.py'.format(
+        path=_get_base_folder(host)
+    )
+
+
+def reset_database():
+    run('{manage_py} flush --noinput'.format(
+        manage_py=_get_manage_dot_py(env.host)
+    ))
+
+
+def create_session_on_server(email):
+    session_key = run('{manage_py} create_session {email}'.format(
+        manage_py=_get_manage_dot_py(env.host),
+        email=email,
+    ))
+    print(session_key)
+----
+//19
+
+Does that make a reasonable amount of sense?  We've got a function that
+can create a session in the database.  If we detect we're running locally,
+we call it directly.  If we're against the server, there's a couple of hops:
+we use `subprocess` to get to Fabric via `fab`, which lets us run a management
+command that calls that same function, but on the server.
+
+
+How about an ASCII-art illustration?
+
+[role="skipme"]
+.Locally:
+----
+MyListsTest
+.create_pre_authenticated_session  →   .management.commands.create_session
+                                       .create_pre_authenticated_session
+----
+
+[role="skipme"]
+.Against staging:
+----
+MyListsTest
+.create_pre_authenticated_session      .management.commands.create_session
+                                       .create_pre_authenticated_session
+     ↓
+                                                      ↑
+server_tools
+.create_session_on_server                run manage.py create_session 
+
+     ↓                                                ↑
+subprocess.check_output    →    fab   →   fabfile.create_session_on_server
+----
+
+Anyway, let's see if it works.  First, locally, to check we didn't break
+anything:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+[...]
+OK
+----
+
+
+Next, against the server.  We push our code up first:
+
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *git push*  # you'll need to commit changes first.
+$ *cd deploy_tools*
+$ *fab deploy --host=superlists-staging.ottg.eu*
+----
+
+And now we run the test--notice we can include `elspeth@` in the 
+specification of the `liveserver` argument now:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_my_lists \
+--liveserver=elspeth@superlists-staging.ottg.eu*]
+Creating test database for alias 'default'...
+[superlists-staging.ottg.eu] Executing task 'reset_database'
+~/sites/superlists-staging.ottg.eu/source/manage.py flush --noinput
+[superlists-staging.ottg.eu] out: Syncing...
+[superlists-staging.ottg.eu] out: Creating tables ...
+[...]
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 25.701s
+
+OK
+----
+
+Looking good!  We can rerun all the tests to make sure...
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests \
+--liveserver=elspeth@superlists-staging.ottg.eu*]
+Creating test database for alias 'default'...
+[superlists-staging.ottg.eu] Executing task 'reset_database'
+[...]
+Ran 8 tests in 89.494s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+Hooray! 
+
+NOTE: I've shown one way of managing the test database, but you could
+    experiment with others--for example, if you were using MySQL or Postgres,
+    you could open up an SSH tunnel to the server, and use port forwarding to
+    talk to the database directly.  You could then amend `settings.DATABASES`
+    during FTs to talk to the tunnelled port.
+(((range="endofrange", startref="ix_stagingtestdb")))
+((("functional tests/testing (FT)", "safeguards with")))
+
+
+.Warning: Be Careful Not to Run Test Code Against the Live Server
+*******************************************************************************
+We're into dangerous territory, now that we have code that can directly
+affect a database on the server.  You want to be very, very careful that you 
+don't accidentally blow away your production database by running FTs against
+the wrong host.  
+
+You might consider putting some safeguards in place at this point. For example,
+you could put staging and production on different servers, and make it so they
+use different keypairs for authentication, with different passphrases.
+
+This is similar dangerous territory to running tests against clones of
+production data, if you remember my little story about accidentally sending
+thousands of duplicate invoices to clients.  LFMF.
+
+*******************************************************************************
+
+
+Baking In Our Logging Code
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before we finish, let's "bake in" our logging setup. It would be useful to 
+keep our new logging code in there, under source control, so that we can
+debug any future login problems.  They may indicate someone is up to no
+good, after all...
+
+Let's start by saving the Gunicorn config to our template file in
+'deploy_tools':
+
+[role="sourcecode"]
+.deploy_tools/gunicorn-systemd.template.service (ch18l020)
+[source,ini]
+----
+[...]
+Environment=EMAIL_PASSWORD=SEKRIT
+ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
+    --bind unix:/tmp/SITENAME.socket \
+    --access-logfile ../access.log \
+    --error-logfile ../error.log \
+    superlists.wsgi:application
+[...]
+----
+
+And a little reminder in our provisioning notes about needing to set
+the email password environment variable via that gunicorn config file:
+note in our 
+
+[role="sourcecode"]
+.deploy_tools/provisioning_notes.md (ch18l021)
+[source,rst]
+----
+## Upstart Job
+
+* see gunicorn-upstart.template.conf
+* replace SITENAME with, eg, staging.my-domain.com
+* replace SEKRIT with email password
+[...]
+----
+
+
+
+Wrap-Up
+~~~~~~~
+
+We now have a lovely generic `wait` decorator, test fixtures that work both
+locally and on the server, and we've got some more robust logging
+configuration.
+
+But before we can deploy our actual live site, we'd better actually give the
+users what they wanted--the next chapter describes how to give them
+the ability to save their lists on a "My Lists" page.
+(((range="endofrange", startref="ix_loggingconfig")))
+((("functional tests/testing (FT)", "de-duplication")))
+((("test fixtures")))
+((("JSON fixtures")))
+((("Django", "management commands")))
+((("logging")))
+((("log messages")))
+
+
+.Lessons learned
+*******************************************************************************
+
+Decorators are nice::
+    Decorators can be a great way of abstracting out different levels of
+    concerns.  They let us write our test assertions without having to
+    think about waits at the same time.
+
+De-duplicate your FTs, with caution::
+    Every single FT doesn't need to test every single part of your application.
+    In our case, we wanted to avoid going through the full login process for
+    every FT that needs an authenticated user, so we used a test fixture to 
+    "cheat" and skip that part. You might find other things you want to skip 
+    in your FTs.  A word of caution however: functional tests are there to 
+    catch unpredictable interactions between different parts of your
+    application, so be wary of pushing de-duplication to the extreme.
+    
+Test fixtures::
+    Test fixtures refers to test data that needs to be set up as a precondition
+    before a test is run--often this means populating the database with some
+    information, but as we've seen (with browser cookies), it can involve other
+    types of preconditions.
+
+Avoid JSON fixtures::
+    Django makes it easy to save and restore data from the database in JSON
+    format (and others) using the `dumpdata` and `loaddata` management
+    commands.  Most people recommend against using these for test fixtures,
+    as they are painful to manage when your database schema changes. Use the
+    ORM, or a tool like https://factoryboy.readthedocs.org/[factory_boy].
+
+Fixtures also have to work remotely::
+    `LiveServerTestCase` makes it easy to interact with the test database 
+    using the Django ORM for tests running locally.  Interacting with the 
+    database on the staging server is not so straightforward--one solution
+    is Django management commands, as I've shown, but you should explore what
+    works for you.
+
+Be very careful when resetting data on your servers::
+    A command that can remotely wipe the entire database on one of your
+    servers is a dangerous weapon, and you want to be really, really sure
+    it's never accidentally going to hit your production data.
+
+*******************************************************************************
+
+
+
+Stuff from the old edition that we might want to save
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Using Hierarchical Logging Config
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+NOTE: this section has not yet been adapted to the new version, feel free to 
+    ignore it
+
+((("logging configuration", id="ix_loggingconfig", range="startofrange")))
+When we hacked in the `logging.warning` earlier, we were using the root logger.
+That's not normally a good idea, since any third-party package can mess with the
+root logger.  The normal pattern is to use a logger named after the file you're
+in, by using:
+
+[role="skipme"]
+[source,python]
+----
+logger = logging.getLogger(__name__)
+----
+
+Logging configuration is hierarchical, so you can define "parent" loggers for
+top-level modules, and all the Python modules inside them will inherit that
+config.
+
+Here's how we add a logger for both our apps into 'settings.py':
+
+[role="sourcecode skipme"]
+.superlists/settings.py
+[source,python]
+----
+LOGGING = {
+   'version': 1,
+   'disable_existing_loggers': False,
+   'handlers': {
+       'console': {
+           'level': 'DEBUG',
+           'class': 'logging.StreamHandler',
+       },
+   },
+   'loggers': {
+        'django': {
+            'handlers': ['console'],
+        },
+        'accounts': {
+            'handlers': ['console'],
+        },
+        'lists': {
+            'handlers': ['console'],
+        },
+    },
+    'root': {'level': 'INFO'},
+}
+----
+
+Now 'accounts.models', 'accounts.views', 'accounts.authentication', and all 
+the others will inherit the `logging.StreamHandler` from the parent 'accounts'
+logger.  
+
+Unfortunately, because of Django's project structure, there's no 
+way of defining a top-level logger for your whole project (aside from using
+the root logger), so you have to define one logger per app.
+
+
+Here's how to write a test for logging behaviour:
+
+[role="sourcecode skipme"]
+.accounts/tests/test_authentication.py (ch18l023)
+[source,python]
+----
+import logging
+[...]
+
+@patch('accounts.authentication.requests.post')
+class AuthenticateTest(TestCase):
+    [...]
+
+    def test_logs_non_okay_responses_from_persona(self, mock_post):
+        response_json = {
+            'status': 'not okay', 'reason': 'eg, audience mismatch'
+        }
+        mock_post.return_value.ok = True
+        mock_post.return_value.json.return_value = response_json  #<1>
+
+        logger = logging.getLogger('accounts.authentication')  #<2>
+        with patch.object(logger, 'warning') as mock_log_warning:  #<3>
+            self.backend.authenticate('an assertion')
+
+        mock_log_warning.assert_called_once_with(
+            'Persona says no. Json was: {}'.format(response_json)  #<4>
+        )
+----
+
+<1> We set up our test with some data that should cause some logging.
+
+<2> We retrieve the actual logger for the module we're testing.
+
+<3> We use `patch.object` to temporarily mock out its warning function,
+    by using `with` to make it a 'context manager' around the function we're
+    testing.
+
+<4> And then it's available for us to make assertions against.
+
+That gives us:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+AssertionError: Expected 'warning' to be called once. Called 0 times.
+----
+
+Let's just try it out, to make sure we really are testing what we think
+we are:
+
+[role="sourcecode skipme"]
+.accounts/authentication.py (ch18l024)
+[source,python]
+----
+import logging
+logger = logging.getLogger(__name__)
+[...]
+
+        if response.ok and response.json()['status'] == 'okay':
+            [...]
+        else:
+            logger.warning('foo')
+----
+
+We get the expected failure:
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+AssertionError: Expected call: warning("Persona says no. Json was: {'status':
+'not okay', 'reason': 'eg, audience mismatch'}")
+Actual call: warning('foo')
+----
+
+And so we settle in with our real implementation:
+
+[role="sourcecode skipme"]
+.accounts/authentication.py (ch18l025)
+[source,python]
+----
+    else:
+        logger.warning(
+            'Persona says no. Json was: {}'.format(response.json())
+        )
+----
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test accounts*]
+[...]
+Ran 15 tests in 0.033s
+
+OK
+----
+
+You can easily imagine how you could test more combinations at this point,
+if you wanted different error messages for `response.ok != True`, and so on.
+
+.More notes
+*******************************************************************************
+
+Use loggers named after the module you're in::
+    The root logger is a single global object, available to any library that's
+    loaded in your Python process, so you're never quite in control of it. 
+    Instead, follow the `logging.getLogger(__name__)` pattern to get one that's
+    unique to your module, but that inherits from a top-level configuration you
+    control.
+
+Test important log messages::
+    As we saw, log messages can be critical to debugging issues in production.
+    If a log message is important enough to keep in your codebase, it's
+    probably important enough to test.  We follow the rule of thumb that
+    anything above `logging.INFO` definitely needs a test.  Using
+    `patch.object` on the logger for the module you're testing is one
+    convenient way of unit testing it.
+
+*******************************************************************************

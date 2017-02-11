@@ -1,0 +1,665 @@
+[[chapter_automate_deployment_with_fabric]]
+Automating Deployment with Fabric
+---------------------------------
+
+[%autowidth,float="right",caption=,cols="2"]
+|=======
+2+|Chapter info
+|shortname:|chapter_automate_deployment_with_fabric
+|=======
+
+WARNING: Major update released for Selenium 3.
+    If you started this book on or before Jan 30th 2017,
+    be aware: chapters have been renumbered,
+    so check this is the one you think it is,
+    and have a look at the new <<chapter_explicit_waits_1>>
+    for an indication of the changes you'll need in your FTs.
+    You should do a `pip install --upgrade selenium` too.
+
+
+[quote, 'Cay Horstman']
+______________________________________________________________
+Automate, automate, automate.
+______________________________________________________________
+
+
+((("automation, in deployment", seealso="deployment", id="ix_autodeploy", range="startofrange")))
+((("deployment", "automating", id="ix_deploymentauto", range="startofrange")))
+Automating deployment is critical for our staging tests to mean anything.
+By making sure the deployment procedure is repeatable, we give ourselves
+assurances that everything will go well when we deploy to production.
+
+
+((("Fabric", "installing")))
+Fabric is a tool which lets you automate commands that you want to run on
+servers. You can install fabric systemwide--it's not part of the core
+functionality of our site, so it doesn't need to go into our virtualenv and
+'requirements.txt'. So, on your local PC:
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip2 install --user fabric*
+----
+
+NOTE: At the time of writing, Fabric had not been ported to Python 3, so
+we have to use the Python 2 version.  Thankfully, the Fabric code is totally
+separate from the rest of our codebase, so it's not a problem.
+
+//TODO: investigate new Python 3 version?
+
+
+.Installing Fabric on Windows
+*******************************************************************************
+Fabric depends on pycrypto, which is a package that needs compiling. Compiling
+on Windows is a rather fraught process; it's often quicker to try and
+get hold of precompiled binaries put out there by some kindly soul.  In this
+case the excellent Michael 
+Foordfootnote:[Author of the Mock library and maintainer of `unittest`; if the
+Python testing world has a rock star, it is he.]
+has provided some
+http://bit.ly/Suxt67[Windows binaries].
+(Don't forget to giggle at the mention of absurd US munitions export controls.)
+
+So the instructions, for Windows, are:
+
+1. Download and install pycrypto from the previous URL.
+2. pip install Fabric.
+
+Another amazing source of precompiled Python packages for Windows is maintained
+by http://www.lfd.uci.edu/~gohlke/pythonlibs/[Christoph Gohlke].
+
+*******************************************************************************
+
+The usual setup is to have a file called 'fabfile.py', which will
+contain one or more functions that can later be invoked from a command-line
+tool called `fab`, like this:
+
+----
+fab function_name,host=SERVER_ADDRESS
+----
+
+That will invoke the function called `function_name`, passing in a connection
+to the server at `SERVER_ADDRESS`.  There are many other options for specifying
+usernames and passwords, which you can find out about using `fab --help`.
+
+
+Breakdown of a Fabric Script for Our Deployment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("deployment", "sample script", id="ix_deploymentsample", range="startofrange")))
+((("Fabric", "sample deployment script", id="ix_Fabricsample", range="startofrange")))
+The best way to see how it works is with an example.
+http://www.bbc.co.uk/cult/classic/bluepeter/valpetejohn/trivia.shtml[Here's one
+I made earlier], automating all the deployment steps we've been going through.
+The main function is called `deploy`; that's the one we'll invoke from the
+command line. It uses several helper functions.  `env.host` will contain the
+server address that we've passed in:
+
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+from fabric.contrib.files import append, exists, sed
+from fabric.api import env, local, run
+import random
+
+REPO_URL = 'https://github.com/hjwp/book-example.git'  #<1>
+
+def deploy():
+    site_folder = '/home/%s/sites/%s' % (env.user, env.host)  #<2><3>
+    source_folder = site_folder + '/source'
+    _create_directory_structure_if_necessary(site_folder)
+    _get_latest_source(source_folder)
+    _update_settings(source_folder, env.host)
+    _update_virtualenv(source_folder)
+    _update_static_files(source_folder)
+    _update_database(source_folder)
+
+----
+
+<1> You'll want to update the `REPO_URL` variable with the URL of your
+    own Git repo on its code sharing site.
+
+<2> `env.host` will contain the address of the server we've specified at the 
+    command line, e.g., 'superlists.ottg.eu'.
+
+<3> `env.user` will contain the username you're using to log in to the server.
+
+
+Hopefully each of those helper functions have fairly self-descriptive names.
+Because any function in a fabfile can theoretically be invoked from the
+command line, I've used the convention of a leading underscore to indicate
+that they're not meant to be part of the "public API" of the fabfile. Here
+they are in chronological order.
+
+Here's how we build our directory structure, in a way that doesn't fall 
+down if it already exists:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _create_directory_structure_if_necessary(site_folder):
+    for subfolder in ('database', 'static', 'virtualenv', 'source'):
+        run('mkdir -p %s/%s' % (site_folder, subfolder))  #<1><2>
+----
+
+<1> `run` is the most common Fabric command.  It says "run this shell command
+    on the server".
+
+<2> `mkdir -p` is a useful flavor of `mkdir`, which is better in two ways: it 
+    can create directories several levels deep, and it only creates them 
+    if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory 'bar'
+    but also its parent directory 'foo' if it needs to.  It also won't complain
+    if 'bar' already 
+    exists.footnote:[If you're wondering why we're building up paths manually
+with `%s` instead of the `os.path.join` command we saw earlier, it's because
+`path.join` will use backslashes if you run the script from Windows, but we
+definitely want forward slashes on the server]
+
+
+Next we want to pull down our source code:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _get_latest_source(source_folder):
+    if exists(source_folder + '/.git'):  #<1>
+        run('cd %s && git fetch' % (source_folder,))  #<2><3>
+    else:
+        run('git clone %s %s' % (REPO_URL, source_folder))  #<4>
+    current_commit = local("git log -n 1 --format=%H", capture=True)  #<5>
+    run('cd %s && git reset --hard %s' % (source_folder, current_commit))  #<6>
+----
+
+<1> `exists` checks whether a directory or file already exists on the server.
+    We look for the '.git' hidden folder to check whether the repo has already
+    been cloned in that folder.
+
+<2> Many commands start with a `cd` in order to set the current working
+    directory. Fabric doesn't have any state, so it doesn't remember what
+    directory you're in from one `run` to the next.footnote:[There is a Fabric "cd" command, but I figured it was one thing
+    too many to add in this chapter.]
+
+<3> `git fetch` inside an existing repository pulls down all the latest commits
+    from the Web.
+
+<4> Alternatively we use `git clone` with the repo URL to bring down a fresh
+    source tree.
+
+<5> Fabric's `local` command runs a command on your local machine--it's just
+    a wrapper around `subprocess.Popen` really, but it's quite convenient.
+    Here we capture the output from that `git log` invocation to get the hash
+    of the current commit that's in your local tree.  That means the server
+    will end up with whatever code is currently checked out on your machine
+    (as long as you've pushed it up to the server).
+
+<6> We `reset --hard` to that commit, which will blow away any current changes
+    in the server's code directory.  
+
+NOTE: For this script to work, you need to have done a `git push` of your 
+current local commit, so that the server can pull it down and `reset` to it.
+If you see an error saying `Could not parse object`, try doing a `git push`.
+
+
+Next we update our settings file, to set the `ALLOWED_HOSTS` and `DEBUG`, and
+to create a new secret key:
+((("secret key")))
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_settings(source_folder, site_name):
+    settings_path = source_folder + '/superlists/settings.py'
+    sed(settings_path, "DEBUG = True", "DEBUG = False")  #<1>
+    sed(settings_path,
+        'ALLOWED_HOSTS =.+$',
+        'ALLOWED_HOSTS = ["%s"]' % (site_name,)  #<2>
+    )
+    secret_key_file = source_folder + '/superlists/secret_key.py'
+    if not exists(secret_key_file):  #<3>
+        chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
+        key = ''.join(random.SystemRandom().choice(chars) for _ in range(50))
+        append(secret_key_file, "SECRET_KEY = '%s'" % (key,))
+    append(settings_path, '\nfrom .secret_key import SECRET_KEY')  #<4><5>
+----
+
+<1> The Fabric `sed` command does a string substitution in a file; here it's
+    changing DEBUG from `True` to `False`.  
+
+<2> And here it is adjusting `ALLOWED_HOSTS`, using a regex to match the 
+    right line.
+
+<3> Django uses `SECRET_KEY` for some of its crypto--cookies and CSRF
+    protection. It's good practice to make sure the secret key on the server
+    is different from the one in your (possibly public) source code repo. This
+    code will generate a new key to import into settings, if there isn't one
+    there already (once you have a secret key, it should stay the same between
+    deploys).  Find out more in the
+    https://docs.djangoproject.com/en/1.10/topics/signing/[Django docs].
+
+<4> `append` just adds a line to the end of a file. (It's clever enough not to
+    bother if the line is already there, but not clever enough to automatically
+    add a newline if the file doesn't end in one. Hence the back-n.)
+
+<5> I'm using a 'relative import' (`from .secret_key` instead of `from
+    secret_key`) to be absolutely sure we're importing the local module,
+    rather than one from somewhere else on `sys.path`. I'll talk a bit
+    more about relative imports in the next chapter.
+    ((("relative import")))
+    
+NOTE: Other people, such as the eminent authors of the excellent
+    <<twoscoops,Two Scoops of Django>>, suggest using environment variables to
+    set things like secret keys; you should use whatever you feel is most
+    secure in your environment.
+
+Next we create or update the virtualenv:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_virtualenv(source_folder):
+    virtualenv_folder = source_folder + '/../virtualenv'
+    if not exists(virtualenv_folder + '/bin/pip'): #<1>
+        run('python3 -m venv %s' % (virtualenv_folder,))
+    run('%s/bin/pip install -r %s/requirements.txt' % ( #<2>
+            virtualenv_folder, source_folder
+    ))
+----
+
+
+<1> We look inside the virtualenv folder for the `pip` executable as a way of
+    checking whether it already exists.
+
+<2> Then we use `pip install -r` like we did earlier.
+
+
+Updating static files is a single command:
+
+[role="sourcecode small-code"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_static_files(source_folder):
+    run('cd %s && ../virtualenv/bin/python manage.py collectstatic --noinput' % ( # <1>
+        source_folder,
+    ))
+----
+
+<1> We use the virtualenv binaries folder whenever we need to run a Django 
+    'manage.py' command, to make sure we get the virtualenv version of Django,
+    not the system one.
+
+(((range="endofrange", startref="ix_deploymentsample")))
+(((range="endofrange", startref="ix_Fabricsample")))
+Finally, we update the database with `manage.py migrate`:
+
+[role="sourcecode"]
+.deploy_tools/fabfile.py
+[source,python]
+----
+def _update_database(source_folder):
+    run('cd %s && ../virtualenv/bin/python manage.py migrate --noinput' % (
+        source_folder,
+    ))
+----
+
+
+Trying It Out
+~~~~~~~~~~~~~
+
+We can try this command out on our existing staging site--the script should
+work for an existing site as well as for a new one.  If you like words with
+Latin roots, you might describe it as idempotent, which means it does nothing
+if run twice...
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*cd deploy_tools*]
+$ pass:quotes[*fab deploy:host=elspeth@superlists-staging.ottg.eu*]
+
+[superlists-staging.ottg.eu] Executing task 'deploy'
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-stagin
+[superlists-staging.ottg.eu] run: cd /home/elspeth/sites/superlists-staging.ottg
+[localhost] local: git log -n 1 --format=%H
+[superlists-staging.ottg.eu] run: cd /home/elspeth/sites/superlists-staging.ottg
+[superlists-staging.ottg.eu] out: HEAD is now at 85a6c87 Add a fabfile for autom
+[superlists-staging.ottg.eu] out: 
+
+[superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False
+[superlists-staging.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists-staging.ott
+[superlists-staging.ottg.eu] run: echo 'SECRET_KEY = '\\''4p2u8fi6)bltep(6nd_3tt
+[superlists-staging.ottg.eu] run: echo 'from .secret_key import SECRET_KEY' >> "
+
+[superlists-staging.ottg.eu] run: /home/elspeth/sites/superlists-staging.ottg.eu
+[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade t
+[superlists-staging.ottg.eu] out: Requirement already satisfied (use --upgrade t
+[superlists-staging.ottg.eu] out: Cleaning up...
+[superlists-staging.ottg.eu] out: 
+
+[superlists-staging.ottg.eu] run: cd /home/elspeth/sites/superlists-staging.ottg
+[superlists-staging.ottg.eu] out: 
+[superlists-staging.ottg.eu] out: 0 static files copied, 11 unmodified.
+[superlists-staging.ottg.eu] out: 
+
+[superlists-staging.ottg.eu] run: cd /home/elspeth/sites/superlists-staging.ottg
+[superlists-staging.ottg.eu] out: Creating tables ...
+[superlists-staging.ottg.eu] out: Installing custom SQL ...
+[superlists-staging.ottg.eu] out: Installing indexes ...
+[superlists-staging.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
+[superlists-staging.ottg.eu] out: 
+Done.
+Disconnecting from superlists-staging.ottg.eu... done.
+----
+
+Awesome.  I love making computers spew out pages and pages of output like that
+(in fact I find it hard to stop myself from making little \'70s computer '<brrp,
+brrrp, brrrp>' noises like Mother in 'Alien').  If we look through it
+we can see it is doing our bidding: the `mkdir -p` commands go through
+happily, even though the directories already exist.  Next `git pull` pulls down
+the couple of commits we just made.  The `sed` and `echo >>` modify our
+'settings.py'. Then `pip install -r requirements.txt`, completes happily,
+noting that the existing virtualenv already has all the packages we need.
+`collectstatic` also notices that the static files are all already there, and
+finally the `migrate` completes without a hitch.
+((("Fabric", "configuration")))
+
+
+.Fabric Configuration
+*******************************************************************************
+If you are using an SSH key to log in, are storing it in the default location,
+and are using the same username on the server as locally, then Fabric should
+"just work".  If you aren't there are several tweaks you may need to apply
+in order to get the `fab` command to do your bidding. They revolve around the
+username, the location of the SSH key to use, or the password.
+
+You can pass these in to Fabric at the command line.  Check out:
+
+[subs="specialcharacters,quotes"]
+----
+$ *fab --help*
+----
+
+Or see the http://docs.fabfile.org[Fabric documentation] for more info.
+
+*******************************************************************************
+
+
+
+Deploying to Live
+^^^^^^^^^^^^^^^^^
+
+((("deployment", "deploying to live")))
+So, let's try using it for our live site!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*fab deploy:host=elspeth@superlists.ottg.eu*]
+
+$ fab deploy --host=superlists.ottg.eu
+[superlists.ottg.eu] Executing task 'deploy'
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu/databa
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu/static
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu/virtua
+[superlists.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists.ottg.eu/source
+[superlists.ottg.eu] run: git clone https://github.com/hjwp/book-example.git /ho
+[superlists.ottg.eu] out: Cloning into '/home/elspeth/sites/superlists.ottg.eu/s
+[superlists.ottg.eu] out: remote: Counting objects: 3128, done.
+[superlists.ottg.eu] out: Receiving objects:   0% (1/3128)   
+[...]
+[superlists.ottg.eu] out: Receiving objects: 100% (3128/3128), 2.60 MiB | 829 Ki
+[superlists.ottg.eu] out: Resolving deltas: 100% (1545/1545), done.
+[superlists.ottg.eu] out: 
+
+[localhost] local: git log -n 1 --format=%H
+[superlists.ottg.eu] run: cd /home/elspeth/sites/superlists.ottg.eu/source && gi
+[superlists.ottg.eu] out: HEAD is now at 6c8615b use a secret key file
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' "$(e
+[superlists.ottg.eu] run: echo 'ALLOWED_HOSTS = ["superlists.ottg.eu"]' >> "$(ec
+[superlists.ottg.eu] run: echo 'SECRET_KEY = '\\''mqu(ffwid5vleol%ke^jil*x1mkj-4
+[superlists.ottg.eu] run: echo 'from .secret_key import SECRET_KEY' >> "$(echo /
+[superlists.ottg.eu] run: python3 -m venv /home/elspeth/sites/superl
+[superlists.ottg.eu] out: Already using interpreter /usr/bin/python3
+[superlists.ottg.eu] out: Using base prefix '/usr'
+[superlists.ottg.eu] out: New python executable in /home/elspeth/sites/superlist
+[superlists.ottg.eu] out: Also creating executable in /home/elspeth/sites/superl
+[superlists.ottg.eu] out: Installing Setuptools............................done.
+[superlists.ottg.eu] out: Installing Pip...................................done.
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: /home/elspeth/sites/superlists.ottg.eu/source/../virtu
+[superlists.ottg.eu] out: Downloading/unpacking Django==1.10.5 (from -r /home/el
+[superlists.ottg.eu] out:   Downloading Django-1.10.5.tar.gz (8.0MB): 
+[...]
+[superlists.ottg.eu] out:   Downloading Django-1.10.5.tar.gz (8.0MB): 100%  8.0M
+[superlists.ottg.eu] out:   Running setup.py egg_info for package Django
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     warning: no previously-included files matching '__
+[superlists.ottg.eu] out:     warning: no previously-included files matching '*.
+[superlists.ottg.eu] out: Downloading/unpacking gunicorn==17.5 (from -r /home/el
+[superlists.ottg.eu] out:   Downloading gunicorn-17.5.tar.gz (367kB): 100%  367k
+[...]
+[superlists.ottg.eu] out:   Downloading gunicorn-17.5.tar.gz (367kB): 367kB down
+[superlists.ottg.eu] out:   Running setup.py egg_info for package gunicorn
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out: Installing collected packages: Django, gunicorn
+[superlists.ottg.eu] out:   Running setup.py install for Django
+[superlists.ottg.eu] out:     changing mode of build/scripts-3.3/django-admin.py
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     warning: no previously-included files matching '__
+[superlists.ottg.eu] out:     warning: no previously-included files matching '*.
+[superlists.ottg.eu] out:     changing mode of /home/elspeth/sites/superlists.ot
+[superlists.ottg.eu] out:   Running setup.py install for gunicorn
+[superlists.ottg.eu] out:     
+[superlists.ottg.eu] out:     Installing gunicorn_paster script to /home/elspeth
+[superlists.ottg.eu] out:     Installing gunicorn script to /home/elspeth/sites/
+[superlists.ottg.eu] out:     Installing gunicorn_django script to /home/elspeth
+[superlists.ottg.eu] out: Successfully installed Django gunicorn
+[superlists.ottg.eu] out: Cleaning up...
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: cd /home/elspeth/sites/superlists.ottg.eu/source && ..
+[superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/source
+[superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/source
+[...]
+[superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/source
+[superlists.ottg.eu] out: 
+[superlists.ottg.eu] out: 11 static files copied.
+[superlists.ottg.eu] out: 
+
+[superlists.ottg.eu] run: cd /home/elspeth/sites/superlists.ottg.eu/source && ..
+[superlists.ottg.eu] out: Creating tables ...
+[superlists.ottg.eu] out: Creating table auth_permission
+[...]
+[superlists.ottg.eu] out: Creating table lists_item
+[superlists.ottg.eu] out: Installing custom SQL ...
+[superlists.ottg.eu] out: Installing indexes ...
+[superlists.ottg.eu] out: Installed 0 object(s) from 0 fixture(s)
+[superlists.ottg.eu] out: 
+
+
+Done.
+Disconnecting from superlists.ottg.eu... done.
+
+----
+
+
+'Brrp brrp brpp'. You can see the script follows a slightly different path,
+doing a `git clone` to bring down a brand new repo instead of a `git pull`.
+It also needs to set up a new virtualenv from scratch, including a fresh
+install of pip and Django. The `collectstatic` actually creates new files this
+time, and the `migrate` seems to have worked too.
+
+
+Nginx and Gunicorn Config Using sed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("sed (stream editor)")))
+((("Nginx")))
+((("Gunicorn")))
+What else do we need to do to get our live site into production? We refer to
+our provisioning notes, which tell us to use the template files to create our
+Nginx virtual host and the Systemd service.  How about a little Unix
+command-line magic?
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sed "s/SITENAME/superlists.ottg.eu/g" \
+    deploy_tools/nginx.template.conf | sudo tee \
+    /etc/nginx/sites-available/superlists.ottg.eu*
+----
+
+`sed` ("stream editor") takes a stream of text and performs edits on it. It's
+no accident that the fabric string substitution command has the same name.  In
+this case we ask it to substitute the string 'SITENAME' for the address of our
+site, with the `s/replaceme/withthis/g` syntax.  We pipe (`|`) the output of
+that to a root-user process (`sudo`), which uses `tee` to write what's piped to it
+to a file, in this case the Nginx sites-available virtualhost config file.
+
+We can now activate that file:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo ln -s ../sites-available/superlists.ottg.eu \
+    /etc/nginx/sites-enabled/superlists.ottg.eu*
+----
+
+Then we write the Systemd service:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server: *sed "s/SITENAME/superlists.ottg.eu/g" \
+    deploy_tools/gunicorn-systemd.template.service | sudo tee \
+    /etc/systemd/system/gunicorn-superlists.ottg.eu.service*
+----
+
+Finally we start both services:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo systemctl daemon-reload*
+elspeth@server:$ *sudo systemctl reload nginx*
+elspeth@server:$ *sudo systemctl enable gunicorn-superlists.ottg.eu*
+elspeth@server:$ *sudo systemctl start gunicorn-superlists.ottg.eu*
+----
+
+And we take a look at our site.  It works, hooray! 
+//IDEA: screenshot here
+
+Let's add the fabfile to our repo:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add deploy_tools/fabfile.py*
+$ *git commit -m "Add a fabfile for automated deploys"*
+----
+
+
+Git Tag the Release
+~~~~~~~~~~~~~~~~~~~
+
+((("Git", "tags")))
+One final bit of admin.  In order to preserve a historical marker,
+we'll use Git tags to mark the state of the codebase that reflects
+what's currently live on the server:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git tag LIVE*
+$ *export TAG=`date +DEPLOYED-%F/%H%M`*  # this generates a timestamp
+$ *echo $TAG* # should show "DEPLOYED-" and then the timestamp
+$ *git tag $TAG*
+$ *git push origin LIVE $TAG* # pushes the tags up
+----
+
+Now it's easy, at any time, to check what the difference is between
+our current codebase and what's live on the servers.  This will come
+in useful in a few chapters, when we look at database migrations. Have
+a look at the tag in the history:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git log --graph --oneline --decorate*
+----
+
+
+Anyway, you now have a live website!  Tell all your friends!  Tell your mum, if
+no one else is interested! And, in the next chapter, it's back to coding
+again.
+
+
+Further Reading
+~~~~~~~~~~~~~~~
+
+((("deployment", "further reading")))
+There's no such thing as the One True Way in deployment, and I'm no grizzled
+expert in any case.  I've tried to set you off on a reasonably sane path, but
+there's plenty of things you could do differently, and lots, lots more to learn
+besides.  Here are some resources I used for inspiration:
+
+
+* http://hynek.me/talks/python-deployments[Solid Python Deployments for Everybody] by Hynek Schlawack
+
+* http://bit.ly/U6tUo5[Git-based fabric deployments are awesome] by Dan Bravender
+
+* The deployment chapter of <<twoscoops,Two Scoops of Django>> by Dan
+  Greenfeld and Audrey Roy
+
+* http://12factor.net/[The 12-factor App] by the Heroku team
+
+(((range="endofrange", startref="ix_autodeploy")))
+(((range="endofrange", startref="ix_deploymentauto")))
+((("provisioning", "automation in")))
+((("Ansible")))
+((("automation, in provisioning")))
+For some ideas on how you might go about automating the provisioning step,
+and an alternative to Fabric called Ansible, go check out <<appendix3>>.
+
+.Automated Deployments
+*******************************************************************************
+
+Fabric::
+    Fabric lets you run commands on servers from inside Python scripts. This
+    is a great tool for automating server admin tasks.
+    ((("Fabric")))
+
+Idempotency::
+    If your deployment script is deploying to existing servers, you need to
+    design them so that they work against a fresh installation 'and' against
+    a server that's already configured.
+    ((("Idempotency")))
+
+Keep config files under source control::
+    Make sure your only copy of a config file isn't on the server!  They
+    are critical to your application, and should be under version control
+    like anything else.
+
+Automating provisioning::
+    Ultimately, 'everything' should be automated, and that includes spinning up
+    brand new servers and ensuring they have all the right software installed.
+    This will involve interacting with the API of your hosting provider.
+
+Configuration management tools::
+    Fabric is very flexible, but its logic is still based on scripting. More
+    advanced tools take a more "declarative" approach, and can make your life
+    even easier.  Ansible and Vagrant are two worth checking out (see
+    <<appendix3>>), but there are many more (Chef, Puppet, Salt, Juju...).
+    ((("configuration management tools", seealso="Fabric")))
+    
+*******************************************************************************
+

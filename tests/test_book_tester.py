@@ -915,25 +915,25 @@ class DictOrderingTest(ChapterTest):
 class CheckQunitOuptutTest(ChapterTest):
 
     def test_partial_listing_passes(self):
-        self.chapter_name = 'chapter_14'
-        self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
+        self.chapter_name = 'chapter_javascript'
+        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_javascript')
         expected = Output("2 assertions of 2 passed, 0 failed.")
         self.check_qunit_output(expected) # should pass
         assert expected.was_checked
 
     def test_fails_if_lists_fail_and_no_accounts(self):
-        self.chapter_name = 'chapter_14'
-        self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
+        self.chapter_name = 'chapter_javascript'
+        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_javascript')
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output('arg'))
 
 
     def test_runs_phantomjs_runner_against_lists_tests(self):
-        self.chapter_name = 'chapter_14'
-        self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
+        self.chapter_name = 'chapter_javascript'
+        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_javascript')
         lists_tests = os.path.join(
             os.path.abspath(os.path.dirname(__file__)),
-            '../source/chapter_14/superlists/lists/static/tests/tests.html'
+            '../source/chapter_javascript/superlists/lists/static/tests/tests.html'
         )
 
         manual_run = subprocess.check_output(['phantomjs', PHANTOMJS_RUNNER, lists_tests])
@@ -942,11 +942,11 @@ class CheckQunitOuptutTest(ChapterTest):
 
 
     def DONTtest_runs_against_accounts_if_lists_pass(self):
-        self.chapter_name = 'chapter_15'
-        self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
+        self.chapter_name = 'chapter_deploying_validation'
+        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_javascript')
         lists_tests = os.path.abspath(os.path.join(
             os.path.dirname(__file__),
-            '../source/chapter_13/superlists/lists/static/tests/tests.html'
+            '../source/chapter_advanced_forms/superlists/lists/static/tests/tests.html'
         ))
         accounts_tests = lists_tests.replace('/lists/', '/accounts/')
 

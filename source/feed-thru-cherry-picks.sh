@@ -2,20 +2,9 @@
 set -e
 
 CHAP=$1
-PREV=$(($CHAP - 1))
+PREV=$2
 # assumes a git remote local pointing at a local bare repo...
 REPO=local
-
-if (($CHAP < 10)); then
-    CHAP="chapter_0$CHAP"
-else
-    CHAP="chapter_$CHAP"
-fi
-if (($PREV < 10)); then
-    PREV="chapter_0$PREV"
-else
-    PREV="chapter_$PREV"
-fi
 
 cd $CHAP/superlists
 
