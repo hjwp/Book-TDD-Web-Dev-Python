@@ -23,7 +23,7 @@ CHAPTERS = [
     "chapter_working_incrementally.html",
     "chapter_prettification.html",
     "chapter_manual_deployment.html",
-    "chapter_10.html",
+    "chapter_automate_deployment_with_fabric.html",
     "chapter_11.html",
     "chapter_12.html",
     "chapter_13.html",
