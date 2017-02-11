@@ -946,7 +946,7 @@ class CheckQunitOuptutTest(ChapterTest):
         self.sourcetree.start_with_checkout('chapter_15', 'chapter_14')
         lists_tests = os.path.abspath(os.path.join(
             os.path.dirname(__file__),
-            '../source/chapter_13/superlists/lists/static/tests/tests.html'
+            '../source/chapter_advanced_forms/superlists/lists/static/tests/tests.html'
         ))
         accounts_tests = lists_tests.replace('/lists/', '/accounts/')
 
