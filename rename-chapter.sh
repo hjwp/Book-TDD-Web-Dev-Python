@@ -20,4 +20,4 @@ cd source && ./push-back.sh $NEW_NAME && cd ..
 
 xvfb-run -a make test_$NEW_NAME || echo -e "\a"
 
-echo git commit -am "rename $OLD_CHAPTER $NEW_NAME"
+echo git commit -am \"rename $OLD_CHAPTER $NEW_NAME\"
