@@ -8,7 +8,7 @@ from book_tester import ChapterTest
 LOCAL = False
 
 class Chapter9Test(ChapterTest):
-    chapter_name = 'chapter_09'
+    chapter_name = 'chapter_manual_deployment'
     previous_chapter = 'chapter_prettification'
 
     def hack_hosts_file(self):
@@ -65,7 +65,7 @@ class Chapter9Test(ChapterTest):
         self.sourcetree.run_command('python3 manage.py migrate --noinput')
 
         # skips
-        self.skip_with_check(37, 'replace the URL in the next line with')
+        self.skip_with_check(36, 'replace the URL in the next line with')
 
         #self.skip_with_check(70, 'installed Django') #TODO test this
         #self.skip_with_check(72, '0 errors found') #TODO test this

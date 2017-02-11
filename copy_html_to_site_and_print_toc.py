@@ -22,7 +22,7 @@ CHAPTERS = [
     "part2.harry.html",
     "chapter_working_incrementally.html",
     "chapter_prettification.html",
-    "chapter_09.html",
+    "chapter_manual_deployment.html",
     "chapter_10.html",
     "chapter_11.html",
     "chapter_12.html",
