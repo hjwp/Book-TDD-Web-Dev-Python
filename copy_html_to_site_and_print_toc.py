@@ -36,7 +36,7 @@ CHAPTERS = [
     "chapter_fixtures_and_debugging_staging.html",
     "chapter_outside_in.html",
     "chapter_purist_unit_tests.html",
-    "chapter_21.html",
+    "chapter_CI.html",
     "chapter_22.html",
     "epilogue.html",
 
