@@ -9,7 +9,7 @@ LOCAL = False
 
 class Chapter9Test(ChapterTest):
     chapter_name = 'chapter_09'
-    previous_chapter = 'chapter_08'
+    previous_chapter = 'chapter_prettification'
 
     def hack_hosts_file(self):
         with open('/etc/hosts', 'r') as f:
@@ -49,7 +49,7 @@ class Chapter9Test(ChapterTest):
         if LOCAL:
             def fix_git_clones(listing):
                 if listing.type == 'server command':
-                    return listing.replace('https://github.com/hjwp/book-example.git', '.../Book/source/chapter_08/superlists')
+                    return listing.replace('https://github.com/hjwp/book-example.git', '.../Book/source/chapter_prettification/superlists')
                 return listing
             self.listings = [
                 fix_git_clones(l) for l in self.listings
