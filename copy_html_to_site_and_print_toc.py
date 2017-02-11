@@ -27,7 +27,7 @@ CHAPTERS = [
     "chapter_database_layer_validation.html",
     "chapter_simple_form.html",
     "chapter_advanced_forms.html",
-    "chapter_14.html",
+    "chapter_javascript.html",
 
     "part3.harry.html",
     "chapter_15.html",
