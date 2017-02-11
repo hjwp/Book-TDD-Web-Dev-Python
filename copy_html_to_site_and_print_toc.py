@@ -38,6 +38,7 @@ CHAPTERS = [
     "chapter_20.html",
     "chapter_21.html",
     "chapter_22.html",
+    "chapter_23.html",
     "epilogue.html",
 
     "appendix_I_PythonAnywhere.html",
