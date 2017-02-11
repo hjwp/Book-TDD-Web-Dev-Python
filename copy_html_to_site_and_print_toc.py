@@ -20,7 +20,7 @@ CHAPTERS = [
     "chapter_explicit_waits_1.html",
 
     "part2.harry.html",
-    "chapter_07.html",
+    "chapter_working_incrementally.html",
     "chapter_08.html",
     "chapter_09.html",
     "chapter_10.html",
