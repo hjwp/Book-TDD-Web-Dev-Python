@@ -9,7 +9,7 @@ from book_tester import (
 
 class Chapter6Test(ChapterTest):
     chapter_name = 'chapter_06'
-    previous_chapter = 'chapter_05'
+    previous_chapter = 'post-and-database'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()

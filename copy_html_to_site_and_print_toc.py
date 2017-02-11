@@ -16,7 +16,7 @@ CHAPTERS = [
     "chapter-2-unittest.html",
     "unit-test-first-view.html",
     "philosophy-and-refactoring.html",
-    "chapter_05.html",
+    "post-and-database.html",
     "chapter_06.html",
 
     "part2.harry.html",
