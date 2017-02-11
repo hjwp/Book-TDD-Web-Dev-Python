@@ -37,7 +37,7 @@ and collaboration (typo-fixes by pull request are very much encouraged).
 
 * To test an individual chapter, eg:
 
-    make test_chapter_06
+    make test_chapter_explicit_waits_1
 
 * Unit tests (tests for the tests for the tests in the testing book)
 
