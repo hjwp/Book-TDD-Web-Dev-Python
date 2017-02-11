@@ -37,7 +37,7 @@ CHAPTERS = [
     "chapter_outside_in.html",
     "chapter_purist_unit_tests.html",
     "chapter_CI.html",
-    "chapter_22.html",
+    "chapter_page_pattern.html",
     "epilogue.html",
 
     "appendix_I_PythonAnywhere.html",
