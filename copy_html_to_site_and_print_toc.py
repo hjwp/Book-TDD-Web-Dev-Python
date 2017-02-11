@@ -25,7 +25,7 @@ CHAPTERS = [
     "chapter_manual_deployment.html",
     "chapter_automate_deployment_with_fabric.html",
     "chapter_database_layer_validation.html",
-    "chapter_12.html",
+    "chapter_simple_form.html",
     "chapter_13.html",
     "chapter_14.html",
 

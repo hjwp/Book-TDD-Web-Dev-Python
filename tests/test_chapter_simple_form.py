@@ -5,7 +5,7 @@ import unittest
 from book_tester import ChapterTest
 
 class Chapter12Test(ChapterTest):
-    chapter_name = 'chapter_12'
+    chapter_name = 'chapter_simple_form'
     previous_chapter = 'chapter_database_layer_validation'
 
     def test_listings_and_commands_and_output(self):
