@@ -41,7 +41,7 @@ CHAPTERS = [
     "epilogue.html",
 
     "appendix_I_PythonAnywhere.html",
-    "appendix_II_Django_Class-Based_Views.html",
+    "appendix_Django_Class-Based_Views.html",
     "appendix_III_provisioning_with_ansible.html",
     "appendix_IV_testing_migrations.html",
     "appendix_V_bdd_tools.html",

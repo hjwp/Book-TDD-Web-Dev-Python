@@ -1,4 +1,4 @@
-[[appendix2]]
+[[appendix_Django_Class-Based_Views]]
 [appendix]
 Django Class-Based Views
 ------------------------
@@ -57,11 +57,14 @@ The Home Page as a FormView
 ((("Django", "FormView")))
 Our home page just displays a form on a template:
 
+[role="sourcecode currentcontents"]
+.lists/views.py
 [source,python]
 ----
 def home_page(request):
     return render(request, 'home.html', {'form': ItemForm()})
 ----
+
 
 https://docs.djangoproject.com/en/1.10/ref/class-based-views/[Looking through
 the options], Django has a generic view called `FormView`&mdash;let's see how
@@ -88,10 +91,11 @@ just need to update 'urls.py', replacing the line that used to say
 .superlists/urls.py (ch31l002)
 [source,python]
 ----
-from lists.views import HomePageView
 [...]
-
-    url(r'^$', HomePageView.as_view(), name='home'),
+urlpatterns = [
+    url(r'^$', list_views.HomePageView.as_view(), name='home'),
+    url(r'^lists/', include(list_urls)),
+]
 ----
 
 And the tests all check out! That was easy...
@@ -109,8 +113,7 @@ OK
 ----
 $ pass:quotes[*python manage.py test functional_tests*]
 [...]
-
-Ran 4 tests in 15.160s
+Ran 5 tests in 15.160s
 OK
 ----
 
@@ -131,7 +134,7 @@ the `new_list` function. Here's what it looks like now:
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
-        list = List.objects.create()
+        list_ = List.objects.create()
         form.save(for_list=list_)
         return redirect(list_)
     else:
@@ -166,21 +169,23 @@ harmless as soon as we switch over the URL mappings, this time in:
 .lists/urls.py (ch31l004)
 [source,python]
 ----
-from django.conf.urls import patterns, url
-from lists.views import NewListView
-
-urlpatterns = patterns('',
-    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
-    url(r'^new$', NewListView.as_view(), name='new_list'),
-)
+[...]
+urlpatterns = [
+    url(r'^new$', views.NewListView.as_view(), name='new_list'),
+    url(r'^(\d+)/$', views.view_list, name='view_list'),
+]
 ----
 
-Now running the tests gives three errors:
+Now running the tests gives six errors:
 
 [subs="specialcharacters,macros"]
 [role="small-code"]
 ----
 $ pass:quotes[*python manage.py test lists*]
+[...]
+
+ERROR: test_can_save_a_POST_request (lists.tests.test_views.NewListTest)
+TypeError: save() missing 1 required positional argument: 'for_list'
 
 ERROR: test_for_invalid_input_passes_form_to_template
 (lists.tests.test_views.NewListTest)
@@ -188,7 +193,8 @@ django.core.exceptions.ImproperlyConfigured: TemplateResponseMixin requires
 either a definition of 'template_name' or an implementation of
 'get_template_names()'
 
-ERROR: test_for_invalid_input_renders_home_template (lists.tests.test_views.NewListTest)
+ERROR: test_for_invalid_input_renders_home_template
+(lists.tests.test_views.NewListTest)
 django.core.exceptions.ImproperlyConfigured: TemplateResponseMixin requires
 either a definition of 'template_name' or an implementation of
 'get_template_names()'
@@ -201,15 +207,12 @@ either a definition of 'template_name' or an implementation of
 ERROR: test_redirects_after_POST (lists.tests.test_views.NewListTest)
 TypeError: save() missing 1 required positional argument: 'for_list'
 
-ERROR: test_saving_a_POST_request (lists.tests.test_views.NewListTest)
-TypeError: save() missing 1 required positional argument: 'for_list'
-
-ERROR: test_validation_errors_are_shown_on_home_page (lists.tests.test_views.NewListTest)
+ERROR: test_validation_errors_are_shown_on_home_page
+(lists.tests.test_views.NewListTest)
 django.core.exceptions.ImproperlyConfigured: TemplateResponseMixin requires
 either a definition of 'template_name' or an implementation of
 'get_template_names()'
 
-Ran 34 tests in 0.125s
 
 FAILED (errors=6)
 ----
@@ -234,7 +237,7 @@ the code from our old view function, that used to live after
 
 
 [role="sourcecode"]
-.lists/views.py (ch31l005)
+.lists/views.py (ch31l006)
 [source,python]
 ----
 class NewListView(CreateView):
@@ -255,7 +258,7 @@ $ pass:quotes[*python manage.py test lists*]
 Ran 34 tests in 0.119s
 OK
 $ pass:quotes[*python manage.py test functional_tests*]
-Ran 4 tests in 15.157s
+Ran 5 tests in 15.157s
 OK
 ----
 
@@ -270,9 +273,9 @@ the main advantages of CBVs: inheritance!
 class NewListView(CreateView, HomePageView):
 
     def form_valid(self, form):
-        list = List.objects.create()
-        Item.objects.create(text=form.cleaned_data['text'], list=list)
-        return redirect('/lists/%d/' % (list.id,))
+        list_ = List.objects.create()
+        form.save(for_list=list_)
+        return redirect(list_)
 ----
 
 And all the tests would still pass:
@@ -302,6 +305,7 @@ One thing it did made me realise was the value of having lots of individual
 tests, each testing one thing.  I went back and rewrote some of Chapters 10–12
 as a result.
 
+
 The Tests Guide Us, for a While
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -310,7 +314,7 @@ something that shows you the detail of an object:
 
 
 [role="sourcecode dofirst-ch31l008"]
-.lists/views.py
+.lists/views.py (ch31l009)
 [source,python]
 ----
 from django.views.generic import FormView, CreateView, DetailView
@@ -320,12 +324,24 @@ class ViewAndAddToList(DetailView):
     model = List
 ----
 
+And wiring it up in 'urls.py':
+
+
+[role="sourcecode"]
+.lists/urls.py (ch31l010)
+[source,python]
+----
+    url(r'^(\d+)/$', views.ViewAndAddToList.as_view(), name='view_list'),
+----
+
+
 That gives:
 
 ----
 [...]
 AttributeError: Generic detail view ViewAndAddToList must be called with either
 an object pk or a slug.
+
 
 FAILED (failures=5, errors=6)
 ----
@@ -337,23 +353,21 @@ I needed to use a "named" regex capture group:
 .lists/urls.py (ch31l011)
 [source,diff]
 ----
-@@ -1,7 +1,7 @@
- from django.conf.urls import patterns, url
--from lists.views import NewListView
-+from lists.views import NewListView, ViewAndAddToList
+@@ -3,6 +3,6 @@ from lists import views
  
- urlpatterns = patterns('',
--    url(r'^(\d+)/$', 'lists.views.view_list', name='view_list'),
-+    url(r'^(?P<pk>\d+)/$', ViewAndAddToList.as_view(), name='view_list'),
-     url(r'^new$', NewListView.as_view(), name='new_list'),
- )
+ urlpatterns = [
+     url(r'^new$', views.NewListView.as_view(), name='new_list'),
+-    url(r'^(\d+)/$', views.view_list, name='view_list'),
++    url(r'^(?P<pk>\d+)/$', views.ViewAndAddToList.as_view(), name='view_list')
+ ]
+
 ----
 
-The next error was fairly helpful:
+The next set of errors had one that was fairly helpful:
 
 ----
 [...]
-django.template.base.TemplateDoesNotExist: lists/list_detail.html
+django.template.exceptions.TemplateDoesNotExist: lists/list_detail.html
 
 FAILED (failures=5, errors=6)
 ----
@@ -361,7 +375,7 @@ FAILED (failures=5, errors=6)
 That's easily solved:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch31l012)
 [source,python]
 ----
 class ViewAndAddToList(DetailView):
@@ -369,7 +383,7 @@ class ViewAndAddToList(DetailView):
     template_name = 'list.html'
 ----
 
-That takes us down three errors:
+That takes us down five and two:
 
 ----
 [...]
@@ -379,15 +393,16 @@ KeyError: 'form'
 FAILED (failures=5, errors=2)
 ----
 
+
 Until We're Left with Trial and Error
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 So I figured, our view doesn't just show us the detail of an object,
 it also allows us to create new ones.  Let's make it both a 
-`DetailView` 'and' a `CreateView`:
+`DetailView` 'and' a `CreateView`, and maybe add the `form_class`:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch31l013)
 [source,python]
 ----
 class ViewAndAddToList(DetailView, CreateView):
@@ -413,45 +428,27 @@ My first attempts to use `get_form_kwargs` didn't really work, but I found
 that I could use `get_form`:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch31l014)
 [source,python]
 ----
-    def get_form(self, form_class):
+    def get_form(self):
         self.object = self.get_object()
-        return form_class(for_list=self.object, data=self.request.POST)
+        return self.form_class(for_list=self.object, data=self.request.POST)
 ----
 
 But it would only work if I also assigned to `self.object`, as a side effect,
 along the way, which was a bit upsetting.  Still, that takes us down
-to just three errors, but we're still apparently not passing that form to the
+to just three errors, but we're still apparently not quite there!
 template!
-
-----
-KeyError: 'form'
-
-FAILED (errors=3)
-----
-
-Back on Track
-^^^^^^^^^^^^^
-
-A bit more experimenting led me to swap out the `DetailView` for a 
-`SingleObjectMixin` (the docs had some useful pointers here):
-
-----
-from django.views.generic.detail import SingleObjectMixin
-[...]
-
-class ViewAndAddToList(CreateView, SingleObjectMixin):
-    [...]
-----
-
-That takes us down to just two errors:
 
 ----
 django.core.exceptions.ImproperlyConfigured: No URL to redirect to.  Either
 provide a url or define a get_absolute_url method on the Model.
 ----
+
+
+Back on Track
+^^^^^^^^^^^^^
 
 And for this final failure, the tests are being helpful again.
 It's quite easy to define a `get_absolute_url` on the `Item` class, such
@@ -459,7 +456,7 @@ that items point to their parent list's page:
 
 
 [role="sourcecode"]
-.lists/models.py
+.lists/models.py (ch31l015)
 [source,python]
 ----
 class Item(models.Model):
@@ -475,18 +472,18 @@ Is That Your Final Answer?
 
 We end up with a view class that looks like this:
 
-[role="sourcecode"]
-.lists/views.py (ch31l010)
+[role="sourcecode currentcontens"]
+.lists/views.py
 [source,python]
 ----
-class ViewAndAddToList(CreateView, SingleObjectMixin):
-    template_name = 'list.html'
+class ViewAndAddToList(DetailView, CreateView):
     model = List
+    template_name = 'list.html'
     form_class = ExistingListItemForm
 
-    def get_form(self, form_class):
+    def get_form(self):
         self.object = self.get_object()
-        return form_class(for_list=self.object, data=self.request.POST)
+        return self.form_class(for_list=self.object, data=self.request.POST)
 ----
 
 
@@ -534,6 +531,7 @@ I occasionally wondered whether there might be some mileage in a test that
 was closer to the implementation--something like this:
 
 [role="sourcecode skipme"]
+.lists/tests/test_views.py
 [source,python]
 ----
 def test_cbv_gets_correct_object(self):
@@ -560,6 +558,7 @@ Consider this monolithic test:
 
 
 [role="sourcecode skipme"]
+.lists/tests/test_views.py
 [source,python]
 ----
 def test_validation_errors_sent_back_to_home_page_template(self):
@@ -574,6 +573,7 @@ def test_validation_errors_sent_back_to_home_page_template(self):
 That is definitely less useful than having three individual tests, like this:
 
 [role="sourcecode skipme"]
+.lists/tests/test_views.py
 [source,python]
 ----
     def test_invalid_input_means_nothing_saved_to_db(self):
