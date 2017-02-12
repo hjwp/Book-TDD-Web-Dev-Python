@@ -5,8 +5,8 @@ from book_tester import ChapterTest
 
 
 class AppendixIITest(ChapterTest):
-    chapter_name = 'appendix_Django_Class-Based_Views'
-    previous_chapter = 'chapter_advanced_forms'
+    chapter_name = 'appendix_bdd'
+    previous_chapter = 'chapter_outside_in'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -14,9 +14,9 @@ class AppendixIITest(ChapterTest):
         #self.prep_virtualenv()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'code listing currentcontents')
-        self.assertEqual(self.listings[1].type, 'code listing with git ref')
-        self.assertEqual(self.listings[2].type, 'code listing with git ref')
+        self.assertEqual(self.listings[0].type, 'other command')
+        self.assertEqual(self.listings[4].type, 'tree')
+        self.assertEqual(self.listings[6].type, 'diff')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
