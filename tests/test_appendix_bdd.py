@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 class AppendixIITest(ChapterTest):
     chapter_name = 'appendix_bdd'
-    previous_chapter = 'chapter_outside_in'
+    previous_chapter = 'chapter_page_pattern'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -17,6 +17,7 @@ class AppendixIITest(ChapterTest):
         self.assertEqual(self.listings[0].type, 'other command')
         self.assertEqual(self.listings[4].type, 'tree')
         self.assertEqual(self.listings[6].type, 'diff')
+        self.assertEqual(self.listings[7].type, 'bdd test')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment

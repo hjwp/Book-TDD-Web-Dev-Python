@@ -505,10 +505,16 @@ class ChapterTest(unittest.TestCase):
         )
 
 
-    def run_test_and_check_result(self):
-        self.assertIn('test', self.listings[self.pos])
+    def run_test_and_check_result(self, bdd=False):
+        if bdd:
+            self.assertIn('behave', self.listings[self.pos])
+        else:
+            self.assertIn('test', self.listings[self.pos])
         self._strip_out_any_pycs()
-        test_run = self.run_command(self.listings[self.pos])
+        if bdd:
+            test_run = self.run_command(self.listings[self.pos], ignore_errors=True)
+        else:
+            test_run = self.run_command(self.listings[self.pos])
         self.assert_console_output_correct(test_run, self.listings[self.pos + 1])
         self.pos += 2
 
@@ -686,6 +692,9 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'test':
             print("TEST RUN")
             self.run_test_and_check_result()
+        elif listing.type == 'bdd test':
+            print("BDD TEST RUN")
+            self.run_test_and_check_result(bdd=True)
         elif listing.type == 'git diff':
             print("GIT DIFF")
             self.check_diff_or_status(self.pos)

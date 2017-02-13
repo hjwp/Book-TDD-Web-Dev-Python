@@ -199,7 +199,8 @@ Feature: My Lists # features/my_lists.feature:1
   As a logged-in user
   I want to be able to see all my lists in one page
   So that I can find them all after I've written them
-  Scenario: Create two lists and see them on the My Lists page  # my_lists.feature:6
+  Scenario: Create two lists and see them on the My Lists page  #
+features/my_lists.feature:6
     Given I am a logged-in user                                 # None
     Given I am a logged-in user                                 # None
     When I create a list with first item "Reticulate Splines"   # None
@@ -214,7 +215,8 @@ Feature: My Lists # features/my_lists.feature:1
 
 
 Failing scenarios:
-  features/my_lists.feature:6  Create two lists and see them on the My Lists page
+  features/my_lists.feature:6  Create two lists and see them on the My Lists
+page
 
 
 0 features passed, 1 failed, 0 skipped
@@ -269,7 +271,7 @@ def given_i_am_logged_in(context):
     session_key = create_pre_authenticated_session(email='edith@example.com')
     ## to set a cookie we need to first visit the domain.
     ## 404 pages load the quickest!
-    context.browser.get(context.server_url + "/404_no_such_url/")
+    context.browser.get(context.get_url("/404_no_such_url/"))
     context.browser.add_cookie(dict(
         name=settings.SESSION_COOKIE_NAME,
         value=session_key,
@@ -301,8 +303,6 @@ from selenium import webdriver
 
 def before_all(context):
     context.browser = webdriver.Firefox()
-    context.browser.implicitly_wait(2)
-    context.server_url = 'http://localhost:8081'
 
 def after_all(context):
     context.browser.quit()
@@ -344,7 +344,7 @@ Our next step says:
 
 And the auto-generated step definition looked like this:
 
-[role="sourcecode currentcontents small-code"]
+[role="sourcecode small-code skipme"]
 .features/steps/test_my_lists.py
 [source,python]
 ----
@@ -368,15 +368,38 @@ formatting syntax:
 ----
 @when('I create a list with first item "{first_item_text}"')
 def create_a_list(context, first_item_text):
-    context.browser.get(context.server_url)
+    context.browser.get(context.get_url('/'))
     context.browser.find_element_by_id('id_text').send_keys(first_item_text)
-    context.browser.find_element_by_id('id_text').send_keys('\n')
+    context.browser.find_element_by_id('id_text').send_keys(Keys.ENTER)
+    wait_for_list_item(context, first_item_text)
 ----
 
 Neat, huh?
 
 NOTE: Capturing parameters for steps is one of the most powerful features
     of the BDD syntax.  
+
+
+As usual with selenium tests, we will need an explicit wait.  Let's re-use
+our `@wait` decorator from 'base.py':
+
+
+[role="sourcecode"]
+.features/steps/test_my_lists.py
+[source,python]
+----
+from functional_tests.base import wait
+[...]
+
+
+@wait
+def wait_for_list_item(context, item_text):
+    context.test.assertIn(
+        item_text,
+        context.browser.find_element_by_css_selector('#id_list_table').text
+    )
+----
+
 
 Similarly, we can do adding to an existing list, and see or click on links:
 
@@ -388,16 +411,23 @@ Similarly, we can do adding to an existing list, and see or click on links:
 @when('I add an item "{item_text}"')
 def add_an_item(context, item_text):
     context.browser.find_element_by_id('id_text').send_keys(item_text)
-    context.browser.find_element_by_id('id_text').send_keys('\n')
+    context.browser.find_element_by_id('id_text').send_keys(Keys.ENTER)
+    wait_for_list_item(context, item_text)
+
 
 @then('I will see a link to "{link_text}"')
+@wait
 def see_a_link(context, link_text):
     context.browser.find_element_by_link_text(link_text)
+
 
 @when('I click the link to "{link_text}"')
 def click_link(context, link_text):
     context.browser.find_element_by_link_text(link_text).click()
 ----
+
+Notice we can even use our `@wait` decorator on steps themselves.
+
 
 And finally the slightly more complex step that says I am on the 
 page for a particular list:
@@ -407,11 +437,13 @@ page for a particular list:
 [source,python]
 ----
 @then('I will be on the "{first_item_text}" list page')
+@wait
 def step_impl(context, first_item_text):
-    table = context.browser.find_element_by_id('id_list_table')
-    rows = table.find_elements_by_tag_name('tr')
+    first_row = context.browser.find_element_by_css_selector(
+        '#id_list_table tr:first-child'
+    )
     expected_row_text = '1: ' + first_item_text
-    assert rows[0].text == expected_row_text
+    context.test.assertEqual(first_row.text, expected_row_text)
 ----
 
 
@@ -438,7 +470,8 @@ Not Found: /favicon.ico
       Traceback (most recent call last):
         [...]
       selenium.common.exceptions.NoSuchElementException: Message: Unable to
-        locate element: {"method":"link text","selector":"My lists"}
+        locate element: "My lists"
+
 
     [...]
 
@@ -466,8 +499,8 @@ would have.
 
 Let's have a look at it, for comparison:
 
-[role="sourcecode"]
-.lists/tests.py
+[role="sourcecode currentcontents"]
+.functional_tests/test_my_lists.py
 [source,python]
 ----
 def test_logged_in_users_lists_are_saved_as_my_lists(self):
@@ -476,8 +509,8 @@ def test_logged_in_users_lists_are_saved_as_my_lists(self):
 
     # She goes to the home page and starts a list
     self.browser.get(self.server_url)
-    self.get_item_input_box().send_keys('Reticulate splines\n')
-    self.get_item_input_box().send_keys('Immanentize eschaton\n')
+    self.add_list_item('Reticulate splines')
+    self.add_list_item('Immanentize eschaton')
     first_list_url = self.browser.current_url
 
     # She notices a "My lists" link, for the first time.
@@ -485,25 +518,35 @@ def test_logged_in_users_lists_are_saved_as_my_lists(self):
 
     # She sees that her list is in there, named according to its
     # first list item
+    self.wait_for(
+        lambda: self.browser.find_element_by_link_text('Reticulate splines')
+    )
     self.browser.find_element_by_link_text('Reticulate splines').click()
-    self.assertEqual(self.browser.current_url, first_list_url)
+    self.wait_for(
+        lambda: self.assertEqual(self.browser.current_url, first_list_url)
+    )
 
     # She decides to start another list, just to see
     self.browser.get(self.server_url)
-    self.get_item_input_box().send_keys('Click cows\n')
+    self.add_list_item('Click cows')
     second_list_url = self.browser.current_url
 
     # Under "my lists", her new list appears
     self.browser.find_element_by_link_text('My lists').click()
+    self.wait_for(
+        lambda: self.browser.find_element_by_link_text('Click cows')
+    )
     self.browser.find_element_by_link_text('Click cows').click()
-    self.assertEqual(self.browser.current_url, second_list_url)
+    self.wait_for(
+        lambda: self.assertEqual(self.browser.current_url, second_list_url)
+    )
 
     # She logs out.  The "My lists" option disappears
-    self.browser.find_element_by_id('id_logout').click()
-    self.assertEqual(
+    self.browser.find_element_by_link_text('Log out').click()
+    self.wait_for(lambda: self.assertEqual(
         self.browser.find_elements_by_link_text('My lists'),
         []
-    )
+    ))
 ----
 
 It's not entirely an apples-to-apples comparison, but we can look at the
@@ -514,8 +557,8 @@ number of lines of code in <<table-code-compare>>.
 [options="header"]
 |==============================================================================
 |BDD                            |Standard FT
-|Feature file: 20 (3 optional)  |test function body: 34
-|Steps file: 40 lines           |helper functions: 20
+|Feature file: 20 (3 optional)  |test function body: 45
+|Steps file: 56 lines           |helper functions: 23
 |==============================================================================
 
 The comparison isn't perfect, but you might say that the feature file and the
@@ -568,14 +611,15 @@ reminder of what it looks like:
 .functional_tests/test_sharing.py
 [source,python]
 ----
-from .home_and_list_pages import HomePage
+from .my_lists_page import MyListsPage
 [...]
 
 class SharingTest(FunctionalTest):
 
-    def test_logged_in_users_lists_are_saved_as_my_lists(self):
+    def test_can_share_a_list_with_another_user(self):
         # [...]
-        list_page = HomePage(self).start_new_list('Get help')
+        self.browser.get(self.server_url)
+        list_page = ListPage(self).add_list_item('Get help')
 
         # She notices a "Share this list" option
         share_box = list_page.get_share_box()
@@ -587,45 +631,33 @@ class SharingTest(FunctionalTest):
         # She shares her list.
         # The page updates to say that it's shared with Oniciferous:
         list_page.share_list_with('oniciferous@example.com')
-
-        # Oniciferous now goes to the lists page with his browser
-        self.browser = oni_browser
-        HomePage(self).go_to_home_page().go_to_my_lists_page()
 ----
 
-And the Page classes look like this:
+And the Page class looks like this:
 
-[role="sourcecode"]
-.functional_tests/home_and_lists_pages.py
+[role="sourcecode currentcontents"]
+.functional_tests/lists_pages.py
 [source,python]
 ----
-class HomePage(object):
+class ListPage(object):
 
     def __init__(self, test):
         self.test = test
 
 
-    def go_to_home_page(self):
-        self.test.browser.get(self.test.server_url)
-        self.test.wait_for(self.get_item_input)
-        return self
+    def get_table_rows(self):
+        return self.test.browser.find_elements_by_css_selector('#id_list_table tr')
 
 
-    def get_item_input(self):
-        return self.test.browser.find_element_by_id(ITEM_INPUT_ID)
+    @wait
+    def wait_for_row_in_list_table(self, item_text, item_number):
+        row_text = '{}: {}'.format(item_number, item_text)
+        rows = self.get_table_rows()
+        self.test.assertIn(row_text, [row.text for row in rows])
 
 
-    def start_new_list(self, item_text):
-        self.go_to_home_page()
-        inputbox = self.get_item_input()
-        inputbox.send_keys(item_text + '\n')
-        list_page = ListPage(self.test)
-        list_page.wait_for_new_item_in_list(item_text, 1)
-        return list_page
-
-
-    def go_to_my_lists_page(self):
-        [...]
+    def get_item_input_box(self):
+        return self.test.browser.find_element_by_id('id_text')
 ----
 
 So it's definitely possible to implement a similar layer of abstraction,
@@ -635,7 +667,7 @@ self-discipline, rather than having a framework that pushes you towards
 it.
 
 NOTE: In fact, you can actually use the Page pattern with BDD as well, as
-a resource for your steps to use when navigating the pages of your site.
+    a resource for your steps to use when navigating the pages of your site.
 
 
 BDD Might Be Less Expressive than Inline Comments
@@ -645,14 +677,21 @@ On the other hand, I can also see potential for the Gherkin syntax to
 feel somewhat restrictive.  Compare how expressive and readable the 
 inline-style comments are, with the slightly awkward BDD feature:
 
-        # Edith is a logged-in user
-        # She goes to the home page and starts a list
-        # She notices a "My lists" link, for the first time.
-        # She sees that her list is in there, named according to its
-        # first list item
-        # She decides to start another list, just to see
-        # Under "my lists", her new list appears
-        # She logs out.  The "My lists" option disappears
+
+[role="sourcecode currentcontents"]
+.features/steps/test_my_lists.py
+[source,python]
+----
+    # Edith is a logged-in user
+    # She goes to the home page and starts a list
+    # She notices a "My lists" link, for the first time.
+    # She sees that her list is in there, named according to its
+    # first list item
+    # She decides to start another list, just to see
+    # Under "my lists", her new list appears
+    # She logs out.  The "My lists" option disappears
+[...]
+----
 
 That's much more readable and natural than our slightly forced Given/Then/When
 incantations, and, in a way, might encourage more user-centric thinking. (There

@@ -65,8 +65,8 @@ class Command(str):
                 return git_cmd
         if self.startswith('python') and 'test' in self:
             return 'test'
-        if self == 'python manage.py migrate':
-            return 'interactive manage.py'
+        if self == 'python manage.py behave':
+            return 'bdd test'
         if self == 'python manage.py migrate':
             return 'interactive manage.py'
         if self == 'python manage.py makemigrations':
