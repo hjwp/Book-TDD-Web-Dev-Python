@@ -541,15 +541,15 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_phantomjs_run_times(self):
-        actual = "features/steps/my_lists.py:19 0.187s"
-        expected = Output("features/steps/my_lists.py:19 0.261s")
+        actual = "Took 24ms to run 2 tests. 2 passed, 0 failed."
+        expected = Output("Took 15ms to run 2 tests. 2 passed, 0 failed.")
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
 
     def test_ignores_bdd_run_times(self):
-        actual = "Took 24ms to run 2 tests. 2 passed, 0 failed."
-        expected = Output("Took 15ms to run 2 tests. 2 passed, 0 failed.")
+        actual = "features/steps/my_lists.py:19 0.187s"
+        expected = Output("features/steps/my_lists.py:19 0.261s")
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 

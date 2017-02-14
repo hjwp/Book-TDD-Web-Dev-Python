@@ -137,6 +137,14 @@ def strip_js_test_speed(output):
     )
 
 
+def strip_bdd_test_speed(output):
+    return re.sub(
+        r"features/steps/(\w+).py:(\d+) \d+.\d\d\ds",
+        r"features/steps/\1.py:\2 XX.XXXs",
+        output,
+    )
+
+
 def strip_screenshot_timestamps(output):
     fixed = re.sub(
         r"window0-(201\d-\d\d-\d\dT\d\d\.\d\d\.\d?\d?)",
@@ -379,6 +387,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = wrap_long_lines(actual_fixed)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_js_test_speed(actual_fixed)
+        actual_fixed = strip_bdd_test_speed(actual_fixed)
         actual_fixed = strip_git_hashes(actual_fixed)
         actual_fixed = strip_mock_ids(actual_fixed)
         actual_fixed = strip_object_ids(actual_fixed)
@@ -395,6 +404,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = fix_test_dashes(expected_fixed)
         expected_fixed = strip_test_speed(expected_fixed)
         expected_fixed = strip_js_test_speed(expected_fixed)
+        expected_fixed = strip_bdd_test_speed(expected_fixed)
         expected_fixed = strip_git_hashes(expected_fixed)
         expected_fixed = strip_mock_ids(expected_fixed)
         expected_fixed = strip_object_ids(expected_fixed)

@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 class AppendixIITest(ChapterTest):
     chapter_name = 'appendix_bdd'
-    previous_chapter = 'chapter_page_pattern'
+    previous_chapter = 'chapter_fixtures_and_debugging_staging'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -35,7 +35,7 @@ class AppendixIITest(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(ignore=["moves"])
+        self.check_final_diff()
 
 
 if __name__ == '__main__':
