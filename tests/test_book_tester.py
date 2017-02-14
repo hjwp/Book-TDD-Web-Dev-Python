@@ -541,6 +541,13 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_ignores_phantomjs_run_times(self):
+        actual = "features/steps/my_lists.py:19 0.187s"
+        expected = Output("features/steps/my_lists.py:19 0.261s")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_ignores_bdd_run_times(self):
         actual = "Took 24ms to run 2 tests. 2 passed, 0 failed."
         expected = Output("Took 15ms to run 2 tests. 2 passed, 0 failed.")
         self.assert_console_output_correct(actual, expected)
@@ -915,22 +922,22 @@ class DictOrderingTest(ChapterTest):
 class CheckQunitOuptutTest(ChapterTest):
 
     def test_partial_listing_passes(self):
-        self.chapter_name = 'chapter_javascript'
-        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_javascript')
+        self.chapter_name = 'chapter_14'
+        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_14')
         expected = Output("2 assertions of 2 passed, 0 failed.")
         self.check_qunit_output(expected) # should pass
         assert expected.was_checked
 
     def test_fails_if_lists_fail_and_no_accounts(self):
-        self.chapter_name = 'chapter_javascript'
-        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_javascript')
+        self.chapter_name = 'chapter_14'
+        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_14')
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output('arg'))
 
 
     def test_runs_phantomjs_runner_against_lists_tests(self):
         self.chapter_name = 'chapter_javascript'
-        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_javascript')
+        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_14')
         lists_tests = os.path.join(
             os.path.abspath(os.path.dirname(__file__)),
             '../source/chapter_javascript/superlists/lists/static/tests/tests.html'
@@ -943,7 +950,7 @@ class CheckQunitOuptutTest(ChapterTest):
 
     def DONTtest_runs_against_accounts_if_lists_pass(self):
         self.chapter_name = 'chapter_deploying_validation'
-        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_javascript')
+        self.sourcetree.start_with_checkout('chapter_deploying_validation', 'chapter_14')
         lists_tests = os.path.abspath(os.path.join(
             os.path.dirname(__file__),
             '../source/chapter_advanced_forms/superlists/lists/static/tests/tests.html'
@@ -967,7 +974,7 @@ class CheckQunitOuptutTest(ChapterTest):
 
 
 class CheckFinalDiffTest(ChapterTest):
-    chapter_no = 1
+    chapter_name = 'chapter_01'
 
     def test_empty_passes(self):
         self.run_command = lambda _: ""
