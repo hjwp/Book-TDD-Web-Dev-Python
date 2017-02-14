@@ -4,20 +4,18 @@ import unittest
 from book_tester import ChapterTest
 
 
-class AppendixIITest(ChapterTest):
-    chapter_name = 'appendix_bdd'
-    previous_chapter = 'chapter_fixtures_and_debugging_staging'
+class AppendixVITest(ChapterTest):
+    chapter_name = 'appendix_rest_api'
+    previous_chapter = 'chapter_page_pattern'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
         self.start_with_checkout()
-        #self.prep_virtualenv()
+        self.prep_virtualenv()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'other command')
-        self.assertEqual(self.listings[4].type, 'tree')
-        self.assertEqual(self.listings[6].type, 'diff')
-        self.assertEqual(self.listings[7].type, 'bdd test')
+        self.assertEqual(self.listings[0].type, 'code listing')
+        self.assertEqual(self.listings[1].type, 'code listing')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment

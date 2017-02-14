@@ -45,7 +45,7 @@ CHAPTERS = [
     "appendix_III_provisioning_with_ansible.html",
     "appendix_IV_testing_migrations.html",
     "appendix_bdd.html",
-    "appendix_VI_rest_api.html",
+    "appendix_rest_api.html",
     "appendix_VII_DjangoRestFramework.html",
     "appendix_IX_cheat_sheet.html",
     "appendix_X_what_to_do_next.html",

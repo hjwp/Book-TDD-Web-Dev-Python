@@ -1,4 +1,4 @@
-[[appendix-rest-api-backend]]
+[[appendix_rest_api]]
 [appendix]
 Building a REST API: JSON, Ajax, and mocking with JavaScript
 ------------------------------------------------------------
@@ -34,14 +34,15 @@ have an existing list.  REST defines a relationship between URLs and the
 HTTP methods (GET and POST, but also the more funky ones like PUT and DELETE)
 which will guide us in our design.
 
-https://en.wikipedia.org/wiki/Representational_state_transfer#Relationship_between_URL_and_HTTP_methods[The wikipedia entry on REST]
+https://en.wikipedia.org/wiki/Representational_state_transfer#Relationship_between_URL_and_HTTP_methods[The
+wikipedia entry on REST]
 has a good overview.  In brief:
 
 * Our new URL structure will be '/api/lists/{id}/'
 * GET will give you details of a list (including all its items) in JSON format.
 * POST lets you add an item
 
-We'll take the code from its state at the end of Chapter 21.
+We'll take the code from its state at the end of <<chapter_page_pattern>>.
 
 
 Choosing our test approach
@@ -74,7 +75,7 @@ We start with a unit test that just checks that our new URL structure returns
 a 200 response to GET requests, and that it uses the JSON format (instead of HTML).
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/tests/test_api.py
 [source,python]
 ----
 import json
@@ -83,7 +84,7 @@ from django.test import TestCase
 from lists.models import List, Item
 
 
-class APIGetListItemsTest(TestCase):
+class ListAPITest(TestCase):
     base_url = '/api/lists/{}/'  #<1>
 
     def test_get_returns_json_200(self):
@@ -102,10 +103,12 @@ class APIGetListItemsTest(TestCase):
 First we wire up a couple of 'urls' files:
 
 [role="sourcecode"]
-.lists/tests.py
+.superlists/urls.py
 [source,python]
 ----
-[...]
+from django.conf.urls import include, url
+from accounts import urls as accounts_urls
+from lists import views as list_views
 from lists import api_urls
 from lists import urls as list_urls
 
@@ -157,6 +160,7 @@ Creating test database for alias 'default'...
 Ran 50 tests in 0.177s
 
 OK
+Destroying test database for alias 'default'...
 ----
 
 
@@ -167,7 +171,7 @@ Our next step is to get our API to actually respond with some content,
 specifically, a JSON representation of our list items.
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/tests/test_api.py
 [source,python]
 ----
     def test_get_returns_items_for_correct_list(self):
@@ -194,12 +198,12 @@ specifically, a JSON representation of our list items.
 And the implementation, conversely, uses `json.dumps()`
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/api.py
 [source,python]
 ----
 import json
 from django.http import HttpResponse
-from lists.models import List
+from lists.models import List, Item
 
 
 def list(request, list_id):
@@ -226,7 +230,7 @@ to our list by using a POST request. We'll start with the "happy path":
 
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/tests/test_api.py (ch36l004)
 [source,python]
 ----
     def test_POSTing_a_new_item(self):
@@ -246,7 +250,7 @@ in our normal view, but we return a 201 rather than a redirect:
 
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/api.py (ch36l005)
 [source,python]
 ----
 def list(request, list_id):
@@ -254,8 +258,10 @@ def list(request, list_id):
     if request.method == 'POST':
         Item.objects.create(list=list_, text=request.POST['text'])
         return HttpResponse(status=201)
-    [...]
+    item_dicts = [
+        [...]
 ----
+//ch36l005
 
 And that should get us started.
 
@@ -277,8 +283,8 @@ our 'lists/static/tests/' folder.
 
 Then we can write our first Ajax test:
 
-[role="sourcecode"]
-.lists/static/tests/tests.html
+[role="sourcecode dofirst-ch36l006"]
+.lists/static/tests/tests.html (ch36l007)
 [source,html]
 ----
   <div id="qunit-fixture">
@@ -325,7 +331,8 @@ QUnit.test("should get items by ajax on initialize", function (assert) {
 
 <1> We add a new item to the fixture `div` to represent our list table.
 
-<2> We import 'sinon.js'
+<2> We import 'sinon.js' (you'll need to download it and put it in the
+    right folder).
 
 <3> `testStart` and `testDone` are the QUnit equivalents of `setUp` and
     `tearDown`.  We use them to tell Sinon to start up its Ajax testing
@@ -342,7 +349,7 @@ https://api.jquery.com/jQuery.get/[jQuery Ajax helpers], which are 'much'
 easier than trying to use the low-level browser standard `XMLHttpRequest` objects.
 
 [role="sourcecode"]
-.lists/static/lists.js
+.lists/static/list.js
 [source,diff]
 ----
 @@ -1,6 +1,10 @@
@@ -356,14 +363,19 @@ easier than trying to use the low-level browser standard `XMLHttpRequest` object
 +  $.get(url);
 +
  };
++
 ----
 
 
 That should get our test passing:
 
 
+[role="qunit-output"]
 ----
-Took 35ms to run 5 tests. 5 passed, 0 failed.
+5 assertions of 5 passed, 0 failed.
+1. errors should be hidden on keypress (1)
+2. errors aren't hidden if there is no keypress (1)
+3. should get items by ajax on initialize (3)
 ----
 
 Well, we might be pinging out a GET request to the server, but what about
@@ -395,7 +407,7 @@ QUnit.test("should fill in lists table from ajax response", function (assert) {
 
   server.respond(); //<3>
 
-  var rows = $('#id_list_table tr');
+  var rows = $('#id_list_table tr');  //<4>
   assert.equal(rows.length, 2);
   var row1 = $('#id_list_table tr:first-child td');
   console.log(row1);
@@ -415,8 +427,26 @@ QUnit.test("should fill in lists table from ajax response", function (assert) {
     will kick off all the async part of the Ajax loop -- ie, any callback we've assigned
     to deal with the response.
 
-Now we can quietly check whether our Ajax callback has actually populated our table
-with the new list rows...
+<4> Now we can quietly check whether our Ajax callback has actually populated our table
+    with the new list rows... 
+
+The implementation might look something like this:
+
+[role="sourcecode"]
+.lists/static/list.js (ch36l010)
+[source,javascript]
+----
+  if (url) {
+    $.get(url).done(function (response) {  //<1>
+      var rows = '';
+      for (var i=0; i<response.length; i++) {  //<2>
+        var item = response[i];
+        rows += '\n<tr><td>' + (i+1) + ': ' + item.text + '</td></tr>';
+      }
+      $('#id_list_table').html(rows);
+    });
+  }
+----
 
 
 TIP: We're lucky because of the way jQuery registers its callbacks for Ajax when we use
@@ -425,6 +455,7 @@ TIP: We're lucky because of the way jQuery registers its callbacks for Ajax when
     way of dealing with that.  Check out the docs for the
     http://api.qunitjs.com/async/[async] function.
     Other test frameworks have something similar.
+
 
 
 
@@ -478,15 +509,17 @@ That causes our basic FT to fail:
 ----
 $ pass:quotes[*python manage.py test functional_tests.test_simple_list_creation*]
 [...]
-  File "/.../functional_tests/test_simple_list_creation.py", line 35, in
-test_can_start_a_list_and_retrieve_it_later
-    self.check_for_row_in_list_table('1: Buy peacock feathers')
-  File "/.../functional_tests/base.py", line 109, in
-check_for_row_in_list_table
-    self.assertIn(row_text, [row.text for row in rows])
+FAIL: test_can_start_a_list_for_one_user
+[...]
+  File "/.../superlists/functional_tests/test_simple_list_creation.py", line
+33, in test_can_start_a_list_for_one_user
+    self.wait_for_row_in_list_table('1: Buy peacock feathers')
+[...]
 AssertionError: '1: Buy peacock feathers' not found in []
+[...]
+FAIL: test_multiple_users_can_start_lists_at_different_urls
 
-FAILED (failures=1)
+FAILED (failures=2)
 ----
 
 
@@ -516,7 +549,7 @@ the correct url:
 
 
 [role="sourcecode"]
-.lists/templates/list.html
+.lists/templates/list.html (ch36l016)
 [source,html]
 ----
 {% block scripts %}
@@ -535,9 +568,8 @@ And guess what? The test passes!
 ----
 $ pass:quotes[*python manage.py test functional_tests.test_simple_list_creation*]
 [...]
-.
- ---------------------------------------------------------------------
-Ran 1 test in 11.730s
+
+Ran 2 test in 11.730s
 
 OK
 Destroying test database for alias 'default'...
@@ -702,7 +734,10 @@ window.Superlists.initialize = function (url) {
 That was just a refactor, we check the JS tests all still pass:
 
 
-    Took 46ms to run 11 tests. 11 passed, 0 failed.
+[role="qunit-output"]
+----
+Took 46ms to run 11 tests. 11 passed, 0 failed.
+----
 
 Now how to test that our Ajax POST calls `updateItems` on POST success?  We
 don't want to dumbly duplicate the code that simulates a server response

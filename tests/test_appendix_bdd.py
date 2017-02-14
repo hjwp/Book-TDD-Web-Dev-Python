@@ -4,7 +4,7 @@ import unittest
 from book_tester import ChapterTest
 
 
-class AppendixIITest(ChapterTest):
+class AppendixVTest(ChapterTest):
     chapter_name = 'appendix_bdd'
     previous_chapter = 'chapter_fixtures_and_debugging_staging'
 
