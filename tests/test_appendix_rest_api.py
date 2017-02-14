@@ -11,7 +11,7 @@ class AppendixVITest(ChapterTest):
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
         self.start_with_checkout()
-        self.prep_virtualenv()
+        # self.prep_virtualenv()
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing')
@@ -21,11 +21,11 @@ class AppendixVITest(ChapterTest):
         #self.skip_with_check(22, 'switch back to master') # comment
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
-            self.pos = 27
-            self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch20l015')
+            self.pos = 40
+            self.sourcetree.run_command('git checkout {}'.format(
+                self.sourcetree.get_commit_spec('ch36l027')
             ))
 
         while self.pos < len(self.listings):

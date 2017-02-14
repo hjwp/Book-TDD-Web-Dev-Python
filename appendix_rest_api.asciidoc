@@ -568,11 +568,9 @@ And guess what? The test passes!
 ----
 $ pass:quotes[*python manage.py test functional_tests.test_simple_list_creation*]
 [...]
-
 Ran 2 test in 11.730s
 
 OK
-Destroying test database for alias 'default'...
 ----
 
 That's a pretty good start!
@@ -614,16 +612,22 @@ CSRF token that's currently on the page.
 .lists/static/tests/tests.html
 [source,diff]
 ----
-@@ -9,8 +9,9 @@
+@@ -9,9 +9,14 @@
  <body>
    <div id="qunit"></div>
    <div id="qunit-fixture">
 -    <form>
 +    <form id="id_item_form">
        <input name="text" />
+-      <div class="has-error">Error text</div>
 +      <input type="hidden" name="csrfmiddlewaretoken" value="tokey" />
-       <div class="has-error">Error text</div>
++      <div class="has-error">
++        <div class="help-block">
++          Error text
++        </div>
++      </div>
      </form>
+
 ----
 
 
@@ -631,7 +635,7 @@ And here's our test:
 
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
+.lists/static/tests/tests.html (ch36l019)
 [source,javascript]
 ----
 QUnit.test("should intercept form submit and do ajax post", function (assert) {
@@ -664,7 +668,7 @@ QUnit.test("should intercept form submit and do ajax post", function (assert) {
 
 And here's how we implement it:
 
-[role="sourcecode"]
+[role="sourcecode small-code"]
 .lists/static/list.js
 [source,javascript]
 ----
@@ -686,10 +690,12 @@ That get our JS tests passing but it breaks our FTs, because, although we're
 doing our POST all right, we're not updating the page after the POST to show
 the new list item:
 
+[subs="specialcharacters,macros"]
 ----
-  File "/.../superlists/functional_tests/base.py", line 109, in check_for_row_in_list_table
-    self.assertIn(row_text, [row.text for row in rows])
-AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy peacock feathers']
+$ pass:quotes[*python manage.py test functional_tests.test_simple_list_creation*]
+[...]
+AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
+peacock feathers']
 ----
 
 
@@ -697,9 +703,10 @@ AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy pe
 Mocking in JavaScript
 ~~~~~~~~~~~~~~~~~~~~~
 
-We want our client-side to update the table of items after the Ajax POST completes.
-Essentially it'll do the same work as we do as soon as the page loads, retrieving
-the current list of items from the server, and filling in the item table.
+We want our client-side to update the table of items after the Ajax POST
+completes. Essentially it'll do the same work as we do as soon as the page
+loads, retrieving the current list of items from the server, and filling in the
+item table.
 
 Sounds like a helper function is in order!
 
@@ -729,6 +736,7 @@ window.Superlists.initialize = function (url) {
     window.Superlists.updateItems(url);
 
     var form = $('#id_item_form');
+    [...]
 ----
 
 That was just a refactor, we check the JS tests all still pass:
@@ -736,7 +744,12 @@ That was just a refactor, we check the JS tests all still pass:
 
 [role="qunit-output"]
 ----
-Took 46ms to run 11 tests. 11 passed, 0 failed.
+12 assertions of 12 passed, 0 failed.
+1. errors should be hidden on keypress (1)
+2. errors aren't hidden if there is no keypress (1)
+3. should get items by ajax on initialize (3)
+4. should fill in lists table from ajax response (3)
+5. should intercept form submit and do ajax post (4)
 ----
 
 Now how to test that our Ajax POST calls `updateItems` on POST success?  We
@@ -749,7 +762,7 @@ the mocks we create, and make sure to un-monkeypatch all the things that
 have been mocked after each test.
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
+.lists/static/tests/tests.html (ch36l023)
 [source,html]
 ----
 var server, sandbox;
@@ -769,7 +782,7 @@ QUnit.testDone(function () {
 
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
+.lists/static/tests/tests.html (ch36l024)
 [source,html]
 ----
 QUnit.test("should call updateItems after successful post", function (assert) {
@@ -803,9 +816,9 @@ QUnit.test("should call updateItems after successful post", function (assert) {
     order of execution).
 
 <2> Similarly, we only start mocking our helper function 'after' we know the
-    first call for the initial GET has already happened.  The `sandbox.spy` call
-    is what does the job that `patch` does in Python tests.  It replaces the given
-    object with a mock version.
+    first call for the initial GET has already happened.  The `sandbox.spy`
+    call is what does the job that `patch` does in Python tests.  It replaces
+    the given object with a mock version.
 
 <3> Our `updateItems` function has now grown some mocky extra attributes, like
     `lastCall` and `lastCall.args`, which are like the Python mock's `call_args`.
@@ -815,8 +828,8 @@ To get it passing, we first make a deliberate mistake, to check our tests really
 do test what we think they do:
 
 
-[role="sourcecode"]
-.lists/static/lists.js
+[role="sourcecode small-code"]
+.lists/static/list.js
 [source,javascript]
 ----
       $.post(url, {
@@ -829,16 +842,22 @@ do test what we think they do:
 
 Yep, we're almost there but not quite:
 
+[role="qunit-output"]
 ----
-Test failed: should call updateItems after successful post
-    Failed assertion: expected: /listitemsapi/, but was: 
-file:///.../superlists/lists/static/tests/tests.html:120:15
+12 assertions of 13 passed, 1 failed.
+[...]
+6. should call updateItems after successful post (1, 0, 1)
+    1. failed
+        Expected: "/listitemsapi/"
+        Result: []
+        Diff: "/listitemsapi/"[]
+        Source: file:///.../superlists/lists/static/tests/tests.html:124:15
 ----
 
 And we fix it thusly:
 
 [role="sourcecode"]
-.lists/static/lists.js
+.lists/static/list.js
 [source,javascript]
 ----
       }).done(function () {
@@ -847,8 +866,9 @@ And we fix it thusly:
 ----
 
 
-And our FT passes!  or at least one of them does, the others have problems,
+And our FT passes!  Or at least one of them does, the others have problems,
 we'll come back to them shortly.
+
 
 
 Finishing the refactor: getting the tests to match the code
@@ -901,33 +921,52 @@ our unit tests match the code a little more:
  
    server.respond();
 ----
+//ch36l026
 
-//TODO: show new unit test run output
+
+And that should give us a test run that looks like this instead:
+
+[role="qunit-output"]
+----
+14 assertions of 14 passed, 0 failed.
+1. errors should be hidden on keypress (1)
+2. errors aren't hidden if there is no keypress (1)
+3. should call updateItems on initialize (1)
+4. updateItems should get correct url by ajax (3)
+5. updateItems should fill in lists table from ajax response (3)
+6. should intercept form submit and do ajax post (4)
+7. should call updateItems after successful post (1)
+----
 
 
 Data validation.  An exercise for the reader?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-IF you do a full test run, you should find two FTs are failing:
+IF you do a full test run, you should find two of the validation FTs are failing:
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test*]
 [...]
-ERROR: test_cannot_add_empty_list_items
-(functional_tests.test_list_item_validation.ItemValidationTest)
-[...]
 ERROR: test_cannot_add_duplicate_items
 (functional_tests.test_list_item_validation.ItemValidationTest)
+[...]
+ERROR: test_error_messages_are_cleared_on_input
+(functional_tests.test_list_item_validation.ItemValidationTest)
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: .has-error
 ----
 
 I won't spell this all out for you, but here's at least the unit
 tests you'll need:
 
 [role="sourcecode"]
-.lists/tests/test_api.py
+.lists/tests/test_api.py (ch36l027)
 [source,python]
 ----
+from lists.forms import DUPLICATE_ITEM_ERROR, EMPTY_ITEM_ERROR 
+[...]
     def post_empty_input(self):
         list_ = List.objects.create()
         return self.client.post(
@@ -961,9 +1000,10 @@ tests you'll need:
         )
 ----
 
+And on the js side:
 
-[role="sourcecode"]
-.lists/static/tests/tests.html
+[role="sourcecode dofirst-ch36l029-1"]
+.lists/static/tests/tests.html (ch36l029-2)
 [source,python]
 ----
 QUnit.test("should display errors on post failure", function (assert) {
@@ -977,7 +1017,7 @@ QUnit.test("should display errors on post failure", function (assert) {
   $('.has-error').hide();
 
   $('#id_item_form').submit();
-  server.respond();
+  server.respond(); // post
 
   assert.equal($('.has-error').is(':visible'), true);
   assert.equal($('.has-error .help-block').text(), 'something is amiss');
@@ -987,13 +1027,12 @@ QUnit.test("should hide errors on post success", function (assert) {
     [...]
 ----
 
-
 And you'll want some modifications to 'base.html' to make it compatible with
 both displaying Django errors (which the home page still uses for now) and
 errors from JavaScript:
 
-[role="sourcecode"]
-.lists/templates/base.html
+[role="sourcecode dofirst-ch36l030"]
+.lists/templates/base.html (ch36l031)
 [source,diff]
 ----
 @@ -12,6 +12,7 @@
@@ -1004,7 +1043,7 @@ errors from JavaScript:
        <nav class="navbar navbar-default" role="navigation">
          <div class="container-fluid">
            <a class="navbar-brand" href="/">Superlists</a>
-@@ -55,17 +56,21 @@
+@@ -51,17 +52,21 @@
          <div class="col-md-6 col-md-offset-3 jumbotron">
            <div class="text-center">
              <h1>{% block header_text %}{% endblock %}</h1>
@@ -1027,8 +1066,40 @@ errors from JavaScript:
              {% endblock %}
 +
            </div>
+         </div>
+       </div>
+----
+//ch36l031
+
+
+By the end you should get to a js test run a bit like tis:
+
+[role="qunit-output dofirst-ch36l033"]
+----
+20 assertions of 20 passed, 0 failed.
+1. errors should be hidden on keypress (1)
+2. errors aren't hidden if there is no keypress (1)
+3. should call updateItems on initialize (1)
+4. updateItems should get correct url by ajax (3)
+5. updateItems should fill in lists table from ajax response (3)
+6. should intercept form submit and do ajax post (4)
+7. should call updateItems after successful post (1)
+8. should not intercept form submit if no api url passed in (1)
+9. should display errors on post failure (2)
+10. should hide errors on post success (1)
+11. should display generic error if no error json (2)
 ----
 
+And a full test run should pass, including all the FTs:
+
+[role="dofirst-ch36l032"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test*]
+[...]
+Ran 80 tests in 62.029s
+OK
+----
 
 If you need a hint, check out 
 https://github.com/hjwp/book-example/tree/appendix_VI_rest_api[the repo].
