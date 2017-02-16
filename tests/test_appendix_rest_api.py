@@ -21,7 +21,7 @@ class AppendixVITest(ChapterTest):
         #self.skip_with_check(22, 'switch back to master') # comment
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 40
             self.sourcetree.run_command('git checkout {}'.format(
