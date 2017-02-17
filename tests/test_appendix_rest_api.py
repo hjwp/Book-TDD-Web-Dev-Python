@@ -33,6 +33,9 @@ class AppendixVITest(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
+        self.sourcetree.run_command(
+            'git add . && git commit -m"final commit in rest api chapter"'
+        )
         self.check_final_diff()
 
 
