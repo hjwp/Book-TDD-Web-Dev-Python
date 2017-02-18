@@ -4,7 +4,7 @@ import unittest
 from book_tester import ChapterTest
 
 
-class AppendixVITest(ChapterTest):
+class AppendixVIITest(ChapterTest):
     chapter_name = 'appendix_DjangoRestFramework'
     previous_chapter = 'appendix_rest_api'
 
