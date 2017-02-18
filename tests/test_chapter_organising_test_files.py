@@ -5,8 +5,8 @@ import unittest
 from book_tester import ChapterTest
 
 class Chapter11Test(ChapterTest):
-    chapter_name = 'chapter_database_layer_validation'
-    previous_chapter = 'chapter_organising_test_files'
+    chapter_name = 'chapter_organising_test_files'
+    previous_chapter = 'chapter_automate_deployment_with_fabric'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
