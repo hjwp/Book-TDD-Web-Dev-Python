@@ -12,9 +12,9 @@ class Chapter11Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'code listing with git ref')
-        self.assertEqual(self.listings[1].type, 'code listing with git ref')
-        self.assertEqual(self.listings[2].type, 'test')
+        self.assertEqual(self.listings[0].type, 'test')
+        self.assertEqual(self.listings[1].type, 'output')
+        self.assertEqual(self.listings[2].type, 'code listing with git ref')
 
         # other prep
         self.start_with_checkout()
