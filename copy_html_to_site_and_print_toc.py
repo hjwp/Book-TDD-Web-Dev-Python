@@ -1,58 +1,22 @@
 #!/usr/bin/env python
 
 import os
+import json
 from lxml import html
 import subprocess
 
 CHAPTERS = [
-    "praise.harry.html",
-    "preface.html",
-    "pre-requisite-installations.html",
-    "video_plug.html",
-    "acknowledgments.html",
-
-    "part1.harry.html",
-    "chapter_01.html",
-    "chapter_02_unittest.html",
-    "chapter_unit_test_first_view.html",
-    "chapter_philosophy_and_refactoring.html",
-    "chapter_post_and_database.html",
-    "chapter_explicit_waits_1.html",
-
-    "part2.harry.html",
-    "chapter_working_incrementally.html",
-    "chapter_prettification.html",
-    "chapter_manual_deployment.html",
-    "chapter_automate_deployment_with_fabric.html",
-    "chapter_database_layer_validation.html",
-    "chapter_simple_form.html",
-    "chapter_advanced_forms.html",
-    "chapter_javascript.html",
-    "chapter_deploying_validation.html",
-
-    "part3.harry.html",
-    "chapter_spiking_custom_auth.html",
-    "chapter_mocking.html",
-    "chapter_server_side_debugging.html",
-    "chapter_outside_in.html",
-    "chapter_purist_unit_tests.html",
-    "chapter_CI.html",
-    "chapter_page_pattern.html",
-    "epilogue.html",
-
-    "appendix_I_PythonAnywhere.html",
-    "appendix_Django_Class-Based_Views.html",
-    "appendix_III_provisioning_with_ansible.html",
-    "appendix_IV_testing_migrations.html",
-    "appendix_bdd.html",
-    "appendix_rest_api.html",
-    "appendix_DjangoRestFramework.html",
-    "appendix_IX_cheat_sheet.html",
-    "appendix_X_what_to_do_next.html",
-
-    "bibliography.html",
+    c.replace('.asciidoc', '.html')
+    for c in json.loads(open('atlas.json').read())['files']
 ]
-
+for tweak_chap in ['praise.html', 'part1.html', 'part2.html', 'part3.html']:
+    CHAPTERS[CHAPTERS.index(tweak_chap)] = tweak_chap.replace('.', '.harry.')
+CHAPTERS.remove('titlepage.html')
+CHAPTERS.remove('copyright.html')
+CHAPTERS.remove('toc.html')
+CHAPTERS.remove('ix.html')
+CHAPTERS.remove('author_bio.html')
+CHAPTERS.remove('colo.html')
 
 
 def make_chapters():
@@ -122,7 +86,7 @@ def fix_xrefs(chapter, chapter_info):
 
 
 def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
-    comments_div = html.fromstring(open('disqus_comments.html').read())
+    comments_html = open('disqus_comments.html').read()
     buy_book_div = html.fromstring(open('buy_the_book_banner.html').read())
     analytics_div = html.fromstring(open('analytics.html').read())
     load_toc_script = open('load_toc.js').read()
@@ -136,7 +100,9 @@ def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
             head.append(html.fragment_fromstring('<script>' + load_toc_script + '</script>'))
             body.set('class', 'article toc2 toc-left')
         body.insert(0, buy_book_div)
-        body.append(comments_div)
+        body.append(html.fromstring(
+            comments_html.replace('CHAPTER_NAME', chapter.split('.')[0])
+        ))
         body.append(analytics_div)
         fixed_contents = html.tostring(parsed)
 
