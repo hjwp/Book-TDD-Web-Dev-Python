@@ -5,7 +5,7 @@ from book_tester import ChapterTest
 
 
 class Chapter18Test(ChapterTest):
-    chapter_name = 'chapter_fixtures_and_debugging_staging'
+    chapter_name = 'chapter_server_side_debugging'
     previous_chapter = 'chapter_mocking'
 
     def test_listings_and_commands_and_output(self):
