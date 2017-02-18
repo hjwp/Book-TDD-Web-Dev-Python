@@ -6,15 +6,14 @@ from book_tester import ChapterTest
 
 class Chapter18Test(ChapterTest):
     chapter_name = 'chapter_server_side_debugging'
-    previous_chapter = 'chapter_mocking'
+    previous_chapter = 'chapter_fixtures_and_wait_decorator'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'code listing')
-        self.assertEqual(self.listings[1].type, 'other command')
-        self.assertEqual(self.listings[2].type, 'output')
+        self.assertEqual(self.listings[0].type, 'other command')
+        self.assertEqual(self.listings[0].skip, True)
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
@@ -22,7 +21,6 @@ class Chapter18Test(ChapterTest):
         # prep
         self.start_with_checkout()
         self.prep_database()
-        self.sourcetree.run_command('rm accounts/tests.py')
 
         # hack fast-forward
         skip = False
