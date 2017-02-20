@@ -1,0 +1,187 @@
+[[appendix_logging]]
+[apendix]
+Logging
+~~~~~~~
+
+Using Hierarchical Logging Config
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+NOTE: this content is left over from the first edition, and has not been integrated
+    into the new edition
+
+((("logging configuration", id="ix_loggingconfig", range="startofrange")))
+When we hacked in the `logging.warning` earlier, we were using the root logger.
+That's not normally a good idea, since any third-party package can mess with the
+root logger.  The normal pattern is to use a logger named after the file you're
+in, by using:
+
+[role="skipme"]
+[source,python]
+----
+logger = logging.getLogger(__name__)
+----
+
+Logging configuration is hierarchical, so you can define "parent" loggers for
+top-level modules, and all the Python modules inside them will inherit that
+config.
+
+Here's how we add a logger for both our apps into 'settings.py':
+
+[role="sourcecode skipme"]
+.superlists/settings.py
+[source,python]
+----
+LOGGING = {
+   'version': 1,
+   'disable_existing_loggers': False,
+   'handlers': {
+       'console': {
+           'level': 'DEBUG',
+           'class': 'logging.StreamHandler',
+       },
+   },
+   'loggers': {
+        'django': {
+            'handlers': ['console'],
+        },
+        'accounts': {
+            'handlers': ['console'],
+        },
+        'lists': {
+            'handlers': ['console'],
+        },
+    },
+    'root': {'level': 'INFO'},
+}
+----
+
+Now 'accounts.models', 'accounts.views', 'accounts.authentication', and all 
+the others will inherit the `logging.StreamHandler` from the parent 'accounts'
+logger.  
+
+Unfortunately, because of Django's project structure, there's no 
+way of defining a top-level logger for your whole project (aside from using
+the root logger), so you have to define one logger per app.
+
+
+Here's how to write a test for logging behaviour:
+
+[role="sourcecode skipme"]
+.accounts/tests/test_authentication.py (ch18l023)
+[source,python]
+----
+import logging
+[...]
+
+@patch('accounts.authentication.requests.post')
+class AuthenticateTest(TestCase):
+    [...]
+
+    def test_logs_non_okay_responses_from_persona(self, mock_post):
+        response_json = {
+            'status': 'not okay', 'reason': 'eg, audience mismatch'
+        }
+        mock_post.return_value.ok = True
+        mock_post.return_value.json.return_value = response_json  #<1>
+
+        logger = logging.getLogger('accounts.authentication')  #<2>
+        with patch.object(logger, 'warning') as mock_log_warning:  #<3>
+            self.backend.authenticate('an assertion')
+
+        mock_log_warning.assert_called_once_with(
+            'Persona says no. Json was: {}'.format(response_json)  #<4>
+        )
+----
+
+<1> We set up our test with some data that should cause some logging.
+
+<2> We retrieve the actual logger for the module we're testing.
+
+<3> We use `patch.object` to temporarily mock out its warning function,
+    by using `with` to make it a 'context manager' around the function we're
+    testing.
+
+<4> And then it's available for us to make assertions against.
+
+That gives us:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+AssertionError: Expected 'warning' to be called once. Called 0 times.
+----
+
+Let's just try it out, to make sure we really are testing what we think
+we are:
+
+[role="sourcecode skipme"]
+.accounts/authentication.py (ch18l024)
+[source,python]
+----
+import logging
+logger = logging.getLogger(__name__)
+[...]
+
+        if response.ok and response.json()['status'] == 'okay':
+            [...]
+        else:
+            logger.warning('foo')
+----
+
+We get the expected failure:
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+AssertionError: Expected call: warning("Persona says no. Json was: {'status':
+'not okay', 'reason': 'eg, audience mismatch'}")
+Actual call: warning('foo')
+----
+
+And so we settle in with our real implementation:
+
+[role="sourcecode skipme"]
+.accounts/authentication.py (ch18l025)
+[source,python]
+----
+    else:
+        logger.warning(
+            'Persona says no. Json was: {}'.format(response.json())
+        )
+----
+
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test accounts*]
+[...]
+Ran 15 tests in 0.033s
+
+OK
+----
+
+You can easily imagine how you could test more combinations at this point,
+if you wanted different error messages for `response.ok != True`, and so on.
+
+.More notes
+*******************************************************************************
+
+Use loggers named after the module you're in::
+    The root logger is a single global object, available to any library that's
+    loaded in your Python process, so you're never quite in control of it. 
+    Instead, follow the `logging.getLogger(__name__)` pattern to get one that's
+    unique to your module, but that inherits from a top-level configuration you
+    control.
+
+Test important log messages::
+    As we saw, log messages can be critical to debugging issues in production.
+    If a log message is important enough to keep in your codebase, it's
+    probably important enough to test.  We follow the rule of thumb that
+    anything above `logging.INFO` definitely needs a test.  Using
+    `patch.object` on the logger for the module you're testing is one
+    convenient way of unit testing it.
+
+*******************************************************************************
+
