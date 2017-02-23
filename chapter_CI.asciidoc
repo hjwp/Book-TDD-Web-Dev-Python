@@ -50,112 +50,184 @@ Circle-CI, ShiningPanda, and there are probably lots more.  But I'm going to
 assume we're installing everything on a server we control.
 
 NOTE: It's not a good idea to install Jenkins on the same server as our
-staging or production servers.  Apart from anything else, we may want 
-Jenkins to be able to reboot the staging server!
+    staging or production servers.  Apart from anything else, we may want 
+    Jenkins to be able to reboot the staging server!
 
-We'll install the latest version from the official Jenkins apt repo, because the 
-Ubuntu default still has a few annoying bugs with locale/unicode support,
+We'll install the latest version from the official Jenkins apt repo, because
+the Ubuntu default still has a few annoying bugs with locale/unicode support,
 and it also doesn't set itself up to listen on the public Internet by default:
+
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-# instructions taken from jenkins site
-user@server:$ *wget -q -O - https://pkg.jenkins.io/debian/jenkins-ci.org.key |\
-     sudo apt-key add -*
-user@server:$ *echo deb http://pkg.jenkins.io/debian-stable binary/ | sudo tee \
+root@server:$ *wget -q -O - https://pkg.jenkins.io/debian/jenkins-ci.org.key |\
+     apt-key add -*
+root@server:$ *echo deb http://pkg.jenkins.io/debian-stable binary/ | tee \
     /etc/apt/sources.list.d/jenkins.list*
-user@server:$ *sudo apt-get update*
-user@server:$ *sudo apt-get install jenkins*
+root@server:$ *apt-get update*
+root@server:$ *apt-get install jenkins*
 ----
+
+(Instructions lifted from the [Jenkins site](https://wiki.jenkins-ci.org/display/JENKINS/Installing+Jenkins+on+Ubuntu))
+
 
 While we're at we'll install a few other dependencies:
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-user@server:$ *sudo apt-get install firefox python3-venv xvfb*
+root@server:$ *apt-get install firefox python3-venv xvfb*
 ----
 
-You should then be able to visit it at the URL for your server on port `8080`,
-as in <<jenkin-welcome>>.
+And we'll download, unzip and install geckodriver too (it was v 0.14 at
+the time of writing, but substitute the latest version as you read this).
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+root@server:$ *wget https://github.com/mozilla/geckodriver/releases\
+/download/v0.14.0/geckodriver-v0.14.0-linux64.tar.gz*
+root@server:$ *tar -xvzf geckodriver-v0.14.0-linux64.tar.gz*
+root@server:$ *mv geckodriver /usr/local/bin*
+root@server:$ *geckodriver --version*
+geckodriver 0.14.0
+----
+
+
+.Adding some swap
+*******************************************************************************
+Jenkins is quite memory-hungry, and if  you're running this on a small VM
+with less than a couple of gigs for RAM, you'll probably find it gets
+OOM-killed unless you add some swap.
+
+[subs="specialcharacters,quotes"]
+----
+$ *fallocate -l 4G /swapfile*
+$ *mkswap /swapfile*
+$ *chmod 600 /swapfile*
+$ *swapon /swapfile*
+----
+
+That should be plenty.
+
+*******************************************************************************
+
+
+Configuring Jenkins
+~~~~~~~~~~~~~~~~~~~
+
+You should now be able to visit jenkins at the URL/IP for your server on port
+`8080`, and see something like <<jenkin-unlock>>.
+
+[[jenkin-unlock]]
+.Jenkins unlock screen 
+image::images/jenkins_unlock.png["Jenkins' default unlock screen"]
+
+
+Initial Unlock
+^^^^^^^^^^^^^^
+
+((("continuous integration (CI)", "configuring Jenkins")))
+The unlock screen is telling us to read a file from disk to unlock
+the server for first time use.  I jumped over to a terminal and printed
+it like this:
+
+[subs="specialcharacters,quotes"]
+----
+root@server$ *cat /var/lib/jenkins/secrets/initialAdminPassword*
+----
+
+
+Suggested plugins for now
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Next we're offered the choice to choose "suggested" plugins. Suggested
+ones are fine for now. (As a self-respecting nerd, our instinct
+is to hit "customize" immediately, and that's what I did first time round,
+but it turns out that screen won't give us what we want. Don't worry, we'll add
+some more plugins later).
+
+
+Configuring the admin user
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("Jenkins Security")))
+Next we set up a username and password to login to jenkins with; see <<jenkins-user>>:
+
+[[jenkin-user]]
+.Jenkins admin user config
+image::images/jenkins_user.png["Jenkins screen asking for username and password"]
+
+
+And once we log in, we should see a welcome screen:
 
 [[jenkin-welcome]]
-.A butler! How quaint...
-image::images/twdp_2001.png["Jenkins' default welcome screen"]
-
-
-Configuring Jenkins Security
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("Jenkins Security", "configuring")))
-((("continuous integration (CI)", "configuring Jenkins")))
-The first thing we'll do is set up some authentication, since our server is
-available on the public Internet:
-
-* Manage Jenkins -> Configure Global Security -> Enable security.
-
-* Choose "Jenkins' own user database", "Matrix-based security".
-
-* Disable all permissions for Anonymous.
-
-* And add a user for yourself; give it all the permissions
-  (<<jenkins-security>>).
-
-* The next screen offers you the option to create an account that matches that
-  username, and set a password.footnote:[If you miss that screen, you can still hit "signup", and as long as
-you use the same username you specified earlier, you'll have an account set up.]
-
-[[jenkins-security]]
-.Locking it down...
-image::images/twdp_2002.png["Jenkins security config screnshot"]
+.A butler, how quaint.
+image::images/jenkins_welcome.png["Jenkins welcome screen with invitation to create new job"]
 
 
 
-Adding Required Plugins
-^^^^^^^^^^^^^^^^^^^^^^^
+Adding plugins
+^^^^^^^^^^^^^^
 
-((("Jenkins Security", "adding required plugins")))
-((("continuous integration (CI)", "adding required plugins")))
-Next we install a few plugins, to help us work with Git, Python, and virtual
-displays; see <<installing-plugins>>:
-
-* Manage Jenkins -> Manage Plugins -> Available
-
+Follow the links for *Manage Jenkins* -> *Manage Plugins* -> *Available*
 
 We'll want the plugins for:
 
-* Git
-* ShiningPanda
-* Xvfb
+* 'ShiningPanda'
+* 'Xvfb'
 
+And hit install.
 
 [[installing-plugins]]
 .Installing plugins...
 image::images/twdp_2003.png["Jenkins installing plugins"]
 
-Restart afterwards using either the tick-box on that last screen, or
-from the command line with a `sudo service jenkins restart`.
 
 
 Telling Jenkins where to find Python 3 and Xvfb
-+++++++++++++++++++++++++++++++++++++++++++++++
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-We need to tell the ShiningPanda plugin where Python 3 is installed 
-(usually '/usr/bin/python3', but you can check with a `which python3`):
 ((("Python", "adding to Jenkins")))
 ((("Shining Panda")))
 ((("Xvfb")))
-* Manage Jenkins -> Configure System.
+We need to tell the ShiningPanda plugin where Python 3 is installed 
+(usually '/usr/bin/python3', but you can check with a `which python3`):
 
-* Python -> Python installations -> Add Python (<<add-python-to-jenkins>>).
+* *Manage Jenkins* -> *Global Tool Configuration*
 
-* Xvfb installation -> Add Xvfb installation; enter *`/usr/bin`* as the
+* *Python* -> *Python installations* -> *Add Python* (see <<add-python-to-jenkins>>, it's
+  safe to ignore the warning message)
+
+* *Xvfb installation* -> *Add Xvfb installation*; enter *`/usr/bin`* as the
   installation directory.
 
 [[add-python-to-jenkins]]
 .Where did I leave that Python?
-image::images/twdp_2004.png["Adding Python 3"]
+image::images/jenkins_python_config.png["Adding Python 3"]
+
+
+
+
+
+Finishing off with HTTPS
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+To finish off securing your Jenkins instance, you'll want to set up HTTPS, by
+getting nginx HTTPS to use a self-signed cert, and proxy requests from port 443
+to port 8080. Then you can even block port 8080 on the firewall.  I won't go
+into detail on that now, but here are a few links to instructions which I found
+useful:
+
+* https://wiki.jenkins-ci.org/display/JENKINS/Installing+Jenkins+on+Ubuntu[Official
+Jenkins Ubuntu installation guide],
+
+* https://www.digitalocean.com/community/tutorials/how-to-create-an-ssl-certificate-on-nginx-for-ubuntu-14-04[how
+to create a self-signed SSL certificate]
+
+* http://serverfault.com/questions/250476/how-to-force-or-redirect-to-ssl-in-nginx#424016[how
+to redirect HTTP to HTTPS]
 
 
 
@@ -163,9 +235,12 @@ Setting Up Our Project
 ~~~~~~~~~~~~~~~~~~~~~~
 
 ((("continuous integration (CI)", "project setup")))
-Now we've got the basic Jenkins configured, let's set up our project:
+Now we've got the basic Jenkins configured, let's set up our project.
 
-* New Job -> Build a free-style software project.
+* Hit the *New Item* button
+
+* Enter 'Superlists' as the name, and then choose *Freestyle project*, and hit
+  *OK*
 
 * Add the Git repo, as in <<choose-git-repo>>.
 
@@ -178,6 +253,7 @@ image::images/twdp_2005.png["Setting the git repo"]
 [[poll-hourly]]
 .Poll Github for changes
 image::images/twdp_2006.png["Config polling github"]
+
 
 * Run the tests inside a Python 3 virtualenv.
 
@@ -221,15 +297,26 @@ Installing collected packages: requests
 Successfully installed requests
 Cleaning up...
 + python manage.py test lists accounts
-...................................................
+...................................................................
  ---------------------------------------------------------------------
-Ran 51 tests in 0.323s
+Ran 67 tests in 0.429s
 
 OK
 Creating test database for alias 'default'...
 Destroying test database for alias 'default'...
 + python manage.py test functional_tests
+EEEEEE
+======================================================================
+ERROR: functional_tests.test_layout_and_styling (unittest.loader._FailedTest)
+ ---------------------------------------------------------------------
+ImportError: Failed to import test module: functional_tests.test_layout_and_styling
+[...]
 ImportError: No module named 'selenium'
+
+Ran 6 tests in 0.001s
+
+FAILED (errors=6)
+
 Build step 'Virtualenv Builder' marked build as failure
 ----
 
@@ -242,8 +329,8 @@ steps:
 [role="skipme"]
 ----
     pip install -r requirements.txt
-    pip install selenium
     python manage.py test accounts lists
+    pip install selenium
     python manage.py test functional_tests
 ----
 
@@ -252,19 +339,27 @@ TIP: Some people like to use a file called 'test-requirements.txt' to specify
     packages that are needed for the tests, but not the main app.
 
 
-Now what?
+And hit "Build Now" again. 
+
+Next one of two things will happen.  Either you'll see some error messages
+like this in your console output:
+
 
 [role="skipme"]
 ----
-  File
-  "/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.
-  line 100, in _wait_until_connectable
-    self._get_firefox_output())
+    self.browser = webdriver.Firefox()
+[...]
 selenium.common.exceptions.WebDriverException: Message: 'The browser appears to
 have exited before we could connect. The output was: b"\\n(process:19757):
 GLib-CRITICAL **: g_slice_set_config: assertion \'sys_page_size == 0\'
 failed\\nError: no display specified\\n"' 
+[...]
+selenium.common.exceptions.WebDriverException: Message: connection refused
 ----
+
+Or possibly your build will just hang altogether (that happened to me at
+least once).  The reason is that Firefox can't start, because it doesn't
+have a display to run on.
 
 
 Setting Up a Virtual Display so the FTs Can Run Headless
@@ -282,13 +377,13 @@ a headless browser, like PhantomJS or SlimerJS.  Those tools definitely have
 their place--they're faster, for one thing--but they also have
 disadvantages.  The first is that they're not "real" web browsers, so you can't
 be sure you're going to catch all the strange quirks and behaviours of the
-actual browsers your users use.  The second is that they behave quite
-differently inside Selenium, and will require substantial amounts of rewriting
-of FT code.
+actual browsers your users use.  The second is that they can behave quite
+differently inside Selenium, and often require some rewriting of FT code.
 
 TIP: I would look into using headless browsers as a "dev-only" tool, to speed
     up the running of FTs on the developer's machine, while the tests on the CI
     server use actual browsers.
+
 
 ((("Xvfb")))
 The alternative is to set up a virtual display:  we get the server to pretend
@@ -297,8 +392,7 @@ out there to do this; we'll use one called "Xvfb"
 (X Virtual Framebuffer)footnote:[Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
 as a way of controlling virtual displays from Python.]
 because it's easy to install and use, and because it has a convenient Jenkins
-plugin.
-
+plugin (now you know why we installed it earlier)
 
 We go back to our project and hit "Configure" again, then find the section
 called "Build Environment".  Using the virtual display is as simple as
@@ -319,9 +413,9 @@ Xvfb starting$ /usr/bin/Xvfb :2 -screen 0 1024x768x24 -fbdir
 /var/lib/jenkins/2013-11-04_03-27-221510012427739470928xvfb
 [...]
 + python manage.py test lists accounts
-...................................................
+...............................................................
  ---------------------------------------------------------------------
-Ran 51 tests in 0.410s
+Ran 63 tests in 0.410s
 
 OK
 Creating test database for alias 'default'...
@@ -504,8 +598,11 @@ And then we look at the screenshot, as shown in <<normal-screenshot>>.
 image::images/twdp_2010.png["Screenshot of site page"]
 
 
-Bumping our timeout
-~~~~~~~~~~~~~~~~~~~
+If in doubt, try bumping the timeout!
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Hm.  No obvious clues there.  Well, when in doubt, bump the timeout, as the
+old adage goes.
 
 TODO: insert discussion on bumping the timeout here
 
@@ -556,7 +653,7 @@ Once we have node, we can install phantom:
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-$ *npm install -g phantomjs*  # the -g means "system-wide". May need sudo.
+root@server $ *npm install -g phantomjs*  # the -g means "system-wide".
 ----
 
 Next we pull down a QUnit/PhantomJS test runner.  There are several out there
@@ -641,10 +738,10 @@ You'll also need to install PhantomJS on the server:
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo add-apt-repository -y ppa:chris-lea/node.js*
-elspeth@server:$ *sudo apt-get update*
-elspeth@server:$ *sudo apt-get install nodejs*
-elspeth@server:$ *sudo npm install -g phantomjs*
+root@server:$ *add-apt-repository -y ppa:chris-lea/node.js*
+root@server:$ *apt-get update*
+root@server:$ *apt-get install nodejs*
+root@server:$ *npm install -g phantomjs*
 ----
 
 And there we are!  A complete CI build featuring all of our tests!
@@ -768,14 +865,6 @@ Look in to hooking up CI and staging::
 (feel free to ignore these, just my working notes)
 
 * follow screens to set up user
-
-* nginx + self signed cert guides
-
-https://wiki.jenkins-ci.org/display/JENKINS/Installing+Jenkins+on+Ubuntu
-
-https://www.digitalocean.com/community/tutorials/how-to-create-an-ssl-certificate-on-nginx-for-ubuntu-14-04
-
-http://serverfault.com/questions/250476/how-to-force-or-redirect-to-ssl-in-nginx#424016
 
 
     curl -L 'https://download.mozilla.org/?product=firefox-45.4.0esr-SSL&os=linux64&lang=en-US' | tar -xvj -C /usr/share
