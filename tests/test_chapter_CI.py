@@ -16,7 +16,7 @@ class Chapter21Test(ChapterTest):
         # sanity checks
         self.assertEqual(self.listings[0].skip, True)
         self.assertEqual(self.listings[1].skip, True)
-        self.assertEqual(self.listings[11].type, 'code listing with git ref')
+        self.assertEqual(self.listings[19].type, 'code listing with git ref')
 
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
