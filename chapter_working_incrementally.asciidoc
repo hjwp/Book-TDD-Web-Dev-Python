@@ -292,7 +292,7 @@ when we run our FTs:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test functional_tests*]
-Creating test database for alias 'default'...
+[...]
 .F
 ======================================================================
 FAIL: test_multiple_users_can_start_lists_at_different_urls
@@ -309,7 +309,6 @@ AssertionError: Regex didn't match: '/lists/.+' not found in
 Ran 2 tests in 5.786s
 
 FAILED (failures=1)
-Destroying test database for alias 'default'...
 ----
 
 Good, our first test still passes, and the second one fails where we might
@@ -496,8 +495,6 @@ Running the tests again, we get:
 
 ----
 AttributeError: module 'lists.views' has no attribute 'view_list'
-[...]
-FAILED (errors=6)
 ----
 
 
@@ -1215,7 +1212,7 @@ So we run a `makemigrations`:
 ----
 $ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'lists':
-  lists/migrations/0003_list.py:
+  lists/migrations/0003_list.py
     - Create model List
 ----
 
@@ -1262,7 +1259,7 @@ django.db.utils.OperationalError: no such column: lists_item.list
 
 $ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'lists':
-  lists/migrations/0004_item_list.py:
+  lists/migrations/0004_item_list.py
     - Add field list to item
 ----
 
@@ -1305,7 +1302,7 @@ delete it and replace it with a new one:
 $ pass:quotes[*rm lists/migrations/0004_item_list.py*]
 $ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'lists':
-  lists/migrations/0004_item_list.py:
+  lists/migrations/0004_item_list.py
     - Add field list to item
 ----
 //31
@@ -1470,7 +1467,7 @@ class ListViewTest(TestCase):
 
     def test_uses_list_template(self):
         list_ = List.objects.create()
-        response = self.client.get('/lists/%d/' % (list_.id,))
+        response = self.client.get(f'/lists/{list_.id}/')
         self.assertTemplateUsed(response, 'list.html')
 
 
@@ -1482,7 +1479,7 @@ class ListViewTest(TestCase):
         Item.objects.create(text='other list item 1', list=other_list)
         Item.objects.create(text='other list item 2', list=other_list)
 
-        response = self.client.get('/lists/%d/' % (correct_list.id,))
+        response = self.client.get(f'/lists/{correct_list.id}/')
 
         self.assertContains(response, 'itemey 1')
         self.assertContains(response, 'itemey 2')
@@ -1491,12 +1488,12 @@ class ListViewTest(TestCase):
 ----
 
 
-NOTE: If you're not familiar with Python string substitutions, or the
-    `printf` function from C, maybe that `%d` is a little confusing?
-    http://www.diveintopython.net/['Dive Into Python'] has a good overview, if
-    you want to go look them up quickly.  We'll see an alternative string
-    substitution syntax later in the book too.
-    ((("string substitutions")))
+NOTE: A couple more of those lovely f-strings in this listing!  If they're
+    still a bit of a mystery, take a look at the 
+https://docs.python.org/3/reference/lexical_analysis.html#f-strings[docs],
+    (although if your formal CS education is as bad as mine, you'll probably
+    skip the formal grammar).
+    ((("f-strings")))
 
 Running the unit tests gives an expected 404, and another related error:
 
@@ -1625,7 +1622,7 @@ new list it just created:
     def test_redirects_after_POST(self):
         response = self.client.post('/lists/new', data={'item_text': 'A new list item'})
         new_list = List.objects.first()
-        self.assertRedirects(response, '/lists/%d/' % (new_list.id,))
+        self.assertRedirects(response, f'/lists/{new_list.id}/')
 ----
 
 That still gives us the 'invalid literal' error. We take a look at the view
@@ -1640,19 +1637,20 @@ itself, and change it so it redirects to a valid place:
 def new_list(request):
     list_ = List.objects.create()
     Item.objects.create(text=request.POST['item_text'], list=list_)
-    return redirect('/lists/%d/' % (list_.id,))
+    return redirect(f'/lists/{list_.id}/')
 ----
 
 That gets us back to passing unit tests.  
 
+[subs="specialcharacters,macros"]
 ----
-Creating test database for alias 'default'...
+$ pass:quotes[*python3 manage.py test lists*]
+[...]
 ......
  ---------------------------------------------------------------------
 Ran 6 tests in 0.033s
 
 OK
-Destroying test database for alias 'default'...
 ----
 
 
@@ -1664,6 +1662,8 @@ The functional tests detect another regression
 
 Well, almost:
 
+
+[subs="specialcharacters,macros"]
 ----
 F.
 ======================================================================
@@ -1722,7 +1722,7 @@ class NewItemTest(TestCase):
         correct_list = List.objects.create()
 
         self.client.post(
-            '/lists/%d/add_item' % (correct_list.id,),
+            f'/lists/{correct_list.id}/add_item',
             data={'item_text': 'A new item for an existing list'}
         )
 
@@ -1737,18 +1737,18 @@ class NewItemTest(TestCase):
         correct_list = List.objects.create()
 
         response = self.client.post(
-            '/lists/%d/add_item' % (correct_list.id,),
+            f'/lists/{correct_list.id}/add_item',
             data={'item_text': 'A new item for an existing list'}
         )
 
-        self.assertRedirects(response, '/lists/%d/' % (correct_list.id,))
+        self.assertRedirects(response, f'/lists/{correct_list.id}/')
 ----
 
 NOTE: Are you wondering about `other_list`?  A bit like in the tests for
     viewing a specific list, it's important that we add items to a specific
     list.  Adding this second object to the database prevents me from using
     a hack like List.objects.first() in the implementation.  That would be
-    a stupid thing to do, and you can't go too far down the road of testing
+    a stupid thing to do, and you mustn't go too far down the road of testing
     for all the stupid things you must not do (there are an infinite number
     of those after all). It's a judgement call, but this one feels worth it.
     There's some more discussion of this in <<Chapter
@@ -1895,7 +1895,7 @@ We can copy the `redirect` from `new_list` and the `List.objects.get` from
 ----
 def add_item(request, list_id):
     list_ = List.objects.get(id=list_id)
-    return redirect('/lists/%d/' % (list_.id,))
+    return redirect(f'/lists/{list_.id}/')
 ----
 
 That takes us to:
@@ -1915,7 +1915,7 @@ Finally we make it save our new list item:
 def add_item(request, list_id):
     list_ = List.objects.get(id=list_id)
     Item.objects.create(text=request.POST['item_text'], list=list_)
-    return redirect('/lists/%d/' % (list_.id,))
+    return redirect(f'/lists/{list_.id}/')
 ----
 
 And we're back to passing tests.
@@ -1967,7 +1967,7 @@ Let's create a new unit test in `ListViewTest`:
     def test_passes_correct_list_to_template(self):
         other_list = List.objects.create()
         correct_list = List.objects.create()
-        response = self.client.get('/lists/%d/' % (correct_list.id,))
+        response = self.client.get(f'/lists/{correct_list.id}/')
         self.assertEqual(response.context['list'], correct_list)  #<1>
 ----
 
@@ -2039,13 +2039,12 @@ How about the FTs?
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test functional_tests*]
-Creating test database for alias 'default'...
+[...]
 ..
  ---------------------------------------------------------------------
 Ran 2 tests in 9.771s
 
 OK
-Destroying test database for alias 'default'...
 ----
 
 HOORAY!  Oh, and a quick check on our to-do list:
