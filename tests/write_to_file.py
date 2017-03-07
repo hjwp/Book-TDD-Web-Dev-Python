@@ -155,19 +155,6 @@ def add_to_class(new_lines, old_lines):
 
 
 
-SPECIAL_CASES = {
-    "self.assertIn('1: Buy peacock feathers', [row.text for row in rows])":
-    (
-        r'(\s+)self.assertTrue\(\n'
-        r"\s+any\(row.text == '1: Buy peacock feathers' for row in rows\),\n"
-        r'\s+"New to-do item did not appear in table -- its text was:\\n%s" % \(\n'
-        r'\s+table.text,\n'
-        r'\s+\)\n'
-        r'\s+\)\n'
-    )
-}
-
-
 def write_to_file(codelisting, cwd):
     if ',' in codelisting.filename:
         files = codelisting.filename.split(', ')
@@ -194,16 +181,10 @@ def _write_to_file(path, new_contents):
             os.makedirs(dir)
 
     else:
-        old_contents = source.contents
         old_lines = source.lines
         new_lines = new_contents.strip('\n').split('\n')
-        if new_contents.strip() in SPECIAL_CASES:
-            to_replace = SPECIAL_CASES[new_contents.strip()]
-            replace_with = r'\1' + new_contents.strip() + '\n'
-            assert re.search(to_replace, old_contents), 'could not find \n%s\n in \n%r\n' % (to_replace, old_contents)
-            new_contents = re.sub(to_replace, replace_with, old_contents)
 
-        elif "[..." not in new_contents:
+        if "[..." not in new_contents:
             new_contents = _replace_lines_in(old_lines, new_lines)
 
         else:

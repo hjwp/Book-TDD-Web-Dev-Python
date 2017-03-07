@@ -233,7 +233,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_leading_elipsis_is_ignored(self):
-        old = dedent("""
+        old = dedent(
+            """
             class C():
                 def foo():
                     # bla 1
@@ -245,7 +246,8 @@ class WriteToFileTest(unittest.TestCase):
             # the end
             """
         ).lstrip()
-        new = dedent("""
+        new = dedent(
+            """
             [...]
             # bla 2
             # bla 3b
@@ -253,7 +255,8 @@ class WriteToFileTest(unittest.TestCase):
             return 1
             """
         )
-        expected = dedent("""
+        expected = dedent(
+            """
             class C():
                 def foo():
                     # bla 1
@@ -269,15 +272,18 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_adding_import_at_top_then_elipsis_then_modified_stuff(self):
-        old = dedent("""
+        old = dedent(
+            """
             import topline
             # some stuff
 
             class C():
                 def foo():
                     return 1
-            """)
-        new = dedent("""
+            """
+        )
+        new = dedent(
+            """
             import newtopline
             [...]
 
@@ -285,7 +291,8 @@ class WriteToFileTest(unittest.TestCase):
                     return 2
             """
         )
-        expected = dedent("""
+        expected = dedent(
+            """
             import newtopline
             import topline
 
@@ -300,7 +307,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def DONTtest_adding_import_at_top_without_elipsis_then_modified_stuff(self):
-        old = dedent("""
+        old = dedent(
+            """
             import anoldthing
             import bthing
             import cthing
@@ -310,8 +318,10 @@ class WriteToFileTest(unittest.TestCase):
                     return 1
 
                     # more stuff...
-            """)
-        new = dedent("""
+            """
+        )
+        new = dedent(
+            """
             import anewthing
             import bthing
             import cthing
@@ -319,8 +329,10 @@ class WriteToFileTest(unittest.TestCase):
             class C(anewthing.Baz):
                 def foo():
                     [...]
-            """)
-        expected = dedent("""
+            """
+        )
+        expected = dedent(
+            """
             import anewthing
             import bthing
             import cthing
@@ -336,7 +348,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_adding_import_at_top_then_elipsis_then_totally_new_stuff(self):
-        old = dedent("""
+        old = dedent(
+            """
             import topline
 
             # some stuff
@@ -344,7 +357,8 @@ class WriteToFileTest(unittest.TestCase):
                 pass
             """
         ).lstrip()
-        new = dedent("""
+        new = dedent(
+            """
             import newtopline
             [...]
 
@@ -352,7 +366,8 @@ class WriteToFileTest(unittest.TestCase):
                 pass
             """
         )
-        expected = dedent("""
+        expected = dedent(
+            """
             import newtopline
             import topline
 
@@ -370,7 +385,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_elipsis_indicating_which_class_to_add_new_method_to(self):
-        old = dedent("""
+        old = dedent(
+            """
             import topline
 
             class A(object):
@@ -382,7 +398,8 @@ class WriteToFileTest(unittest.TestCase):
                     pass
             """
         ).lstrip()
-        new = dedent("""
+        new = dedent(
+            """
             class A(object):
                 [...]
 
@@ -390,7 +407,8 @@ class WriteToFileTest(unittest.TestCase):
                     pass
             """
         )
-        expected = dedent("""
+        expected = dedent(
+            """
             import topline
 
             class A(object):
@@ -410,7 +428,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_adding_import_at_top_sorts_alphabetically_respecting_django_and_locals(self):
-        old = dedent("""
+        old = dedent(
+            """
             import atopline
 
             from django.monkeys import monkeys
@@ -423,7 +442,8 @@ class WriteToFileTest(unittest.TestCase):
                 def foo():
                     return 1
             """)
-        new = dedent("""
+        new = dedent(
+            """
             import btopline
             [...]
 
@@ -431,7 +451,8 @@ class WriteToFileTest(unittest.TestCase):
                     return 2
             """
         )
-        expected = dedent("""
+        expected = dedent(
+            """
             import atopline
             import btopline
 
@@ -449,7 +470,8 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-        new = dedent("""
+        new = dedent(
+            """
             from django.dickens import dickens
             [...]
 
@@ -457,7 +479,8 @@ class WriteToFileTest(unittest.TestCase):
                     return 2
             """
         )
-        expected = dedent("""
+        expected = dedent(
+            """
             import atopline
 
             from django.chickens import chickens
@@ -475,7 +498,8 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
 
-        new = dedent("""
+        new = dedent(
+            """
             from lists.zoos import thing
             [...]
 
@@ -483,7 +507,8 @@ class WriteToFileTest(unittest.TestCase):
                     return 2
             """
         )
-        expected = dedent("""
+        expected = dedent(
+            """
             import atopline
 
             from django.chickens import chickens
@@ -525,7 +550,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_for_existing_file_replaces_matching_lines(self):
-        old = dedent("""
+        old = dedent(
+            """
             class Foo(object):
                 def method_1(self):
                     return 1
@@ -535,13 +561,15 @@ class WriteToFileTest(unittest.TestCase):
                     return 2
             """
         ).lstrip()
-        new = dedent("""
+        new = dedent(
+            """
                 def method_2(self):
                     # two
                     return 'two'
                 """
         ).strip()
-        expected = dedent("""
+        expected = dedent(
+            """
             class Foo(object):
                 def method_1(self):
                     return 1
@@ -555,7 +583,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_for_existing_file_doesnt_swallow_whitespace(self):
-        old = dedent("""
+        old = dedent(
+            """
             one = (
                 1,
             )
@@ -568,7 +597,8 @@ class WriteToFileTest(unittest.TestCase):
                 3,
             )
             """).lstrip()
-        new = dedent("""
+        new = dedent(
+            """
             two = (
                 2,
                 #two
@@ -577,7 +607,8 @@ class WriteToFileTest(unittest.TestCase):
         ).strip()
 
 
-        expected = dedent("""
+        expected = dedent(
+            """
             one = (
                 1,
             )
@@ -596,14 +627,16 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_longer_new_file_starts_replacing_from_first_different_line(self):
-        old = dedent("""
+        old = dedent(
+            """
             # line 1
             # line 2
             # line 3
 
             """
         ).lstrip()
-        new = dedent("""
+        new = dedent(
+            """
             # line 1
             # line 2
 
@@ -612,7 +645,8 @@ class WriteToFileTest(unittest.TestCase):
             # line 4
             """
         ).strip()
-        expected = dedent("""
+        expected = dedent(
+            """
             # line 1
             # line 2
 
@@ -625,7 +659,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_changing_the_end_of_a_method(self):
-        old = dedent("""
+        old = dedent(
+            """
             class A(object):
                 def method1(self):
                     # do step 1
@@ -640,7 +675,8 @@ class WriteToFileTest(unittest.TestCase):
                     pass
             """
         ).lstrip()
-        new = dedent("""
+        new = dedent(
+            """
             def method1(self):
                 # do step 1
                 # do step 2
@@ -648,7 +684,8 @@ class WriteToFileTest(unittest.TestCase):
                 # do step B
             """
         ).strip()
-        expected = dedent("""
+        expected = dedent(
+            """
             class A(object):
                 def method1(self):
                     # do step 1
@@ -665,7 +702,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_for_existing_file_inserting_new_lines_between_comments(self):
-        old = dedent("""
+        old = dedent(
+            """
             # test 1
             a = foo()
             assert  a == 1
@@ -679,7 +717,8 @@ class WriteToFileTest(unittest.TestCase):
                 # the end
             # is here
             """).lstrip()
-        new = dedent("""
+        new = dedent(
+            """
             # test 2
             b = bar()
             assert b == 2
@@ -693,7 +732,8 @@ class WriteToFileTest(unittest.TestCase):
             """
         ).lstrip()
 
-        expected = dedent("""
+        expected = dedent(
+            """
             # test 1
             a = foo()
             assert  a == 1
@@ -715,7 +755,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_with_single_line_replacement(self):
-        old = dedent("""
+        old = dedent(
+            """
             def wiggle():
                 abc def
                 abcd fghi
@@ -723,12 +764,14 @@ class WriteToFileTest(unittest.TestCase):
             """
         ).lstrip()
 
-        new = dedent("""
+        new = dedent(
+            """
             abcd abcd
             """
         ).strip()
 
-        expected = dedent("""
+        expected = dedent(
+            """
             def wiggle():
                 abc def
                 abcd abcd
@@ -739,7 +782,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_with_single_line_replacement_finds_most_probable_line(self):
-        old = dedent("""
+        old = dedent(
+            """
             abc
             abc daf ghi
             abc dex xyz
@@ -747,12 +791,14 @@ class WriteToFileTest(unittest.TestCase):
             """
         ).lstrip()
 
-        new = dedent("""
+        new = dedent(
+            """
             abc deFFF ghi
             """
         ).strip()
 
-        expected = dedent("""
+        expected = dedent(
+            """
             abc
             abc deFFF ghi
             abc dex xyz
@@ -763,7 +809,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_with_single_line_assertion_replacement(self):
-        old = dedent("""
+        old = dedent(
+            """
             class Wibble(unittest.TestCase):
 
                 def test_number_1(self):
@@ -771,12 +818,14 @@ class WriteToFileTest(unittest.TestCase):
             """
         ).lstrip()
 
-        new = dedent("""
+        new = dedent(
+            """
                 self.assertEqual(1 + 1, 3)
                 """
         ).strip()
 
-        expected = dedent("""
+        expected = dedent(
+            """
             class Wibble(unittest.TestCase):
 
                 def test_number_1(self):
@@ -787,7 +836,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_with_single_line_assertion_replacement_finds_right_one(self):
-        old = dedent("""
+        old = dedent(
+            """
             class Wibble(unittest.TestCase):
 
                 def test_number_1(self):
@@ -798,12 +848,14 @@ class WriteToFileTest(unittest.TestCase):
             """
         ).lstrip()
 
-        new = dedent("""
+        new = dedent(
+            """
                 self.assertEqual(1 + 2, 4)
                 """
         ).strip()
 
-        expected = dedent("""
+        expected = dedent(
+            """
             class Wibble(unittest.TestCase):
 
                 def test_number_1(self):
@@ -817,7 +869,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_with_single_line_assertion_replacement_real_views_example(self):
-        old = dedent("""
+        old = dedent(
+            """
             from lists.models import Item, List
 
             def home_page(request):
@@ -848,7 +901,8 @@ class WriteToFileTest(unittest.TestCase):
             """
         )
 
-        expected = dedent("""
+        expected = dedent(
+            """
             from lists.models import Item, List
 
             def home_page(request):
@@ -896,7 +950,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_with_two_elipsis_dedented_change(self):
-        old = dedent("""
+        old = dedent(
+            """
             class Wibble(object):
 
                 def foo(self):
@@ -906,7 +961,8 @@ class WriteToFileTest(unittest.TestCase):
                     return 3
             """).lstrip()
 
-        new = dedent("""
+        new = dedent(
+            """
                 [...]
                 def foo(self):
                     return 4
@@ -916,7 +972,8 @@ class WriteToFileTest(unittest.TestCase):
                 """
         ).strip()
 
-        expected = dedent("""
+        expected = dedent(
+            """
             class Wibble(object):
 
                 def foo(self):
@@ -930,7 +987,8 @@ class WriteToFileTest(unittest.TestCase):
 
 
     def test_indents_in_new_dont_confuse_things(self):
-        old = dedent("""
+        old = dedent(
+            """
             class Wibble():
                 def foo(self):
                     # comment 1
@@ -946,7 +1004,8 @@ class WriteToFileTest(unittest.TestCase):
             "    do something else\n"
         )
 
-        expected = dedent("""
+        expected = dedent(
+            """
             class Wibble():
                 def foo(self):
                     # comment 1
@@ -959,7 +1018,8 @@ class WriteToFileTest(unittest.TestCase):
         self.assert_write_to_file_gives(old, new, expected)
 
     def test_double_indents_in_new_dont_confuse_things(self):
-        old = dedent("""
+        old = dedent(
+            """
             class Wibble():
                 def foo(self):
                     if something:
@@ -974,41 +1034,14 @@ class WriteToFileTest(unittest.TestCase):
             # end of class
             """)
 
-        expected = dedent("""
+        expected = dedent(
+            """
             class Wibble():
                 def foo(self):
                     if something:
                         do something else
                 # end of class
             """).lstrip()
-        self.assert_write_to_file_gives(old, new, expected)
-
-
-    def test_special_case_assertIn_row_for_rows_chap_5(self):
-        old = dedent("""
-            class Case(object):
-                def foo():
-                    bla
-                    self.assertTrue(
-                        any(row.text == '1: Buy peacock feathers' for row in rows),
-                        "New to-do item did not appear in table -- its text was:\\n%s" % (
-                            table.text,
-                        )
-                    )
-                    stuff
-            """.lstrip()
-        )
-
-        new = "self.assertIn('1: Buy peacock feathers', [row.text for row in rows])\n"
-
-        expected = dedent("""
-            class Case(object):
-                def foo():
-                    bla
-                    self.assertIn('1: Buy peacock feathers', [row.text for row in rows])
-                    stuff
-            """.lstrip()
-        )
         self.assert_write_to_file_gives(old, new, expected)
 
 
