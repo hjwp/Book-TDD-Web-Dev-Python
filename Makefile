@@ -21,7 +21,6 @@ oreilly.%.asciidoc: %.asciidoc
 
 test_%: %.html
 	PYTHONHASHSEED=0 \
-	DJANGO_LIVE_TEST_SERVER_ADDRESS=localhost:2000-7000 \
 	py.test -s --tb=short ./tests/$@.py
 
 silent_test_%: %.html

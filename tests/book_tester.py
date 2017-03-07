@@ -74,7 +74,7 @@ def strip_migration_timestamps(output):
 
 
 def strip_localhost_port(output):
-    return re.sub(r'localhost:\d{4}', r'localhost:XXXX', output)
+    return re.sub(r'localhost:\d\d\d\d\d?', r'localhost:XXXX', output)
 
 
 def strip_session_ids(output):

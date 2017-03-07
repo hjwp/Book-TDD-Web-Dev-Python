@@ -585,9 +585,16 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
 
-    def test_ignores_localhost_server_port(self):
+    def test_ignores_localhost_server_port_4digits(self):
         actual = "//localhost:2021/my-url is a thing"
         expected = Output("//localhost:3339/my-url is a thing")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
+
+    def test_ignores_localhost_server_port_5_digits(self):
+        actual = "//localhost:40433/my-url is a thing"
+        expected = Output("//localhost:8081/my-url is a thing")
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
