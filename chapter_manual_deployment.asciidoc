@@ -165,9 +165,6 @@ a staging site. We'll do it by slightly hacking an argument that is normally
 used to change the address which the test's temporary server gets run on:
 
 
-TODO: change this, --liveserver argument is no longer used in Django 1.11
-
-
 [role="sourcecode"]
 .functional_tests/tests.py (ch08l001)
 [source,python]
@@ -177,75 +174,28 @@ import sys
 
 class NewVisitorTest(StaticLiveServerTestCase):
 
-    @classmethod
-    def setUpClass(cls):  #<1>
-        for arg in sys.argv:  #<2>
-            if 'liveserver' in arg:  #<2>
-                cls.server_url = 'http://' + arg.split('=')[1]  #<3>
-                return  #<3>
-        super().setUpClass()  #<4>
-        cls.server_url = cls.live_server_url
-
-
     def setUp(self):
-        [...]
+        self.browser = webdriver.Firefox()
+        staging_server = os.environ.get('STAGING_SERVER')  #<1>
+        if staging_server:
+            setattr(self, 'live_server_url', 'http://' + staging_server)  #<2>
 ----
 
-OK, when I said slightly hacking, I meant seriously hacking. Do you remember I
-said that `LiveServerTestCase` had certain limitations?  Well, one is that it
-always assumes you want to use its own test server.  I still want to be able to
-do that sometimes, but I also want to be able to selectively tell it not to
+
+Do you remember I said that `LiveServerTestCase` had certain limitations?
+Well, one is that it always assumes you want to use its own test server, which
+it makes available at `self.live_server_url`.  I still want to be able to do
+that sometimes, but I also want to be able to selectively tell it not to
 bother, and to use a real server instead.
 
-<1> `setUpClass` is a similar method to `setUp`, also provided by `unittest`,
-    which is used to do test setup for the whole class--that means it only
-    gets executed once, rather than before every test method. This is where
-    `LiveServerTestCase`/`StaticLiveServerTestCase` usually starts up its test
-    server.  
-    ((("unittest"))) 
+<1> The way I decided to do it is using an environment variable called
+    `STAGING_SERVER`
 
-<2> We look for the `liveserver` command-line argument (which is found in
-    `sys.argv`).
+<2> We can't just assign to `self.live_server_url` because it's a special
+    property on this class, but we can get around that by using `setattr`.
+    I did promise you a hack!
 
-<3> If we find it, we tell our test class to skip the normal `setUpClass`, and
-    just store away our staging server URL in a variable called `server_url`
-    instead.
-
-<4> And if the `for` loop completes 'without' finding a `liveserver` argument
-    on the command-line, we do the normal
-    superclassfootnote:[If you're not familiar `super()` and the way Python
-    inheritance works, you can go away and spend a bit of time researching it
-    now if you like.  Learn Python the Hard Way has
-    http://learnpythonthehardway.org/book/ex44.html[a good chapter on it].
-    Or just take it on faith!]
-    setup, and use the normal
-    `live_server_url`.  Be careful with the indentation here!
-
-
-
-This means we also need to change the four places we used to use
-`self.live_server_url`:
-
-[role="sourcecode"]
-.functional_tests/tests.py (ch08l002)
-[source,python]
-----
-    def test_can_start_a_list_and_retrieve_it_later(self):
-        # Edith has heard about a cool new online to-do app. She goes
-        # to check out its homepage
-        self.browser.get(self.server_url)
-        [...]
-        # Francis visits the home page.  There is no sign of Edith's
-        # list
-        self.browser.get(self.server_url)
-        [...]
-
-    def test_layout_and_styling(self):
-        # Edith goes to the home page
-        self.browser.get(self.server_url)
-----
-
-We test that our little hack hasn't broken anything by running the functional
+We test that said hack hasn't broken anything by running the functional
 tests "normally":
 
 [subs="specialcharacters,macros"]
@@ -266,7 +216,7 @@ server at 'superlists-staging.ottg.eu':
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests --liveserver=superlists-staging.ottg.eu*]
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
 Creating test database for alias 'default'...
 FE
 ======================================================================
