@@ -19,7 +19,6 @@ class Chapter17Test(ChapterTest):
         # skips
         #self.skip_with_check(22, 'switch back to master') # comment
 
-        self.prep_virtualenv()
         self.prep_database()
         self.sourcetree.run_command('rm accounts/tests.py')
 
