@@ -107,15 +107,14 @@ import random
 REPO_URL = 'https://github.com/hjwp/book-example.git'  #<1>
 
 def deploy():
-    site_folder = '/home/%s/sites/%s' % (env.user, env.host)  #<2><3>
+    site_folder = f'/home/{env.user}/sites/{env.host}'  #<2><3>
     source_folder = site_folder + '/source'
     _create_directory_structure_if_necessary(site_folder)
     _get_latest_source(source_folder)
-    _update_settings(source_folder, env.host)
+    _update_settings(source_folder, env.host)  #<2>
     _update_virtualenv(source_folder)
     _update_static_files(source_folder)
     _update_database(source_folder)
-
 ----
 
 <1> You'll want to update the `REPO_URL` variable with the URL of your
@@ -142,7 +141,7 @@ down if it already exists:
 ----
 def _create_directory_structure_if_necessary(site_folder):
     for subfolder in ('database', 'static', 'virtualenv', 'source'):
-        run('mkdir -p %s/%s' % (site_folder, subfolder))  #<1><2>
+        run(f'mkdir -p {site_folder}/{subfolder}')  #<1><2>
 ----
 
 <1> `run` is the most common Fabric command.  It says "run this shell command
@@ -154,7 +153,7 @@ def _create_directory_structure_if_necessary(site_folder):
     but also its parent directory 'foo' if it needs to.  It also won't complain
     if 'bar' already 
     exists.footnote:[If you're wondering why we're building up paths manually
-with `%s` instead of the `os.path.join` command we saw earlier, it's because
+with f-strings instead of the `os.path.join` command we saw earlier, it's because
 `path.join` will use backslashes if you run the script from Windows, but we
 definitely want forward slashes on the server]
 
@@ -167,11 +166,11 @@ Next we want to pull down our source code:
 ----
 def _get_latest_source(source_folder):
     if exists(source_folder + '/.git'):  #<1>
-        run('cd %s && git fetch' % (source_folder,))  #<2><3>
+        run(f'cd {source_folder} && git fetch')  #<2><3>
     else:
-        run('git clone %s %s' % (REPO_URL, source_folder))  #<4>
+        run(f'git clone {REPO_URL} {source_folder}')  #<4>
     current_commit = local("git log -n 1 --format=%H", capture=True)  #<5>
-    run('cd %s && git reset --hard %s' % (source_folder, current_commit))  #<6>
+    run(f'cd {source_folder} && git reset --hard {current_commit}')  #<6>
 ----
 
 <1> `exists` checks whether a directory or file already exists on the server.
@@ -180,8 +179,8 @@ def _get_latest_source(source_folder):
 
 <2> Many commands start with a `cd` in order to set the current working
     directory. Fabric doesn't have any state, so it doesn't remember what
-    directory you're in from one `run` to the next.footnote:[There is a Fabric "cd" command, but I figured it was one thing
-    too many to add in this chapter.]
+    directory you're in from one `run` to the next.footnote:[There is a Fabric
+    "cd" command, but I figured it was one thing too many to add in this chapter.]
 
 <3> `git fetch` inside an existing repository pulls down all the latest commits
     from the Web.
@@ -217,14 +216,14 @@ def _update_settings(source_folder, site_name):
     sed(settings_path, "DEBUG = True", "DEBUG = False")  #<1>
     sed(settings_path,
         'ALLOWED_HOSTS =.+$',
-        'ALLOWED_HOSTS = ["%s"]' % (site_name,)  #<2>
+        f'ALLOWED_HOSTS = [{site_name!r}]'  #<2><3>
     )
     secret_key_file = source_folder + '/superlists/secret_key.py'
-    if not exists(secret_key_file):  #<3>
+    if not exists(secret_key_file):  #<4>
         chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
         key = ''.join(random.SystemRandom().choice(chars) for _ in range(50))
-        append(secret_key_file, "SECRET_KEY = '%s'" % (key,))
-    append(settings_path, '\nfrom .secret_key import SECRET_KEY')  #<4><5>
+        append(secret_key_file, f"SECRET_KEY = {key!r}")
+    append(settings_path, '\nfrom .secret_key import SECRET_KEY')  #<5><6>
 ----
 
 <1> The Fabric `sed` command does a string substitution in a file; here it's
@@ -233,7 +232,11 @@ def _update_settings(source_folder, site_name):
 <2> And here it is adjusting `ALLOWED_HOSTS`, using a regex to match the 
     right line.
 
-<3> Django uses `SECRET_KEY` for some of its crypto--cookies and CSRF
+<3> The `{variable!r}` f-string syntax means insert the "repr" of the
+    variable, in this case it will wrap it in the right kind of quotes.
+    It's a common pattern when generating Python code as strings.
+
+<4> Django uses `SECRET_KEY` for some of its crypto--cookies and CSRF
     protection. It's good practice to make sure the secret key on the server
     is different from the one in your (possibly public) source code repo. This
     code will generate a new key to import into settings, if there isn't one
@@ -241,34 +244,32 @@ def _update_settings(source_folder, site_name):
     deploys).  Find out more in the
     https://docs.djangoproject.com/en/1.11/topics/signing/[Django docs].
 
-<4> `append` just adds a line to the end of a file. (It's clever enough not to
+<5> `append` just adds a line to the end of a file. (It's clever enough not to
     bother if the line is already there, but not clever enough to automatically
     add a newline if the file doesn't end in one. Hence the back-n.)
 
-<5> I'm using a 'relative import' (`from .secret_key` instead of `from
+<6> I'm using a 'relative import' (`from .secret_key` instead of `from
     secret_key`) to be absolutely sure we're importing the local module,
     rather than one from somewhere else on `sys.path`. I'll talk a bit
     more about relative imports in the next chapter.
     ((("relative import")))
     
-NOTE: Other people, such as the eminent authors of the excellent
-    <<twoscoops,Two Scoops of Django>>, suggest using environment variables to
-    set things like secret keys; you should use whatever you feel is most
-    secure in your environment.
+NOTE: Hacking the settings file like this is one way of changing configuration
+    on the server.  Another common pattern is to use environment variables.
+    We'll see that in <<chapter_server_side_debugging>>.  See which one you
+    like best.
 
 Next we create or update the virtualenv:
 
-[role="sourcecode"]
+[role="sourcecode small-code"]
 .deploy_tools/fabfile.py
 [source,python]
 ----
 def _update_virtualenv(source_folder):
     virtualenv_folder = source_folder + '/../virtualenv'
-    if not exists(virtualenv_folder + '/bin/pip'): #<1>
-        run('python3 -m venv %s' % (virtualenv_folder,))
-    run('%s/bin/pip install -r %s/requirements.txt' % ( #<2>
-            virtualenv_folder, source_folder
-    ))
+    if not exists(virtualenv_folder + '/bin/pip'):  #<1>
+        run(f'python -m venv {virtualenv_folder}')
+    run(f'{virtualenv_folder}/bin/pip install -r {source_folder}/requirements.txt')  #<2>
 ----
 
 
@@ -285,12 +286,17 @@ Updating static files is a single command:
 [source,python]
 ----
 def _update_static_files(source_folder):
-    run('cd %s && ../virtualenv/bin/python manage.py collectstatic --noinput' % ( # <1>
-        source_folder,
-    ))
+    run(
+        f'cd {source_folder}'  #<1>
+        ' && ../virtualenv/bin/python manage.py collectstatic --noinput'  #<2>
+    )
 ----
 
-<1> We use the virtualenv binaries folder whenever we need to run a Django 
+<1> You can split long strings across multiple lines like this in Python, they
+    concatenate to a single string. It's a common source of bugs when what you actually
+    wanted was a list of strings, but you forgot a comma!
+
+<2> We use the virtualenv binaries folder whenever we need to run a Django 
     'manage.py' command, to make sure we get the virtualenv version of Django,
     not the system one.
 
@@ -303,9 +309,10 @@ Finally, we update the database with `manage.py migrate`:
 [source,python]
 ----
 def _update_database(source_folder):
-    run('cd %s && ../virtualenv/bin/python manage.py migrate --noinput' % (
-        source_folder,
-    ))
+    run(
+        f'cd {source_folder}'
+        ' && ../virtualenv/bin/python3 manage.py migrate --noinput'
+    )
 ----
 
 
