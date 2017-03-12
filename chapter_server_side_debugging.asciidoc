@@ -614,140 +614,50 @@ class FunctionalTest(StaticLiveServerTestCase):
 (((range="endofrange", startref="ix_Djangomancommond")))
 
 
-An Additional Hop via subprocess
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Because our tests are Python 3, we can't directly call our Fabric functions,
-which are Python 2. Instead, we have to do an extra hop and call the `fab`
-command as a new process, like we do from the command line when we do server
-deploys.  Here's how that looks, in a module called 'server_tools':
+Using fabric directly from Python
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Rather than using the `fab` command, Fabric provides an API that lets
+you run fabric server commands directly inline in your Python code.  You
+just need to let it know the "host string" you're connecting to:
+
 ((("Fabric")))
 
 [role="sourcecode"]
 .functional_tests/server_tools.py
 [source,python]
 ----
-from os import path
-import subprocess
-THIS_FOLDER = path.dirname(path.abspath(__file__))
+from fabric.api import run
+from fabric.context_managers import settings
 
-def create_session_on_server(host, email):
-    return subprocess.check_output(
-        [
-            'fab',
-            'create_session_on_server:email={}'.format(email),  #<1><2>
-            '--host=elspeth@{}'.format(host),  #<3>
-            '--hide=everything,status',  #<4>
-        ],
-        cwd=THIS_FOLDER
-    ).decode().strip()  #<4>
+
+def _get_manage_dot_py(host):
+    return f'~/sites/{host}/virtualenv/bin/python ~/sites/{host}/source/manage.py'
 
 
 def reset_database(host):
-    subprocess.check_call(
-        ['fab', 'reset_database', '--host=elspeth@{}'.format(host)],  <3>
-        cwd=THIS_FOLDER
-    )
-----
-//18
+    manage_dot_py = _get_manage_dot_py(host)
+    with settings(host_string=f'elsepth@{host}'):  #<1>
+        run(f'{manage_dot_py} flush --noinput')  #<2>
 
 
-Here we use the `subprocess` module to call some Fabric functions using the
-`fab` command. 
-
-<1> As you can see, the command-line syntax for arguments to `fab` functions is
-    quite simple, a colon and then a variable=argument syntax. 
-
-<2> Incidentally, this is also the first time I've shown the "new-style" string
-    formatting syntax.  As you can see it uses curly brackets `{}` instead of
-    `%s`. I slightly prefer it to the old style, but you're bound to come
-    across both if you spend any time with Python. Take a look at some of the
-    examples in the
-    http://docs.python.org/3/library/string.html#format-examples[Python docs]
-    to learn more.
-
-<3> Replace "elspeth" with your own user account name on your server.
-
-<4> Because of all the hopping around via Fabric and subprocesses, we're forced
-    to be quite careful about extracting the session key as a string from the
-    output of the command as it gets run on the server.
-
-You may need to adapt the call to `subprocess` if you are using a custom
-username or password: make it match the `fab` arguments you use when you run
-the automated deployment script.
-
-NOTE: By the time you read this book, Fabric may well have been fully ported to
-    Python 3. If so, investigate using the Fabric context managers to call
-    Fabric functions directly inline with your code.
-
-Finally, let's look at the fabfile that defines those two commands we want to
-run server side, to reset the database or set up the session:
-
-
-[role="sourcecode"]
-.functional_tests/fabfile.py
-[source,python]
-----
-from fabric.api import env, run
-
-
-def _get_base_folder(host):
-    return '~/sites/' + host
-
-def _get_manage_dot_py(host):
-    return '{path}/virtualenv/bin/python {path}/source/manage.py'.format(
-        path=_get_base_folder(host)
-    )
-
-
-def reset_database():
-    run('{manage_py} flush --noinput'.format(
-        manage_py=_get_manage_dot_py(env.host)
-    ))
-
-
-def create_session_on_server(email):
-    session_key = run('{manage_py} create_session {email}'.format(
-        manage_py=_get_manage_dot_py(env.host),
-        email=email,
-    ))
-    print(session_key)
-----
-//19
-
-Does that make a reasonable amount of sense?  We've got a function that
-can create a session in the database.  If we detect we're running locally,
-we call it directly.  If we're against the server, there's a couple of hops:
-we use `subprocess` to get to Fabric via `fab`, which lets us run a management
-command that calls that same function, but on the server.
-
-
-How about an ASCII-art illustration?
-
-[role="skipme"]
-.Locally:
-----
-MyListsTest
-.create_pre_authenticated_session  →   .management.commands.create_session
-                                       .create_pre_authenticated_session
+def create_session_on_server(host, email):
+    manage_dot_py = _get_manage_dot_py(host)
+    with settings(host_string=f'elsepth@{host}'):  #<1>
+        session_key = run(f'{manage_dot_py} create_session {email}')  #<2>
+        return session_key.strip()
 ----
 
-[role="skipme"]
-.Against staging:
-----
-MyListsTest
-.create_pre_authenticated_session      .management.commands.create_session
-                                       .create_pre_authenticated_session
-     ↓
-                                                      ↑
-server_tools
-.create_session_on_server                run manage.py create_session 
+<1> Here's the context manager that sets the host string, in the form
+    'user@server-address' (I've hard-coded my server username, elspeth, so
+    adjust as necessary).
 
-     ↓                                                ↑
-subprocess.check_output    →    fab   →   fabfile.create_session_on_server
-----
+<2> Then, once we're inside the context manager, we can just call
+    fabric commands as if we're in a fabfile.
 
-Anyway, let's see if it works.  First, locally, to check we didn't break
+
+Let's see if it works.  First, locally, to check we didn't break
 anything:
 
 
@@ -770,14 +680,13 @@ $ *cd deploy_tools*
 $ *fab deploy --host=superlists-staging.ottg.eu*
 ----
 
-//TODO: fixme
-And now we run the test--notice we can include `elspeth@` in the 
-specification of the `STAGING_SERVER` variable now:
+And now we run the test:
+
 
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=elspeth@superlists-staging.ottg.eu python manage.py test \
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test \
  functional_tests.test_my_lists*]
 [...]
 [superlists-staging.ottg.eu] Executing task 'reset_database'
@@ -797,7 +706,7 @@ Looking good!  We can rerun all the tests to make sure...
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=elspeth@superlists-staging.ottg.eu python manage.py test \
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test \
  functional_tests*]
 [...]
 [superlists-staging.ottg.eu] Executing task 'reset_database'
