@@ -288,7 +288,7 @@ import time
 [...]
 
     def wait_for_email(self, test_email, subject):
-        if not self.against_staging:
+        if not self.staging_server:
             email = mail.outbox[0]
             self.assertIn(test_email, email.to)
             self.assertEqual(email.subject, subject)
@@ -352,22 +352,22 @@ as a result:
                      if subject_line in lines:
                          email_id = i
                          body = '\n'.join(lines)
-@@ -49,8 +48,13 @@ class LoginTest(FunctionalTest):
-         # Edith goes to the awesome superlists site
+@@ -50,7 +49,13 @@ class LoginTest(FunctionalTest):
          # and notices a "Log in" section in the navbar for the first time
          # It's telling her to enter her email address, so she does
-+        if self.against_staging:
+         self.browser.get(self.live_server_url)
+-        self.browser.find_element_by_name('email').send_keys(TEST_EMAIL)
++        if self.staging_server:
 +            test_email = 'edith.testuser@yahoo.com'
 +        else:
 +            test_email = 'edith@example.com'
 +
-         self.browser.get(self.live_server_url)
--        self.browser.find_element_by_name('email').send_keys(TEST_EMAIL)
++        self.browser.get(self.server_url)
 +        self.browser.find_element_by_name('email').send_keys(test_email)
          self.browser.find_element_by_name('email').send_keys(Keys.ENTER)
  
          # A message appears telling her an email has been sent
-@@ -60,13 +64,11 @@ class LoginTest(FunctionalTest):
+@@ -60,15 +65,13 @@ class LoginTest(FunctionalTest):
          ))
  
          # She checks her email and finds a message
@@ -382,9 +382,12 @@ as a result:
 +        self.assertIn('Use this link to log in', body)
 +        url_search = re.search(r'http://.+/.+$', body)
          if not url_search:
-             self.fail(f'Could not find url in email body:\n{email.body}')
+-            self.fail(f'Could not find url in email body:\n{email.body}')
++            self.fail(f'Could not find url in email body:\n{body}')
          url = url_search.group(0)
-@@ -76,11 +78,11 @@ class LoginTest(FunctionalTest):
+         self.assertIn(self.live_server_url, url)
+ 
+@@ -76,11 +79,11 @@ class LoginTest(FunctionalTest):
          self.browser.get(url)
  
          # she is logged in!
@@ -589,39 +592,24 @@ Let's also tweak 'base.py', to gather a bit more information
 when we populate `self.against_staging`:
 
 
-//TODO: fix this listing, no setupclass
-
 [role="sourcecode"]
 .functional_tests/base.py (ch18l017)
 [source,python]
 ----
-from .server_tools import reset_database  #<2>
+from .server_tools import reset_database  #<1>
+[...]
 
 class FunctionalTest(StaticLiveServerTestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        for arg in sys.argv:
-            if 'liveserver' in arg:
-                cls.server_host = arg.split('=')[1] #<1>
-                cls.live_server_url = 'http://' + cls.server_host
-                cls.against_staging = True
-                return
-        super().setUpClass()
-        cls.against_staging = False
-        cls.live_server_url = cls.live_server_url
-
-
     def setUp(self):
-        if self.against_staging:
-            reset_database(self.server_host) #<2>
         self.browser = webdriver.Firefox()
+        self.staging_server = os.environ.get('STAGING_SERVER')
+        if self.staging_server:
+            setattr(self, 'live_server_url', 'http://' + self.staging_server)
+            reset_database(self.staging_server)  #<1>
 ----
 
-<1> Instead of just storing `cls.live_server_url`, we also store the `server_host` 
-    attributes if we detect the `liveserver` command-line argument. //TODO: fixme
-
-<2> We also need a way of resetting the server database in between each test. 
+<1> This will be our function to reset the server database in between each test. 
     I'll explain the logic of the session-creation code, which should also 
     explain how this works.
 (((range="endofrange", startref="ix_Djangomancommond")))
