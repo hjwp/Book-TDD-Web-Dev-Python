@@ -11,10 +11,10 @@ class AppendixVIITest(ChapterTest):
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
         self.start_with_checkout()
-        # self.prep_virtualenv()
+        self.prep_virtualenv()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, 'code listing')
+        self.assertEqual(self.listings[0].type, 'other command')
         self.assertEqual(self.listings[1].type, 'code listing')
 
         # skips

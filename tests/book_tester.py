@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from lxml import html
 import io
@@ -316,10 +316,10 @@ class ChapterTest(unittest.TestCase):
             command = 'cd %s && %s' % (self.current_server_cd, command)
         if '$SITENAME' in command:
             command = 'SITENAME=superlists-staging.ottg.eu; ' + command
-        if command.endswith('python3 manage.py runserver'):
+        if command.endswith('python manage.py runserver'):
             command = command.replace(
-                'python3 manage.py runserver',
-                'dtach -n /tmp/dtach.sock python3 manage.py runserver'
+                'python manage.py runserver',
+                'dtach -n /tmp/dtach.sock python manage.py runserver'
             )
 
         print('running command on server', command)
@@ -338,7 +338,7 @@ class ChapterTest(unittest.TestCase):
         if not os.path.exists(virtualenv_path):
             print('preparing virtualenv')
             self.sourcetree.run_command(
-                'virtualenv --python=/usr/bin/python3 ../virtualenv'
+                '/usr/local/bin/python3.6 -m venv ../virtualenv'
             )
             self.sourcetree.run_command(
                 '../virtualenv/bin/pip install -r requirements.txt'
@@ -347,7 +347,7 @@ class ChapterTest(unittest.TestCase):
 
     def prep_database(self):
         self.sourcetree.run_command('mkdir ../database')
-        self.sourcetree.run_command('python3 manage.py migrate --noinput')
+        self.sourcetree.run_command('python manage.py migrate --noinput')
 
 
     def write_file_on_server(self, target, contents):
@@ -500,9 +500,9 @@ class ChapterTest(unittest.TestCase):
             self.assertIn('test', self.listings[pos])
             test_run = self.run_command(self.listings[pos])
         elif ft:
-            test_run = self.run_command(Command("python3 functional_tests.py"))
+            test_run = self.run_command(Command("python functional_tests.py"))
         else:
-            test_run = self.run_command(Command("python3 manage.py test lists"))
+            test_run = self.run_command(Command("python manage.py test lists"))
         pos += 1
         self.assert_console_output_correct(test_run, self.listings[pos])
 
@@ -658,7 +658,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def start_dev_server(self):
-        self.run_command(Command('python3 manage.py runserver'))
+        self.run_command(Command('python manage.py runserver'))
         self.dev_server_running = True
         time.sleep(1)
 
@@ -675,16 +675,16 @@ class ChapterTest(unittest.TestCase):
 
     def run_unit_tests(self):
         if os.path.exists(os.path.join(self.tempdir, 'superlists', 'accounts', 'tests')):
-            return self.run_command(Command("python3 manage.py test lists accounts"))
+            return self.run_command(Command("python manage.py test lists accounts"))
         else:
-            return self.run_command(Command("python3 manage.py test lists"))
+            return self.run_command(Command("python manage.py test lists"))
 
 
     def run_fts(self):
         if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
-            return self.run_command(Command("python3 manage.py test functional_tests"))
+            return self.run_command(Command("python manage.py test functional_tests"))
         else:
-            return self.run_command(Command("python3 functional_tests.py"))
+            return self.run_command(Command("python functional_tests.py"))
 
 
     def recognise_listing_and_process_it(self):
