@@ -50,5 +50,6 @@ class Chapter20Test(ChapterTest):
         self.check_final_diff(ignore=["moves"])
 
 
+
 if __name__ == '__main__':
     unittest.main()
