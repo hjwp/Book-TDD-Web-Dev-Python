@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
+import time
 
 from book_tester import (
     ChapterTest,
@@ -27,6 +28,11 @@ class Chapter3Test(ChapterTest):
 
         self.start_with_checkout()
         self.start_dev_server()
+
+        print(self.pos)
+        assert 'manage.py startapp lists' in self.listings[self.pos]
+        self.recognise_listing_and_process_it()
+        time.sleep(1)  # voodoo sleep, otherwise db.sqlite3 doesnt appear in CI sometimes
 
         while self.pos < final_ft:
             print(self.pos)
