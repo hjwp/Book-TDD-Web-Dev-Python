@@ -32,9 +32,7 @@ def parse_chapters():
 
 def get_chapter_info():
     chapter_info = {}
-    appendix_numbers = [
-        'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'IX', 'X'
-    ]
+    appendix_numbers = list('ABCDEFGHIJKL')
     chapter_numbers = list(range(1, 100))
     part_numbers = list(range(1, 10))
 
@@ -55,18 +53,18 @@ def get_chapter_info():
 
         if chapter.startswith('chapter_'):
             chapter_no = chapter_numbers.pop(0)
-            chapter_title = 'Chapter {}: {}'.format(chapter_no, chapter_title)
+            chapter_title = f'Chapter {chapter_no}: {chapter_title}'
 
         if chapter.startswith('appendix_'):
             appendix_no = appendix_numbers.pop(0)
-            chapter_title = 'Appendix {}: {}'.format(appendix_no, chapter_title)
+            chapter_title = f'Appendix {appendix_no}: {chapter_title}'
 
         if chapter.startswith('part'):
             part_no = part_numbers.pop(0)
-            chapter_title = 'Part {}: {}'.format(part_no, chapter_title)
+            chapter_title = f'Part {part_no}: {chapter_title}'
 
         if chapter.startswith('epilogue'):
-            chapter_title = 'Epilogue: {}'.format(chapter_title)
+            chapter_title = f'Epilogue: {chapter_title}'
 
 
         chapter_info[chapter] = href_id, chapter_title, subheaders
@@ -74,16 +72,22 @@ def get_chapter_info():
     return chapter_info
 
 
-def fix_xrefs(chapter, chapter_info):
-    contents = open(chapter).read()
+def fix_xrefs(contents, chapter, chapter_info):
     for other_chap in CHAPTERS:
         html_id, chapter_title, subheaders = chapter_info[other_chap]
-        old_tag = 'href="#{}"'.format(html_id)
-        new_tag = 'href="/book/{}"'.format(other_chap)
+        old_tag = f'href="#{html_id}"'
+        new_tag = f'href="/book/{other_chap}"'
         if old_tag in contents:
             contents = contents.replace(old_tag, new_tag)
     return contents
 
+def fix_title(contents, chapter, chapter_info):
+    parsed = html.fromstring(contents)
+    titles = parsed.cssselect('h2')
+    if titles and titles[0].text.startswith('Appendix A'):
+        title = titles[0]
+        title.text = title.text.replace('Appendix A', chapter_info[chapter][1])
+    return html.tostring(parsed)
 
 def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
     comments_html = open('disqus_comments.html').read()
@@ -92,7 +96,9 @@ def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
     load_toc_script = open('load_toc.js').read()
 
     for chapter in CHAPTERS:
-        new_contents = fix_xrefs(chapter, chapter_info)
+        old_contents = open(chapter).read()
+        new_contents = fix_xrefs(old_contents, chapter, chapter_info)
+        new_contents = fix_title(new_contents, chapter, chapter_info)
         parsed = html.fromstring(new_contents)
         body = parsed.cssselect('body')[0]
         if parsed.cssselect('#header'):
@@ -126,9 +132,9 @@ def fix_toc(toc, chapter_info):
     for chapter in CHAPTERS:
         html_id, chapter_title, subheaders = chapter_info[chapter]
         if html_id:
-            href_mappings['#' + html_id] = '/book/{}'.format(chapter)
+            href_mappings['#' + html_id] = f'/book/{chapter}'
         for subheader in subheaders:
-            href_mappings['#' + subheader] = '/book/{}#{}'.format(chapter, subheader)
+            href_mappings['#' + subheader] = f'/book/{chapter}#{subheader}'
 
     def fix_link(href):
         if href in href_mappings:
@@ -144,7 +150,7 @@ def fix_toc(toc, chapter_info):
 def print_toc_md(chapter_info):
     for chapter in CHAPTERS:
         html_id, chapter_title, subheaders = chapter_info[chapter]
-        print('* [{title}](/book/{link})'.format(title=chapter_title, link=chapter))
+        print(f'* [{chapter_title}](/book/{chapter})')
 
 
 def main():
