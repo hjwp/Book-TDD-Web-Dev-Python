@@ -1,6 +1,6 @@
 SOURCES := $(wildcard *.asciidoc)
 HTML_PAGES := $(patsubst %.asciidoc, %.html, ${SOURCES})
-RUN_ASCIIDOCTOR = asciidoctor -a source-highlighter=coderay -a linkcss -a icons=font -a compat-mode
+RUN_ASCIIDOCTOR = asciidoctor -a source-highlighter=coderay -a stylesheet=asciidoctor.css -a linkcss -a icons=font -a compat-mode
 RUN_OREILLY_FLAVOURED_ASCIIDOCTOR = ./asciidoc/asciidoctor/bin/asciidoctor -v --trace -d book --safe -b htmlbook --template-dir ./asciidoc/asciidoctor-htmlbook/htmlbook 
 
 book.html: $(SOURCES)
