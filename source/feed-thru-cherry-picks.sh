@@ -17,6 +17,6 @@ git checkout $CHAP
 git reset --hard $REPO/$PREV
 
 git cherry-pick $PREV..$REPO/$CHAP
-git diff $REPO/$CHAP
+git diff -w $REPO/$CHAP
 
 cd ../..
