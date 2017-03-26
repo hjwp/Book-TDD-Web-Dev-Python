@@ -785,13 +785,16 @@ class ChapterTest(unittest.TestCase):
             self.pos += 1
 
         elif listing.type == 'server command':
-            server_output = self.run_server_command(listing)
+            DO_SERVER_COMMANDS = False
+            if DO_SERVER_COMMANDS:
+                server_output = self.run_server_command(listing)
             listing.was_run = True
             self.pos += 1
             next_listing = self.listings[self.pos]
             if next_listing.type == 'output' and not next_listing.skip:
-                for line in next_listing.split('\n'):
-                    assert line.strip() in server_output
+                if DO_SERVER_COMMANDS:
+                    for line in next_listing.split('\n'):
+                        assert line.strip() in server_output
                 next_listing.was_checked = True
                 self.pos += 1
 
