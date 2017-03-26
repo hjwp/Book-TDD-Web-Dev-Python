@@ -1,0 +1,576 @@
+[[chapter_making_deployment_production_ready]]
+Getting to a Production-Ready Deployment
+----------------------------------------
+
+[%autowidth,float="right",caption=,cols="2"]
+|=======
+2+|Chapter info
+|shortname:|chapter_making_deployment_production_ready
+|=======
+
+
+WARNING: 2017-03-13: Book upgraded to Python 3.6 and Django 1.11 beta.
+    Before that, there was a big upgrade to Selenium 3 on 2017-01-30. More
+    info https://www.obeythetestinggoat.com/latest-release-the-last-big-one-python-36-django-111-beta.html[on the blog].
+
+
+((("deployment", "production-ready", id="ix_deploymentprodready", range="startofrange")))
+What's wrong with our hacky deployment?  Well, we can't use the Django 
+dev server for production, it's not designed for "real-life" loads.  We'll
+use something called Gunicorn instead to run our Django code, and we'll
+get Nginx to serve our static files.
+
+Our 'settings.py' currently has `DEBUG=True`, and that's strongly recommended
+against for production.  We'll also need to set `ALLOWED_HOSTS` for security.
+
+We also want our site to start up automatically whenever the server reboots.
+For that we'll write a Systemd config file.
+
+Finally, hard-coding port 8000 won't let us run multiple sites on this server,
+so we'll switch to using "unix sockets" to communicate between nginx and
+Django.
+
+
+
+Switching to Gunicorn
+~~~~~~~~~~~~~~~~~~~~~
+
+
+((("Gunicorn", id="ix_gunicorn", range="startofrange")))
+((("Django", "and Gunicorn", sortas="gunicorn")))
+Do you know why the Django mascot is a pony?  The story is that Django
+comes with so many things you want: an ORM, all sorts of middleware,
+the admin site... "What else do you want, a pony?" Well, Gunicorn stands
+for "Green Unicorn", which I guess is what you'd want next if you already
+had a pony...
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *../virtualenv/bin/pip install gunicorn*
+----
+
+Gunicorn will need to know a path to a WSGI server, which is usually
+a function called `application`.  Django provides one in 'superlists/wsgi.py':
+
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
+2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.19.6
+2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
+[...]
+----
+
+If you now take a look at the site, you'll find the CSS is all broken, as in
+<<site-with-broken-css>>.
+
+
+((("functional tests/testing (FT)", "for layout and style", sortas="layoutandstyle")))
+And if we run the functional tests, you'll see they confirm that something
+is wrong. The test for adding list items passes happily, but the test for 
+layout + styling fails.  Good job tests!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+[...]
+AssertionError: 125.0 != 512 within 3 delta
+FAILED (failures=1)
+----
+
+The reason that the CSS is broken is that although the Django dev server will
+serve static files magically for you, Gunicorn doesn't.  Now is the time to
+tell Nginx to do it instead.
+
+
+[[site-with-broken-css]]
+.Broken CSS
+image::images/twdp_0805.png["The site is up, but CSS is broken"]
+
+
+
+Getting Nginx to Serve Static Files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+((("Nginx")))
+((("static files")))
+First we run `collectstatic` to copy all the static files to a folder where 
+Nginx can find them:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *../virtualenv/bin/python manage.py collectstatic --noinput*
+elspeth@server:$ *ls ../static/*
+base.css  bootstrap
+----
+
+Now we tell Nginx to start serving those static files for us:
+
+[role="sourcecode"]
+.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
+[source,nginx]
+----
+server {
+    listen 80;
+    server_name superlists-staging.ottg.eu;
+
+    location /static {
+        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
+    }
+
+    location / {
+        proxy_pass http://localhost:8000;
+    }
+}
+----
+
+Reload Nginx and restart Gunicorn...
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo systemctl reload nginx*
+elspeth@server:$ *../virtualenv/bin/gunicorn superlists.wsgi:application*
+----
+
+And if we take another look at the site, things are looking much healthier. We
+can rerun our FTs:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+[...]
+
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 10.718s
+
+OK
+----
+
+
+Switching to Using Unix Sockets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Unix sockets")))
+When we want to serve both staging and live, we can't have both servers trying
+to use port 8000.  We could decide to allocate different ports, but that's a
+bit arbitrary, and it would be dangerously easy to get it wrong and start
+the staging server on the live port, or vice versa.
+
+A better solution is to use Unix domain sockets--they're like files on disk,
+but can be used by Nginx and Gunicorn to talk to each other.  We'll put our
+sockets in '/tmp'.  Let's change the proxy settings in Nginx:
+
+[role="sourcecode"]
+.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
+[source,nginx]
+----
+[...]
+    location / {
+        proxy_set_header Host $host;
+        proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
+    }
+}
+----
+
+`proxy_set_header` is used to make sure Gunicorn and Django know what domain
+it's running on.  We need that for the `ALLOWED_HOSTS` security feature, which 
+we're about to switch on.
+
+Now we restart Gunicorn, but this time telling it to listen on a socket instead
+of on the default port:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo systemctl reload nginx*
+elspeth@server:$ *../virtualenv/bin/gunicorn --bind \
+    unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
+----
+
+
+And again, we rerun the functional test again, to make sure things still pass:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+OK
+----
+
+A couple more steps!
+
+
+Switching DEBUG to False and Setting ALLOWED_HOSTS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Django", "debugging screen")))
+((("debugging", "switching DEBUG to false")))
+((("ALLOWED_HOSTS")))
+Django's DEBUG mode is all very well for hacking about on your own server, but
+leaving those pages full of tracebacks available
+http://bit.ly/SuvluV[isn't secure].
+
+You'll find the `DEBUG` setting at the top of 'settings.py'. When we set this
+to `False`, we also need to set another setting called `ALLOWED_HOSTS`. This
+was
+https://docs.djangoproject.com/en/1.11/ref/settings/#std:setting-ALLOWED_HOSTS[added
+as a security feature] in Django 1.5.  Unfortunately it doesn't have a helpful
+comment in the default 'settings.py', but we can add one ourselves.  Do this on
+the server:
+
+[role="sourcecode"]
+.server: superlists/settings.py
+[source,python]
+----
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = False
+
+TEMPLATE_DEBUG = DEBUG
+
+# Needed when DEBUG=False
+ALLOWED_HOSTS = ['superlists-staging.ottg.eu']
+[...]
+----
+
+And, once again, we restart Gunicorn and run the FT to check things still work.
+
+NOTE: Don't commit these changes on the server. At the moment this is just a 
+    hack to get things working, not a change we want to keep in our repo. In
+    general, to keep things simple, I'm only going to do Git commits from the
+    local PC, using `git push` and `git pull` when I need to sync them up to
+    the server.
+
+
+
+Using Systemd to Make Sure Gunicorn Starts on Boot
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Systemd")))
+Our final step is to make sure that the server starts up Gunicorn automatically
+on boot, and reloads it automatically if it crashes.  On Ubuntu, the way to do
+this is using Systemd:
+
+[role="sourcecode"]
+.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
+[source,bash]
+----
+[Unit]
+Description=Gunicorn server for superlists-staging.ottg.eu
+
+[Service]
+Restart=on-failure  <1>
+User=elspeth  <2>
+WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu/source  <3>
+ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
+    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
+    superlists.wsgi:application  <4>
+
+[Install]
+WantedBy=multi-user.target <5>
+----
+
+Systemd is joyously simple to configure (especially if you've ever had the
+dubious pleasure of writing an `init.d` script), and is fairly
+self-explanatory. 
+
+<1> `Restart=on-failure` will restart the process automatically if it crashes.
+
+<2> `User=elspeth` makes the process run as the "elspeth" user.
+
+<3> `WorkingDirectory` sets the working directory.
+
+<4> `ExecStart` is the actual process to execute.  We use the `\ ` line
+    continuation characters to split the full command over multiple lines,
+    for readability, but it could all go on one line.
+
+<5> `WantedBy` in the `[Install]` section is what tells Systemd we want this
+    service to start on boot.
+
+
+Systemd scripts live in '/etc/systemd/system', and their names must end in
+'.service'. 
+
+Now we tell Systemd to start Gunicorn with the `systemctl` command:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+# this command is necessary to tell Systemd to load our new config file
+elspeth@server:$ *sudo systemctl daemon-reload*
+# this command tells Systemd to always load our service on boot
+elspeth@server:$ *sudo systemctl enable gunicorn-superlists-staging.ottg.eu*
+# this command actually starts our service
+elspeth@server:$ *sudo systemctl start gunicorn-superlists-staging.ottg.eu*
+----
+
+(you should find the `systemctl` command responds to tab-completion, including
+of the service name, by the way)
+
+Now we can rerun the FTs to see that everything still works. You can even test
+that the site comes back up if you reboot the server!
+
+
+.More Debugging Tips
+*******************************************************************************
+
+- Check the Systemd logs for using 
+  `sudo journalctl -u gunicorn-superlists-staging.ottg.eu`
+
+- You can ask Systemd to check the validity of your service configuration:
+  `systemd-analyze verify /path/to/my.service`
+
+- Remember to restart both services whenever you make changes.
+
+- If you make changes to the Systemd config file, you need to 
+  run `daemon-reload` before `systemctl restart` to see the effect
+  of your changes.
+
+*******************************************************************************
+
+
+Saving Our Changes: Adding Gunicorn to Our requirements.txt
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Back in the 'local' copy of your repo, we should add Gunicorn to the list
+of packages we need in our virtualenvs:
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip install gunicorn*
+$ *pip freeze | grep gunicorn >> requirements.txt*
+$ *git commit -am "Add gunicorn to virtualenv requirements"*
+$ *git push* 
+----
+(((range="endofrange", startref="ix_deploymentprodready")))
+
+NOTE: On Windows, at the time of writing, Gunicorn would pip install quite
+    happily, but it wouldn't actually work if you tried to use it.  Thankfully
+    we only ever run it on the server, so that's not a problem. And, Windows
+    support is
+    http://stackoverflow.com/questions/11087682/does-gunicorn-run-on-windows[being discussed]...
+
+
+
+Thinking about Automating
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("deployment", "automating", id="ix_deployauto", range="startofrange")))
+((("provisioning", "overview")))
+((("deployment", "overview")))
+Let's recap our provisioning and deployment procedures:
+
+Provisioning::
+1. Assume we have a user account and home folder
+2. `add-apt-repository ppa:fkrull/deadsnakes`
+3. `apt-get install nginx git python3.6 python3.6-venv`
+4. Add Nginx config for virtual host
+5. Add Systemd job for Gunicorn
+
+
+Deployment::
+1. Create directory structure in '~/sites'
+2. Pull down source code into folder named 'source'
+3. Start virtualenv in '../virtualenv'
+4. `pip install -r requirements.txt`
+5. `manage.py migrate` for database
+6. `collectstatic` for static files
+7. Set DEBUG = False and ALLOWED_HOSTS in 'settings.py'
+8. Restart Gunicorn job
+9. Run FTs to check everything works
+
+
+Assuming we're not ready to entirely automate our provisioning process, how
+should we save the results of our investigation so far?  I would say that 
+the Nginx and Systemd config files should probably be saved somewhere, in
+a way that makes it easy to reuse them later.  Let's save them in a new
+subfolder in our repo:
+
+
+Saving templates for our provisioning config files
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+[subs="specialcharacters,quotes"]
+----
+$ *mkdir deploy_tools*
+----
+
+
+[role="sourcecode"]
+.deploy_tools/nginx.template.conf
+[source,nginx]
+----
+server {
+    listen 80;
+    server_name SITENAME;
+
+    location /static {
+        alias /home/elspeth/sites/SITENAME/static;
+    }
+
+    location / {
+        proxy_set_header Host $host;
+        proxy_pass http://unix:/tmp/SITENAME.socket;
+    }
+}
+----
+
+
+[role="sourcecode"]
+.deploy_tools/gunicorn-systemd.template.service
+[source,bash]
+----
+[Unit]
+Description=Gunicorn server for SITENAME
+
+[Service]
+Restart=on-failure
+User=elspeth
+WorkingDirectory=/home/elspeth/sites/SITENAME/source
+ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
+    --bind unix:/tmp/SITENAME.socket \
+    superlists.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+----
+
+Then it's easy for us to use those two files to generate
+a new site, by doing a find & replace on  `SITENAME`.
+
+For the rest, just keeping a few notes is OK. Why not keep
+them in a file in the repo too?
+
+[role="sourcecode"]
+.deploy_tools/provisioning_notes.md
+[source,rst]
+----
+Provisioning a new site
+=======================
+
+## Required packages:
+
+* nginx
+* Python 3.6
+* Git
+* pip
+* virtualenv
+
+e.g.,, on Ubuntu:
+
+    sudo add-apt-repository ppa:fkrull/deadsnakes
+    sudo apt-get install nginx git python36 python3.6-venv
+
+## Nginx Virtual Host config
+
+* see nginx.template.conf
+* replace SITENAME with, e.g., staging.my-domain.com
+
+## Systemd service
+
+* see gunicorn-systemd.template.service
+* replace SITENAME with, e.g., staging.my-domain.com
+
+## Folder structure:
+Assume we have a user account at /home/username
+
+/home/username
+└── sites
+    └── SITENAME
+         ├── database
+         ├── source
+         ├── static
+         └── virtualenv
+----
+
+We can do a commit for those:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add deploy_tools*
+$ *git status* # see three new files
+$ *git commit -m "Notes and template config files for provisioning"*
+----
+
+
+(((range="endofrange", startref="ix_gunicorn")))
+(((range="endofrange", startref="ix_deployauto")))
+Our source tree will now look something like this:
+
+----
+$ tree -I __pycache__
+.
+├── deploy_tools
+│   ├── gunicorn-systemd.template.service
+│   ├── nginx.template.conf
+│   └── provisioning_notes.md
+├── functional_tests
+│   ├── __init__.py
+│   ├── [...]
+├── lists
+│   ├── __init__.py
+│   ├── models.py
+│   ├── static
+│   │   ├── base.css
+│   │   ├── [...]
+│   ├── templates
+│   │   ├── base.html
+│   │   ├── [...]
+├── manage.py
+├── requirements.txt
+└── superlists
+    ├── [...]
+----
+
+
+
+Saving our Progress
+~~~~~~~~~~~~~~~~~~~
+
+((("deployment", "saving progress")))
+Being able to run our FTs against a staging server can be very reassuring.
+But, in most cases, you don't want to run your FTs against your "real" server.
+In order to "save our work", and reassure ourselves that the production server
+will work just as well as the real server, we need to make our deployment
+process repeatable.
+
+Automation is the answer, and it's the topic of the next chapter.
+
+
+.Production-readiness for server deployments
+*******************************************************************************
+
+A few things to think about when trying to build a production-ready server
+environment.
+
+Don't use the Django dev server in production::
+    Something like Gunicorn or uWSGI is a better tool for running Django; they
+    will let you run multiple workers, for example.
+
+Don't use Django to serve your static files::
+    There's no point in using a Python process to do the simple job of serving
+    static files. Nginx can do it, but so can other web servers like Apache or
+    uWSGI.
+
+
+Check your settings.py for dev-only settings::
+    DEBUG=True and ALLOWED_HOSTS are the two we looked at, but you will
+    probably have others (we'll see more when we start to send emails from the
+    server).
+
+Security::
+    I haven't really talked about security 'per se' because I'm not an expert,
+    but there are a few simple things you can do to improve the security of
+    your server. If I had to pick two, I'd say installing
+    `fail2ban` to block brute-force attempts at guessing your password (you'll
+    be shocked at how quickly you start seeing those attempts in your logs),
+    and configuring unattended security upgrades.  Here's an article with a few
+    tips:
+    https://plusbryan.com/my-first-5-minutes-on-a-server-or-essential-security-for-linux-servers[My first 5 minutes on a server].
+
+*******************************************************************************
+
