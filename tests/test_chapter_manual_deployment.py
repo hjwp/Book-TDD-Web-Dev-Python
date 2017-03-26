@@ -33,9 +33,9 @@ class Chapter9Test(ChapterTest):
             ))
 
         while self.pos < len(self.listings):
-            print(self.pos)
+            listing = self.listings[self.pos]
+            print(self.pos, listing.type, repr(listing))
             self.recognise_listing_and_process_it()
-            self.pos += 1
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff()

@@ -31,6 +31,8 @@ SLIMERJS_BINARY = os.path.join(
     'slimerjs-0.9.0/slimerjs'
 )
 
+DO_SERVER_COMMANDS = False
+
 
 def contains(inseq, subseq):
     return any(
@@ -351,6 +353,8 @@ class ChapterTest(unittest.TestCase):
 
 
     def write_file_on_server(self, target, contents):
+        if not DO_SERVER_COMMANDS:
+            return
         with tempfile.NamedTemporaryFile() as tf:
             tf.write(contents.encode('utf8'))
             tf.flush()
@@ -785,7 +789,6 @@ class ChapterTest(unittest.TestCase):
             self.pos += 1
 
         elif listing.type == 'server command':
-            DO_SERVER_COMMANDS = False
             if DO_SERVER_COMMANDS:
                 server_output = self.run_server_command(listing)
             listing.was_run = True
@@ -841,6 +844,7 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'server code listing':
             print("SERVER CODE")
             self.write_file_on_server(listing.filename, listing.contents)
+            listing.was_written = True
             self.pos += 1
 
         elif listing.type == 'qunit output':
