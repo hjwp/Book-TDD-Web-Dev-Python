@@ -468,6 +468,9 @@ class ChapterTest(unittest.TestCase):
             expected_tree = Output(
                 expected_tree.replace('superlists/', '.', 1)
             )
+        # actual_tree = actual_tree.replace('\xa0\xa0', ' ')
+        # expected_tree = Output(expected_tree.replace('\xa0\xa0', ' '))
+
         self.assert_console_output_correct(actual_tree, expected_tree)
         original_tree.was_checked = True
 
