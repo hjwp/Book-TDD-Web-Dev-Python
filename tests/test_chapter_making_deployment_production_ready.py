@@ -20,8 +20,8 @@ class Chapter9bTest(ChapterTest):
         self.start_with_checkout()
 
         # skips
-        self.skip_with_check(34, 'git status')
-        self.skip_with_check(35, 'see three new files')
+        self.skip_with_check(36, 'git status')
+        self.skip_with_check(37, 'see three new files')
 
 
         # hack fast-forward
