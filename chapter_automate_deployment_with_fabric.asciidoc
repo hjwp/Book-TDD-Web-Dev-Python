@@ -28,14 +28,13 @@ assurances that everything will go well when we deploy to production.
 
 ((("Fabric", "installing")))
 Fabric is a tool which lets you automate commands that you want to run on
-servers. You can install fabric systemwide--it's not part of the core
-functionality of our site, so it doesn't need to go into our virtualenv and
-'requirements.txt'. So, on your local PC:
+servers.  "fabric3" is the Python 3 fork:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *pip install fabric3*
 ----
+
 
 The usual setup is to have a file called 'fabfile.py', which will
 contain one or more functions that can later be invoked from a command-line
@@ -46,9 +45,9 @@ tool called `fab`, like this:
 fab function_name,host=SERVER_ADDRESS
 ----
 
-That will invoke the function called `function_name`, passing in a connection
-to the server at `SERVER_ADDRESS`.  There are many other options for specifying
-usernames and passwords, which you can find out about using `fab --help`.
+That will call `function_name`, passing in a connection to the server at
+`SERVER_ADDRESS`.  There are lots of other options for specifying usernames and
+passwords, which you can find out about using `fab --help`.
 
 
 Breakdown of a Fabric Script for Our Deployment
@@ -60,8 +59,8 @@ The best way to see how it works is with an example.
 http://www.bbc.co.uk/cult/classic/bluepeter/valpetejohn/trivia.shtml[Here's one
 I made earlier], automating all the deployment steps we've been going through.
 The main function is called `deploy`; that's the one we'll invoke from the
-command line. It uses several helper functions.  `env.host` will contain the
-server address that we've passed in:
+command line. It then calls out to several helper functions, which we'll build
+together one by one, explaining as we go.
 
 
 [role="sourcecode"]
@@ -97,8 +96,12 @@ def deploy():
 Hopefully each of those helper functions have fairly self-descriptive names.
 Because any function in a fabfile can theoretically be invoked from the
 command line, I've used the convention of a leading underscore to indicate
-that they're not meant to be part of the "public API" of the fabfile. Here
-they are in chronological order.
+that they're not meant to be part of the "public API" of the fabfile. Let's
+take a look at each one, in chronological order.
+
+
+Creating the directory structure
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Here's how we build our directory structure, in a way that doesn't fall 
 down if it already exists:
@@ -113,7 +116,8 @@ def _create_directory_structure_if_necessary(site_folder):
 ----
 
 <1> `run` is the most common Fabric command.  It says "run this shell command
-    on the server".
+    on the server".  The `run` commands in this chapter will replicate many
+    of the commands we did manually in the last two.
 
 <2> `mkdir -p` is a useful flavor of `mkdir`, which is better in two ways: it 
     can create directories several levels deep, and it only creates them 
@@ -121,12 +125,17 @@ def _create_directory_structure_if_necessary(site_folder):
     but also its parent directory 'foo' if it needs to.  It also won't complain
     if 'bar' already 
     exists.footnote:[If you're wondering why we're building up paths manually
-with f-strings instead of the `os.path.join` command we saw earlier, it's because
-`path.join` will use backslashes if you run the script from Windows, but we
-definitely want forward slashes on the server]
+with f-strings instead of the `os.path.join` command we saw earlier, it's
+because `path.join` will use backslashes if you run the script from Windows,
+but we definitely want forward slashes on the server. That's a common gotcha!]
 
 
-Next we want to pull down our source code:
+Pulling down our source code with git
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+Next we want to download the latest version of our source code to the server,
+like we did with `git pull` in the previous chapters:
 
 [role="sourcecode"]
 .deploy_tools/fabfile.py (ch09l003)
@@ -148,23 +157,31 @@ def _get_latest_source(source_folder):
 <2> Many commands start with a `cd` in order to set the current working
     directory. Fabric doesn't have any state, so it doesn't remember what
     directory you're in from one `run` to the next.footnote:[There is a Fabric
-    "cd" command, but I figured it was one thing too many to add in this chapter.]
+    "cd" command, but I figured it was one thing too many to add in this
+    chapter.]
 
 <3> `git fetch` inside an existing repository pulls down all the latest commits
-    from the Web.
+    from the Web (it's like `git pull`, but without immediately updating the
+    live source tree).
 
 <4> Alternatively we use `git clone` with the repo URL to bring down a fresh
     source tree.
 
 <5> Fabric's `local` command runs a command on your local machine--it's just
     a wrapper around `subprocess.Popen` really, but it's quite convenient.
-    Here we capture the output from that `git log` invocation to get the hash
-    of the current commit that's in your local tree.  That means the server
+    Here we capture the output from that `git log` invocation to get the id
+    of the current commit that's on your local PC.  That means the server
     will end up with whatever code is currently checked out on your machine
     (as long as you've pushed it up to the server).
 
 <6> We `reset --hard` to that commit, which will blow away any current changes
-    in the server's code directory.  
+    in the server's code directory.
+
+The end result of this is that we either do a `git clone` if it's a fresh
+deploy, or we do a `git fetch + git reset --hard` if a previous version of
+the code is already there; the equivalent of the `git pull` we used when we
+did it manually, but with the `reset --hard` to force overwriting any local
+changes.
 
 
 NOTE: For this script to work, you need to have done a `git push` of your 
@@ -173,8 +190,11 @@ NOTE: For this script to work, you need to have done a `git push` of your
     push`.
 
 
-Next we update our settings file, to set the `ALLOWED_HOSTS` and `DEBUG`, and
-to create a new secret key:
+Updating settings.py
+^^^^^^^^^^^^^^^^^^^^
+
+Next we update our settings file, to set the `ALLOWED_HOSTS` and `DEBUG`
+variables, and to create a new `SECRET_KEY`:
 ((("secret key")))
 
 [role="sourcecode"]
@@ -202,12 +222,12 @@ def _update_settings(source_folder, site_name):
 <2> And here it is adjusting `ALLOWED_HOSTS`, using a regex to match the 
     right line.
 
-<3> Django uses `SECRET_KEY` for some of its crypto--cookies and CSRF
-    protection. It's good practice to make sure the secret key on the server
-    is different from the one in your (possibly public) source code repo. This
-    code will generate a new key to import into settings, if there isn't one
-    there already (once you have a secret key, it should stay the same between
-    deploys).  Find out more in the
+<3> Django uses `SECRET_KEY` for some of its crypto--things like cookies and
+    CSRF protection. It's good practice to make sure the secret key on the
+    server is different from the one in your source code repo, because that
+    code might be visible to strangers. This section will generate a new key to
+    import into settings, if there isn't one there already (once you have a
+    secret key, it should stay the same between deploys).  Find out more in the
     https://docs.djangoproject.com/en/1.11/topics/signing/[Django docs].
 
 <4> `append` just adds a line to the end of a file. (It's clever enough not to
@@ -224,6 +244,10 @@ NOTE: Hacking the settings file like this is one way of changing configuration
     on the server.  Another common pattern is to use environment variables.
     We'll see that in <<chapter_server_side_debugging>>.  See which one you
     like best.
+
+
+Updating the virtualenv
+^^^^^^^^^^^^^^^^^^^^^^^
 
 Next we create or update the virtualenv:
 
@@ -259,12 +283,16 @@ def _update_static_files(source_folder):
 ----
 
 <1> You can split long strings across multiple lines like this in Python, they
-    concatenate to a single string. It's a common source of bugs when what you actually
-    wanted was a list of strings, but you forgot a comma!
+    concatenate to a single string. It's a common source of bugs when what you
+    actually wanted was a list of strings, but you forgot a comma!
 
 <2> We use the virtualenv binaries folder whenever we need to run a Django 
     'manage.py' command, to make sure we get the virtualenv version of Django,
     not the system one.
+
+
+Migrating the database if necessary
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 (((range="endofrange", startref="ix_deploymentsample")))
 (((range="endofrange", startref="ix_Fabricsample")))
@@ -281,14 +309,24 @@ def _update_database(source_folder):
     )
 ----
 
+The `--noinput` removes any interactive yes/no confirmations that fabric
+would find hard to deal with.
+
+
+And we're done!  Lots of new things to take in I imagine, but I hope you
+can see how this is all replicating the work we did manually earlier, with
+a bit of logic to make it work both for brand new deployments and for existing
+ones that just need updating. If you like words with Latin roots, you might
+describe it as 'idempotent', which means it has the same effect, whether you
+run it once or multiple times.
+
 
 Trying It Out
 ~~~~~~~~~~~~~
 
-We can try this command out on our existing staging site--the script should
-work for an existing site as well as for a new one.  If you like words with
-Latin roots, you might describe it as idempotent, which means it does nothing
-if run twice...
+Let's try it out on our existing staging site, and see it working to update
+a deployment that already exists:
+
 
 [role="skipme"]
 [subs="specialcharacters,macros"]
@@ -488,22 +526,25 @@ our provisioning notes, which tell us to use the template files to create our
 Nginx virtual host and the Systemd service.  How about a little Unix
 command-line magic?
 
-[role="server-commands"]
+[role="server-commands small-code"]
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sed "s/SITENAME/superlists.ottg.eu/g" \
-    deploy_tools/nginx.template.conf | sudo tee \
-    /etc/nginx/sites-available/superlists.ottg.eu*
+    source/deploy_tools/nginx.template.conf \
+    | sudo tee /etc/nginx/sites-available/superlists.ottg.eu*
 ----
 
 `sed` ("stream editor") takes a stream of text and performs edits on it. It's
 no accident that the fabric string substitution command has the same name.  In
 this case we ask it to substitute the string 'SITENAME' for the address of our
-site, with the `s/replaceme/withthis/g` syntax.  We pipe (`|`) the output of
-that to a root-user process (`sudo`), which uses `tee` to write what's piped to it
-to a file, in this case the Nginx sites-available virtualhost config file.
+site, with the `s/replaceme/withthis/g`
+syntaxfootnote:[You might have seen nerdy people using this strange
+s/change-this/to-this/ notation on the Internet.  Now you know why!].
+We pipe (`|`) the output of that to a root-user process (`sudo`), which uses
+`tee` to write what's piped to it to a file, in this case the Nginx
+sites-available virtualhost config file.
 
-We can now activate that file:
+Next we activate that file with a symlink:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
@@ -512,14 +553,14 @@ elspeth@server:$ *sudo ln -s ../sites-available/superlists.ottg.eu \
     /etc/nginx/sites-enabled/superlists.ottg.eu*
 ----
 
-Then we write the Systemd service:
+And we write the Systemd service, with another `sed`:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server: *sed "s/SITENAME/superlists.ottg.eu/g" \
-    deploy_tools/gunicorn-systemd.template.service | sudo tee \
-    /etc/systemd/system/gunicorn-superlists.ottg.eu.service*
+    source/deploy_tools/gunicorn-systemd.template.service \
+    | sudo tee /etc/systemd/system/gunicorn-superlists.ottg.eu.service*
 ----
 
 Finally we start both services:
@@ -533,10 +574,17 @@ elspeth@server:$ *sudo systemctl enable gunicorn-superlists.ottg.eu*
 elspeth@server:$ *sudo systemctl start gunicorn-superlists.ottg.eu*
 ----
 
-And we take a look at our site.  It works, hooray! 
-//IDEA: screenshot here
+And we take a look at our site: <<working-production-deploy>>.  It works,
+hooray! 
 
-Let's add the fabfile to our repo:
+[[working-production-deploy]]
+.Brrp, brrp, brrp... it worked!
+image::images/final_production_deploy.png["A screenshot of the production site, working"]
+
+
+
+It's done a good job.  Good fabfile, have a biscuit.  You have earned the
+privilege of being added to the repo:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -576,7 +624,7 @@ $ *git log --graph --oneline --decorate*
 
 
 Anyway, you now have a live website!  Tell all your friends!  Tell your mum, if
-no one else is interested! And, in the next chapter, it's back to coding
+no one else is interested!  And, in the next chapter, it's back to coding
 again.
 
 
@@ -606,6 +654,7 @@ besides.  Here are some resources I used for inspiration:
 ((("automation, in provisioning")))
 For some ideas on how you might go about automating the provisioning step,
 and an alternative to Fabric called Ansible, go check out <<appendix3>>.
+
 
 .Automated Deployments
 *******************************************************************************
