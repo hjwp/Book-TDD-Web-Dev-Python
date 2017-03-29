@@ -27,13 +27,13 @@ can run against:
 [source,ini]
 ----
 [live]
-superlists.ottg.eu ansible_user=root
+superlists.ottg.eu ansible_become=yes ansible_ssh_user=elspeth
 
 [staging]
-superlists-staging.ottg.eu ansible_user=root
+superlists-staging.ottg.eu ansible_become=yes ansible_ssh_user=elspeth
 
 [local]
-localhost ansible_user=root ansible_ssh_port=6666 ansible_host=127.0.0.1
+localhost ansible_ssh_user=root ansible_ssh_port=6666 ansible_host=127.0.0.1
 ----
 
 (The local entry is just an example, in my case a Virtualbox VM, with port
@@ -58,8 +58,12 @@ uses a syntax called YAML:
       host: "{{ inventory_hostname }}"
 
   tasks:
+
+    - name: Deadsnakes PPA to get Python 3.6
+      apt_repository:
+        repo='ppa:fkrull/deadsnakes'
     - name: make sure required packages are installed
-      apt: pkg=nginx,git,python3,python3-venv state=present
+      apt: pkg=nginx,git,python3.6,python3.6-venv state=present
 
     - name: allow long hostnames in nginx
       lineinfile: 
@@ -102,7 +106,7 @@ server {
     server_name {{ host }};
 
     location /static {
-        alias /home/{{ user }}/sites/{{ host }}/static;
+        alias /home/{{ ansible_ssh_user }}/sites/{{ host }}/static;
     }
 
     location / {
@@ -130,17 +134,16 @@ Here's the second half of our playbook:
       notify:
           - restart gunicorn
 
-    - name: make sure nginx is running
-      service: name=nginx state=running
-    - name: make sure gunicorn is running
-      service: name=gunicorn-{{ host }} state=running
-
   handlers:
     - name: restart nginx
       service:  name=nginx state=restarted
 
     - name: restart gunicorn
-      service:  name=gunicorn-{{ host }} state=restarted
+      systemd:
+          name=gunicorn-{{ host }}
+          daemon_reload=yes
+          enabled=yes
+          state=restarted
 
 ----
 
@@ -155,10 +158,10 @@ Once again we use a template for our Gunicorn config:
 Description=Gunicorn server for {{ host }}
 
 [Service]
-User={{ user }}
-WorkingDirectory=/home/{{ user }}/sites/{{ host }}/source
+User={{ ansible_ssh_user }}
+WorkingDirectory=/home/{{ ansible_ssh_user }}/sites/{{ host }}/source
 Restart=on-failure
-ExecStart=/home/{{ user }}/sites/{{ host }}/virtualenv/bin/gunicorn \
+ExecStart=/home/{{ ansible_ssh_user }}/sites/{{ host }}/virtualenv/bin/gunicorn \
     --bind unix:/tmp/{{ host }}.socket \
     --access-logfile ../access.log \
     --error-logfile ../error.log \
@@ -175,8 +178,9 @@ waits until the last one before calling it.
 
 And that's it!  The command to kick all these off is:
 
+[role="small-code"]
 ----
-ansible-playbook -i inventory.ansible provision.ansible.yaml --limit=staging
+ansible-playbook -i inventory.ansible provision.ansible.yaml --limit=staging --ask-become-pass
 ----
 
 Lots more info in the https://docs.ansible.com/[Ansible docs].
