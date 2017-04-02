@@ -40,6 +40,7 @@ cat ~/.ssh/id_rsa.pub
 ```
 
 More info on public key authentication [here](https://www.linode.com/docs/networking/ssh/use-public-key-authentication-with-ssh/)
+and [here](https://www.digitalocean.com/community/tutorials/how-to-use-ssh-keys-with-digitalocean-droplets)
 
 
 ## Start a Droplet
