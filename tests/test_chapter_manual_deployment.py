@@ -21,7 +21,7 @@ class Chapter9Test(ChapterTest):
         self.start_with_checkout()
 
         # skips
-        self.skip_with_check(38, 'replace the URL in the next line with')
+        self.skip_with_check(30, 'replace the URL in the next line with')
 
 
         # hack fast-forward
