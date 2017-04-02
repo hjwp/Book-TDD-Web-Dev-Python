@@ -33,7 +33,9 @@ class Chapter11Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff()
+        self.check_final_diff(ignore=[
+            "django==1.11"
+        ])
 
 
 if __name__ == '__main__':
