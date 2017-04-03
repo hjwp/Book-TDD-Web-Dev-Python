@@ -86,9 +86,11 @@ formats) that you can send over the wire.
 
 
 [role="sourcecode"]
-.lists/api.py
+.lists/api.py (ch37l003)
 [source,python]
 ----
+from lists.models import List, Item
+[...]
 from rest_framework import routers, serializers, viewsets
 
 
@@ -122,12 +124,13 @@ a particular list:
 
 
 [role="sourcecode"]
-.lists/api.py
+.lists/api.py (ch37l004)
 [source,python]
 ----
 class ListViewSet(viewsets.ModelViewSet):
     queryset = List.objects.all()
     serializer_class = ListSerializer
+
 
 router = routers.SimpleRouter()
 router.register(r'lists', ListViewSet)
@@ -135,6 +138,120 @@ router.register(r'lists', ListViewSet)
 
 A 'router' is DRF's way of building URL configuration automatically, and
 mapping them to the functionality provided by the ViewSet.
+
+At this point we can start pointing our 'urls.py' at our new router,
+bypassing the old api code and seeing how our tests do with the new stuff:
+
+[role="sourcecode"]
+.superlists/urls.py (ch37l005)
+[source,python]
+----
+[...]
+# from lists.api import urls as api_urls
+from lists.api import router
+
+urlpatterns = [
+    url(r'^$', list_views.home_page, name='home'),
+    url(r'^lists/', include(list_urls)),
+    url(r'^accounts/', include(accounts_urls)),
+    # url(r'^api/', include(api_urls)),
+    url(r'^api/', include(router.urls)),
+]
+----
+
+That makes loads of our tests fail:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+django.urls.exceptions.NoReverseMatch: Reverse for 'api_list' not found.
+'api_list' is not a valid view function or pattern name.
+[...]
+AssertionError: 405 != 400
+[...]
+AssertionError: {'id': 2, 'items': [{'id': 2, 'text': 'item 1'}, {'id': 3,
+'text': 'item 2'}]} != [{'id': 2, 'text': 'item 1'}, {'id': 3, 'text': 'item
+2'}]
+
+ ---------------------------------------------------------------------
+Ran 54 tests in 0.243s
+
+FAILED (failures=4, errors=10)
+----
+
+Let's take a look at those 10 errors first, all saying they cannot reverse
+`api_list`.  It's because the DRF router uses a different naming convention
+for urls than the one we used when we coded it manually. You'll see from the
+tracebacks that they're happening when we render a template.  It's 'list.html'.
+We can fix that in just one place; `api_list` becomes `list-detail`:
+
+[role="sourcecode"]
+.lists/templates/list.html (ch37l006)
+[source,html]
+----
+  <script>
+$(document).ready(function () {
+  var url = "{% url 'list-detail' list.id %}";
+});
+  </script>
+----
+
+
+That will get us down to just 4 failures:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+FAIL: test_POSTing_a_new_item (lists.tests.test_api.ListAPITest)
+[...]
+FAIL: test_duplicate_items_error (lists.tests.test_api.ListAPITest)
+[...]
+FAIL: test_for_invalid_input_returns_error_code
+(lists.tests.test_api.ListAPITest)
+[...]
+FAIL: test_get_returns_items_for_correct_list
+(lists.tests.test_api.ListAPITest)
+[...]
+FAILED (failures=4)
+----
+
+Let's DONT-ify the two validation tests for now, and save that complexity
+for later:
+
+[role="sourcecode"]
+.lists/tests/test_api.py
+[source,python]
+----
+[...]
+    def DONTtest_for_invalid_input_returns_error_code(self):
+        [...]
+    def DONTtest_duplicate_items_error(self):
+        [...]
+----
+
+And now we have just two failures.
+
+[subs="specialcharacters,macros"]
+----
+FAIL: test_POSTing_a_new_item (lists.tests.test_api.ListAPITest)
+[...]
+    self.assertEqual(response.status_code, 201)
+AssertionError: 405 != 201
+[...]
+FAIL: test_get_returns_items_for_correct_list
+(lists.tests.test_api.ListAPITest)
+[...]
+AssertionError: {'id': 2, 'items': [{'id': 2, 'text': 'item 1'}, {'id': 3,
+'text': 'item 2'}]} != [{'id': 2, 'text': 'item 1'}, {'id': 3, 'text': 'item
+2'}]
+[...]
+FAILED (failures=2)
+----
+
+
+Let's take a look at that last one first. 
 
 DRF's default configuration does provide a slightly different data structure
 to the one we built by hand -- doing a GET for a list gives you its ID, and
