@@ -217,14 +217,16 @@ FAIL: test_get_returns_items_for_correct_list
 FAILED (failures=4)
 ----
 
-Let's DONT-ify the two validation tests for now, and save that complexity
+Let's DONT-ify all the validation tests for now, and save that complexity
 for later:
 
 [role="sourcecode"]
-.lists/tests/test_api.py
+.lists/tests/test_api.py (ch37l007)
 [source,python]
 ----
 [...]
+    def DONTtest_for_invalid_input_nothing_saved_to_db(self):
+        [...]
     def DONTtest_for_invalid_input_returns_error_code(self):
         [...]
     def DONTtest_duplicate_items_error(self):
@@ -250,7 +252,6 @@ AssertionError: {'id': 2, 'items': [{'id': 2, 'text': 'item 1'}, {'id': 3,
 FAILED (failures=2)
 ----
 
-
 Let's take a look at that last one first. 
 
 DRF's default configuration does provide a slightly different data structure
@@ -259,20 +260,25 @@ then the list items are inside a key called "items".  That means a slight
 modification to our unit test, before it gets back to passing:
 
 [role="sourcecode"]
-.lists/tests/test_api.py
-[source,python]
+.lists/tests/test_api.py (ch37l008)
+[source,diff]
 ----
-    self.assertEqual(
-        json.loads(response.content.decode('utf8')),
-        {'id': our_list.id, 'items': [
-            {'id': item1.id, 'text': item1.text},
-            {'id': item2.id, 'text': item2.text},
-        ]}
-    )
+@@ -23,10 +23,10 @@ class ListAPITest(TestCase):
+         response = self.client.get(self.base_url.format(our_list.id))
+         self.assertEqual(
+             json.loads(response.content.decode('utf8')),
+-            [
++            {'id': our_list.id, 'items': [
+                 {'id': item1.id, 'text': item1.text},
+                 {'id': item2.id, 'text': item2.text},
+-            ]
++            ]}
+         )
 ----
 
-That's the GET for retrieving list items sorted (and, as we'll see later, we've got a
-bunch of other stuff for free too).  How about adding new ones, using POST?
+That's the GET for retrieving list items sorted (and, as we'll see later, we've
+got a bunch of other stuff for free too).  How about adding new ones, using
+POST?
 
 
 A different URL for POST item 
@@ -286,7 +292,7 @@ Instead, the simplest thing is to post to an item view, not a list view:
 
 
 [role="sourcecode"]
-.lists/api.py
+.lists/api.py (ch37l009)
 [source,python]
 ----
 class ItemViewSet(viewsets.ModelViewSet):
@@ -294,46 +300,56 @@ class ItemViewSet(viewsets.ModelViewSet):
     queryset = Item.objects.all()
 
 
-router = routers.SimpleRouter()
-router.register(r'lists', ListViewSet)
+[...]
 router.register(r'items', ItemViewSet)
 ----
 
-// 3. You don't mention that the router urls must be added to url.py manually
-// using 'include(router.urls, namepace:api)' and 'from lists.api import
-// router'
 
+So that means we change the test slightly, moving all the POST tests
+out of the `ListAPITest` and into a new test class, `ItemsAPITest`:
 
-So that means we change the test slightly
 
 [role="sourcecode"]
-.lists/tests/test_api.py
+.lists/tests/test_api.py (ch37l010)
 [source,python]
 ----
-class ItemsAPITest(TestCase):
-    base_url = reverse('api:item-list')
+@@ -1,3 +1,4 @@
+ import json
++from django.core.urlresolvers import reverse
+ from django.test import TestCase
+ from lists.models import List, Item
+@@ -31,9 +32,13 @@ class ListAPITest(TestCase):
+ 
+ 
++
++class ItemsAPITest(TestCase):
++    base_url = reverse('item-list')
++
+     def test_POSTing_a_new_item(self):
+         list_ = List.objects.create()
+         response = self.client.post(
+-            self.base_url.format(list_.id),
+-            {'text': 'new item'},
++            self.base_url,
++            {'list': list_.id, 'text': 'new item'},
+         )
+         self.assertEqual(response.status_code, 201)
 
-    def test_POSTing_a_new_item(self):
-        list_ = List.objects.create()
-        response = self.client.post(
-            self.base_url,
-            {'list': list_.id, 'text': 'new item'},
-        )
-        self.assertEqual(response.status_code, 201)
-        new_item = list_.item_set.get()
-        self.assertEqual(new_item.text, 'new item')
-[...]
 ----
 
-// 4. You don't mention that you split the test classes up into two subclasses
-// with different 'base_url's
+That will give us
 
-And so on.  Also need to add the list id to our serialization of items,
-otherwise we don't know what list it's for:
+----
+django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id
+----
+
+
+Until we add the list id to our serialization of items, otherwise we don't know
+what list it's for:
 
 
 [role="sourcecode"]
-.lists/api.py
+.lists/api.py (ch37l011)
 [source,python]
 ----
 class ItemSerializer(serializers.ModelSerializer):
@@ -344,14 +360,23 @@ class ItemSerializer(serializers.ModelSerializer):
 ----
 
 
-// 5. After adding the list field to ItemSerializer, you need to change the
-// expected output in 'test_get_return_items_for_correct_list' must be changed
-// once again, which you don't mention, although the failing messages are quite
-// clear
+And that causes another small associated test change.
 
-
-And that causes a few more associated test changes.
-
+[role="sourcecode"]
+.lists/tests/test_api.py (ch37l012)
+[source,python]
+----
+@@ -25,8 +25,8 @@ class ListAPITest(TestCase):
+         self.assertEqual(
+             json.loads(response.content.decode('utf8')),
+             {'id': our_list.id, 'items': [
+-                {'id': item1.id, 'text': item1.text},
+-                {'id': item2.id, 'text': item2.text},
++                {'id': item1.id, 'list': our_list.id, 'text': item1.text},
++                {'id': item2.id, 'list': our_list.id, 'text': item2.text},
+             ]}
+         )
+----
 
 
 Adapting the client side
@@ -362,12 +387,12 @@ object, with a `.items` attribute that represents the items.  That means a
 small tweak to our `updateItems` function:
 
 [role="sourcecode"]
-.lists/static/list.js
+.lists/static/list.js (ch37l013)
 [source,diff]
 ----
+@@ -3,8 +3,8 @@ window.Superlists = {};
  window.Superlists.updateItems = function (url) {
    $.get(url).done(function (response) {
-+    if (!response.items) {return;}
      var rows = '';
 -    for (var i=0; i<response.length; i++) {
 -      var item = response[i];
@@ -376,18 +401,22 @@ small tweak to our `updateItems` function:
        rows += '\n<tr><td>' + (i+1) + ': ' + item.text + '</td></tr>';
      }
      $('#id_list_table').html(rows);
-   });
- };
+
 ----
 
 And because we're using different URLs for GETing lists and POSTing items,
 we tweak the `initialize` function slightly too.  Rather than multiple
-arguments, we'll switch to using a "params" object containing the required config:
+arguments, we'll switch to using a "params" object containing the required
+config:
  
 [role="sourcecode"]
 .lists/static/list.js
 [source,diff]
 ----
+@@ -11,23 +11,24 @@ window.Superlists.updateItems = function (url) {
+   });
+ };
+ 
 -window.Superlists.initialize = function (url) {
 +window.Superlists.initialize = function (params) {
    $('input[name="text"]').on('keypress', function () {
@@ -413,10 +442,23 @@ arguments, we'll switch to using a "params" object containing the required confi
 +        window.Superlists.updateItems(params.listApiUrl);
        }).fail(function (xhr) {
          $('.has-error').show();
+         if (xhr.responseJSON && xhr.responseJSON.error) {
+----
+
+That's actually enough to get the basic FT working again:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_simple_list_creation*]
+[...]
+Ran 2 tests in 15.635s
+
+OK
 ----
 
 
-There's a few more changes to do with error handling, which you can explore in the
+There's a few more changes to do with error handling, which you can explore in
+the
 https://github.com/hjwp/book-example/blob/appendix_DjangoRestFramework/lists/api.py[repo
 for this appendix] if you're curious.
 
@@ -435,8 +477,8 @@ Well, the first advantage is that I've transformed my old procedural view
 function into a more declarative syntax
 
 
-[role="sourcecode skipme"]
-.lists/api.py (old version)
+[role="sourcecode currentcontents dofirst-ch37l016"]
+.lists/api.py
 [source,python]
 ----
 def list(request, list_id):
@@ -468,7 +510,7 @@ actually now entirely configuration:
 
 
 [role="sourcecode currentcontents"]
-.lists/api.py (new version)
+.lists/api.py
 [source,python]
 ----
 class ItemSerializer(serializers.ModelSerializer):
