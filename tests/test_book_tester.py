@@ -9,6 +9,7 @@ from book_tester import (
     PHANTOMJS_RUNNER,
     contains,
     wrap_long_lines,
+    split_blocks,
 
 )
 from book_parser import (
@@ -200,7 +201,7 @@ class RunServerCommandTest(ChapterTest):
 
 
     @patch('book_tester.subprocess')
-    def test_hacks_in_dtach_for_runserver(self, mock_subprocess):
+    def DONTtest_hacks_in_dtach_for_runserver(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
         self.run_server_command('cd /foo/$SITENAME')
         self.run_server_command('source ../virtualenv/bin/activate && python3 manage.py runserver')
@@ -897,8 +898,73 @@ class CurrentContentsTest(ChapterTest):
         self.check_current_contents(listing, actual_contents)  # should not raise
 
 
+    def test_checks_ignores_blank_lines(self):
+        actual_contents = dedent(
+            """
+            line 1
+            line 2
 
-class TestContains:
+
+            line 3
+
+
+            line 4
+            line 5
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+
+            line 3
+
+            line 4
+            """).lstrip()
+        )
+        listing.currentcontents = True
+        self.check_current_contents(listing, actual_contents)  # should not raise
+
+        listing2 = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+            line 3
+
+            line 4
+            """).lstrip()
+        )
+        with self.assertRaises(AssertionError):
+            self.check_current_contents(listing2, actual_contents)
+
+
+class SplitBlocksTest(unittest.TestCase):
+
+    def test_splits_on_multi_newlines(self):
+        assert split_blocks(dedent(
+            '''
+            this
+            is block 1
+
+            this is block 2
+            '''
+        )) == ['this\nis block 1', 'this is block 2']
+
+
+
+    def test_splits_on_elipsis(self):
+        assert split_blocks(dedent(
+            '''
+            this
+            is block 1
+            [...]
+            this is block 2
+            '''
+        )) == ['this\nis block 1', 'this is block 2']
+
+
+
+class TestContains(unittest.TestCase):
 
     def test_smoketest(self):
         assert contains([1, 2, 3, 4], [1, 2])

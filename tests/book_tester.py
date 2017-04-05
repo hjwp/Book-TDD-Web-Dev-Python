@@ -50,6 +50,13 @@ def wrap_long_lines(text):
     )
 
 
+def split_blocks(text):
+    return [
+        block.strip() for block in
+        re.split(r'\n\n+|^.*\[\.\.\..*$', text, flags=re.MULTILINE)
+    ]
+
+
 def fix_test_dashes(output):
     return output.replace(' ' + '-' * 69, '-' * 70)
 
@@ -601,12 +608,13 @@ class ChapterTest(unittest.TestCase):
         print("CHECK CURRENT CONTENTS")
         stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
         listing_contents = re.sub(r' +#$', '', listing.contents, flags=re.MULTILINE)
-        listing_blocks = re.split(r'^.*\[\.\.\..*$', listing_contents, flags=re.MULTILINE)
-        for block in listing_blocks:
+        for block in split_blocks(listing_contents):
             stripped_block = [line.strip() for line in block.strip().split('\n')]
+            for line in stripped_block:
+                self.assertIn(line, stripped_actual_lines)
             self.assertTrue(
                 contains(stripped_actual_lines, stripped_block),
-                '{}\n\nnot found in\n\n{}'.format(stripped_block, actual_contents)
+                '\n{}\n\nnot found in\n\n{}'.format('\n'.join(stripped_block), '\n'.join(stripped_actual_lines)),
             )
         listing.was_written = True
 
