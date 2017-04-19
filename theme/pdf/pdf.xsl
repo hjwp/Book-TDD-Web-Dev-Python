@@ -55,20 +55,8 @@
   </xsl:template>
 
   <!-- Override to print example captions without labels-->
-  <xsl:template match="h:h5" mode="process-heading">
-    <xsl:param name="output-element-name" select="local-name(.)"/>
-    <xsl:element name="{$output-element-name}" namespace="http://www.w3.org/1999/xhtml">
-      <xsl:apply-templates select="@*"/>
-      <xsl:apply-templates/>
-    </xsl:element>
-  </xsl:template>
-
-  <!-- Just trying to mess things up -->
-  <xsl:template match="h:section[@data-type]/*[self::h:h1 or self::h:h2 or self::h:h3 or self::h:h4 or self::h:h5 or self::h:h6]">
-    <xsl:param name="autogenerate.labels" select="$autogenerate.labels"/>
-    <xsl:apply-templates select="." mode="process-heading">
-      <xsl:with-param name="autogenerate.labels" select="$autogenerate.labels"/>
-    </xsl:apply-templates>
+  <xsl:template match="*" mode="process-heading">
+    <xsl:text>THIS IS SELECTED</xsl:text>
   </xsl:template>
 
   <!-- Will need to fix numbering for formal examples in template override -->
