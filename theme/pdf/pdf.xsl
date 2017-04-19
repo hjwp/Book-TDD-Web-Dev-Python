@@ -63,6 +63,14 @@
     </xsl:element>
   </xsl:template>
 
+  <!-- Just trying to mess things up -->
+  <xsl:template match="h:section[@data-type]/*[self::h:h1 or self::h:h2 or self::h:h3 or self::h:h4 or self::h:h5 or self::h:h6]">
+    <xsl:param name="autogenerate.labels" select="$autogenerate.labels"/>
+    <xsl:apply-templates select="." mode="process-heading">
+      <xsl:with-param name="autogenerate.labels" select="$autogenerate.labels"/>
+    </xsl:apply-templates>
+  </xsl:template>
+
   <!-- Will need to fix numbering for formal examples in template override -->
  
 </xsl:stylesheet>
