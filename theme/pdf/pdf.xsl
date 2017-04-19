@@ -55,7 +55,7 @@
   </xsl:template>
 
   <!-- Override to print example captions without labels-->
-  <xsl:template match="*" mode="process-heading">
+  <xsl:template match="h:h5" mode="process-heading">
     <xsl:text>THIS IS SELECTED</xsl:text>
   </xsl:template>
 
