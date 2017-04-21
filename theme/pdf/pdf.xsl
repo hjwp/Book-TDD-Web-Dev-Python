@@ -56,6 +56,7 @@
 
   <!-- Override to print example captions without labels-->
   <xsl:template match="h:div[@data-type='example' and contains(@class, 'sourcecode')]/h:h5" mode="process-heading">
+    <xsl:param name="autogenerate.labels" select="0"/>
     <xsl:element name="h5" namespace="http://www.w3.org/1999/xhtml">
       <xsl:apply-templates select="@*"/>
       <xsl:apply-templates/>
