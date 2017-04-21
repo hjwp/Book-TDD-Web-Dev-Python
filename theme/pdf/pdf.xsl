@@ -74,8 +74,6 @@
             <xsl:if test="normalize-space($element-labelname) != ''">
               <xsl:value-of select="concat($element-labelname, ' ')"/>
             </xsl:if>
-            <xsl:value-of select="$heading.label"/>
-            <xsl:value-of select="$label.and.title.separator"/>
           </span>
         </xsl:if>
       </xsl:if>
