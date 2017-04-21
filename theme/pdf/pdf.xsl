@@ -56,30 +56,10 @@
 
   <!-- Override to print example captions without labels-->
   <xsl:template match="h:div[@data-type='example' and contains(@class, 'sourcecode')]/h:h5" mode="process-heading">
-    <xsl:param name="autogenerate.labels" select="0"/>
-    <xsl:element name="h5" namespace="http://www.w3.org/1999/xhtml">
-      <xsl:if test="$autogenerate.labels = 1">
-        <xsl:variable name="heading.label">
-          <xsl:apply-templates select="$labeled-element" mode="label.markup"/>
-        </xsl:variable>
-        <xsl:if test="$heading.label != ''">
-          <span class="label">
-            <xsl:variable name="element-labelname">
-              <xsl:call-template name="get-localization-value">
-                <xsl:with-param name="gentext-key">
-                  <xsl:value-of select="$labeled-element-semantic-name"/>
-                </xsl:with-param>
-              </xsl:call-template>
-            </xsl:variable>
-            <xsl:if test="normalize-space($element-labelname) != ''">
-              <xsl:value-of select="concat($element-labelname, ' ')"/>
-            </xsl:if>
-          </span>
-        </xsl:if>
-      </xsl:if>
+    <p class="sourcecode">
       <xsl:apply-templates select="@*"/>
       <xsl:apply-templates/>
-    </xsl:element>
+    </p>
   </xsl:template>
 
   <!-- Will need to fix numbering for formal examples in template override -->
