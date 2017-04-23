@@ -56,8 +56,7 @@
 
   <!-- Override to print example captions without labels-->
   <xsl:template match="h:div[@data-type='example' and contains(@class, 'sourcecode')]/h:h5" mode="process-heading">
-    <p>
-      <xsl:apply-templates select="@*"/>
+    <p class="sourcecode">
       <xsl:apply-templates/>
     </p>
   </xsl:template>
