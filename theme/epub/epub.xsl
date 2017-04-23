@@ -7,7 +7,11 @@
 <!-- Add title heading elements for different admonition types that do not already have headings in markup -->
 <xsl:param name="add.title.heading.for.admonitions" select="1"/>  
 
-<!-- Drop @width attributes from table headers if present -->
-<xsl:template match="h:th/@width"/>
+  <!-- Override to print example captions without labels-->
+  <xsl:template match="h:div[@data-type='example' and contains(@class, 'sourcecode')]/h:h5" mode="process-heading">
+    <p class="sourcecode">
+      <xsl:apply-templates/>
+    </p>
+  </xsl:template>
                                                                               
 </xsl:stylesheet>
