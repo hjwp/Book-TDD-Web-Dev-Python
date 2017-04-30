@@ -112,11 +112,6 @@ class Chapter1Test(ChapterTest):
             'git fetch repo'
         )
 
-        # manual fix of dev settings docs links
-        # self.sourcetree.run_command(
-        #     'sed -i "s:/dev/:/1.7/:g" superlists/settings.py'
-        # )
-
         self.check_final_diff(ignore="SECRET_KEY")
 
 
