@@ -16,9 +16,9 @@
 
   <!-- Insert SCRATCHPAD: heading for all sidebars with 'scratchpad' class -->
   <xsl:template match="h:aside[@data-type='sidebar' and contains(@class, 'scratchpad')]/h:h5" mode="process-heading">
-    <h5>
+    <p class="scratchpad_heading">
       SCRATCHPAD:
-    </h5>
+    </p>
   </xsl:template> 
 
   
