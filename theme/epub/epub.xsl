@@ -16,7 +16,7 @@
 
   <!-- Insert SCRATCHPAD: heading for all sidebars with 'scratchpad' class -->
   <xsl:template match="h:aside[@data-type='sidebar' and contains(@class, 'scratchpad')]//h:h5">
-    <p>THIS IS SELECTED BY SCRATCHPAD TEMPLATE</p>
+    <h5>THIS IS SELECTED BY SCRATCHPAD TEMPLATE</h5>
     <xsl:apply-templates/>
   </xsl:template> 
 
