@@ -124,6 +124,10 @@ its DNS configration, one for your "staging" subdomain and one for your
 "live" subdomain.  Mine are superlists.ottg.eu and superlists.ottg.eu
 for example.
 
+Changes to your A-records in your DNS configuration can take several hours
+to propogate. If you return to the chapter immeadiatly, fire up NGINX and
+go to your subdomain you might see your registrar's 'domain inactive' holding
+page. Don't worry do something else and come back to it.
 
 And now you should be all set to follow the rest of the instructions in 
 the manual deployment chapter
