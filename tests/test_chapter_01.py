@@ -28,6 +28,7 @@ class Chapter1Test(ChapterTest):
     def test_listings_and_commands_and_output(self):
         update_sources_for_chapter(self.chapter_name, previous_chapter=None)
         self.parse_listings()
+        # self.fail('\n'.join(f'{l.type}: {l}' for l in self.listings))
 
         # sanity checks
         self.assertEqual(type(self.listings[0]), CodeListing)

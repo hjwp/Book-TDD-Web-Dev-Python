@@ -223,8 +223,14 @@ class ChapterTest(unittest.TestCase):
         with open(os.path.join(base_dir, filename), encoding='utf-8') as f:
             raw_html = f.read()
         parsed_html = html.fromstring(raw_html)
-        listings_nodes = parsed_html.cssselect('div.listingblock')
-        self.listings = [p for n in listings_nodes for p in parse_listing(n)]
+        all_nodes = parsed_html.cssselect('.exampleblock.sourcecode, div:not(.sourcecode) div.listingblock')
+        listing_nodes = []
+        for ix, node in enumerate(all_nodes):
+            prev = all_nodes[ix - 1]
+            if node not in list(prev.iterdescendants()):
+                listing_nodes.append(node)
+
+        self.listings = [p for n in listing_nodes for p in parse_listing(n)]
 
 
     def check_final_diff(self, ignore=None, diff=None):
