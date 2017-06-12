@@ -217,6 +217,24 @@ class RunServerCommandTest(ChapterTest):
 
 
 
+class GetListingsTest(ChapterTest):
+    chapter_name = 'chapter_01'
+
+    def test_get_listings_gets_exampleblock_code_listings_and_regular_listings(self):
+        self.parse_listings()
+        self.assertEqual(self.listings[0].type, 'code listing')
+        self.assertEqual(
+            self.listings[0].contents.split()[:3],
+            ['from', 'selenium', 'import']
+        )
+        self.assertEqual(self.listings[1], 'python functional_tests.py')
+        self.assertEqual(self.listings[1].type, 'test')
+        self.assertEqual(self.listings[2].type, 'output')
+
+
+
+
+
 class AssertConsoleOutputCorrectTest(ChapterTest):
 
     def test_simple_case(self):
