@@ -6,7 +6,7 @@ The sources for this book are published under the Creative Commons Attribution
 Non-Commercial No-Derivs license (CC-BY-NC-ND).
 
 *I wouldn't recommend using this version to read the book.  Head over to
-[obeythetestinggoat.com](https://www.obeythetestinggoat.com/pages.book.html)
+[obeythetestinggoat.com](https://www.obeythetestinggoat.com)
 when you can access a nicely formatted version of the full thing, still free
 and under CC license.  And you'll also be able to buy an ebook or print version
 if you feel like it.*
