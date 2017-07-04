@@ -123,11 +123,12 @@ OUTPUTS_WITH_CURRENTCONTENTS = """
 
 OUTPUT_QUNIT = """
 <div class="listingblock qunit-output">
-<div class="title">Expected results from Qunit in browser</div>
 <div class="content">
-<pre><code>2 assertions of 2 passed, 0 failed.
-1. smoke test (0, 2, 2)</code></pre>
-</div></div>"""
+<pre>2 assertions of 2 passed, 0 failed.
+1. smoke test (2)</pre>
+</div>
+</div>
+"""
 
 OUTPUT_WITH_CONTINUATION = """
 <div class="listingblock">

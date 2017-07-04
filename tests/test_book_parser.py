@@ -146,7 +146,7 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(listing.type, 'qunit output')
         self.assertEqual(
             listing,
-            '2 assertions of 2 passed, 0 failed.\n1. smoke test (0, 2, 2)'
+            '2 assertions of 2 passed, 0 failed.\n1. smoke test (2)'
         )
 
     def test_recognises_server_commands(self):

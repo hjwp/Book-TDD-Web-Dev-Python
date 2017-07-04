@@ -9,6 +9,7 @@ class Chapter14Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
+        # self.fail('\n'.join(f'{i}: {l.type} -- {l}' for i, l in enumerate(self.listings)))
         self.start_with_checkout()
 
         # sanity checks
