@@ -124,6 +124,10 @@ its DNS configration, one for your "staging" subdomain and one for your
 "live" subdomain.  Mine are superlists.ottg.eu and superlists.ottg.eu
 for example.
 
+*(tip: DNS changes take time to propagate, so if your domain doesn't
+take you to the server straight away, you may need to wait.  some registrars
+will let you control this using a setting called "TTL")*.
+
 
 And now you should be all set to follow the rest of the instructions in 
 the manual deployment chapter
