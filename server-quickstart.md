@@ -23,7 +23,7 @@ ssh-keygen
 
 **NOTE** *If you're on Windows, you need to be using Git-Bash for `ssh-keygen`
 and `ssh` to work. There's more info in the
-[installation instructions chapter](http://www.obeythetestinggoat.com/book/pre-requisite-installations.html)
+[installation instructions chapter](http://www.obeythetestinggoat.com/book/pre-requisite-installations.html)*
 
 Just accept all the defaults if you really want to just get started in a hurry,
 and no passphrase.
