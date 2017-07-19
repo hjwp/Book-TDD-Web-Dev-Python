@@ -23,7 +23,7 @@ ssh-keygen
 
 **NOTE** *If you're on Windows, you need to be using Git-Bash for `ssh-keygen`
 and `ssh` to work. There's more info in the
-[installation instructions chapter](http://www.obeythetestinggoat.com/book/pre-requisite-installations.html)
+[installation instructions chapter](http://www.obeythetestinggoat.com/book/pre-requisite-installations.html)*
 
 Just accept all the defaults if you really want to just get started in a hurry,
 and no passphrase.
@@ -123,6 +123,10 @@ Once you have a domain, you need to set up a couple of **A-records** in
 its DNS configration, one for your "staging" subdomain and one for your
 "live" subdomain.  Mine are superlists.ottg.eu and superlists.ottg.eu
 for example.
+
+*(tip: DNS changes take time to propagate, so if your domain doesn't
+take you to the server straight away, you may need to wait.  some registrars
+will let you control this using a setting called "TTL")*.
 
 
 And now you should be all set to follow the rest of the instructions in 
