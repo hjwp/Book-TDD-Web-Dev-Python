@@ -12,6 +12,7 @@ CHAPTERS = [
 ]
 for tweak_chap in ['praise.html', 'part1.html', 'part2.html', 'part3.html']:
     CHAPTERS[CHAPTERS.index(tweak_chap)] = tweak_chap.replace('.', '.harry.')
+CHAPTERS.remove('cover.html')
 CHAPTERS.remove('titlepage.html')
 CHAPTERS.remove('copyright.html')
 CHAPTERS.remove('toc.html')
