@@ -26,20 +26,23 @@ and collaboration (typo-fixes by pull request are very much encouraged).
 # Running the tests
 
 * Pre-requisites for the test suite:
-
-    mkvirtualenv --python=python3 tddbook
-    pip install -r requirements.txt
-    git submodule update --init
+```console   
+$ mkvirtualenv --python=python3 tddbook
+$ pip install -r requirements.txt
+$ git submodule update --init
+```
 
 * Full test suite:
-
-    make test
+```console
+$ make test
+```
 
 * To test an individual chapter, eg:
-
-    make test_chapter_explicit_waits_1
+```console
+$ make test_chapter_explicit_waits_1
+```
 
 * Unit tests (tests for the tests for the tests in the testing book)
-
-    ./run_test_tests.sh
-
+```console
+$ ./run_test_tests.sh
+```
