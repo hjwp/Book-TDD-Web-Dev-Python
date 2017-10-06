@@ -38,7 +38,7 @@ class Chapter9bTest(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff()
+        self.check_final_diff(ignore=["gunicorn==19"])
 
 
 if __name__ == '__main__':
