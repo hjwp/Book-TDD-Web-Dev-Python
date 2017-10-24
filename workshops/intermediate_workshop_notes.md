@@ -17,10 +17,10 @@ TODO:
 > different types of tests: end-to-end/functional vs integration vs unit tests.
 
 
-* Intro and installations (15m, t=0)
-* Our example app - tour (5m, t=15)
-* Codebase tour (5m, t=20)
-* Double-loop TDD demo (10m, t=25)
+* Intro and installations (15m, t=15)
+* Our example app - tour (5m, t=20)
+* Codebase tour (5m, t=25)
+* Double-loop TDD demo (10m, t=35)
 * Coding challenge 1:  building the "my lists" feature (45m, t=35)
 * Outside-In TDD.  Examples + discussion (20m, t=1h15)
 * Break (15m, t=1h35)
@@ -90,7 +90,10 @@ python manage.py runserver
 
 # Run the test suite and check everything passes:
 pip install selenium
-python manage.py test  # all but one should pass
+python manage.py test
+
+# you should see it run 60 tests and all but one should pass,
+# expected error = "Unable to locate element: My lists"
 ```
 
 If the functional tests give you any trouble, You can try switching from
@@ -170,7 +173,8 @@ color: apprentice? colorful? beachcomber? ironman?
 **Models**:  a list has many items:
 
 
-```python: lists/models.py
+lists/models.py:
+```python
 
 class List(models.Model):
   pass
@@ -202,7 +206,9 @@ class Item(models.Model):
 * view existing list (and add extra items to it if necessary)
 
 
-```python: lists/views.py
+lists/views.py:
+```python
+
 def home_page(request):
     return render(request, 'home.html', {'form': ItemForm()})
 ```
@@ -220,7 +226,9 @@ def home_page(request):
 
 
 
-```python: lists/views.py
+lists/views.py:
+```python
+
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
@@ -234,7 +242,9 @@ def new_list(request):
 
 
 
-```python: lists/views.py
+lists/views.py:
+```python
+
 def view_list(request, list_id):
     list_ = List.objects.get(id=list_id)
     form = ExistingListItemForm(for_list=list_)
@@ -290,11 +300,14 @@ def view_list(request, list_id):
 
 # Coding challenge 1:  building the "my lists" feature
 
+    git checkout intermediate-workshop-part1
+
 ie: Get this FT to pass:
 
     python manage.py test functional_tests.test_my_lists
 
 Ideally: using TDD. Add some unit tests, in *test_models.py* and *test_views.py*.  Get the FT to pass.
+
 
 Tips:
 
@@ -302,19 +315,13 @@ Tips:
 * `request.user` will be available if user is logged in
 * `request.user.is_authenticated()` is False if user is not logged in
 * `list.get_absolute_url()` will give you a url you can use in an <a> tag for the lists page
-* you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it.  You can inherit from base.html
+* you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it.  You can inherit from base.html.  note the `extra_content` block will be useful
 * you will need to associate the creation of a new list with the current user, if they're logged in
 * if you need a views test to have a logged-in user, you have two choices
   - `self.client.force_login(user)`
   - or, import and call the view function directly with an HttpRequest instance whose .user attribute is set.
-* if you want to try manually logging in with persona, "anything@mockmyid.com" will "just work" (but use "localhost:8000" in your browser, not "127.0.0.1:800")
+* if you want to try manually logging in, you'll need to hack a token.  ask me about this on the day.
 
-**Help**: Grab my version of the "my lists" template. it will tell you what you need your views to do
-
-    git checkout origin/intermediate-workshop-end -- lists/templates/my_lists.html
-
-
-//TODO: simplify my example my_lists.html
 
 
 
@@ -371,7 +378,8 @@ Additional illustrations
 
 
 
-```python lists/tests/test_views.py
+lists/tests/test_views.py:
+```python
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
         user = User.objects.create(email='a@b.com')
@@ -384,7 +392,8 @@ Additional illustrations
 ```
 
 
-```python lists/views.py
+lists/views.py:
+```python
 
 def new_list(request):
     form = ItemForm(data=request.POST)
@@ -438,7 +447,8 @@ AttributeError: 'List' object has no attribute 'owner'
 So we move down to the models layer:
 
 
-``` python lists/tests/test_models.py
+lists/tests/test_models.py:
+``` python
 
     def test_lists_can_have_owners(self):
         user = User.objects.create(email='a@b.com')
@@ -448,7 +458,8 @@ So we move down to the models layer:
 
 
 
-```python lists/models.py
+lists/models.py:
+```python
 
 class List(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
@@ -504,9 +515,10 @@ Oh no!  what's happening?
 
 
 
-```html lists/templates/my_lists.html
+lists/templates/my_lists.html:
+```html
 
-          <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
+  <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
 
 ```
 
@@ -527,8 +539,8 @@ Lists need a name attribute (what we'd programmed by wishful thinking)
 
 
 
-
-```python lists/tests/test_models.py
+lists/tests/test_models.py:
+```python
 
     def test_list_name_is_first_item_text(self):
         list_ = List.objects.create()
@@ -537,8 +549,8 @@ Lists need a name attribute (what we'd programmed by wishful thinking)
         self.assertEqual(list_.name, 'first item')
 ```
 
-
-```python lists/models.py
+lists/models.py:
+```python
 
 class List(models.Model):
     # ...
@@ -551,6 +563,8 @@ class List(models.Model):
 
 
 
+
+and we're done!
 
 
 
@@ -641,8 +655,8 @@ Think about:
 
 Did you end up with a test like this?
 
-
-```python lists/tests/test_views
+lists/tests/test_views:
+```python
 
     @patch('lists.views.List')
     def test_list_owner_is_saved_if_user_is_authenticated(self, mockListClass):
@@ -670,8 +684,8 @@ yuck!
 Why is this so hard? What are the tests trying to tell us?
 
 
-
-```python lists/views.py
+lists/views.py:
+```python
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
@@ -702,8 +716,8 @@ What if it was easier?
 
 
 
-
-```python lists/views.py
+lists/views.py:
+```python
 def new_list(request):
     form = NewListForm(data=request.POST)
     if form.is_valid():
@@ -717,8 +731,8 @@ def new_list(request):
 And then we could write a "nice" mocky test like this, rather than a nasty one...
 
 
-
-```python lists/tests/test_views.py
+lists/tests/test_views.py:
+```python
     @patch('lists.views.NewListForm')
     def test_saves_form_with_owner_if_form_valid(self, mockNewListForm):
         mock_form = mockNewListForm.return_value
@@ -734,8 +748,8 @@ And then we could write a "nice" mocky test like this, rather than a nasty one..
 
 of course if we're going to go the whole way, we would rewrite all the tests:
 
-
-```python lists/tests/test_views.py
+lists/tests/test_views.py:
+```python
     def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
 
     def test_saves_form_with_owner_if_form_valid(self, mockNewListForm):
@@ -762,8 +776,8 @@ of course if we're going to go the whole way, we would rewrite all the tests:
 
 Same story at the forms layer:
 
-
-```python lists/forms.py
+lists/forms.py:
+```python
 class NewListForm(models.Form):
 
     def save(self, owner):
@@ -781,8 +795,8 @@ class NewListForm(models.Form):
 Which leads to tests that look like this:
 
 
-
-```python lists/forms.py
+lists/forms.py:
+```python
 
 class NewListFormTest(unittest.TestCase):
 
@@ -816,8 +830,8 @@ But, again, this is a call to "listen to our tests"
 
 
 
-
-```python lists/forms.py
+lists/forms.py:
+```python
 
 class NewListForm(ItemForm):
 
@@ -850,6 +864,8 @@ Can you figure out what went wrong?
 
 
 * lesson:  mocking requires clear identification of contracts, and testing same.
+
+* keeping: some mid-level integration tests around is a good idea.
 
 
 
