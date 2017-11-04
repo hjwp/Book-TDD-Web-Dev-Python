@@ -1,10 +1,5 @@
 # Outline
 
-TODO:
-
-  - switch to chrome in all tags
-
-
 > 1 day: Outside-in TDD with and without mocks (AKA - "listen to your tests").
 > This day will start with a discussion of the "outside-in" technique, a way of
 > deciding which tests to write, and what code to write, in what order, and how
@@ -18,34 +13,25 @@ TODO:
 
 
 * Intro and installations (15m, t=15)
-* Our example app - tour (5m, t=20)
-* Codebase tour (5m, t=25)
-* Double-loop TDD demo (10m, t=35)
-* Coding challenge 1:  building the "my lists" feature (45m, t=35)
-* Outside-In TDD.  Examples + discussion (20m, t=1h15)
-* Break (15m, t=1h35)
-* Mocks demo: (10m, t=1h50)
-* Next challenge: redo it with a more "purist" approach (15m, t=2h00)
-* Mocks and "Listen to your tests" discussion. (25m, t=2h15)
-* The pitfalls of mocking (15m, t=2h35)
-* Recap + discussion:  the pros and cons of different types of test (15m, t=2h50)
-* end (t=3h00)
-
-
-
-# notes from live session
-- have a better process for outside-in live code bit
-- slides worked well for that bit
-- and for the mocks bit
-- live-coding was fine for mocks intro
-
+* Our example app - tour (2m, t=17)
+* Codebase tour (3m, t=20)
+* Double-loop TDD demo (15m, t=35)
+* Coding challenge 1:  building the "my lists" feature (35m, t=1h10)
+* Outside-In TDD.  Examples + discussion (10m, t=1h20)
+* Break (5m, t=1h25)
+* Mocks demo: (10m, t=1h35)
+* Next challenge: redo it with a more "purist" approach (15m, t=1h45)
+* Mocks and "Listen to your tests" demo/discussion. (20m, t=2h05)
+* The pitfalls of mocking (10m, t=2h15)
+* Recap + discussion:  the pros and cons of different types of test (10m, t=2h25)
+* end (t=2h25)
 
 
 
 # notes from prep
 
-live code demo 1:
-git checkout intermediate-workshop-start-harry
+### live code demo 1:
+git checkout intermediate-workshop-start
 add url #, navbar-left, re-run ft
 move down to test views
 client.get /lists/my_lists/
@@ -57,7 +43,7 @@ add my_lists template
 inherit from base
 add block content, h1
 
-live code demo 2:
+### live code demo 2:
 git checkout end-of-live-code
 my_lists.html
 user.list_set.all
@@ -66,7 +52,7 @@ list.name
 then examples back in main prezzo
 
 
-live code demo 3:
+### live code demo 3:
 mockListClass
 see problem with form
 mockItemForm
@@ -80,7 +66,7 @@ passes but not saving.  hand over
 git clone https://github.com/hjwp/book-example/ tdd-workshop
 cd tdd-workshop
 git checkout intermediate-workshop-start
-mkvirtualenv --python=python3 tdd-workshop  # or however you like to create virtualenvs
+mkvirtualenv --python=python3.6 tdd-workshop  # or however you like to create virtualenvs
 pip install -r requirements.txt
 
 # Take a look around the site  with:
@@ -317,9 +303,7 @@ Tips:
 * `list.get_absolute_url()` will give you a url you can use in an <a> tag for the lists page
 * you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it.  You can inherit from base.html.  note the `extra_content` block will be useful
 * you will need to associate the creation of a new list with the current user, if they're logged in
-* if you need a views test to have a logged-in user, you have two choices
-  - `self.client.force_login(user)`
-  - or, import and call the view function directly with an HttpRequest instance whose .user attribute is set.
+* if you need a views test to have a logged-in user, you can use  `self.client.force_login(user)`
 * if you want to try manually logging in, you'll need to hack a token.  ask me about this on the day.
 
 
