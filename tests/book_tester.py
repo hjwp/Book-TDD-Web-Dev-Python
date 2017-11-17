@@ -268,6 +268,8 @@ class ChapterTest(unittest.TestCase):
     def start_with_checkout(self):
         update_sources_for_chapter(self.chapter_name, self.previous_chapter)
         self.sourcetree.start_with_checkout(self.chapter_name, self.previous_chapter)
+        # simulate virtualenv folder
+        self.sourcetree.run_command('mkdir -p virtualenv/bin virtualenv/lib')
 
 
     def write_to_file(self, codelisting):
