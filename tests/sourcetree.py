@@ -83,7 +83,7 @@ class SourceTree(object):
 
     def run_command(self, command, cwd=None, user_input=None, ignore_errors=False, silent=False):
         if cwd is None:
-            cwd = os.path.join(self.tempdir, 'superlists')
+            cwd = self.tempdir
 
         if command == BOOTSTRAP_WGET:
             shutil.copy(
@@ -136,7 +136,6 @@ class SourceTree(object):
 
     def start_with_checkout(self, chapter, previous_chapter):
         print('starting with checkout')
-        self.run_command('mkdir superlists', cwd=self.tempdir)
         self.run_command('git init .')
         self.run_command('git remote add repo "{}"'.format(
             self.get_local_repo_path(chapter)

@@ -3,6 +3,7 @@
 import os
 import unittest
 
+from book_parser import Output
 from book_tester import (
     ChapterTest,
     CodeListing,
@@ -35,70 +36,16 @@ class Chapter1Test(ChapterTest):
         # self.assertEqual(self.listings[1].skip, True)
 
         self.skip_with_check(6, 'Performing system checks...') # after runserver
-        status1_pos = 20
-        assert self.listings[status1_pos] == 'git status'
-        status2_pos = 26
-        assert self.listings[status2_pos] == 'git status'
+        self.listings[8] = Output(str(self.listings[8]).replace('$', ''))
 
-        startproject_pos = 3
-        assert self.listings[startproject_pos] == 'django-admin.py startproject superlists'
-
-        # first code listing
-        self.recognise_listing_and_process_it()
-
-        # first couple of commands needs manual cwd-setting
-        first_output = self.run_command(self.listings[1], cwd=self.tempdir)
-        self.assert_console_output_correct(first_output, self.listings[2])
-        self.run_command(self.listings[startproject_pos], cwd=self.tempdir)
-
-        # 4. tree
-        self.assert_directory_tree_correct(self.listings[4], cwd=self.tempdir)
-        self.pos = 5
-
-        # 6. runserver
-        self.recognise_listing_and_process_it()
-        self.pos += 1
-
-        second_ft_run_output = self.run_command(self.listings[self.pos], cwd=self.tempdir)
-        self.assertFalse(second_ft_run_output)
-        self.pos += 1
-
-        self.assertEqual(self.listings[self.pos].strip(), '$')
-        self.listings[self.pos].was_checked = True
-        self.pos += 1
-
-        ls_output = self.run_command(self.listings[self.pos], cwd=self.tempdir)
-        self.pos += 1
-        self.assert_console_output_correct(
-            ls_output, self.listings[self.pos], ls=True
-        )
-        self.pos += 1
-        self.run_command(self.listings[self.pos], cwd=self.tempdir) # mv
-        self.pos += 1
-        self.run_command(self.listings[self.pos], cwd=self.tempdir) # cd
-        self.pos += 1
-
-        while self.pos < status1_pos:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
-
-        status1_output = self.run_command(self.listings[status1_pos])
-        expected_output = self.listings[status1_pos + 1]
-        self.assert_console_output_correct(status1_output, expected_output)
-        self.pos = status1_pos + 2
-
-        while self.pos < status2_pos:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
-
-        status2_output = self.run_command(self.listings[status2_pos])
-        expected_output = self.listings[status2_pos + 1]
-        self.assert_console_output_correct(status2_output, expected_output)
-        self.pos = status2_pos + 2
+        # prep folder as it would be
+        self.sourcetree.run_command('mkdir -p virtualenv/bin')
+        self.sourcetree.run_command('mkdir -p virtualenv/lib')
 
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
+
 
         self.assert_all_listings_checked(self.listings)
 
@@ -112,11 +59,6 @@ class Chapter1Test(ChapterTest):
         self.sourcetree.run_command(
             'git fetch repo'
         )
-
-        # manual fix of dev settings docs links
-        # self.sourcetree.run_command(
-        #     'sed -i "s:/dev/:/1.7/:g" superlists/settings.py'
-        # )
 
         self.check_final_diff(ignore=[
             "SECRET_KEY",

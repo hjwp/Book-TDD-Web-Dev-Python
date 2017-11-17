@@ -384,14 +384,15 @@ class ChapterTest(unittest.TestCase):
             )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
-        print('checking expected output', expected.encode('utf-8'))
+        print('checking expected output', expected)
+        print('against actual', actual)
         self.assertEqual(
             type(expected), Output,
             "passed a non-Output to run-command:\n%s" % (expected,)
         )
 
         if self.tempdir in actual:
-            actual = actual.replace(self.tempdir, '/...')
+            actual = actual.replace(self.tempdir, '...python-tdd-book')
             actual = actual.replace('/private', '')  # macos thing
 
         if ls:
@@ -432,6 +433,8 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_callouts(expected_fixed)
         expected_fixed = standardise_assertionerror_none(expected_fixed)
 
+        actual_fixed = actual_fixed.replace('\xa0', ' ')
+        expected_fixed = expected_fixed.replace('\xa0', ' ')
         if '\t' in actual_fixed:
             actual_fixed = re.sub(r'\s+', ' ', actual_fixed)
             expected_fixed = re.sub(r'\s+', ' ', expected_fixed)
