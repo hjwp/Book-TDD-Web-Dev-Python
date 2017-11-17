@@ -276,7 +276,7 @@ class ChapterTest(unittest.TestCase):
             "passed a non-Codelisting to write_to_file:\n%s" % (codelisting,)
         )
         print('writing to file', codelisting.filename)
-        write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
+        write_to_file(codelisting, self.tempdir)
 
 
     def apply_patch(self, codelisting):
