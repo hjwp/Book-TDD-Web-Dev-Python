@@ -18,6 +18,7 @@ class Chapter9bTest(ChapterTest):
         self.assertEqual(self.listings[3].skip, True)
 
         self.start_with_checkout()
+        self.sourcetree.run_command('mkdir -p static/stuff')
 
         # skips
         self.skip_with_check(36, 'git status')
