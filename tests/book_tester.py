@@ -292,7 +292,7 @@ class ChapterTest(unittest.TestCase):
         self.assertNotIn('malformed', patch_output)
         self.assertNotIn('failed', patch_output.lower())
         codelisting.was_checked = True
-        with open(os.path.join(self.tempdir, 'superlists', codelisting.filename)) as f:
+        with open(os.path.join(self.tempdir, codelisting.filename)) as f:
             print(f.read())
         os.remove(tf.name)
         self.pos += 1
@@ -479,16 +479,10 @@ class ChapterTest(unittest.TestCase):
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.sourcetree.run_command('tree -I *.pyc --noreport', cwd)
         # special case for first listing:
-        original_tree = expected_tree
-        if expected_tree.startswith('superlists/'):
-            expected_tree = Output(
-                expected_tree.replace('superlists/', '.', 1)
-            )
         # actual_tree = actual_tree.replace('\xa0\xa0', ' ')
         # expected_tree = Output(expected_tree.replace('\xa0\xa0', ' '))
 
         self.assert_console_output_correct(actual_tree, expected_tree)
-        original_tree.was_checked = True
 
 
     def assert_all_listings_checked(self, listings, exceptions=[]):
@@ -582,11 +576,11 @@ class ChapterTest(unittest.TestCase):
     def check_qunit_output(self, expected_output):
         lists_tests = os.path.join(
             self.tempdir,
-            'superlists/lists/static/tests/tests.html'
+            'lists/static/tests/tests.html'
         )
         accounts_tests_exist = os.path.exists(os.path.join(
             self.sourcetree.tempdir,
-            'superlists', 'accounts', 'static', 'tests', 'tests.html'
+            'accounts/static/tests/tests.html'
         ))
 
         accounts_tests = lists_tests.replace('/lists/', '/accounts/')
@@ -698,14 +692,14 @@ class ChapterTest(unittest.TestCase):
 
 
     def run_unit_tests(self):
-        if os.path.exists(os.path.join(self.tempdir, 'superlists', 'accounts', 'tests')):
+        if os.path.exists(os.path.join(self.tempdir, 'accounts', 'tests')):
             return self.run_command(Command("python manage.py test lists accounts"))
         else:
             return self.run_command(Command("python manage.py test lists"))
 
 
     def run_fts(self):
-        if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
+        if os.path.exists(os.path.join(self.tempdir, 'functional_tests')):
             return self.run_command(Command("python manage.py test functional_tests"))
         else:
             return self.run_command(Command("python functional_tests.py"))

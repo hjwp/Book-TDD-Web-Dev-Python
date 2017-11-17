@@ -67,7 +67,7 @@ class SourceTree(object):
 
 
     def get_contents(self, path):
-        with open(os.path.join(self.tempdir, 'superlists', path)) as f:
+        with open(os.path.join(self.tempdir, path)) as f:
             return f.read()
 
 
