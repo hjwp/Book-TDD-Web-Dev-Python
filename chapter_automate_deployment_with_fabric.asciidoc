@@ -72,25 +72,43 @@ import random
 REPO_URL = 'https://github.com/hjwp/book-example.git'  #<1>
 
 def deploy():
-    site_folder = f'/home/{env.user}/sites/{env.host}'  #<2><3>
-    source_folder = site_folder + '/source'
-    _create_directory_structure_if_necessary(site_folder)
-    _get_latest_source(source_folder)
-    _update_settings(source_folder, env.host)  #<2>
-    _update_virtualenv(source_folder)
-    _update_static_files(source_folder)
-    _update_database(source_folder)
+    site_folder = f'/home/{env.user}/sites/{env.host}'  #<2>
+    run(f'mkdir -p {site_folder}') <3><4>
+    with cd(site_folder):  #<5>
+        _get_latest_source()
+        _update_settings(env.host)  #<3>
+        _update_virtualenv()
+        _update_static_files()
+        _update_database()
 ----
 ====
 
 <1> You'll want to update the `REPO_URL` variable with the URL of your
     own Git repo on its code-sharing site.
 
-<2> `env.host` will contain the address of the server we've specified at the 
-    command line (e.g., 'superlists.ottg.eu').
+<2> `env.user` will contain the username you're using to log in to the server;
+    `env.host` will be the address of the server we've specified at the command
+    line (e.g., 'superlists.ottg.eu').footnote:[If you're
+    wondering why we're building up paths manually with f-strings instead of
+    the `os.path.join` command we saw earlier, it's because `path.join` will
+    use backslashes if you run the script from Windows, but we definitely want
+    forward slashes on the server. That's a common gotcha!]
 
-<3> `env.user` will contain the username you're using to log in to the server.
+<3> `run` is the most common Fabric command.  It says "run this shell command
+    on the server".  The `run` commands in this chapter will replicate many
+    of the commands we did manually in the last two.
 
+<4> `mkdir -p` is a useful flavour of `mkdir`, which is better in two ways: it 
+    can create directories several levels deep, and it only creates them 
+    if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory 'bar'
+    but also its parent directory 'foo' if it needs to.  It also won't complain
+    if 'bar' already exists.
+
+<5> `cd` is a fabric context manager that says "run all the following
+    statements inside this working directory".footnote:[You may be
+    wondering why we didn't just use `run` to do the `cd`. It's because Fabric
+    doesn't store any state from one command to the next--each `run` command
+    runs in a separate shell session on the server.]
 
 Hopefully all of those helper functions have fairly self-descriptive names.
 Because any function in a fabfile can theoretically be invoked from the
@@ -98,39 +116,9 @@ command line, I've used the convention of a leading underscore to indicate
 that they're not meant to be part of the "public API" of the fabfile. Let's
 take a look at each one, in chronological order.
 
+
+
 [role="pagebreak-before"]
-Creating the Directory Structure
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Here's how we build our directory structure, in a way that doesn't fall 
-down if it already exists:
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py (ch09l002)
-====
-[source,python]
-----
-def _create_directory_structure_if_necessary(site_folder):
-    for subfolder in ('database', 'static', 'virtualenv', 'source'):
-        run(f'mkdir -p {site_folder}/{subfolder}')  #<1><2>
-----
-====
-
-<1> `run` is the most common Fabric command.  It says "run this shell command
-    on the server".  The `run` commands in this chapter will replicate many
-    of the commands we did manually in the last two.
-
-<2> `mkdir -p` is a useful flavour of `mkdir`, which is better in two ways: it 
-    can create directories several levels deep, and it only creates them 
-    if necessary.  So, `mkdir -p /tmp/foo/bar` will create the directory 'bar'
-    but also its parent directory 'foo' if it needs to.  It also won't complain
-    if 'bar' already 
-    exists.footnote:[If you're wondering why we're building up paths manually
-with f-strings instead of the `os.path.join` command we saw earlier, it's
-because `path.join` will use backslashes if you run the script from Windows,
-but we definitely want forward slashes on the server. That's a common gotcha!]
-
-
 Pulling Down Our Source Code with Git
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -143,25 +131,19 @@ like we did with `git pull` in the previous chapters:
 ====
 [source,python]
 ----
-def _get_latest_source(source_folder):
-    if exists(source_folder + '/.git'):  #<1>
-        run(f'cd {source_folder} && git fetch')  #<2><3>
+def _get_latest_source():
+    if exists('.git'):  #<1>
+        run('git fetch')  #<2><3>
     else:
-        run(f'git clone {REPO_URL} {source_folder}')  #<4>
+        run(f'git clone {REPO_URL} .'))  #<4>
     current_commit = local("git log -n 1 --format=%H", capture=True)  #<5>
-    run(f'cd {source_folder} && git reset --hard {current_commit}')  #<6>
+    run(f'git reset --hard {current_commit}')  #<6>
 ----
 ====
 
 <1> `exists` checks whether a directory or file already exists on the server.
     We look for the '.git' hidden folder to check whether the repo has already
-    been cloned in that folder.
-
-<2> Many commands start with a `cd` in order to set the current working
-    directory. Fabric doesn't have any state, so it doesn't remember what
-    directory you're in from one `run` to the next.footnote:[There is a Fabric
-    "cd" command, but I figured it was one thing too many to add in this
-    chapter.]
+    been cloned in our site folder.
 
 <3> `git fetch` inside an existing repository pulls down all the latest commits
     from the web (it's like `git pull`, but without immediately updating the
@@ -171,11 +153,11 @@ def _get_latest_source(source_folder):
     source tree.
 
 <5> Fabric's `local` command runs a command on your local machine--it's just
-    a wrapper around `subprocess.Popen` really, but it's quite convenient.
+    a wrapper around `subprocess.call` really, but it's quite convenient.
     Here we capture the output from that `git log` invocation to get the ID
     of the current commit that's on your local PC.  That means the server
     will end up with whatever code is currently checked out on your machine
-    (as long as you've pushed it up to the server).
+    (as long as you've pushed it up to the server.  Another common gotcha!).
 
 <6> We `reset --hard` to that commit, which will blow away any current changes
     in the server's code directory.
@@ -208,21 +190,33 @@ variables, and to create a new `SECRET_KEY`:
 ----
 def _update_settings(source_folder, site_name):
     settings_path = source_folder + '/superlists/settings.py'
+    sed(settings_path, "DEBUG = True", "DEBUG = False")
+    sed(settings_path,
+        'ALLOWED_HOSTS =.+$',
+        f'ALLOWED_HOSTS = ["{site_name}"]'
+    )
+    secret_key_file = source_folder + '/superlists/secret_key.py'
+    if not exists(secret_key_file):
+        chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
+        key = ''.join(random.SystemRandom().choice(chars) for _ in range(50))
+        append(secret_key_file, f'SECRET_KEY = "{key}"')
+    append(settings_path, '\nfrom .secret_key import SECRET_KEY')
+
+def _update_settings(site_name):
+    settings_path = 'superlists/settings.py'
     sed(settings_path, "DEBUG = True", "DEBUG = False")  #<1>
     sed(settings_path,
         'ALLOWED_HOSTS =.+$',
         f'ALLOWED_HOSTS = ["{site_name}"]'  #<2>
     )
-    secret_key_file = source_folder + '/superlists/secret_key.py'
+    secret_key_file = 'superlists/secret_key.py'
     if not exists(secret_key_file):  #<3>
         chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
-        key = ''.join(random.SystemRandom().choice(chars) for _ in range(50))
+        key = ''.join(random.SystemRandom().choices(chars, k=50))
         append(secret_key_file, f'SECRET_KEY = "{key}"')
     append(settings_path, '\nfrom .secret_key import SECRET_KEY')  #<4><5>
 ----
 ====
-
-//TODO: ''.join(random.SystemRandom().choices(chars, k=50))
 
 <1> The Fabric `sed` command does a string substitution in a file; here it's
     changing `DEBUG` from `True` to `False`.  
@@ -253,6 +247,7 @@ NOTE: Hacking the settings file like this is one way of changing configuration
     We'll see that in <<chapter_server_side_debugging>>.  See which one you
     like best.
 
+
 [role="pagebreak-before"]
 Updating the Virtualenv
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -265,10 +260,15 @@ Next we create or update the virtualenv:
 [source,python]
 ----
 def _update_virtualenv(source_folder):
-    virtualenv_folder = source_folder + '/../virtualenv'
-    if not exists(virtualenv_folder + '/bin/pip'):  #<1>
+    virtualenv_folder = source_folder + '/virtualenv'
+    if not exists(virtualenv_folder + '/bin/pip'):
         run(f'python3.6 -m venv {virtualenv_folder}')
-    run(f'{virtualenv_folder}/bin/pip install -r {source_folder}/requirements.txt')  #<2>
+    run(f'{virtualenv_folder}/bin/pip install -r {source_folder}/requirements.txt')
+
+def _update_virtualenv():
+    if not exists('virtualenv/bin/pip'):  #<1>
+        run(f'python3.6 -m venv virtualenv')
+    run('./virtualenv/bin/pip install -r requirements.txt')  #<2>
 ----
 ====
 
@@ -286,26 +286,19 @@ Updating static files is a single command:
 ====
 [source,python]
 ----
-def _update_static_files(source_folder):
-    run(
-        f'cd {source_folder}'  #<1>
-        ' && ../virtualenv/bin/python manage.py collectstatic --noinput'  #<2>
-    )
+def _update_static_files():
+    run('./virtualenv/bin/python manage.py collectstatic --noinput')  #<1>
 ----
 ====
 
-<1> You can split long strings across multiple lines like this in Python; they
-    concatenate to a single string. It's a common source of bugs when what you
-    actually wanted was a list of strings, but you forgot a comma!
-
-<2> We use the virtualenv binaries folder whenever we need to run a Django 
+<1> We use the virtualenv version of Python whenever we need to run a Django 
     'manage.py' command, to make sure we get the virtualenv version of Django,
     not the system one.
 
 
+
 Migrating the Database If Necessary
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 
 
 Finally, we update the database with `manage.py migrate`:
@@ -315,16 +308,13 @@ Finally, we update the database with `manage.py migrate`:
 ====
 [source,python]
 ----
-def _update_database(source_folder):
-    run(
-        f'cd {source_folder}'
-        ' && ../virtualenv/bin/python manage.py migrate --noinput'
-    )
+def _update_database():
+    run('./virtualenv/bin/python manage.py migrate --noinput')  #<1>
 ----
 ====
 
-The `--noinput` removes any interactive yes/no confirmations that Fabric
-would find hard to deal with.
+<1> The `--noinput` removes any interactive yes/no confirmations that Fabric
+    would find hard to deal with.
 
 
 And we're done!  Lots of new things to take in, I imagine, but I hope you
