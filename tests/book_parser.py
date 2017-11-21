@@ -131,7 +131,7 @@ def parse_output(listing):
 
         command_text = fix_newlines(command.text)
         if output_before.strip().startswith('(virtualenv)'):
-            command_text = 'source ../virtualenv/bin/activate && ' + command_text
+            command_text = 'source ./virtualenv/bin/activate && ' + command_text
         outputs.append(Command(command_text))
 
         output_before = fix_newlines(command.tail)

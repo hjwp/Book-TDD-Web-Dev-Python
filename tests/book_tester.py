@@ -355,15 +355,14 @@ class ChapterTest(unittest.TestCase):
         if not os.path.exists(virtualenv_path):
             print('preparing virtualenv')
             self.sourcetree.run_command(
-                'python3.6 -m venv ../virtualenv'
+                'python3.6 -m venv virtualenv'
             )
             self.sourcetree.run_command(
-                '../virtualenv/bin/python -m pip install -r requirements.txt'
+                './virtualenv/bin/python -m pip install -r requirements.txt'
             )
 
 
     def prep_database(self):
-        self.sourcetree.run_command('mkdir ../database')
         self.sourcetree.run_command('python manage.py migrate --noinput')
 
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+import subprocess
 from textwrap import dedent
 
 from book_tester import (
@@ -13,13 +14,10 @@ from book_tester import (
 
 )
 from book_parser import (
+    CodeListing,
     Command,
     Output,
 )
-from test_write_to_file import *  # noqa
-from test_book_parser import *  # noqa
-from test_source_updater import *  # noqa
-from test_sourcetree import *  # noqa
 
 
 
@@ -204,13 +202,13 @@ class RunServerCommandTest(ChapterTest):
     def DONTtest_hacks_in_dtach_for_runserver(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
         self.run_server_command('cd /foo/$SITENAME')
-        self.run_server_command('source ../virtualenv/bin/activate && python3 manage.py runserver')
+        self.run_server_command('source ./virtualenv/bin/activate && python3 manage.py runserver')
         mock_subprocess.check_output.assert_called_with(
             [
                 'python2.7',
                 self.RUN_SERVER_PATH,
                 'SITENAME=superlists-staging.ottg.eu;'
-                ' cd /foo/$SITENAME && source ../virtualenv/bin/activate'
+                ' cd /foo/$SITENAME && source ./virtualenv/bin/activate'
                 ' && dtach -n /tmp/dtach.sock python3 manage.py runserver'
             ],
         )

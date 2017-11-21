@@ -166,7 +166,7 @@ class ParseCodeListingTest(unittest.TestCase):
         listings = parse_listing(node)
         print(listings)
         virtualenv_command = listings[1]
-        self.assertEqual(virtualenv_command, 'source ../virtualenv/bin/activate && python manage.py test lists')
+        self.assertEqual(virtualenv_command, 'source ./virtualenv/bin/activate && python manage.py test lists')
         self.assertEqual(len(listings), 3)
 
 
