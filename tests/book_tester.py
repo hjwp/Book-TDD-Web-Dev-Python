@@ -31,7 +31,7 @@ SLIMERJS_BINARY = os.path.join(
     'slimerjs-0.9.0/slimerjs'
 )
 
-DO_SERVER_COMMANDS = False
+DO_SERVER_COMMANDS = True
 
 
 def contains(inseq, subseq):
@@ -329,6 +329,8 @@ class ChapterTest(unittest.TestCase):
             self.current_server_cd = cd_finder.match(command).group(1)
         if command.startswith('sudo apt-get install '):
             command = command.replace('install ', 'install -y ')
+        if command.startswith('sudo add-apt-repository'):
+            command = command.replace('add-apt-repository ', 'apt-add-repository -y ')
         if self.current_server_cd:
             command = f'cd {self.current_server_cd}&& {command}'
         if '$SITENAME' in command:
@@ -340,7 +342,7 @@ class ChapterTest(unittest.TestCase):
             )
 
         print('running command on server', command)
-        commands = ['python2.7', self.RUN_SERVER_PATH]
+        commands = [self.RUN_SERVER_PATH]
         if ignore_errors:
             commands.append('--ignore-errors')
         commands.append(command)
@@ -812,7 +814,7 @@ class ChapterTest(unittest.TestCase):
             if next_listing.type == 'output' and not next_listing.skip:
                 if DO_SERVER_COMMANDS:
                     for line in next_listing.split('\n'):
-                        assert line.strip() in server_output
+                        self.assertIn(line.split('[...]')[0].strip(), server_output)
                 next_listing.was_checked = True
                 self.pos += 1
 
