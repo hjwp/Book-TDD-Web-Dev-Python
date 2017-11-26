@@ -16,7 +16,6 @@ class Chapter9Test(ChapterTest):
         # sanity checks
         self.assertEqual(self.listings[0].type, 'code listing with git ref')
         self.assertEqual(self.listings[1].type, 'test')
-        self.assertEqual(self.listings[3].skip, True)
 
         self.start_with_checkout()
 
