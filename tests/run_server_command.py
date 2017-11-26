@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 """Run command on dev server
 
 Usage:
@@ -12,13 +12,15 @@ Options:
 
 from docopt import docopt
 from fabric.api import env, run
+import os
 from fabric.contrib.files import put
 import sys
 import tempfile
 
-SERVER_ADDRESS = 'superlists.ottg.eu'
-env.host_string = SERVER_ADDRESS
-env.user = 'harry'
+env.host_string = 'superlists-staging.ottg.eu'
+env.port = '2222'
+env.key_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../.vagrant/machines/default/virtualbox/private_key')
+env.user = 'ubuntu'
 env.warn_only = False
 
 def run_command(command, ignore_errors):
@@ -35,10 +37,10 @@ def write_file(source, target):
 
     try:
         env.warn_only = True
-        result = run('mv %s %s' % (tf.name, target))
+        result = run(f'mv {tf.name} {target}')
         if result.failed:
-            print >> sys.stderr, 'got result %s when trying to move file to target, retrying with sudo' % (result,)
-            run('sudo mv %s %s' % (tf.name, target))
+            print('got result {result} when trying to move file to target, retrying with sudo', file=sys.stderr)
+            result = run(f'sudo mv {tf.name} {target}')
     finally:
         env.warn_only = False
 

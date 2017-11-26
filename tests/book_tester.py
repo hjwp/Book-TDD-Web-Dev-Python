@@ -330,7 +330,7 @@ class ChapterTest(unittest.TestCase):
         if command.startswith('sudo apt-get install '):
             command = command.replace('install ', 'install -y ')
         if self.current_server_cd:
-            command = 'cd %s && %s' % (self.current_server_cd, command)
+            command = f'cd {self.current_server_cd}&& {command}'
         if '$SITENAME' in command:
             command = 'SITENAME=superlists-staging.ottg.eu; ' + command
         if command.endswith('python manage.py runserver'):
