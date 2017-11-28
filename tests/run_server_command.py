@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.6
 """Run command on dev server
 
 Usage:
@@ -42,7 +42,7 @@ def write_file(source, target):
         env.warn_only = True
         result = run(f'mv {tf.name} {target}')
         if result.failed:
-            print('got result {result} when trying to move file to target, retrying with sudo', file=sys.stderr)
+            print(f'got result {result} when trying to move file to target, retrying with sudo', file=sys.stderr)
             result = run(f'sudo mv {tf.name} {target}')
     finally:
         env.warn_only = False

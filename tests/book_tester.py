@@ -391,7 +391,7 @@ class ChapterTest(unittest.TestCase):
             tf.write(contents.encode('utf8'))
             tf.flush()
             output = subprocess.check_output(
-                ['python2.7', self.RUN_SERVER_PATH, tf.name, target]
+                [self.RUN_SERVER_PATH, tf.name, target]
             ).decode('utf8')
             print(output)
 
@@ -835,7 +835,11 @@ class ChapterTest(unittest.TestCase):
             if next_listing.type == 'output' and not next_listing.skip:
                 if DO_SERVER_COMMANDS:
                     for line in next_listing.split('\n'):
-                        self.assertIn(line.split('[...]')[0].strip(), server_output)
+                        line = line.split('[...]')[0].strip()
+                        line = re.sub(r'\s+', ' ', line)
+                        server_output = server_output.replace('/home/ubuntu', '/home/elspeth')
+                        server_output = re.sub(r'\s+', ' ', server_output)
+                        self.assertIn(line, server_output)
                 next_listing.was_checked = True
                 self.pos += 1
 

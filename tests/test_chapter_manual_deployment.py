@@ -10,12 +10,6 @@ class Chapter9Test(ChapterTest):
     chapter_name = 'chapter_manual_deployment'
     previous_chapter = 'chapter_prettification'
 
-    def setUp(self):
-        super().setUp()
-        if DO_SERVER_COMMANDS:
-            subprocess.check_call(['vagrant', 'snapshot', 'restore', 'MANUAL_1'])
-
-
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
 
@@ -27,7 +21,11 @@ class Chapter9Test(ChapterTest):
 
         # skips
         self.skip_with_check(18, 'replace the URL in the next line with')
+        self.skip_with_check(29, 'do some git config first')
+        self.skip_with_check(38, 'Performing system checks')
 
+        if DO_SERVER_COMMANDS:
+            subprocess.check_call(['vagrant', 'snapshot', 'restore', 'MANUAL_1'])
 
         # hack fast-forward
         skip = True
