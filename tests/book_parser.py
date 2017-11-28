@@ -24,6 +24,7 @@ class CodeListing(object):
         self.was_written = False
         self.skip = False
         self.currentcontents = False
+        self.against_server = False
 
 
     def is_diff(self):
@@ -53,6 +54,7 @@ class Command(str):
         self.was_run = False
         self.skip = False
         self.server_command = False
+        self.against_server = False
         self.dofirst = None
         str.__init__(a_string)
 
@@ -89,6 +91,7 @@ class Output(str):
         self.skip = False
         self.dofirst = None
         self.qunit_output = False
+        self.against_server = False
         str.__init__(a_string)
 
     @property
@@ -195,6 +198,9 @@ def parse_listing(listing):
         for listing in outputs:
             if isinstance(listing, Command):
                 listing.server_command = True
+    if 'against-server' in classes:
+        for listing in outputs:
+            listing.against_server = True
 
     return outputs
 

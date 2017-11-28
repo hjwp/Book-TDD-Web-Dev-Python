@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from lxml import html
+from getpass import getuser
 import io
 import os
 import stat
@@ -31,7 +32,11 @@ SLIMERJS_BINARY = os.path.join(
     'slimerjs-0.9.0/slimerjs'
 )
 
+
 DO_SERVER_COMMANDS = True
+if getuser() == 'jenkins':
+    DO_SERVER_COMMANDS = False
+
 
 
 def contains(inseq, subseq):
@@ -719,6 +724,11 @@ class ChapterTest(unittest.TestCase):
             print("SKIP")
             listing.was_checked = True
             listing.was_written = True
+            self.pos += 1
+        elif listing.against_server and not DO_SERVER_COMMANDS:
+            print("SKIP AGAINST SERVER")
+            listing.was_checked = True
+            listing.was_run = True
             self.pos += 1
         elif listing.type == 'test':
             print("TEST RUN")
