@@ -332,19 +332,30 @@ class ChapterTest(unittest.TestCase):
         cd_finder = re.compile(r'cd (.+)$')
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
+            print('adding server cd', self.current_server_cd)
         if command.startswith('sudo apt-get install '):
             command = command.replace('install ', 'install -y ')
         if command.startswith('sudo add-apt-repository'):
             command = command.replace('add-apt-repository ', 'apt-add-repository -y ')
+        if command.startswith('git clone https://github.com/hjwp/book-example.git'):
+            command = command.replace(
+                'git clone https://github.com/hjwp/book-example.git',
+                'git clone -b chapter_manual_deployment https://github.com/hjwp/book-example.git'
+            )
         if self.current_server_cd:
             command = f'cd {self.current_server_cd}&& {command}'
         if '$SITENAME' in command:
             command = 'SITENAME=superlists-staging.ottg.eu; ' + command
         if command.endswith('python manage.py runserver'):
-            command = command.replace(
-                'python manage.py runserver',
-                'dtach -n /tmp/dtach.sock python manage.py runserver'
-            )
+            if './virtualenv/bin/python' in command:
+                command = command.replace(
+                    './virtualenv/bin/python manage.py runserver',
+                    'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
+                )
+            else:
+                # special case first runserver errors
+                ignore_errors = True
+                command = command.replace('python manage.py', 'python3 manage.py')
 
         print('running command on server', command)
         commands = [self.RUN_SERVER_PATH]

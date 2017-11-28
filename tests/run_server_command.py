@@ -21,14 +21,17 @@ env.host_string = 'superlists-staging.ottg.eu'
 # env.port = '2222'
 env.key_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../.vagrant/machines/default/virtualbox/private_key')
 env.user = 'ubuntu'
-env.warn_only = False
+env.disable_known_hosts = True
+env.warn_only = True
 
 def run_command(command, ignore_errors):
-    try:
-        env.warn_only = ignore_errors
-        run(command)
-    finally:
-        env.warn_only = False
+    env.warn_only = True
+    result = run(command)
+    print(result)
+    if result.failed and not ignore_errors:
+        raise Exception(
+            f'server command run returned error code {result.return_code}, output was:\n{result.stderr}\n{result}'
+        )
 
 
 def write_file(source, target):
