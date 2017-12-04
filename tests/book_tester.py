@@ -333,7 +333,7 @@ class ChapterTest(unittest.TestCase):
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
             print('adding server cd', self.current_server_cd)
-        if command.startswith('sudo apt-get install '):
+        if command.startswith('sudo apt install '):
             command = command.replace('install ', 'install -y ')
         if command.startswith('sudo add-apt-repository'):
             command = command.replace('add-apt-repository ', 'apt-add-repository -y ')
@@ -723,6 +723,66 @@ class ChapterTest(unittest.TestCase):
         else:
             return self.run_command(Command("python functional_tests.py"))
 
+    def run_interactive_manage_py(self, listing):
+        output_before = self.listings[self.pos + 1]
+        assert isinstance(output_before, Output)
+
+        LIKELY_INPUTS = ('yes', 'no', '1', '2', "''")
+        user_input = self.listings[self.pos + 2]
+        if isinstance(user_input, Command) and user_input in LIKELY_INPUTS:
+            if user_input == 'yes':
+                print('yes case')
+                # in this case there is moar output after the yes
+                output_after = self.listings[self.pos + 3]
+                assert isinstance(output_after, Output)
+                expected_output = Output(wrap_long_lines(output_before + ' ' + output_after.lstrip()))
+                next_output = None
+            elif user_input == '1':
+                print('migrations 1 case')
+                # in this case there is another hop
+                output_after = self.listings[self.pos + 3]
+                assert isinstance(output_after, Output)
+                first_input = user_input
+                next_input = self.listings[self.pos + 4]
+                assert isinstance(next_input, Command)
+                next_output = self.listings[self.pos + 5]
+                expected_output = Output(wrap_long_lines(
+                    output_before + '\n' + output_after + '\n' + next_output
+                ))
+                user_input = Command(first_input + '\n' + next_input)
+            else:
+                expected_output = output_before
+                output_after = None
+                next_output = None
+            if user_input == '2':
+                ignore_errors = True
+            else:
+                ignore_errors = False
+
+        else:
+            user_input = None
+            expected_output = output_before
+            output_after = None
+            ignore_errors = True
+            next_output = None
+
+        output = self.run_command(listing, user_input=user_input, ignore_errors=ignore_errors)
+        self.assert_console_output_correct(output, expected_output)
+
+        listing.was_checked = True
+        output_before.was_checked = True
+        self.pos += 2
+        if user_input is not None:
+            user_input.was_run = True
+            self.pos += 1
+        if output_after is not None:
+            output_after.was_checked = True
+            self.pos += 1
+        if next_output is not None:
+            self.pos += 2
+            next_output.was_checked = True
+            first_input.was_run = True
+            next_input.was_run = True
 
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
@@ -756,71 +816,9 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'git commit':
             print("COMMIT")
             self.check_commit(self.pos)
-
         elif listing.type == 'interactive manage.py':
             print("INTERACTIVE MANAGE.PY")
-            output_before = self.listings[self.pos + 1]
-            assert isinstance(output_before, Output)
-
-            LIKELY_INPUTS = ('yes', 'no', '1', '2', "''")
-            user_input = self.listings[self.pos + 2]
-            if isinstance(user_input, Command) and user_input in LIKELY_INPUTS:
-                if user_input == 'yes':
-                    print('yes case')
-                    # in this case there is moar output after the yes
-                    output_after = self.listings[self.pos + 3]
-                    assert isinstance(output_after, Output)
-                    expected_output = Output(wrap_long_lines(output_before + ' ' + output_after.lstrip()))
-                    next_output = None
-                elif user_input == '1':
-                    print('migrations 1 case')
-                    # in this case there is another hop
-                    output_after = self.listings[self.pos + 3]
-                    assert isinstance(output_after, Output)
-                    first_input = user_input
-                    next_input = self.listings[self.pos + 4]
-                    assert isinstance(next_input, Command)
-                    next_output = self.listings[self.pos + 5]
-                    expected_output = Output(wrap_long_lines(
-                        output_before + '\n' + output_after + '\n' + next_output
-                    ))
-                    user_input = Command(first_input + '\n' + next_input)
-                else:
-                    expected_output = output_before
-                    output_after = None
-                    next_output = None
-                if user_input == '2':
-                    ignore_errors = True
-                else:
-                    ignore_errors = False
-
-            else:
-                user_input = None
-                expected_output = output_before
-                output_after = None
-                ignore_errors = True
-                next_output = None
-
-            output = self.run_command(listing, user_input=user_input, ignore_errors=ignore_errors)
-            self.assert_console_output_correct(output, expected_output)
-
-            listing.was_checked = True
-            output_before.was_checked = True
-            self.pos += 2
-            if user_input is not None:
-                user_input.was_run = True
-                self.pos += 1
-            if output_after is not None:
-                output_after.was_checked = True
-                self.pos += 1
-            if next_output is not None:
-                self.pos += 2
-                next_output.was_checked = True
-                first_input.was_run = True
-                next_input.was_run = True
-
-
-
+            self.run_interactive_manage_py(listing)
         elif listing.type == 'tree':
             print("TREE")
             self.assert_directory_tree_correct(listing)
@@ -845,7 +843,7 @@ class ChapterTest(unittest.TestCase):
 
         elif listing.type == 'other command':
             print("A COMMAND")
-            output = self.run_command(listing)
+            output = self.run_command(listing, ignore_errors=listing.ignore_errors)
             next_listing = self.listings[self.pos + 1]
             if next_listing.type == 'output' and not next_listing.skip:
                 ls = listing.startswith('ls')

@@ -53,6 +53,7 @@ class Command(str):
     def __init__(self, a_string):
         self.was_run = False
         self.skip = False
+        self.ignore_errors = False
         self.server_command = False
         self.against_server = False
         self.dofirst = None
@@ -194,6 +195,10 @@ def parse_listing(listing):
             listing.skip = True
     if dofirst:
         outputs[0].dofirst = dofirst
+    if 'ignore-errors' in classes:
+        for listing in outputs:
+            if isinstance(listing, Command):
+                listing.ignore_errors = True
     if 'server-commands' in classes:
         for listing in outputs:
             if isinstance(listing, Command):

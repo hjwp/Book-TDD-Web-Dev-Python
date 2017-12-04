@@ -20,10 +20,9 @@ class Chapter9Test(ChapterTest):
         self.start_with_checkout()
 
         # skips
-        self.skip_with_check(18, 'replace the URL in the next line with')
-        self.skip_with_check(29, 'do some git config first')
-        self.skip_with_check(38, 'Performing system checks')
-        self.skip_with_check(41, 'check this still has our site')
+        self.skip_with_check(14, 'replace the URL in the next line with')
+        self.skip_with_check(25, 'do some git config first')
+        self.skip_with_check(34, 'Performing system checks')
 
         if DO_SERVER_COMMANDS:
             subprocess.check_call(['vagrant', 'snapshot', 'restore', 'MANUAL_1'])

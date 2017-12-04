@@ -94,6 +94,8 @@ class SourceTree(object):
         actual_command = command
         if command.startswith('fab deploy'):
             actual_command = 'cd deploy_tools && ' + command
+        if command.startswith('curl'):
+            actual_command = command.replace('curl', 'curl --silent --show-error')
         process = subprocess.Popen(
             actual_command, shell=True, cwd=cwd, executable='/bin/bash',
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -105,6 +107,7 @@ class SourceTree(object):
         self.processes.append(process)
         if 'runserver' in command:
             # can't read output, stdout.read just hangs.
+            # TODO: readline?
             return
 
         if user_input and not user_input.endswith('\n'):

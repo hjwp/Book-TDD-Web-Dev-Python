@@ -21,9 +21,9 @@ class Chapter9bTest(ChapterTest):
         self.sourcetree.run_command('mkdir -p static/stuff')
 
         # skips
+        self.skip_with_check(12, 'check this still has our site')
         self.skip_with_check(36, 'git status')
         self.skip_with_check(37, 'see three new files')
-
 
         # hack fast-forward
         skip = False
