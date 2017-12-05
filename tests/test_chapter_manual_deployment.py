@@ -23,17 +23,26 @@ class Chapter9Test(ChapterTest):
         self.skip_with_check(14, 'replace the URL in the next line with')
         self.skip_with_check(25, 'do some git config first')
         self.skip_with_check(34, 'Performing system checks')
+        self.skip_with_check(45, 'Starting development server')
 
-        if DO_SERVER_COMMANDS:
-            subprocess.check_call(['vagrant', 'snapshot', 'restore', 'MANUAL_1'])
+        vm_restore = 'MANUAL_1'
 
         # hack fast-forward
         skip = True
         if skip:
-            self.pos = 8
+            # self.pos = 8
+            # self.sourcetree.run_command('git checkout {0}'.format(
+            #     self.sourcetree.get_commit_spec('ch08l001')
+            # ))
+            self.pos = 44
+            self.current_server_cd = '~/sites/$SITENAME'
             self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch08l001')
+                self.sourcetree.get_commit_spec('ch08l004')
             ))
+            vm_restore = 'MANUAL_2'
+
+        if DO_SERVER_COMMANDS:
+            subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
 
         while self.pos < len(self.listings):
             listing = self.listings[self.pos]

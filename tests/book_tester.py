@@ -343,15 +343,18 @@ class ChapterTest(unittest.TestCase):
                 'git clone -b chapter_manual_deployment https://github.com/hjwp/book-example.git'
             )
         if self.current_server_cd:
-            command = f'cd {self.current_server_cd}&& {command}'
+            command = f'cd {self.current_server_cd} && {command}'
         if '$SITENAME' in command:
             command = 'SITENAME=superlists-staging.ottg.eu; ' + command
-        if command.endswith('python manage.py runserver'):
-            if './virtualenv/bin/python' in command:
+        if 'manage.py runserver' in command:
+            if './virtualenv/bin/python manage.py' in command:
+                subprocess.run([self.RUN_SERVER_PATH, 'pkill -f runserver'])
                 command = command.replace(
                     './virtualenv/bin/python manage.py runserver',
                     'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
                 )
+                # git it time to start up
+                time.sleep(3)
             else:
                 # special case first runserver errors
                 ignore_errors = True
