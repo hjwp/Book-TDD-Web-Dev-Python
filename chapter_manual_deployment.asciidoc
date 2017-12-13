@@ -61,20 +61,27 @@ forlorn cry __"but it works on my machine!"__
 ((("deployment", "danger areas of")))Some
 of the danger areas of deployment include:
 
-Static files (CSS, JavaScript, images, etc.)::
-    ((("static files", "challenges of")))Web
-servers usually need special configuration for serving these.
-    
+Networking::
+    Once we're off our own machine, networking issues come in: making
+    sure the DNS service is routing our domain to the correct IP address
+    for our server, making sure our server is configured to listen to
+    traffic coming in from the world, making sure it's using the right
+    ports, and making sure any firewalls n the way are configured to let
+    traffic through.
 
+Dependencies::
+    We need to make sure that the packages our software relies on (Python,
+    Django, and so on) are installed on the server, and have the correct
+    versions.
+    
 The database:: 
     There can be permissions and path issues, and we need to be careful about
     preserving data between deploys.
     
+Static files (CSS, JavaScript, images, etc.)::
+    ((("static files", "challenges of")))Web servers usually need special
+    configuration for serving these.
 
-Dependencies:: 
-    We need to make sure that the packages our software relies on are installed
-    on the server, and have the correct versions.
-    
     
 
 But there are solutions to all of these.  In order:
@@ -91,13 +98,13 @@ But there are solutions to all of these.  In order:
     
 
 *   ((("virtual environment (virtualenv)", "server-based")))Just
-like on our own PC, a 'virtualenv' is useful on the server for
+    like on our own PC, a 'virtualenv' is useful on the server for
     managing packages and dependencies when you might be running more than one
     Python [keep-together]#application#.
     
 
 *   ((("automated deployment", "benefits of")))((("automated deployment", see="also Fabric")))And
-finally, 'automation, automation, automation'.  By using an automated
+    finally, 'automation, automation, automation'.  By using an automated
     script to deploy new versions, and by using the same script to deploy to
     staging [keep-together]#and production#, we can reassure ourselves that staging is as much
     like live as
@@ -123,7 +130,7 @@ testing fits in.
 There's lots of stuff in the next three chapters, so here's an overview to help you
 keep your bearings:
 
-**This chapter: getting it up and running**
+**This chapter: getting a manual deployment up and running**
 
 * Adapt our FTs so they can run against a staging server.
 
@@ -145,8 +152,9 @@ keep your bearings:
 **Next chapter: moving to a production-ready config**
 
 * Move from our quick-and-dirty version to a production-ready configuration;
-  stop using the Django dev server, set our app to start automatically on
-  boot, set +DEBUG+ to +False+, and so on.
+  stop using the Django dev server, use Nginx and Gunicorn as web serves,
+  configure efficient static file serving, set our app to start automatically
+  on boot, set +DEBUG+ to +False+, and so on.
 
 
 **Third deployment chapter: automating the deployment**
@@ -169,8 +177,8 @@ As Always, Start with a Test
 
 ((("staging sites", "adapting functional tests for", id="SSadapt09")))Let's
 adapt our functional tests slightly so that it can be run against
-a staging site. We'll do it by slightly hacking an argument that is normally
-used to change the address which the test's temporary server gets run on:
+a staging site. We'll do it by checking for an environment variable called
+`STAGING_SERVER`:
 
 
 [role="sourcecode"]
@@ -275,10 +283,11 @@ FAILED (errors=3)
 
 NOTE: If, on Windows, you see an error saying something like 
     "STAGING_SERVER is not recognized as a command", it's probably because
-    you're not using Git-Bash.  Take another look at the &#x201c;<<pre-requisites>>&#x201d; section.
+    you're not using Git-Bash.  Take another look at the
+    &#x201c;<<pre-requisites>>&#x201d; section.
 
 You can see that all the tests are failing, as expected, since I haven't
-actually set up my domain yet -- selenium is saying Firefox is seeing an
+actually set up my domain yet -- Selenium reports that Firefox is seeing an
 error and "cannot establish connection to the server" (depending on your
 registrar, you might see content from its default landing page instead).
 
@@ -477,7 +486,11 @@ the DNS system, pointing a domain at a specific IP address is called an
 "A-Record".  All registrars are slightly different, but a bit of clicking
 around should get you to the right screen in yours.
 
+DNS records take some time to "propagate" around the world (it's controlled
+by a setting called "TTL", Time To Live), so once you've set up your A-record,
+you can check its progress on a "propagation checking" service like this one:
 
+https://www.whatsmydns.net/#A/superlists-staging.ottg.eu
 
 
 
@@ -826,8 +839,10 @@ $ *curl superlists-staging.ottg.eu:8000*
 
 Looks good at first glance!  Let's try our FTs again:
 
+
+[subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests --failfast*]
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests --failfast*]
 
 ======================================================================
 FAIL: test_can_start_a_list_for_one_user
@@ -842,6 +857,7 @@ AssertionError: 'To-Do' not found in 'DisallowedHost at /'
 Ran 1 test in 4.010s
 
 FAILED (failures=1)
+[...]
 ----
 
 NOTE: At this point, if your FTs still can't talk to the server,
@@ -881,10 +897,8 @@ There's more information in the http://bit.ly/2u0R2d6[Django docs].
 
 The upshot is that we need to adjust `ALLOWED_HOSTS` in 'settings.py':
 
-
 [role="sourcecode"]
-.server: superlists/settings.py
-====
+.superlists/settings.py
 [source,python]
 ----
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -990,10 +1004,6 @@ OK
 
 It's great to see the site up and running!  We might reward ourselves with a
 well-earned tea break at this point, before moving on to the next section...
-
-TIP: If you see a "502 - Bad Gateway", it's probably because you forgot to
-    restart the dev server with `manage.py runserver` after the `migrate`.
-
 
 
 

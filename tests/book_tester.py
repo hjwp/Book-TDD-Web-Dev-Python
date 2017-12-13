@@ -329,6 +329,7 @@ class ChapterTest(unittest.TestCase):
     )
 
     def run_server_command(self, command, ignore_errors=False):
+        sleep = 0
         cd_finder = re.compile(r'cd (.+)$')
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
@@ -353,8 +354,7 @@ class ChapterTest(unittest.TestCase):
                     './virtualenv/bin/python manage.py runserver',
                     'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
                 )
-                # git it time to start up
-                time.sleep(3)
+                sleep = 1
             else:
                 # special case first runserver errors
                 ignore_errors = True
@@ -366,6 +366,7 @@ class ChapterTest(unittest.TestCase):
             commands.append('--ignore-errors')
         commands.append(command)
         output = subprocess.check_output(commands).decode('utf8')
+        time.sleep(sleep)
 
         print(output.encode('utf-8'))
         return output
