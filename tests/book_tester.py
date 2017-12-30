@@ -342,11 +342,11 @@ class ChapterTest(unittest.TestCase):
             command = command.replace(
                 'git clone https://github.com/hjwp/book-example.git',
                 'git clone -b chapter_manual_deployment https://github.com/hjwp/book-example.git'
+                ' && git reset --hard HEAD^'
             )
         if self.current_server_cd:
             command = f'cd {self.current_server_cd} && {command}'
-        if '$SITENAME' in command:
-            command = 'SITENAME=superlists-staging.ottg.eu; ' + command
+        command = 'SITENAME=superlists-staging.ottg.eu; ' + command
         if 'manage.py runserver' in command:
             if './virtualenv/bin/python manage.py' in command:
                 subprocess.run([self.RUN_SERVER_PATH, 'pkill -f runserver'])
