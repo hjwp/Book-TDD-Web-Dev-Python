@@ -23,9 +23,10 @@ class Chapter9bTest(ChapterTest):
         self.sourcetree.run_command('mkdir -p static/stuff')
 
         # skips
-        self.skip_with_check(6, 'check this still has our site')
-        self.skip_with_check(48, 'git status')
-        self.skip_with_check(49, 'see three new files')
+        self.skip_with_check(8, 'check our symlink')
+        self.skip_with_check(20, 'Starting gunicorn')
+        self.skip_with_check(53, 'git status')
+        self.skip_with_check(54, 'see three new files')
 
         vm_restore = 'MANUAL_END'
 
@@ -39,6 +40,8 @@ class Chapter9bTest(ChapterTest):
 
         if DO_SERVER_COMMANDS:
             subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
+
+        self.current_server_cd = '~/sites/$SITENAME'
 
         while self.pos < len(self.listings):
             listing = self.listings[self.pos]

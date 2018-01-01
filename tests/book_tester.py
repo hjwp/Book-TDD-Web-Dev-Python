@@ -330,6 +330,9 @@ class ChapterTest(unittest.TestCase):
 
     def run_server_command(self, command, ignore_errors=False):
         sleep = 0
+        kill_old_runserver = False
+        kill_old_gunicorn = False
+
         cd_finder = re.compile(r'cd (.+)$')
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
@@ -348,21 +351,36 @@ class ChapterTest(unittest.TestCase):
                 'git clone -b chapter_manual_deployment https://github.com/hjwp/book-example.git'
             )
             command += ' && cd ~/sites/$SITENAME && git reset --hard HEAD^'
+
         if self.current_server_cd:
             command = f'cd {self.current_server_cd} && {command}'
         command = 'export SITENAME=superlists-staging.ottg.eu DJANGO_COLORS=nocolor; ' + command
+
         if 'manage.py runserver' in command:
             if './virtualenv/bin/python manage.py' in command:
-                subprocess.run([self.RUN_SERVER_PATH, 'pkill -f runserver'])
                 command = command.replace(
                     './virtualenv/bin/python manage.py runserver',
-                    'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
+                    'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver',
                 )
                 sleep = 1
+                kill_old_runserver = True
             else:
                 # special case first runserver errors
                 ignore_errors = True
                 command = command.replace('python manage.py', 'python3 manage.py')
+
+        if 'bin/gunicorn' in command:
+            kill_old_runserver = True
+            kill_old_gunicorn = True
+            command = command.replace(
+                './virtualenv/bin/gunicorn',
+                'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn',
+            )
+
+        if kill_old_runserver:
+            subprocess.run([self.RUN_SERVER_PATH, 'pkill -f runserver'])
+        if kill_old_gunicorn:
+            subprocess.run([self.RUN_SERVER_PATH, 'pkill -f gunicorn'])
 
         print('running command on server', command)
         commands = [self.RUN_SERVER_PATH]

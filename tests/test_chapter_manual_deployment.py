@@ -25,7 +25,7 @@ class Chapter9Test(ChapterTest):
         self.skip_with_check(25, 'do some git config first')
         self.skip_with_check(34, 'Performing system checks')
         self.skip_with_check(45, 'Starting development server')
-        self.skip_with_check(57, 'check this still has our site')
+        self.skip_with_check(55, 'check our env var is still there')
 
         vm_restore = None # 'MANUAL_1'
 
