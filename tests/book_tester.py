@@ -346,7 +346,7 @@ class ChapterTest(unittest.TestCase):
             )
         if self.current_server_cd:
             command = f'cd {self.current_server_cd} && {command}'
-        command = 'SITENAME=superlists-staging.ottg.eu; ' + command
+        command = 'export SITENAME=superlists-staging.ottg.eu DJANGO_COLORS=nocolor; ' + command
         if 'manage.py runserver' in command:
             if './virtualenv/bin/python manage.py' in command:
                 subprocess.run([self.RUN_SERVER_PATH, 'pkill -f runserver'])
