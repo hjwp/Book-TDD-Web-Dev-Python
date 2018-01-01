@@ -339,11 +339,13 @@ class ChapterTest(unittest.TestCase):
         if command.startswith('sudo add-apt-repository'):
             command = command.replace('add-apt-repository ', 'apt-add-repository -y ')
         if command.startswith('git clone https://github.com/hjwp/book-example.git'):
+            # hack for first git clone, use branch for manual chapter, and go back
+            # one commit to simulate state near beginning of chap.
             command = command.replace(
                 'git clone https://github.com/hjwp/book-example.git',
                 'git clone -b chapter_manual_deployment https://github.com/hjwp/book-example.git'
-                ' && git reset --hard HEAD^'
             )
+            command += ' && cd ~/sites/$SITENAME && git reset --hard HEAD^'
         if self.current_server_cd:
             command = f'cd {self.current_server_cd} && {command}'
         command = 'export SITENAME=superlists-staging.ottg.eu DJANGO_COLORS=nocolor; ' + command

@@ -29,7 +29,7 @@ class Chapter9Test(ChapterTest):
         vm_restore = 'MANUAL_1'
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             # self.pos = 8
             # self.sourcetree.run_command('git checkout {0}'.format(
