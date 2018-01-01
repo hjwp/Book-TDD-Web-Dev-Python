@@ -4,7 +4,8 @@ import unittest
 import subprocess
 
 from book_tester import ChapterTest, DO_SERVER_COMMANDS
-LOCAL = False
+
+
 
 class Chapter9Test(ChapterTest):
     chapter_name = 'chapter_manual_deployment'
@@ -26,7 +27,7 @@ class Chapter9Test(ChapterTest):
         self.skip_with_check(45, 'Starting development server')
         self.skip_with_check(57, 'check this still has our site')
 
-        vm_restore = 'MANUAL_1'
+        vm_restore = None # 'MANUAL_1'
 
         # hack fast-forward
         skip = False
@@ -43,7 +44,10 @@ class Chapter9Test(ChapterTest):
             vm_restore = 'MANUAL_2'
 
         if DO_SERVER_COMMANDS:
-            subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
+            if vm_restore:
+                subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
+            else:
+                subprocess.check_call(['vagrant', 'up'])
 
         while self.pos < len(self.listings):
             listing = self.listings[self.pos]

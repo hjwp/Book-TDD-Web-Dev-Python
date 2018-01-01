@@ -336,8 +336,10 @@ class ChapterTest(unittest.TestCase):
             print('adding server cd', self.current_server_cd)
         if command.startswith('sudo apt install '):
             command = command.replace('install ', 'install -y ')
+            sleep = 1
         if command.startswith('sudo add-apt-repository'):
             command = command.replace('add-apt-repository ', 'apt-add-repository -y ')
+            sleep = 1
         if command.startswith('git clone https://github.com/hjwp/book-example.git'):
             # hack for first git clone, use branch for manual chapter, and go back
             # one commit to simulate state near beginning of chap.

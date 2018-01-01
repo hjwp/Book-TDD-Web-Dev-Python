@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
+import subprocess
 
-from book_tester import ChapterTest
-LOCAL = False
+from book_tester import ChapterTest, DO_SERVER_COMMANDS
+
+
 
 class Chapter9bTest(ChapterTest):
     chapter_name = 'chapter_making_deployment_production_ready'
@@ -15,15 +17,17 @@ class Chapter9bTest(ChapterTest):
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'server command')
-        self.assertEqual(self.listings[3].skip, True)
+        self.assertEqual(self.listings[2].type, 'other command')
 
         self.start_with_checkout()
         self.sourcetree.run_command('mkdir -p static/stuff')
 
         # skips
-        self.skip_with_check(12, 'check this still has our site')
-        self.skip_with_check(36, 'git status')
-        self.skip_with_check(37, 'see three new files')
+        self.skip_with_check(6, 'check this still has our site')
+        self.skip_with_check(48, 'git status')
+        self.skip_with_check(49, 'see three new files')
+
+        vm_restore = 'MANUAL_END'
 
         # hack fast-forward
         skip = False
@@ -32,6 +36,9 @@ class Chapter9bTest(ChapterTest):
             self.sourcetree.run_command('git checkout {0}'.format(
                 self.sourcetree.get_commit_spec('ch08l003')
             ))
+
+        if DO_SERVER_COMMANDS:
+            subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
 
         while self.pos < len(self.listings):
             listing = self.listings[self.pos]
