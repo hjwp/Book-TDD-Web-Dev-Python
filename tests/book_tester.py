@@ -525,15 +525,17 @@ class ChapterTest(unittest.TestCase):
         error = f'Could not find {old} at pos {pos}: "{listing}". Listings were:\n{all_listings}'
         if old not in listing:
             raise Exception(error)
-        self.listings[pos] = listing.replace(old, new)
+        assert type(listing) == Command
+
+        new_listing = Command(listing.replace(old, new))
+        for attr, val in vars(listing).items():
+            setattr(new_listing, attr, val)
+        self.listings[pos] = new_listing
+
 
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.sourcetree.run_command('tree -I *.pyc --noreport', cwd)
-        # special case for first listing:
-        # actual_tree = actual_tree.replace('\xa0\xa0', ' ')
-        # expected_tree = Output(expected_tree.replace('\xa0\xa0', ' '))
-
         self.assert_console_output_correct(actual_tree, expected_tree)
 
 

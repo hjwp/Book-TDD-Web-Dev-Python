@@ -31,7 +31,13 @@ class Chapter9bTest(ChapterTest):
         self.skip_with_check(66, 'see three new files')
 
         # fixes
-        self.replace_command_with_check(44, 'git pull', 'git checkout chapter_making_deployment_production_ready')
+        self.replace_command_with_check(
+            44,
+            'git pull',
+            'git fetch'
+            ' && git checkout chapter_making_deployment_production_ready'
+            ' && git reset --hard origin/chapter_making_deployment_production_ready',
+        )
 
         vm_restore = 'MANUAL_END'
 
