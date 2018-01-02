@@ -508,10 +508,8 @@ class ChapterTest(unittest.TestCase):
 
     def skip_with_check(self, pos, expected_content):
         listing = self.listings[pos]
-        error = 'Could not find {} in at pos {}: "{}". Listings were:\n{}'.format(
-            expected_content, pos, listing,
-            '\n'.join(str(t) for t in enumerate(self.listings))
-        )
+        all_listings = '\n'.join(str(t) for t in enumerate(self.listings))
+        error = f'Could not find {expected_content} at pos {pos}: "{listing}". Listings were:\n{all_listings}'
         if hasattr(listing, 'contents'):
             if expected_content not in listing.contents:
                 raise Exception(error)
@@ -520,6 +518,14 @@ class ChapterTest(unittest.TestCase):
                 raise Exception(error)
         listing.skip = True
 
+
+    def replace_command_with_check(self, pos, old, new):
+        listing = self.listings[pos]
+        all_listings = '\n'.join(str(t) for t in enumerate(self.listings))
+        error = f'Could not find {old} at pos {pos}: "{listing}". Listings were:\n{all_listings}'
+        if old not in listing:
+            raise Exception(error)
+        self.listings[pos] = listing.replace(old, new)
 
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):

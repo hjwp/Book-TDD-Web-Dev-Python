@@ -322,6 +322,7 @@ adding a second `location` directive to the config:
 
 [role="sourcecode"]
 .server: /etc/nginx/sites-available/superlists-staging.ottg.eu
+====
 [source,nginx]
 ----
 server {
@@ -338,6 +339,7 @@ server {
     }
 }
 ----
+====
 
 Reload Nginx and restart Gunicorn...
 
@@ -427,29 +429,53 @@ OK
 A couple more steps!
 
 
-Switching DEBUG to False and Setting ALLOWED_HOSTS
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-
+Switching DEBUG to False
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("DEBUG settings")))((("production-ready deployment", "DEBUG=false and ALLOWED_HOSTS")))((("ALLOWED_HOSTS")))((("security issues and settings", "ALLOWED_HOSTS")))((("tracebacks")))Django's
 +DEBUG+ mode is all very well for hacking about on your own server, but
 leaving those pages full of tracebacks available
-http://bit.ly/SuvluV[isn't secure].
-
-You'll find the `DEBUG` setting at the top of 'settings.py'. When we set this
-to `False`
-And, once again, we restart Gunicorn and run the FT to check that things still work.
-
-NOTE: Don't commit these changes on the server. At the moment this is just a 
-    hack to get things working, not a change we want to keep in our repo. In
-    general, to keep things simple, I'm only going to do Git commits from the
-    local PC, using `git push` and `git pull` when I need to sync them up to
-    the server.
+https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
 
 
-One more test run to reassure ourselves that things still work?
+[role="sourcecode"]
+.superlists/settings.py
+====
+[source,python]
+----
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True
+
+ALLOWED_HOSTS = []
+if 'SITENAME' in os.environ:
+    ALLOWED_HOSTS = [os.environ['SITENAME']]
+    DEBUG = False
+[...]
+----
+====
+
+We do our usual dance of committing locally, then push it up to github, and
+restart gunicorn:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am "set DEBUG=False if SITENAME is populated"*
+$ *git push*
+----
+
+And pull it down on the server, and restart our `runserver` proces
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *git pull*
+elspeth@server:$ *./virtualenv/bin/gunicorn --bind \
+    unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
+----
+
+
+And we use a test run to reassure ourselves that things still work:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -459,7 +485,7 @@ $ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test f
 OK
 ----
 
-Good.
+Excellent!  A change that went smoothly, for once.
 
 
 
@@ -484,12 +510,14 @@ Description=Gunicorn server for superlists-staging.ottg.eu
 Restart=on-failure  <1>
 User=elspeth  <2>
 WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu  <3>
+Environment=SITENAME=superlists-staging.ottg.eu  <4>
+
 ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
     --bind unix:/tmp/superlists-staging.ottg.eu.socket \
-    superlists.wsgi:application  <4>
+    superlists.wsgi:application  <5>
 
 [Install]
-WantedBy=multi-user.target <5>
+WantedBy=multi-user.target <6>
 ----
 ====
 
@@ -503,13 +531,14 @@ self-explanatory.
 
 <3> `WorkingDirectory` sets the current working directory.
 
-<4> `ExecStart` is the actual process to execute.  We use the ++\++ line
+<3> `Environment` sets our environment variable
+
+<4> `ExecStart` is the actual process to execute.  I'm using the ++\++ line
     continuation characters to split the full command over multiple lines,
     for readability, but it could all go on one line.
 
 <5> `WantedBy` in the `[Install]` section is what tells Systemd we want this
     service to start on boot.
-
 
 Systemd scripts live in '/etc/systemd/system', and their names must end in
 '.service'. 
@@ -533,6 +562,13 @@ of the service name, by the way.)
 Now we can rerun the FTs to see that everything still works. You can even test
 that the site comes back up if you reboot the server!
 
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+[...]
+OK
+----
 
 .More Debugging Tips
 *******************************************************************************
@@ -665,15 +701,15 @@ Here's a generic template for our Nginx config:
 ----
 server {
     listen 80;
-    server_name SITENAME;
+    server_name HOSTNAME;
 
     location /static {
-        alias /home/elspeth/sites/SITENAME/static;
+        alias /home/elspeth/sites/HOSTNAME/static;
     }
 
     location / {
         proxy_set_header Host $host;
-        proxy_pass http://unix:/tmp/SITENAME.socket;
+        proxy_pass http://unix:/tmp/HOSTNAME.socket;
     }
 }
 ----
@@ -687,14 +723,15 @@ And here's one for the Gunicorn Sytemd service:
 [source,bash]
 ----
 [Unit]
-Description=Gunicorn server for SITENAME
+Description=Gunicorn server for HOSTNAME
 
 [Service]
 Restart=on-failure
 User=elspeth
-WorkingDirectory=/home/elspeth/sites/SITENAME/source
-ExecStart=/home/elspeth/sites/SITENAME/virtualenv/bin/gunicorn \
-    --bind unix:/tmp/SITENAME.socket \
+WorkingDirectory=/home/elspeth/sites/HOSTNAME/source
+Environment=SITENAME=HOSTNAME
+ExecStart=/home/elspeth/sites/HOSTNAME/virtualenv/bin/gunicorn \
+    --bind unix:/tmp/HOSTNAME.socket \
     superlists.wsgi:application
 
 [Install]
@@ -703,7 +740,7 @@ WantedBy=multi-user.target
 ====
 
 Now it's easy for us to use those two files to generate
-a new site, by doing a find and replace on  `SITENAME`.
+a new site, by doing a find and replace on `HOSTNAME`.
 
 For the rest, just keeping a few notes is OK. Why not keep
 them in a file in the repo too?
@@ -732,19 +769,19 @@ eg, on Ubuntu:
 ## Nginx Virtual Host config
 
 * see nginx.template.conf
-* replace SITENAME with, e.g., staging.my-domain.com
+* replace HOSTNAME with, e.g., staging.my-domain.com
 
 ## Systemd service
 
 * see gunicorn-systemd.template.service
-* replace SITENAME with, e.g., staging.my-domain.com
+* replace HOSTNAME with, e.g., staging.my-domain.com
 
 ## Folder structure:
 Assume we have a user account at /home/username
 
 /home/username
 └── sites
-    └── SITENAME
+    └── HOSTNAME
          ├── database
          ├── source
          ├── static

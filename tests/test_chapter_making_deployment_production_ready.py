@@ -25,8 +25,13 @@ class Chapter9bTest(ChapterTest):
         # skips
         self.skip_with_check(8, 'check our symlink')
         self.skip_with_check(24, 'Starting gunicorn')
-        self.skip_with_check(58, 'git status')
-        self.skip_with_check(59, 'see three new files')
+        self.skip_with_check(50, 'this command tells Systemd')
+        self.skip_with_check(52, 'this command actually starts')
+        self.skip_with_check(65, 'git status')
+        self.skip_with_check(66, 'see three new files')
+
+        # fixes
+        self.replace_command_with_check(44, 'git pull', 'git checkout chapter_making_deployment_production_ready')
 
         vm_restore = 'MANUAL_END'
 
