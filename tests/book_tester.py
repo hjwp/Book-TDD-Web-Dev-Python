@@ -413,6 +413,7 @@ class ChapterTest(unittest.TestCase):
     def write_file_on_server(self, target, contents):
         if not DO_SERVER_COMMANDS:
             return
+        contents = contents.replace('elspeth', 'ubuntu')
         with tempfile.NamedTemporaryFile() as tf:
             tf.write(contents.encode('utf8'))
             tf.flush()

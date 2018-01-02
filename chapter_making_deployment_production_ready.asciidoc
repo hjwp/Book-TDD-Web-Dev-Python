@@ -303,22 +303,22 @@ TIP: If you see a "502 - Bad Gateway", it's probably because you forgot to
 Getting Nginx to Serve Static Files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-
-
 ((("production-ready deployment", "serving static files with Nginx")))((("Nginx", "serving static files with")))((("static files", "serving with Nginx")))First
 we run `collectstatic` to copy all the static files to a folder where 
 Nginx can find them:
 
 [role="server-commands"]
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-elspeth@server:$ *./virtualenv/bin/python manage.py collectstatic --noinput*
-elspeth@server:$ *ls static/*
+elspeth@server:$ pass:quotes[*./virtualenv/bin/python manage.py collectstatic --noinput*]
+[...]
+15 static files copied to '/home/elspeth/sites/superlists-staging.ottg.eu/static'
+elspeth@server:$ pass:quotes[*ls static/*]
 base.css  bootstrap
 ----
 
-Now we tell Nginx to start serving those static files for us:
+Now we tell Nginx to start serving those static files for us, by
+adding a second `location` directive to the config:
 
 [role="sourcecode"]
 .server: /etc/nginx/sites-available/superlists-staging.ottg.eu
@@ -334,6 +334,7 @@ server {
 
     location / {
         proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
     }
 }
 ----
@@ -347,8 +348,8 @@ elspeth@server:$ *sudo systemctl reload nginx*
 elspeth@server:$ *./virtualenv/bin/gunicorn superlists.wsgi:application*
 ----
 
-And if we take another look at the site, things are looking much healthier. We
-can rerun our FTs:
+And if you take another manual look at your site, things should look much
+healthier. Let's rerun our FTs:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -385,7 +386,14 @@ sockets in '/tmp'.  Let's change the proxy settings in Nginx:
 ====
 [source,nginx]
 ----
-[...]
+server {
+    listen 80;
+    server_name superlists-staging.ottg.eu;
+
+    location /static {
+        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
+    }
+
     location / {
         proxy_set_header Host $host;
         proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
@@ -393,10 +401,6 @@ sockets in '/tmp'.  Let's change the proxy settings in Nginx:
 }
 ----
 ====
-
-`proxy_set_header` is used to make sure Gunicorn and Django know what domain
-it's running on.  We need that for the `ALLOWED_HOSTS` security feature, which 
-we're about to switch on.
 
 Now we restart Gunicorn, but this time telling it to listen on a socket instead
 of on the default port:

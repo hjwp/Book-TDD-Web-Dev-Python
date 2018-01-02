@@ -25,8 +25,8 @@ class Chapter9bTest(ChapterTest):
         # skips
         self.skip_with_check(8, 'check our symlink')
         self.skip_with_check(24, 'Starting gunicorn')
-        self.skip_with_check(57, 'git status')
-        self.skip_with_check(58, 'see three new files')
+        self.skip_with_check(58, 'git status')
+        self.skip_with_check(59, 'see three new files')
 
         vm_restore = 'MANUAL_END'
 
