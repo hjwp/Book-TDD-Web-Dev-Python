@@ -430,8 +430,8 @@ A couple more steps!
 
 
 
-Switching DEBUG to False
-~~~~~~~~~~~~~~~~~~~~~~~~
+Security: Switching DEBUG to False and Setting a Unique SECRET_KEY
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("DEBUG settings")))((("production-ready deployment", "DEBUG=false and ALLOWED_HOSTS")))((("ALLOWED_HOSTS")))((("security issues and settings", "ALLOWED_HOSTS")))((("tracebacks")))Django's
 +DEBUG+ mode is all very well for hacking about on your own server, but
@@ -439,43 +439,66 @@ leaving those pages full of tracebacks available
 https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
 
 
+Django uses `SECRET_KEY` for some of its crypto--things like cookies and CSRF
+protection. It's good practice to make sure the secret key on the server is
+different from the one in your source code repo, because that code might be
+visible to strangers.  We'll generate one and keep it, once again, in an
+environment variable (once you have a secret key, it should stay the same
+between deploys).  Find out more in the
+https://docs.djangoproject.com/en/1.11/topics/signing/[Django docs].
+
+
 [role="sourcecode"]
-.superlists/settings.py
+.superlists/settings.py (ch08l004)
 ====
 [source,python]
 ----
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG') == 'false'  #<1>
 
-ALLOWED_HOSTS = []
-if 'SITENAME' in os.environ:
+if DEBUG is False:  #<2>
+    SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
     ALLOWED_HOSTS = [os.environ['SITENAME']]
-    DEBUG = False
-[...]
+else:
+    SECRET_KEY = 'insecure-key-for-dev'
+    ALLOWED_HOSTS = []
 ----
 ====
 
-We do our usual dance of committing locally, then push it up to GitHub, and
-restart Gunicorn:
+<1> We say we'll use an environment variable called `DJANGO_DEBUG`
+    to switch debug mode off
+
+<2> And now we say that, if debug mode is off, we _require_ the
+    `SECRET_KEY` and `ALLOWED_HOSTS` to be set by two more environment
+    variables.
+
+There are other ways you might set up the logic, making various variables
+optional, but I think this gives us a little bit of protection against
+accidentally forgetting to set one.  The end result is that you either
+run with all three set, for production, or none of them, for dev.
+
+Let's do our usual dance of committing locally, and pushing to GitHub:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git commit -am "set DEBUG=False if SITENAME is populated"*
+$ *git commit -am "use more env vars for DEBUG and SECRET_KEY"*
 $ *git push*
 ----
 
-Then pull it down on the server, and restart our `runserver` process:
+Then pull it down on the server, export a couple of environment variables,
+and restart Gunicorn:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *git pull*
+elspeth@server:$ *export DJANGO_DEBUG=false DJANGO_SECRET_KEY=abc123*
+# we'll set the secret to something more secure later!
 elspeth@server:$ *./virtualenv/bin/gunicorn --bind \
     unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
 ----
 
 
-And we use a test run to reassure ourselves that things still work:
+And use a test run to reassure ourselves that things still work:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -487,7 +510,6 @@ OK
 
 Excellent!  A change that went smoothly, for once.
 
-TODO: SECRET_KEY
 
 
 Using Systemd to Make Sure Gunicorn Starts on Boot
@@ -496,10 +518,26 @@ Using Systemd to Make Sure Gunicorn Starts on Boot
 
 ((("production-ready deployment", "using Systemd for automatic booting/reloading")))((("Systemd")))((("Gunicorn", "automatic booting/reloading of")))Our
 final step is to make sure that the server starts up Gunicorn automatically
-on boot, and reloads it automatically if it crashes.  On Ubuntu, the way to do
-this is using Systemd:
+on boot, and reloads it automatically if it crashes. On Ubuntu, the way to do
+this is using Systemd.
 
-[role="sourcecode"]
+We'll also generate a more secure, random secret key. Here's a little Python
+one-liner to run on your own computer:
+
+[role="skipme"]
+[subs=""]
+----
+#
+$ <strong>python -c"import random; print(''.join(random.SystemRandom().
+choices('abcdefghijklmnopqrstuvwxyz0123456789%^*(-_=+)', k=50)))"</strong>
+
+1*b84qe7z%4v)(_ji01k^_xx2tkhs062zpsza9gpzl3rxdfhfv
+----
+
+
+And here's what a Gunicorn config file looks like
+
+[role="sourcecode small-code"]
 .server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
 ====
 [source,bash]
@@ -511,6 +549,9 @@ Description=Gunicorn server for superlists-staging.ottg.eu
 Restart=on-failure  <1>
 User=elspeth  <2>
 WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu  <3>
+
+Environment=DJANGO_DEBUG=false  <4>
+Environment=SECRET_KEY="1*b84qe7z%4v)(_ji01k^_xx2tkhs062zpsza9gpzl3rxdfhfv"  <4>
 Environment=SITENAME=superlists-staging.ottg.eu  <4>
 
 ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
@@ -532,7 +573,7 @@ self-explanatory.
 
 <3> `WorkingDirectory` sets the current working directory.
 
-<3> `Environment` sets our environment variable
+<3> `Environment` sets each of our environment variables.
 
 <4> `ExecStart` is the actual process to execute.  I'm using the ++\++ line
     continuation characters to split the full command over multiple lines,
@@ -658,8 +699,7 @@ Provisioning::
 2. `add-apt-repository ppa:deadsnakes/ppa && apt update`
 3. `apt install nginx git python3.6 python3.6-venv`
 4. Add Nginx config for virtual host
-5. Add Systemd job for Gunicorn
-
+5. Add Systemd job for Gunicorn (including unique SECRET_KEY)
 
 Deployment::
 1. Create directory structure in '~/sites'
@@ -668,9 +708,8 @@ Deployment::
 4. `pip install -r requirements.txt`
 5. `manage.py migrate` for database
 6. `collectstatic` for static files
-7. Set `DEBUG = False` and `ALLOWED_HOSTS` in 'settings.py'
-8. Restart Gunicorn job
-9. Run FTs to check everything works
+7. Restart Gunicorn job
+8. Run FTs to check everything works
 
 
 Assuming we're not ready to entirely automate our provisioning process, how
@@ -683,7 +722,8 @@ subfolder in our repo.
 Saving Templates for Our Provisioning Config Files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("templates", "saving for provisioning config files", id="TMPprovision10")))First, we create the subfolder:
+((("templates", "saving for provisioning config files", id="TMPprovision10")))First,
+ we create the subfolder:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -707,8 +747,8 @@ server {
     }
 
     location / {
-        proxy_set_header Host $host;
         proxy_pass http://unix:/tmp/DOMAIN.socket;
+        proxy_set_header Host $host;
     }
 }
 ----
@@ -727,7 +767,10 @@ Description=Gunicorn server for DOMAIN
 [Service]
 Restart=on-failure
 User=elspeth
-WorkingDirectory=/home/elspeth/sites/DOMAIN/source
+WorkingDirectory=/home/elspeth/sites/DOMAIN
+
+Environment=DJANGO_DEBUG=false
+Environment=SECRET_KEY="1*b84qe7z%4v)(_ji01k^_xx2tkhs062zpsza9gpzl3rxdfhfv"
 Environment=SITENAME=DOMAIN
 
 ExecStart=/home/elspeth/sites/DOMAIN/virtualenv/bin/gunicorn \
@@ -775,17 +818,27 @@ eg, on Ubuntu:
 
 * see gunicorn-systemd.template.service
 * replace DOMAIN with, e.g., staging.my-domain.com
+* Use this snippet to generate a unique secret key:
+
+python -c"import random; print(''.join(random.SystemRandom().
+choices('abcdefghijklmnopqrstuvwxyz0123456789%^*(-_=+)', k=50)))"
+
 
 ## Folder structure:
+
 Assume we have a user account at /home/username
 
 /home/username
 └── sites
-    └── DOMAIN
-         ├── database
-         ├── source
-         ├── static
-         └── virtualenv
+    ├── DOMAIN1
+    │    ├── db.sqlite3
+    │    ├── manage.py etc
+    │    ├── static
+    │    └── virtualenv
+    └── DOMAIN2
+         ├── db.sqlite3
+         ├── manage.py etc
+
 ----
 ====
 
