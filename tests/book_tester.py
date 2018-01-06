@@ -216,6 +216,7 @@ class ChapterTest(unittest.TestCase):
         self.pos = 0
         self.dev_server_running = False
         self.current_server_cd = None
+        self.current_server_exports = {}
 
 
     def tearDown(self):
@@ -337,6 +338,14 @@ class ChapterTest(unittest.TestCase):
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
             print('adding server cd', self.current_server_cd)
+        export_finder = re.compile(r'export (.+?=.+?) ?(.+?=.+?)?')
+        if export_finder.match(command):
+            for export_pair in export_finder.match(command).groups():
+                if export_pair is not None:
+                    key, val = export_pair.split('=')
+                    self.current_server_exports[key] = val
+                    print('adding server export', key, val)
+
         if command.startswith('sudo apt install '):
             command = command.replace('install ', 'install -y ')
             sleep = 1
@@ -354,7 +363,9 @@ class ChapterTest(unittest.TestCase):
 
         if self.current_server_cd:
             command = f'cd {self.current_server_cd} && {command}'
-        command = 'export SITENAME=superlists-staging.ottg.eu DJANGO_COLORS=nocolor; ' + command
+        if self.current_server_exports:
+            exports = ' '.join(f'{k}={v}' for k, v in self.current_server_exports.items())
+            command = f'export {exports} DJANGO_COLORS=nocolor; ' + command
 
         if 'manage.py runserver' in command:
             if './virtualenv/bin/python manage.py' in command:

@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.6
 import os
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 import subprocess
 from textwrap import dedent
 
@@ -132,73 +132,69 @@ class RunCommandTest(ChapterTest):
 
 
 
+@patch('book_tester.subprocess')
 class RunServerCommandTest(ChapterTest):
 
-    @patch('book_tester.subprocess')
-    def test_uses_python2_run_server_command(self, mock_subprocess):
+    def test_returns_subporcess_output(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        result = self.run_server_command('foo bar')
+        result = self.run_server_command('anything')
         assert result == 'some bytes'
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'foo bar'],
-        )
 
 
-    @patch('book_tester.subprocess')
-    def test_hacks_in_dash_y_for_apt_gets(self, mock_subprocess):
+    def test_uses_run_server_command(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        result = self.run_server_command('sudo apt-get install something')
-        assert result == 'some bytes'
-        self.RUN_SERVER_PATH = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
-        )
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'sudo apt-get install -y something'],
+        self.run_server_command('foo bar')
+        assert mock_subprocess.check_output.call_args == call(
+            [self.RUN_SERVER_PATH, 'foo bar'],
         )
 
 
-    @patch('book_tester.subprocess')
-    def test_hacks_in_SITENAME_if_needed(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b'some bytes'
-        result = self.run_server_command('mkdir /foo/$SITENAME')
-        assert result == 'some bytes'
-        self.RUN_SERVER_PATH = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
-        )
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
-        )
-        # but not for the export itself
-        self.run_server_command('export SITENAME=foo')
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'export SITENAME=foo'],
+    def test_hacks_in_dash_y_for_apts(self, mock_subprocess):
+        self.run_server_command('sudo apt install something')
+        assert mock_subprocess.check_output.call_args == call(
+            [self.RUN_SERVER_PATH, 'sudo apt install -y something'],
         )
 
 
-    @patch('book_tester.subprocess')
     def test_hacks_in_cd_if_one_set_by_last_command(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b'some bytes'
         assert self.current_server_cd is None
         self.run_server_command('cd /foo')
         assert self.current_server_cd == '/foo'
         self.run_server_command('do something')
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'cd /foo && do something'],
+        assert mock_subprocess.check_output.call_args == call(
+            [self.RUN_SERVER_PATH, 'cd /foo && do something'],
         )
 
 
-    @patch('book_tester.subprocess')
-    def test_hacks_in_cd_correctly_when_theres_also_a_SITENAME(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b'some bytes'
+    def test_spots_env_vars(self, mock_subprocess):
+        assert self.current_server_exports == {}
+        self.run_server_command('export THING=foo')
+        assert self.current_server_exports == {'THING': 'foo'}
+
+    def test_spots_multiple_env_vars(self, mock_subprocess):
+        assert self.current_server_exports == {}
+        self.run_server_command('export THING=foo OTHER=2')
+        assert self.current_server_exports == {'THING': 'foo', 'OTHER': '2'}
+
+
+    def test_injects_env_vars(self, mock_subprocess):
+        self.current_server_exports == {'FOO': 'bar', 'BAZ': 'furble'}
+        self.run_server_command('hi there')
+        assert mock_subprocess.check_output.call_args == call(
+            [self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
+        )
+
+
+
+    def xtest_hacks_in_cd_correctly_when_theres_also_a_SITENAME(self, mock_subprocess):
         assert self.current_server_cd is None
         self.run_server_command('cd /foo/$SITENAME')
         self.run_server_command('do something')
         mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
+            [self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
         )
 
 
-    @patch('book_tester.subprocess')
     def DONTtest_hacks_in_dtach_for_runserver(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
         self.run_server_command('cd /foo/$SITENAME')
