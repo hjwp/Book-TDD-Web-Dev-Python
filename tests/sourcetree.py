@@ -93,9 +93,7 @@ class SourceTree(object):
             return
         actual_command = command
         if command.startswith('fab deploy'):
-            print('HEEEEEEEERE' * 10)
             actual_command = f'cd deploy_tools && {command}'
-            actual_command = actual_command.replace('elspeth@', 'ubuntu@')
             actual_command = actual_command.replace(
                 'fab deploy',
                 'fab -i ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key deploy'

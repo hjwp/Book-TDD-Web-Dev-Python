@@ -47,7 +47,7 @@ class Chapter9Test(ChapterTest):
             if vm_restore:
                 subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
             else:
-                subprocess.check_call(['vagrant', 'destroy'])
+                subprocess.check_call(['vagrant', 'destroy', '-f'])
                 subprocess.check_call(['vagrant', 'up'])
 
         while self.pos < len(self.listings):

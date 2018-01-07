@@ -594,7 +594,7 @@ class SourceTreeRunCommandTest(unittest.TestCase):
             'cd deploy_tools &&'
             ' fab -i'
             ' ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key'
-            ' deploy:host=ubuntu@superlists-staging.ottg.eu'
+            ' deploy:host=elspeth@superlists-staging.ottg.eu'
         )
         assert mock_subprocess.Popen.call_args[0][0] == expected
 

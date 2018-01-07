@@ -67,5 +67,13 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     apt update
     apt install -y dtach tree
+
+    useradd -m -s /bin/bash elspeth
+    usermod -a -G sudo elspeth
+    echo 'elspeth:elspieelspie' | chpasswd
+    mkdir -p /home/elspeth/.ssh
+    cp /home/ubuntu/.ssh/authorized_keys /home/elspeth/.ssh
+    chown elspeth /home/elspeth/.ssh/authorized_keys
+    echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
   SHELL
 end

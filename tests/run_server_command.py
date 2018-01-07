@@ -20,7 +20,7 @@ import tempfile
 env.host_string = 'superlists-staging.ottg.eu'
 # env.port = '2222'
 env.key_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../.vagrant/machines/default/virtualbox/private_key')
-env.user = 'ubuntu'
+env.user = 'elspeth'
 env.disable_known_hosts = True
 env.warn_only = True
 

@@ -206,6 +206,8 @@ def fix_interactive_managepy_stuff(actual_text):
         '>>> ', '>>>\n',
     )
 
+
+
 class ChapterTest(unittest.TestCase):
     maxDiff = None
 
@@ -424,7 +426,6 @@ class ChapterTest(unittest.TestCase):
     def write_file_on_server(self, target, contents):
         if not DO_SERVER_COMMANDS:
             return
-        contents = contents.replace('elspeth', 'ubuntu')
         with tempfile.NamedTemporaryFile() as tf:
             tf.write(contents.encode('utf8'))
             tf.flush()
@@ -881,7 +882,6 @@ class ChapterTest(unittest.TestCase):
                     for line in next_listing.split('\n'):
                         line = line.split('[...]')[0].strip()
                         line = re.sub(r'\s+', ' ', line)
-                        server_output = server_output.replace('/home/ubuntu', '/home/elspeth')
                         server_output = re.sub(r'\s+', ' ', server_output)
                         self.assertIn(line, server_output)
                 next_listing.was_checked = True
