@@ -180,6 +180,11 @@ class RunServerCommandTest(ChapterTest):
         assert self.current_server_exports == {'THING': 'foo', 'OTHER': '2'}
 
 
+    def test_dashes_worke(self, mock_subprocess):
+        assert self.current_server_exports == {}
+        self.run_server_command('export THING=foo-bar OTHER=2-3')
+        assert self.current_server_exports == {'THING': 'foo-bar', 'OTHER': '2-3'}
+
     def test_injects_env_vars(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'bar', 'BAZ': 'furble'}
         self.run_server_command('hi there')

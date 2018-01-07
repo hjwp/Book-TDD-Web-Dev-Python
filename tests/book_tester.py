@@ -338,7 +338,7 @@ class ChapterTest(unittest.TestCase):
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
             print('adding server cd', self.current_server_cd)
-        export_finder = re.compile(r'export ([^=]+=\w+) ?([^=]+=\w+)?')
+        export_finder = re.compile(r'export ([^=]+=\S+) ?([^=]+=\S+)?')
         if export_finder.match(command):
             for export_pair in export_finder.match(command).groups():
                 if export_pair is not None:
