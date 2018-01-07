@@ -76,6 +76,8 @@ class Command(str):
             return 'interactive manage.py'
         if self == 'python manage.py collectstatic':
             return 'interactive manage.py'
+        if self.startswith('STAGING_SERVER='):
+            return 'against staging'
         else:
             return 'other command'
 

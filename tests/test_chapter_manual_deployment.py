@@ -6,7 +6,6 @@ import subprocess
 from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 
-
 class Chapter9Test(ChapterTest):
     chapter_name = 'chapter_manual_deployment'
     previous_chapter = 'chapter_prettification'
@@ -26,6 +25,12 @@ class Chapter9Test(ChapterTest):
         self.skip_with_check(34, 'Performing system checks')
         self.skip_with_check(45, 'Starting development server')
         self.skip_with_check(57, 'check this still has our site')
+
+        if not DO_SERVER_COMMANDS:
+            self.skip_with_check(39, 'curl superlists-staging.ottg.eu')
+            self.skip_with_check(40, 'Failed to connect to superlists-staging.ottg.eu')
+            self.skip_with_check(48, 'curl superlists-staging.ottg.eu:8000')
+            self.skip_with_check(49, '<!DOCTYPE html>')
 
         vm_restore = None # 'MANUAL_1'
 
@@ -57,7 +62,8 @@ class Chapter9Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff()
-        subprocess.check_call(['vagrant', 'snapshot', 'save', 'MANUAL_END'])
+        if DO_SERVER_COMMANDS:
+            subprocess.check_call(['vagrant', 'snapshot', 'save', 'MANUAL_END'])
 
 
 

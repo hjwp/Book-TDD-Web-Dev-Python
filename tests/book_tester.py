@@ -887,6 +887,22 @@ class ChapterTest(unittest.TestCase):
                 next_listing.was_checked = True
                 self.pos += 1
 
+        elif listing.type == 'against staging':
+            print("AGAINST STAGING")
+            next_listing = self.listings[self.pos + 1]
+            if DO_SERVER_COMMANDS:
+                output = self.run_command(listing, ignore_errors=listing.ignore_errors)
+                listing.was_checked = True
+            else:
+                listing.skip = True
+            if next_listing.type == 'output' and not next_listing.skip:
+                if DO_SERVER_COMMANDS:
+                    self.assert_console_output_correct(output, next_listing)
+                    next_listing.was_checked = True
+                else:
+                    next_listing.skip = True
+                self.pos += 2
+
         elif listing.type == 'other command':
             print("A COMMAND")
             output = self.run_command(listing, ignore_errors=listing.ignore_errors)
