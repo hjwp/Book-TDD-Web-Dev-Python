@@ -592,7 +592,7 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         sourcetree.run_command('fab deploy:host=elspeth@superlists-staging.ottg.eu')
         expected = (
             'cd deploy_tools &&'
-            ' fab -i'
+            ' fab -D -i'
             ' ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key'
             ' deploy:host=elspeth@superlists-staging.ottg.eu'
         )
