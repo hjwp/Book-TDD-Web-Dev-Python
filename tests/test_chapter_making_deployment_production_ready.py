@@ -17,7 +17,7 @@ class Chapter9bTest(ChapterTest):
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'server command')
-        self.assertEqual(self.listings[2].type, 'other command')
+        self.assertEqual(self.listings[2].type, 'against staging')
 
         self.start_with_checkout()
         self.sourcetree.run_command('mkdir -p static/stuff')
@@ -62,8 +62,8 @@ class Chapter9bTest(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(ignore=["gunicorn==19"])
-
-        subprocess.check_call(['vagrant', 'snapshot', 'save', 'MAKING_END'])
+        if DO_SERVER_COMMANDS:
+            subprocess.check_call(['vagrant', 'snapshot', 'save', 'MAKING_END'])
 
 
 if __name__ == '__main__':
