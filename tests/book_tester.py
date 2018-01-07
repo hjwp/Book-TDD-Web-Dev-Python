@@ -338,7 +338,7 @@ class ChapterTest(unittest.TestCase):
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
             print('adding server cd', self.current_server_cd)
-        export_finder = re.compile(r'export (.+?=.+?) ?(.+?=.+?)?')
+        export_finder = re.compile(r'export ([^=]+=\w+) ?([^=]+=\w+)?')
         if export_finder.match(command):
             for export_pair in export_finder.match(command).groups():
                 if export_pair is not None:
@@ -347,7 +347,7 @@ class ChapterTest(unittest.TestCase):
                     print('adding server export', key, val)
 
         if command.startswith('sudo apt install '):
-            command = command.replace('install ', 'install -y ')
+            command = command.replace('apt install ', 'apt install -y ')
             sleep = 1
         if command.startswith('sudo add-apt-repository'):
             command = command.replace('add-apt-repository ', 'apt-add-repository -y ')
@@ -365,7 +365,7 @@ class ChapterTest(unittest.TestCase):
             command = f'cd {self.current_server_cd} && {command}'
         if self.current_server_exports:
             exports = ' '.join(f'{k}={v}' for k, v in self.current_server_exports.items())
-            command = f'export {exports} DJANGO_COLORS=nocolor; ' + command
+            command = f'export {exports} DJANGO_COLORS=nocolor; {command}'
 
         if 'manage.py runserver' in command:
             if './virtualenv/bin/python manage.py' in command:

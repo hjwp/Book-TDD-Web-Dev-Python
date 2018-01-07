@@ -132,6 +132,7 @@ class RunCommandTest(ChapterTest):
 
 
 
+
 @patch('book_tester.subprocess')
 class RunServerCommandTest(ChapterTest):
 
@@ -149,11 +150,14 @@ class RunServerCommandTest(ChapterTest):
         )
 
 
+    def check_runserver_call(self, mock_subprocess, expected):
+        args, kwargs = mock_subprocess.check_output.call_args
+        assert args[0][1] == expected
+
+
     def test_hacks_in_dash_y_for_apts(self, mock_subprocess):
         self.run_server_command('sudo apt install something')
-        assert mock_subprocess.check_output.call_args == call(
-            [self.RUN_SERVER_PATH, 'sudo apt install -y something'],
-        )
+        self.check_runserver_call(mock_subprocess, 'sudo apt install -y something')
 
 
     def test_hacks_in_cd_if_one_set_by_last_command(self, mock_subprocess):
@@ -161,15 +165,14 @@ class RunServerCommandTest(ChapterTest):
         self.run_server_command('cd /foo')
         assert self.current_server_cd == '/foo'
         self.run_server_command('do something')
-        assert mock_subprocess.check_output.call_args == call(
-            [self.RUN_SERVER_PATH, 'cd /foo && do something'],
-        )
+        self.check_runserver_call(mock_subprocess, 'cd /foo && do something')
 
 
     def test_spots_env_vars(self, mock_subprocess):
         assert self.current_server_exports == {}
         self.run_server_command('export THING=foo')
         assert self.current_server_exports == {'THING': 'foo'}
+
 
     def test_spots_multiple_env_vars(self, mock_subprocess):
         assert self.current_server_exports == {}
@@ -178,36 +181,73 @@ class RunServerCommandTest(ChapterTest):
 
 
     def test_injects_env_vars(self, mock_subprocess):
-        self.current_server_exports == {'FOO': 'bar', 'BAZ': 'furble'}
+        self.current_server_exports = {'FOO': 'bar', 'BAZ': 'furble'}
         self.run_server_command('hi there')
-        assert mock_subprocess.check_output.call_args == call(
-            [self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
+        self.check_runserver_call(
+            mock_subprocess,
+            'export FOO=bar BAZ=furble DJANGO_COLORS=nocolor; hi there'
         )
 
 
 
-    def xtest_hacks_in_cd_correctly_when_theres_also_a_SITENAME(self, mock_subprocess):
-        assert self.current_server_cd is None
-        self.run_server_command('cd /foo/$SITENAME')
+    def test_env_and_cd_together(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
         self.run_server_command('do something')
-        mock_subprocess.check_output.assert_called_with(
-            [self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
+        self.check_runserver_call(
+            mock_subprocess,
+            'export FOO=blee DJANGO_COLORS=nocolor; cd dirname && do something'
         )
 
 
-    def DONTtest_hacks_in_dtach_for_runserver(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b'some bytes'
-        self.run_server_command('cd /foo/$SITENAME')
-        self.run_server_command('source ./virtualenv/bin/activate && python3 manage.py runserver')
-        mock_subprocess.check_output.assert_called_with(
-            [
-                'python2.7',
-                self.RUN_SERVER_PATH,
-                'SITENAME=superlists-staging.ottg.eu;'
-                ' cd /foo/$SITENAME && source ./virtualenv/bin/activate'
-                ' && dtach -n /tmp/dtach.sock python3 manage.py runserver'
-            ],
+    def test_hacks_in_dtach_for_runserver(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
+        self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
+        self.check_runserver_call(
+            mock_subprocess,
+            'export FOO=blee DJANGO_COLORS=nocolor; cd dirname && '
+            'bla '
+            'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
+            ' blee'
         )
+
+    def test_adds_pkill_old_for_runserver(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
+        self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
+        self.assertEqual(
+            mock_subprocess.run.call_args_list[-1],
+            call([self.RUN_SERVER_PATH, 'pkill -f runserver'])
+        )
+
+
+    def test_hacks_in_dtach_for_gunicorn(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
+        self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
+        self.check_runserver_call(
+            mock_subprocess,
+            'export FOO=blee DJANGO_COLORS=nocolor; cd dirname && '
+            'bla '
+            'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn'
+            ' thing blee'
+        )
+
+
+    def test_adds_two_pkill_olds_for_gunicorn(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
+        self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
+        self.assertEqual(
+            mock_subprocess.run.call_args_list[-2],
+            call([self.RUN_SERVER_PATH, 'pkill -f runserver'])
+        )
+        self.assertEqual(
+            mock_subprocess.run.call_args_list[-1],
+            call([self.RUN_SERVER_PATH, 'pkill -f gunicorn'])
+        )
+
 
 
 
