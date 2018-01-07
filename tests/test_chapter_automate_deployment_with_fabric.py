@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import unittest
+import subprocess
 
-from book_tester import ChapterTest
-LOCAL = False
+from book_tester import ChapterTest, DO_SERVER_COMMANDS
+
 
 class Chapter9cTest(ChapterTest):
     chapter_name = 'chapter_automate_deployment_with_fabric'
@@ -19,6 +20,7 @@ class Chapter9cTest(ChapterTest):
         self.assertEqual(self.listings[2].type, 'code listing with git ref')
 
         self.start_with_checkout()
+        vm_restore = 'MANUAL_END'
 
 
         # hack fast-forward
@@ -28,6 +30,9 @@ class Chapter9cTest(ChapterTest):
             self.sourcetree.run_command('git checkout {0}'.format(
                 self.sourcetree.get_commit_spec('ch08l003')
             ))
+
+        if DO_SERVER_COMMANDS:
+            subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
 
         while self.pos < len(self.listings):
             listing = self.listings[self.pos]

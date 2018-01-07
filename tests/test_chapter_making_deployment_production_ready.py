@@ -63,6 +63,8 @@ class Chapter9bTest(ChapterTest):
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(ignore=["gunicorn==19"])
 
+        subprocess.check_call(['vagrant', 'snapshot', 'save', 'MAKING_END'])
+
 
 if __name__ == '__main__':
     unittest.main()

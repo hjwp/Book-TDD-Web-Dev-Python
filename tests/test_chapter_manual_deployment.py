@@ -25,7 +25,7 @@ class Chapter9Test(ChapterTest):
         self.skip_with_check(25, 'do some git config first')
         self.skip_with_check(34, 'Performing system checks')
         self.skip_with_check(45, 'Starting development server')
-        self.skip_with_check(55, 'check our env var is still there')
+        self.skip_with_check(57, 'check this still has our site')
 
         vm_restore = None # 'MANUAL_1'
 
@@ -47,6 +47,7 @@ class Chapter9Test(ChapterTest):
             if vm_restore:
                 subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
             else:
+                subprocess.check_call(['vagrant', 'destroy'])
                 subprocess.check_call(['vagrant', 'up'])
 
         while self.pos < len(self.listings):
