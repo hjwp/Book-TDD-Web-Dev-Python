@@ -75,5 +75,6 @@ Vagrant.configure("2") do |config|
     cp /home/ubuntu/.ssh/authorized_keys /home/elspeth/.ssh
     chown elspeth /home/elspeth/.ssh/authorized_keys
     echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
+    echo 'export DJANGO_COLORS=nocolor' >> /home/elspeth/.profile
   SHELL
 end

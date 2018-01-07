@@ -34,6 +34,8 @@ class Chapter9cTest(ChapterTest):
         if DO_SERVER_COMMANDS:
             subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
 
+        self.current_server_cd = '~/sites/superlists-staging.ottg.eu'
+
         while self.pos < len(self.listings):
             listing = self.listings[self.pos]
             print(self.pos, listing.type, repr(listing))
