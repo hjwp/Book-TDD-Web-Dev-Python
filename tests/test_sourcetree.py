@@ -584,19 +584,20 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         assert 'OK' in output
 
 
-    def test_special_cases_wget_bootstrap(self):
+    @patch('sourcetree.subprocess')
+    def test_special_cases_fab_deploy(self, mock_subprocess):
+        mock_subprocess.Popen.return_value.returncode = 0
+        mock_subprocess.Popen.return_value.communicate.return_value = 'a', 'b'
         sourcetree = SourceTree()
-        with patch('sourcetree.subprocess') as mock_subprocess:
-            mock_subprocess.Popen.return_value.communicate.return_value = (
-                'bla bla', None
-            )
-            sourcetree.run_command(BOOTSTRAP_WGET)
-            assert not mock_subprocess.Popen.called
-        assert os.path.exists(os.path.join(sourcetree.tempdir, 'bootstrap.zip'))
-        diff = sourcetree.run_command('diff %s bootstrap.zip' % (
-            os.path.join(os.path.dirname(__file__), '..', 'downloads', 'bootstrap.zip'))
+        sourcetree.run_command('fab deploy:host=elspeth@superlists-staging.ottg.eu')
+        expected = (
+            'cd deploy_tools &&'
+            ' fab -i'
+            ' ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key'
+            ' deploy:host=ubuntu@superlists-staging.ottg.eu'
         )
-        assert diff == ''
+        assert mock_subprocess.Popen.call_args[0][0] == expected
+
 
 
 class CommitTest(unittest.TestCase):

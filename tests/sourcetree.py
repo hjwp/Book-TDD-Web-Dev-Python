@@ -93,8 +93,14 @@ class SourceTree(object):
             return
         actual_command = command
         if command.startswith('fab deploy'):
-            actual_command = 'cd deploy_tools && ' + command
-        if command.startswith('curl'):
+            print('HEEEEEEEERE' * 10)
+            actual_command = f'cd deploy_tools && {command}'
+            actual_command = actual_command.replace('elspeth@', 'ubuntu@')
+            actual_command = actual_command.replace(
+                'fab deploy',
+                'fab -i ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key deploy'
+            )
+        elif command.startswith('curl'):
             actual_command = command.replace('curl', 'curl --silent --show-error')
         process = subprocess.Popen(
             actual_command, shell=True, cwd=cwd, executable='/bin/bash',

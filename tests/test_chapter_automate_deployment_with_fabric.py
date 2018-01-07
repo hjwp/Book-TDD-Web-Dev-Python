@@ -20,8 +20,8 @@ class Chapter9cTest(ChapterTest):
         self.assertEqual(self.listings[2].type, 'code listing with git ref')
 
         self.start_with_checkout()
-        vm_restore = 'MANUAL_END'
 
+        vm_restore = 'MAKING_END'
 
         # hack fast-forward
         skip = False
