@@ -8,20 +8,19 @@ Automate, automate, automate.
 ______________________________________________________________
 
 
-NOTE: 'Update on 2017-11-21' -- I have just pushed up a bit of a simplification
-    to the folder structure in the book, so if you started it before this date,
-    assumptions have changed slightly.  In brief, 'db.sqlite3' and the 'static'
-    and 'virtualenv' folders are now in the same folder as 'manage.py'.  Adjust
-    your 'settings.py' accordingly.  Check the reference repo on
-    https://github.com/hjwp/book-example/branches/active[github] if you need pointers.
+NOTE: 'Update on 2018-01-12' -- Have made some changes to the three
+    deployment chapters, mostly changing the order things happen in
+    but also using more environment variables.  Probably best to go back and
+    start again from the manual deployment chapter if you were half-way
+    through...
 
 
 ((("deployment", "automating with Fabric", id="Dfarbric11")))Automating
 deployment is critical for our staging tests to mean anything.
 By making sure the deployment procedure is repeatable, we give ourselves
-assurances that everything will go well when we deploy to production.
-
-
+assurances that everything will go well when we deploy to production. (These
+days people sometimes use the words "infrastructure as code" to describe
+automation of deployments, and provisioning).
 
 ((("Fabric", "installation and setup")))Fabric
 is a tool which lets you automate commands that you want to run on
@@ -51,11 +50,10 @@ That will call `function_name`, passing in a connection to the server at
 `SERVER_ADDRESS`.  There are lots of other options for specifying usernames and
 passwords, which you can find out about using `fab --help`.
 
+
 [role="pagebreak-before less_space"]
 Breakdown of a Fabric Script for Our Deployment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
 
 ((("Fabric", "deployment script", id="Fscript11")))The
 best way to see how it works is with an example.
@@ -82,7 +80,6 @@ def deploy():
     run(f'mkdir -p {site_folder}') <3><4>
     with cd(site_folder):  #<5>
         _get_latest_source()
-        _update_settings(env.host)  #<3>
         _update_virtualenv()
         _update_static_files()
         _update_database()
@@ -175,71 +172,6 @@ did it manually, but with the `reset --hard` to force overwriting any local
 changes.
 
 
-NOTE: For this script to work, you need to have done a `git push` of your 
-    current local commit, so that the server can pull it down and `reset` to
-    it. If you see an error saying `Could not parse object`, try doing a `git
-    push`.
-
-
-Updating settings.py
-^^^^^^^^^^^^^^^^^^^^
-
-((("secret values")))Next
-we update our settings file, to set the `ALLOWED_HOSTS` and `DEBUG`
-variables, and to create a new `SECRET_KEY`:
-
-
-[role="sourcecode"]
-.deploy_tools/fabfile.py (ch09l004)
-====
-[source,python]
-----
-def _update_settings(site_name):
-    settings_path = 'superlists/settings.py'
-    sed(settings_path, "DEBUG = True", "DEBUG = False")  #<1>
-    sed(settings_path,
-        'ALLOWED_HOSTS =.+$',
-        f'ALLOWED_HOSTS = ["{site_name}"]'  #<2>
-    )
-    secret_key_file = 'superlists/secret_key.py'
-    if not exists(secret_key_file):  #<3>
-        chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
-        key = ''.join(random.SystemRandom().choices(chars, k=50))
-        append(secret_key_file, f'SECRET_KEY = "{key}"')
-    append(settings_path, '\nfrom .secret_key import SECRET_KEY')  #<4><5>
-----
-====
-
-<1> The Fabric `sed` command does a string substitution in a file; here it's
-    changing `DEBUG` from `True` to `False`.  
-
-<2> And here it is adjusting `ALLOWED_HOSTS`, using a regex to match the 
-    right line.
-
-<3> Django uses `SECRET_KEY` for some of its crypto--things like cookies and
-    CSRF protection. It's good practice to make sure the secret key on the
-    server is different from the one in your source code repo, because that
-    code might be visible to strangers. This section will generate a new key to
-    import into settings, if there isn't one there already (once you have a
-    secret key, it should stay the same between deploys).  Find out more in the
-    https://docs.djangoproject.com/en/1.11/topics/signing/[Django docs].
-
-<4> `append` just adds a line to the end of a file. (It's clever enough not to
-    bother if the line is already there, but not clever enough to automatically
-    add a newline if the file doesn't end in one. Hence the back-n.)
-
-<5> I'm using a 'relative import' (`from .secret_key` instead of `from
-    secret_key`) to be absolutely sure we're importing the local module,
-    rather than one from somewhere else on `sys.path`. I'll talk a bit
-    more about relative imports in the next chapter.
-    
-    
-NOTE: Hacking the settings file like this is one way of changing configuration
-    on the server.  Another common pattern is to use environment variables.
-    We'll see that in <<chapter_server_side_debugging>>.  See which one you
-    like best.
-
-
 [role="pagebreak-before"]
 Updating the Virtualenv
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -327,26 +259,24 @@ $ pass:quotes[*fab deploy:host=elspeth@superlists-staging.ottg.eu*]
 [elspeth@superlists-staging.ottg.eu] Executing task 'deploy'
 [elspeth@superlists-staging.ottg.eu] run: mkdir -p /home/elspeth/sites/superlists-staging.ottg
 [elspeth@superlists-staging.ottg.eu] run: git fetch
+[elspeth@superlists-staging.ottg.eu] out: remote: Counting objects: 22, done.
+[elspeth@superlists-staging.ottg.eu] out: remote: Compressing objects:  14% (1/7)
+[...]
+[elspeth@superlists-staging.ottg.eu] out: Unpacking objects: 100% (22/22), done.
+
 [localhost] local: git log -n 1 --format=%H
 [elspeth@superlists-staging.ottg.eu] run: git reset --hard 67b489db51937b9b8afb4bf87ed849491c
 [elspeth@superlists-staging.ottg.eu] out: HEAD is now at 67b489d migrate database. --ch09l007
 [elspeth@superlists-staging.ottg.eu] out: 
-
-[elspeth@superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' "
-[elspeth@superlists-staging.ottg.eu] run: sed -i.bak -r -e 's/ALLOWED_HOSTS =.+$/ALLOWED_HOST
-[elspeth@superlists-staging.ottg.eu] run: echo '
-from .secret_key import SECRET_KEY' >> "$(echo superlists/settings.py)"
 [elspeth@superlists-staging.ottg.eu] run: ./virtualenv/bin/pip install -r requirements.txt
 [elspeth@superlists-staging.ottg.eu] out: Requirement already satisfied: django==1.11 in ./vi
 [elspeth@superlists-staging.ottg.eu] out: Requirement already satisfied: gunicorn==19.7.1 in 
 [elspeth@superlists-staging.ottg.eu] out: Requirement already satisfied: pytz in ./virtualenv
 [elspeth@superlists-staging.ottg.eu] out: 
-
 [elspeth@superlists-staging.ottg.eu] run: ./virtualenv/bin/python manage.py collectstatic --n
 [elspeth@superlists-staging.ottg.eu] out: 
 [elspeth@superlists-staging.ottg.eu] out: 0 static files copied to '/home/elspeth/sites/superl
 [elspeth@superlists-staging.ottg.eu] out: 
-
 [elspeth@superlists-staging.ottg.eu] run: ./virtualenv/bin/python manage.py migrate --noinput
 [elspeth@superlists-staging.ottg.eu] out: Operations to perform:
 [elspeth@superlists-staging.ottg.eu] out:   Apply all migrations: auth, contenttypes, lists, 
@@ -356,14 +286,22 @@ from .secret_key import SECRET_KEY' >> "$(echo superlists/settings.py)"
 ----
 
 Awesome.  I love making computers spew out pages and pages of output like that
-(in fact I find it hard to stop myself from making little \'70s computer __<brrp, brrrp, brrrp>__ noises like Mother in __Alien__).  If we look through it
-we can see it is doing our bidding: the `mkdir -p` command goes through
+(in fact I find it hard to stop myself from making little \'70s computer
+__<brrp, brrrp, brrrp>__ noises like Mother in __Alien__).  If we look through
+it we can see it is doing our bidding: the `mkdir -p` command goes through
 happily, even though the directory already exist.  Next `git pull` pulls down
-the couple of commits we just made.  The `sed` and `echo >>` modify our
-'settings.py'. Then `pip install -r requirements.txt` completes happily,
-noting that the existing virtualenv already has all the packages we need.
-`collectstatic` also notices that the static files are all already there, and
-finally the `migrate` completes without a hitch.
+the couple of commits we just made.  Then `pip install -r requirements.txt`
+completes happily, noting that the existing virtualenv already has all the
+packages we need. `collectstatic` also notices that the static files are all
+already there, and finally the `migrate` completes without needing to apply
+anything.
+
+NOTE: For this script to work, you need to have done a `git push` of your
+    current local commit, so that the server can pull it down and `reset` to
+    it. If you see an error saying `Could not parse object`, try doing a `git
+    push`.
+
+
 
 .Fabric Configuration
 *******************************************************************************
@@ -415,11 +353,6 @@ $ pass:quotes[*fab deploy:host=elspeth@superlists.ottg.eu*]
 [elspeth@superlists.ottg.eu] out: HEAD is now at 67b489d migrate database. --ch09l007--
 [elspeth@superlists.ottg.eu] out: 
 
-[elspeth@superlists.ottg.eu] run: sed -i.bak -r -e 's/DEBUG = True/DEBUG = False/g' "$(echo su
-[elspeth@superlists.ottg.eu] run: sed -i.bak -r -e 's/ALLOWED_HOSTS =.+$/ALLOWED_HOSTS = ["sup
-[elspeth@superlists.ottg.eu] run: echo 'SECRET_KEY = "@lizgs$hmc-nowxtfx1#c99jk+*=hp=cl4*33oof
-[elspeth@superlists.ottg.eu] run: echo '
-from .secret_key import SECRET_KEY' >> "$(echo superlists/settings.py)"
 [elspeth@superlists.ottg.eu] run: python3.6 -m venv virtualenv
 [elspeth@superlists.ottg.eu] run: ./virtualenv/bin/pip install -r requirements.txt
 [elspeth@superlists.ottg.eu] out: Collecting django==1.11 (from -r requirements.txt (line 1))
@@ -434,7 +367,7 @@ from .secret_key import SECRET_KEY' >> "$(echo superlists/settings.py)"
 
 [elspeth@superlists.ottg.eu] run: ./virtualenv/bin/python manage.py collectstatic --noinput
 [elspeth@superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/lists/static/
-[...\
+[...]
 [elspeth@superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/lists/static/
 [elspeth@superlists.ottg.eu] out: Copying '/home/elspeth/sites/superlists.ottg.eu/lists/static/
 [elspeth@superlists.ottg.eu] out: 
@@ -467,11 +400,9 @@ install of pip and Django. The `collectstatic` actually creates new files this
 time, and the `migrate` seems to have worked too.
 
 
-Nginx and Gunicorn Config Using sed
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-
-
+Provisioning: Nginx and Gunicorn Config Using sed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ((("Nginx", "configuring using sed")))((("Gunicorn", "configuring using sed")))((("sed (stream editor)")))What
 else do we need to do to get our live site into production? We refer to
@@ -482,14 +413,14 @@ command-line magic?
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sed "s/SITENAME/superlists.ottg.eu/g" \
+elspeth@server:$ *sed "s/DOMAIN/superlists.ottg.eu/g" \
     ./deploy_tools/nginx.template.conf \
     | sudo tee /etc/nginx/sites-available/superlists.ottg.eu*
 ----
 
 `sed` ("stream editor") takes a stream of text and performs edits on it. It's
 no accident that the Fabric string substitution command has the same name.  In
-this case we ask it to substitute the string 'SITENAME' for the address of our
+this case we ask it to substitute the string 'DOMAIN' for the address of our
 site, with the `s/replaceme/withthis/g`
 syntax.footnote:[You might have seen nerdy people using this strange
 s/change-this/to-this/ notation on the internet.  Now you know why!]
@@ -511,7 +442,7 @@ And we write the Systemd service, with another `sed`:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server: *sed "s/SITENAME/superlists.ottg.eu/g" \
+elspeth@server: *sed "s/DOMAIN/superlists.ottg.eu/g" \
     ./deploy_tools/gunicorn-systemd.template.service \
     | sudo tee /etc/systemd/system/gunicorn-superlists.ottg.eu.service*
 ----
