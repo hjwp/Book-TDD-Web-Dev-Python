@@ -8,26 +8,37 @@ NOTE: 'Update on 2018-01-07' -- Have made some changes to the three
     start again from the manual deployment chapter if you were half-way
     through...
 
+((("deployment", "getting to production-ready", id="DPprodready10")))Our
+deployment is working fine but it's not production-ready.  Let's try
+and get it there, using the tests to guide us.
 
-((("deployment", "getting to production-ready", id="DPprodready10")))In
-this chapter we'll make some changes to our site to move to a configuration
-that's more production-ready.  As we make each change, we'll use the tests to
-tell us whether things are still working.
+In a way we're applying the Red-Green-Refactor cycle to our server deployment.
+Our hacky deployment got us to Green, and now we're going to Refactor, working
+incrementally (just as we would while coding), trying to move from working
+state to working state, and using the FTs to detect any regressions.
 
 
-What's wrong with our hacky deployment?  A few things: we need to host
-our app on the "normal" port 80 and we shouldn't use the Django dev server for
-production; it's not designed for "real-life" loads.    Instead, we'll use the
+What we need to do
+~~~~~~~~~~~~~~~~~~
+
+What's wrong with our hacky deployment?  A few things: first, we need to host
+our app on the "normal" port 80 so that people can access it using a regular
+URL.
+
+Perhaps more importantly, we shouldn't use the Django dev server for
+production; it's not designed for real-life workloads.  Instead, we'll use the
 popular combination of the Nginx web server and the Gunicorn Python/WSGI
 server.
 
-((("DEBUG settings")))Our
-'settings.py' currently has also `DEBUG=True`, and that's strongly recommended
-against for production (you don't want users staring at debug tracebacks of
-your code when your site errors, for example).  
+((("DEBUG settings")))Several settings in 'settings.py' are currently
+unacceptable too. `DEBUG=True`, is strongly recommended against for production,
+and we'll want to fix `ALLOWED_HOSTS`, and set a unique `SECRET_KEY` too.
 
-We want our site to start up automatically whenever the server reboots.
-For that we'll write a Systemd config file.
+Finally, we don't want to have to SSH in to our server to actually start the site.
+Instead,  we'll write a Systemd config file so that it starts up automatically
+whenever the server (re)boots.
+
+Let's go through and see if we can fix each of these things one by one.
 
 
 Switching to Nginx
@@ -38,7 +49,7 @@ Installation
 
 
 ((("Nginx", "installation")))We'll
-need a web server, and all the cool kids are using Nginx these days,
+need a real web server, and all the cool kids are using Nginx these days,
 so we will too.  Having fought with Apache for many years, I can tell
 you it's a blessed relief in terms of the readability of its config files,
 if nothing else!
@@ -71,7 +82,7 @@ Using the FT to Confirm the Domain Works and Nginx Is Running
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ((("Nginx", "confirming operation of")))We can also confirm that if
-we run the FT without specifying port 8000, we see them fail again--one of them
+we run the FT _without_ specifying port 8000, we see them fail again--one of them
 in particular should now mention Nginx:
 
 [role="small-code against-server"]
@@ -133,10 +144,11 @@ We then add it to the enabled sites for the server by creating a symlink to it:
 # reset our env var (if necessary)
 elspeth@server:$ *export SITENAME=superlists-staging.ottg.eu*
 
-elspeth@server:$ *sudo ln -s ../sites-available/$SITENAME /etc/nginx/sites-enabled/$SITENAME*
+elspeth@server:$ *cd /etc/nginx/sites-enabled/*
+elspeth@server:$ *sudo ln -s /etc/nginx/sites-available/$SITENAME $SITENAME*
 
 # check our symlink has worked:
-elspeth@server:$ *readlink -f /etc/nginx/sites-enabled/$SITENAME*
+elspeth@server:$ *readlink -f $SITENAME*
 /etc/nginx/sites-available/superlists-staging.ottg.eu
 ----
 
@@ -159,8 +171,7 @@ And now to test it.  First we reload nginx and restart our server:
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *pwd*
-/home/elspeth/sites/superlists-staging.ottg.eu
+elspeth@server:$ *cd ~/sites/$SITENAME*
 elspeth@server:$ *./virtualenv/bin/python manage.py runserver 8000*
 ----
 
@@ -181,7 +192,7 @@ cause of the problem.
 
 The solution turns out to be that, by default, Nginx strips out the Host
 headers from requests it forwards, and it makes it "look like" they came
-from localhost after all.  We can tell it to forward on the original host
+from _localhost_ after all.  We can tell it to forward on the original host
 header by adding the `proxy_set_header` directive:
 
 
@@ -202,7 +213,7 @@ server {
 ----
 ====
 
-Reload nginx once more:
+Reload Nginx once more:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
@@ -238,6 +249,33 @@ NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
     You may not have this problem; Nginx will warn you when you do a `reload`
     if it has any trouble with its config files.
 
+
+.Tips on Debugging Nginx
+*******************************************************************************
+((("server provisioning")))((("debugging", "server provisioning")))Deployments
+are tricky!  If ever things don't go exactly as expected, here are
+a few tips and things to look out for, particularly around Nginx.
+
+- I'm sure you already have, but double-check that each file is exactly where
+  it should be and has the right contents--a single stray character can make
+  all the difference.
+
+- Nginx error logs go into '/var/log/nginx/error.log'.
+
+- You can ask Nginx to "check" its config using the `-t` flag: `nginx -t`
+
+- Make sure your browser isn't caching an out-of-date response.  Use
+  Ctrl-Refresh, or start a new private browser window.
+
+- This may be clutching at straws, but I've sometimes seen inexplicable
+  behaviour on the server that's only been resolved when I fully restarted it
+  with a `sudo reboot`.
+
+If you ever get completely stuck, there's always the option of blowing away
+your server and starting again from scratch!  It should go faster the second
+time...
+
+*******************************************************************************
 
 
 Switching to Gunicorn
@@ -298,8 +336,8 @@ image::images/twp2_1001.png["The site is up, but CSS is broken"]
 One step forward, one step backward, but once again we've identified the problem
 nice and early. Moving on!
 
-TIP: If you see a "502 - Bad Gateway", it's probably because you forgot to
-    restart Gunicorn.
+TIP: At this point if you see a "502 - Bad Gateway", it's probably because you
+    forgot to restart Gunicorn.
 
 
 
@@ -372,9 +410,9 @@ OK
 Phew.
 
 
+
 Switching to Using Unix Sockets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 
 ((("production-ready deployment", "switching to Unix domain sockets")))((("Unix domain sockets")))((("Nginx", "switching to Unix domain sockets")))((("Gunicorn", "switching to Unix domain sockets")))When
 we want to serve both staging and live, we can't have both servers trying
@@ -433,22 +471,42 @@ A couple more steps!
 
 
 
-Security: Switching DEBUG to False and Setting a Unique SECRET_KEY
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using Environment Variables to Adjust Settings for Production
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("DEBUG settings")))((("production-ready deployment", "DEBUG=false and ALLOWED_HOSTS")))((("ALLOWED_HOSTS")))((("security issues and settings", "ALLOWED_HOSTS")))((("tracebacks")))Django's
-+DEBUG+ mode is all very well for hacking about on your own server, but
-leaving those pages full of tracebacks available
-https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
+((("DEBUG settings")))((("production-ready deployment", "DEBUG=false and
+ALLOWED_HOSTS")))((("ALLOWED_HOSTS")))((("security issues and settings",
+"ALLOWED_HOSTS")))((("tracebacks")))We know there are several things in
+_settings.py_ that we want to change for production:
 
 
-Django uses `SECRET_KEY` for some of its crypto--things like cookies and CSRF
-protection. It's good practice to make sure the secret key on the server is
-different from the one in your source code repo, because that code might be
-visible to strangers.  We'll generate one and keep it, once again, in an
-environment variable (once you have a secret key, it should stay the same
-between deploys).  Find out more in the
-https://docs.djangoproject.com/en/1.11/topics/signing/[Django docs].
+* +ALLOWED_HOSTS+ is currently set to "*" which isn't secure.  We want it
+  to be set to only match the site we're supposed to be serving
+  (_superlists-staging.ottg.eu_)
+
+* +DEBUG+ mode is all very well for hacking about on your own server, but
+  leaving those pages full of tracebacks available to the world
+  https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
+
+* `SECRET_KEY` is used by Django uses for some of its crypto--things like cookies
+  and CSRF protection. It's good practice to make sure the secret key on the
+  server is different from the one in your source code repo, because that code
+  might be visible to strangers.  We'll want to generate a new, random one but
+  then keep it the same for the foreseeable future (find out more in the
+  https://docs.djangoproject.com/en/1.11/topics/signing/[Django docs]).
+
+Development, staging and live sites always have some differences
+in their configuration. Environment variables are a good place to
+store those different settings.  See
+http://www.clearlytech.com/2014/01/04/12-factor-apps-plain-english/["the
+12-factor app"].footnote:[
+Another common way of handling this is to have different versions of
+_settings.py_ for dev and prod.  That can work fine too, but it can
+get confusing to manage.  Environment variables also have the advantage
+of working for non-django stuff too...]
+
+
+Here's one way to make it work:
 
 
 [role="sourcecode"]
@@ -473,7 +531,8 @@ else:
 
 <2> And now we say that, if debug mode is off, we _require_ the
     `SECRET_KEY` and `ALLOWED_HOSTS` to be set by two more environment
-    variables.
+    variables (one of which can be the `$SITENAME` variable we've been
+    using at the command-line so far).
 
 <3> Otherwise we fall-back to the insecure, debug mode settings that
     are useful for Dev.
@@ -482,14 +541,16 @@ There are other ways you might set up the logic, making various variables
 optional, but I think this gives us a little bit of protection against
 accidentally forgetting to set one.  The end result is that you don't
 need to set any of them for dev, but production needs all three, and it
-will error if any are missing.  Better to fail hard than allow a typo in
-an environment variable name to leave you runnning with insecure settings.
+will error if any are missing.
+
+TIP: Better to fail hard than allow a typo in an environment variable name to
+    leave you running with insecure settings.
 
 Let's do our usual dance of committing locally, and pushing to GitHub:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git commit -am "use more env vars for DEBUG and SECRET_KEY"*
+$ *git commit -am "use env vars for prod settings DEBUG, ALLOWED_HOSTS, SECRET_KEY"*
 $ *git push*
 ----
 
@@ -621,11 +682,14 @@ $ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test f
 OK
 ----
 
-.More Debugging Tips
+
+.More Debugging Tips and Commands:
 *******************************************************************************
 
-- ((("debugging", "Systemd")))Check
-the Systemd logs for using 
+A few more places to look and things to try, now that we've introduced
+Gunicorn and Systemd into the mix, should things not go according to plan:
+
+- ((("debugging", "Systemd")))You can check the Systemd logs using
   `sudo journalctl -u gunicorn-superlists-staging.ottg.eu`.
 
 - You can ask Systemd to check the validity of your service configuration:
@@ -638,6 +702,7 @@ the Systemd logs for using
   of your changes.
 
 *******************************************************************************
+
 
 
 Saving Our Changes: Adding Gunicorn to Our requirements.txt
@@ -664,36 +729,6 @@ NOTE: ((("Windows", "Gunicorn support")))On
     http://stackoverflow.com/questions/11087682/does-gunicorn-run-on-windows[being discussed]...
 
 
-There are a few more debugging tips in the sidebar that follows.
-
-
-.Server Debugging Tips
-*******************************************************************************
-((("server provisioning")))((("debugging", "server provisioning")))Deployments
-are tricky!  If ever things don't go exactly as expected, here are
-a few tips and things to look out for:
-
-
-- I'm sure you already have, but double-check that each file is exactly where
-  it should be and has the right contents--a single stray character can make
-  all the difference.
-
-- Nginx error logs go into '/var/log/nginx/error.log'.
-
-- You can ask Nginx to "check" its config using the `-t` flag: `nginx -t`
-
-- Make sure your browser isn't caching an out-of-date response.  Use
-  Ctrl-Refresh, or start a new private browser window.
-
-- This may be clutching at straws, but I've sometimes seen inexplicable
-  behaviour on the server that's only been resolved when I fully restarted it
-  with a `sudo reboot`.
-
-If you ever get completely stuck, there's always the option of blowing away
-your server and starting again from scratch!  It should go faster the second
-time...
-
-*******************************************************************************
 
 
 
@@ -951,3 +986,18 @@ Security::
     
 *******************************************************************************
 
+
+.General Server Debugging tips
+*******************************************************************************
+
+The most important lesson to remember from this chapter is to work
+incrementally, make one change at a time and run your tests frequently.
+
+When things (inevitably) go wrong, resist the temptation to flail about and
+make other, unrelated changes in the hope that things will start working again;
+instead stop, go backwards if necessary to get to a working state, and figure
+out what went wrong before moving forwards again.
+
+It's just as easy to fall into the Refactoring-Cat trap on the server!
+
+*******************************************************************************

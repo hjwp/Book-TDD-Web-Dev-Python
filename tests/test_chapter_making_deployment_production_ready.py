@@ -23,7 +23,7 @@ class Chapter9bTest(ChapterTest):
         self.sourcetree.run_command('mkdir -p static/stuff')
 
         # skips
-        self.skip_with_check(7, 'check our symlink')
+        self.skip_with_check(8, 'check our symlink')
         self.skip_with_check(23, 'Starting gunicorn')
         self.skip_with_check(45, 'something more secure later')
         self.skip_with_check(53, 'this command tells Systemd')
