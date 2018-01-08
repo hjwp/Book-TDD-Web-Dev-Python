@@ -123,7 +123,7 @@ testing fits in.
 There's lots of stuff in the next three chapters, so here's an overview to help you
 keep your bearings:
 
-**This chapter: getting a manual deployment up and running**
+**This chapter: getting a basic manual deployment up and running**
 
 * Adapt our FTs so they can run against a staging server.
 
@@ -145,9 +145,13 @@ keep your bearings:
 **Next chapter: moving to a production-ready config**
 
 * Move from our quick-and-dirty version to a production-ready configuration;
-  stop using the Django dev server, use Nginx and Gunicorn as web serves,
+
+* Stop using the Django dev server, use Nginx and Gunicorn as web servers,
   configure efficient static file serving, set our app to start automatically
-  on boot, set +DEBUG+ to +False+, and so on.
+  on boot with Systemd
+
+* Security: Use environment variables to +DEBUG+ to +False+, change the
+  +SECRET_KEY+, and so on
 
 
 **Third deployment chapter: automating the deployment**
@@ -169,8 +173,8 @@ As Always, Start with a Test
 
 ((("environment variables")))((("staging sites", "adapting functional tests for", id="SSadapt09")))Let's
 adapt our functional tests slightly so that it can be run against
-a staging site. We'll do it by checking for an environment variable called
-`STAGING_SERVER`:
+a staging site, instead of the local dev server. We'll do it by checking for an
+environment variable called `STAGING_SERVER`:
 
 
 [role="sourcecode"]
@@ -221,8 +225,8 @@ host my staging server at 'superlists-staging.ottg.eu':
 
 
 NOTE: A clarification: in this chapter, we run tests 'against' our staging
-    server, not 'on' our staging server.  So we run the tests from our own
-    laptop, but they target the site that's running on the server.
+    server, not 'on' our staging server.  So we still run the tests from our
+    own laptop, but they target the site that's running on the server.
 
 
 [role="small-code"]
@@ -279,7 +283,7 @@ NOTE: If, on Windows, you see an error saying something like
     &#x201c;<<pre-requisites>>&#x201d; section.
 
 You can see that all the tests are failing, as expected, since I haven't
-actually set up my domain yet -- Selenium reports that Firefox is seeing an
+actually set up my domain yet. Selenium reports that Firefox is seeing an
 error and "cannot establish connection to the server" (depending on your
 registrar, you might see content from its default landing page instead).
 
@@ -303,7 +307,6 @@ TIP: Don't use `export` to set the 'STAGING_SERVER' environment variable;
 
 Getting a Domain Name
 ~~~~~~~~~~~~~~~~~~~~~
-
 
 ((("staging sites", "domain names")))((("domain names")))We're
 going to need a couple of domain names at this point in the book--they
@@ -351,9 +354,8 @@ fall into two camps:
 
 [role="pagebreak-before"]
 - Running your own (possibly virtual) server
-- Using a ((("Platform-As-A-Service (PaaS)")))Platform-As-A-Service (PaaS) offering like Heroku, OpenShift, or
-  [keep-together]#PythonAnywhere#
-
+- Using a ((("Platform-As-A-Service (PaaS)")))Platform-As-A-Service (PaaS)
+  offering like Heroku, OpenShift, or [keep-together]#PythonAnywhere#
 
 
 
@@ -365,29 +367,27 @@ that I think PythonAnywhere is the best, but then again I would say that
 because I work there.  Secondly, all the PaaS offerings are quite different,
 and the procedures to deploy to each vary a lot--learning about one doesn't
 necessarily tell you about the others. Any one of them might change their
-process radically, or simply go out of business by the time you get to read
-this book.
+process or business model radically by the time you get to read this book.
 
 Instead, we'll learn just a tiny bit of good old-fashioned server admin,
 including SSH and web server config.  They're unlikely to ever go away, and
 knowing a bit about them will get you some respect from all the grizzled
 dinosaurs out there.
 
-What I have done is to try to set up a server in such a way that it's a lot
+What I have done is to try to set up a server in such a way that's a bit
 like the environment you get from a PaaS, so you should be able to apply the
 lessons we learn in the deployment section, no matter what provisioning
 solution you choose.
 
 
+
 Spinning Up a Server
 ^^^^^^^^^^^^^^^^^^^^
 
-
-
-I'm not going to
-dictate how you do this--whether you choose Amazon AWS, Rackspace, Digital
-Ocean, your own server in your own data centre or a Raspberry Pi in a cupboard
-under the stairs, any solution should be fine, as long as:
+I'm not going to dictate how you do this--whether you choose Amazon AWS,
+Rackspace, Digital Ocean, your own server in your own data centre or a
+Raspberry Pi in a cupboard under the stairs, any solution should be fine, as
+long as:
 
 * Your server is running Ubuntu 16.04 (aka "Xenial/LTS").
 
@@ -409,12 +409,11 @@ https://github.com/hjwp/Book-TDD-Web-Dev-Python/blob/master/server-quickstart.md
 
 
 NOTE: ((("getting help")))Some
-people get to this chapter, and are tempted to skip the domain bit,
+    people get to this chapter, and are tempted to skip the domain bit,
     and the "getting a real server" bit, and just use a VM on their own PC.
     Don't do this. It's 'not' the same, and you'll have more difficulty
     following the instructions, which are complicated enough as it is.  If
-    you're worried about cost, dig around and you'll find free options for
-    both. Email me if you need further pointers; I'm always happy to help.
+    you're worried about cost, have a look at the link above for free options.
 
 
 User Accounts, SSH, and Privileges
@@ -533,14 +532,15 @@ database, static files and virtualenv (managed separately).
 
 To get our code onto the server, we'll use Git and go via one of the
 code-sharing sites.  If you haven't already, push your code up to GitHub,
-BitBucket, or similar.  They all have excellent instructions for beginners on
-how to do that.
+BitBucket, GitLab, or similar.  They all have excellent instructions for
+beginners on how to do that.
 
 
 ((("Git", "local variables")))Here
 are some bash commands that will set this all up. If you're not familiar
 with it, note the `export` command which lets me set up a "local variable"
-in bash:
+in Bash; a bit like the inline environment variable we used earlier, but
+it's available to all subsequent commands in that same shell.
 
 [role="server-commands small-code"]
 [subs=""]
@@ -557,8 +557,8 @@ NOTE: A bash variable defined using `export` only lasts as long as that console
     the empty string for the variable, which will lead to weird results...if in
     doubt, do a quick *`echo $SITENAME`*.
 
-Now we've got the site installed, let's just try running the dev server--this
-is a smoke test, to see if all the moving parts are connected:
+Now we've got the site installed, let's just try running the dev server, and
+see how far we get:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
@@ -601,7 +601,8 @@ $ *git commit -m "Add requirements.txt for virtualenv"*
 
 NOTE: You may be wondering why we didn't add our other dependency,
     Selenium, to our requirements.  The reason is that Selenium is
-    only a dependency for the tests, not the application code.  Some
+    only a dependency for the tests, not the application code (we're
+    never going to run the tests on the server itself).  Some
     people like to also create a file called 'test-requirements.txt'.
 
 Now we do a `git push` to send our updates up to our code-sharing site:
@@ -674,14 +675,13 @@ certainly looks a lot happier.
 
 
 Progress!  We've got a system for getting code to and from the server
-(`git push` and `git pull`), and we've got a virtualenv set up to match our
-local one, and a single file, 'requirements.txt', to keep them in sync.
+(`git push` and `git pull`), we've got a virtualenv set up to match our local
+one, and a single file, 'requirements.txt', to keep them in sync.
 
 
 
 Using the FT to check our deployment works
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 
 Let's see what our FTs think about this version of our site running on
 the server. I'll use the `--failfast` option to exit as soon as a single test
@@ -736,7 +736,7 @@ that things aren't working. Nope.
 *******************************************************************************
 Let me let you in on a little secret.  I'm actually bad at debugging.  We all
 have our psychological strengths and weakness, and one of my weaknesses is that
-when I run into a problem I can't see an obvious solution to, I tend to throw
+when I run into a problem I can't see an obvious solution to, I want to throw
 up my hands way too soon and say "well, this is hopeless, it can't be fixed",
 and give up.
 
@@ -779,7 +779,8 @@ Ah-ha!  That looks like the HTML for our site.  So we 'can' reach it from the
 server itself, just not from the outside.  What could be going on?
 
 
-Actually there's clue in the output that Django prints out:
+Actually there's clue in the output that Django printed out earlier when
+we ran `runserver`:
 
 
 [role="skipme small-code"]
@@ -862,7 +863,7 @@ Oops, spoke too soon!  Another error.  We didn't look closely enough at
 that `curl` output...
 
 
-Setting ALLOWED_HOSTS using an environment variable
+Setting ALLOWED_HOSTS Using an Environment Variable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("environment variables")))Don't
@@ -966,19 +967,18 @@ through, or if you tried it manually.
 image::images/twp2_0904.png["Django DEBUG page showing database error"]
 
 NOTE: The tests saved us from potential embarrassment there.  The site 'looked'
-    fine when we loaded its front page.  If we'd been a little hasty, we might
-    have thought we were done, and it would have been the first users that
-    discovered that nasty Django DEBUG page.  Okay, slight exaggeration for
-    effect, maybe we 'would' have checked, but what happens as the site gets
-    bigger and more complex? You can't check everything. The tests can.
+    fine when we loaded its front page.  If we'd been a little hasty and only
+    testing manually, we might have thought we were done, and it would have
+    been the first users that discovered that nasty Django DEBUG page.  Okay,
+    slight exaggeration for effect, maybe we 'would' have checked, but what
+    happens as the site gets bigger and more complex? You can't check
+    everything. The tests can.
     
 
 
 
 Creating the Database with migrate
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("database migrations")))We
 run `migrate` using the `--noinput` argument to suppress the two little "are
@@ -1021,7 +1021,9 @@ Ran 3 tests in 10.718s
 OK
 ----
 
-Hooray! Time for a well-earned tea break I think, and perhaps a
+Hooray, that's a working deploy!
+
+Time for a well-earned tea break I think, and perhaps a
 https://en.wikipedia.org/wiki/Digestive_biscuit[Chocolate biscuit].
 
 
@@ -1030,9 +1032,9 @@ https://en.wikipedia.org/wiki/Digestive_biscuit[Chocolate biscuit].
 Success!  Our Hack Deployment Works
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Phew.  Assuming you managed to get that up and running, we are at least
-reassured that the basic piping works. Notice that the FT was able to guide
-us incrementally towards a working site.
+Phew.  Well, it took a bit of hacking about, but now we can be reassured that
+the basic piping works. Notice that the FT was able to guide us incrementally
+towards a working site.
 
 But we really can't be using the Django dev server in production, or running on
 port 8000 forever. In the next chapter, we'll make our hacky deployment more
@@ -1057,7 +1059,7 @@ Some typical pain points--networking, ports, static files, and the database::
     production.  You'll need to think through each of these for your own
     deployments.
 
-Tests allow us to experiment::
+Tests allow us to experiment and work incrementally::
     Whenever we make a change to our server configuration, we can rerun the
     test suite, and be confident that everything works as well as it did
     before.  It allows us to experiment with our setup with less fear (as
