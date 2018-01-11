@@ -367,7 +367,7 @@ class ChapterTest(unittest.TestCase):
             command = f'cd {self.current_server_cd} && {command}'
         if self.current_server_exports:
             exports = ' '.join(f'{k}={v}' for k, v in self.current_server_exports.items())
-            command = f'export {exports} DJANGO_COLORS=nocolor; {command}'
+            command = f'export {exports}; {command}'
 
         if 'manage.py runserver' in command:
             if './virtualenv/bin/python manage.py' in command:

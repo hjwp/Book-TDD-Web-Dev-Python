@@ -78,8 +78,8 @@ image::images/twp2_0901.png["The default 'Welcome to nginx!' page"]
 
 
 
-Using the FT to Confirm the Domain Works and Nginx Is Running
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The FT now fails, but show Nginx is Running
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ((("Nginx", "confirming operation of")))We can also confirm that if
 we run the FT _without_ specifying port 8000, we see them fail again--one of them
@@ -175,59 +175,14 @@ elspeth@server:$ *cd ~/sites/$SITENAME*
 elspeth@server:$ *./virtualenv/bin/python manage.py runserver 8000*
 ----
 
-And then we try our FTs, again, without the port 8000:
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests --failfast*]
-[...]
-AssertionError: 'To-Do' not found in 'DisallowedHost at /'
-----
-
-Oops, something's gone wrong.  But once again, by running our FTs frequently,
-we're able to identify the problem early, before we've changed too many things.
-In this case all we've done is added Nginx into the loop, so we know it's the
-cause of the problem.
-
-The solution turns out to be that, by default, Nginx strips out the Host
-headers from requests it forwards, and it makes it "look like" they came
-from _localhost_ after all.  We can tell it to forward on the original host
-header by adding the `proxy_set_header` directive:
-
-
-[role="sourcecode"]
-.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name superlists-staging.ottg.eu;
-
-    location / {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-    }
-}
-----
-====
-
-Reload Nginx once more:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl reload nginx*
-----
-
 TIP: ((("Nginx", "troubleshooting")))((("troubleshooting", "Nginx operation")))If
     you ever find Nginx isn't behaving as expected, try the command
     `sudo nginx -t`, which does a config test, and will warn you of any 
     problems in your configuration files.
 
 
-And then we try our FTs, again, without the port 8000:
+And now we can try our FTs without the port 8000:
+
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -242,7 +197,7 @@ Ran 3 tests in 10.718s
 OK
 ----
 
-Hooray!
+Hooray!  Back to a working state.
 
 NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
     `server_names_hash_bucket_size 64;` to get my long domain name to work.
@@ -333,8 +288,8 @@ tell Nginx to do it instead.
 image::images/twp2_1001.png["The site is up, but CSS is broken"]
 
 
-One step forward, one step backward, but once again we've identified the problem
-nice and early. Moving on!
+One step forward, one step backward, but once again we've identified the
+problem nice and early. Moving on!
 
 TIP: At this point if you see a "502 - Bad Gateway", it's probably because you
     forgot to restart Gunicorn.
@@ -376,7 +331,6 @@ server {
 
     location / {
         proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
     }
 }
 ----
@@ -438,7 +392,6 @@ server {
     }
 
     location / {
-        proxy_set_header Host $host;
         proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
     }
 }
@@ -467,7 +420,7 @@ $ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test f
 OK
 ----
 
-A couple more steps!
+Hooray, a change that went without a hitch for once!  Moving on.
 
 
 
@@ -568,7 +521,94 @@ elspeth@server:$ *./virtualenv/bin/gunicorn --bind \
 ----
 
 
-And use a test run to reassure ourselves that things still work:
+And use a test run to reassure ourselves that things still work...
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests --failfast*]
+[...]
+AssertionError: 'To-Do' not found in ''
+----
+
+Oops.  Let's take a look manually: <<django-disallowedhosts-error>>.
+
+[[django-400-error]]
+.An ugly 400 error
+image::images/django_400_bad_request.png["An unfriendly page showing 400 Bad Request"]
+
+
+Professional Googling the Error Message
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Something's gone wrong.  But once again, by running our FTs frequently,
+we're able to identify the problem early, before we've changed too many things.
+In this case the only thing we've changed is _settings.py_. We've changed three
+settings, which one might be at fault?
+
+Let's use the tried and tested "googling the error message" technique
+(<<googling-the-error>>).
+
+
+[[googling-the-error]]
+.An indispensible publication (source: https://news.ycombinator.com/item?id=11459601)
+image::images/oreilly_googling_the_error_message.jpg["Cover of a fake O'Reilly book called Googling the Error Message"]
+
+The very first link in the search results for
+https://www.google.co.uk/?q=django+400+bad+request[Django 400 Bad Request] for
+me suggests that a 400 error is usually to do with `ALLOWED_HOSTS`.  Now in the
+last Chapter we had a nice Django Debug page saying "DisallowedHost error"
+(<<django-disallowedhosts-error>>), but now because we have `DEBUG=False`, we
+just get the minimal, unfriendly 400 page.
+
+But what's wrong with `ALLOWED_HOSTS`? After double-checking it for typos, we
+might do a little more googling with some relevant keywords:
+https://www.google.co.uk/search?q=django+allowed+hosts+nginx[Django
+ALLOWED_HOSTS Nginx]. Once again, the
+https://www.digitalocean.com/community/questions/bad-request-400-django-nginx-gunicorn-on-debian-7[first result] 
+gives us the clue we need.
+
+
+Fixing ALLOWED_HOSTS with Nginx: passing on the Host header
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The problem turns out to be that, by default, Nginx strips out the Host
+headers from requests it forwards, and it makes it "look like" they came
+from _localhost_ after all.  We can tell it to forward on the original host
+header by adding the `proxy_set_header` directive:
+
+
+[role="sourcecode"]
+.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
+====
+[source,nginx]
+----
+server {
+    listen 80;
+    server_name superlists-staging.ottg.eu;
+
+    location /static {
+        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
+    }
+
+    location / {
+        proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
+        proxy_set_header Host $host;
+    }
+}
+----
+====
+
+Reload Nginx once more:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo systemctl reload nginx*
+----
+
+And then we try our FTs again:
+
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -578,8 +618,8 @@ $ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test f
 OK
 ----
 
-Excellent!  A change that went smoothly, for once.
 
+Phew.
 
 
 Using Systemd to Make Sure Gunicorn Starts on Boot
@@ -746,7 +786,7 @@ Provisioning::
 5. Add Systemd job for Gunicorn (including unique SECRET_KEY)
 
 Deployment::
-1. Create directory structure in '~/sites'
+1. Create directory in '~/sites'
 2. Pull down source code.
 3. Start virtualenv in 'virtualenv'
 4. `pip install -r requirements.txt`

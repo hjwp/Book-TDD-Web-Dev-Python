@@ -190,7 +190,7 @@ class RunServerCommandTest(ChapterTest):
         self.run_server_command('hi there')
         self.check_runserver_call(
             mock_subprocess,
-            'export FOO=bar BAZ=furble DJANGO_COLORS=nocolor; hi there'
+            'export FOO=bar BAZ=furble; hi there'
         )
 
 
@@ -201,7 +201,7 @@ class RunServerCommandTest(ChapterTest):
         self.run_server_command('do something')
         self.check_runserver_call(
             mock_subprocess,
-            'export FOO=blee DJANGO_COLORS=nocolor; cd dirname && do something'
+            'export FOO=blee; cd dirname && do something'
         )
 
 
@@ -211,7 +211,7 @@ class RunServerCommandTest(ChapterTest):
         self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
         self.check_runserver_call(
             mock_subprocess,
-            'export FOO=blee DJANGO_COLORS=nocolor; cd dirname && '
+            'export FOO=blee; cd dirname && '
             'bla '
             'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
             ' blee'
@@ -233,7 +233,7 @@ class RunServerCommandTest(ChapterTest):
         self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
         self.check_runserver_call(
             mock_subprocess,
-            'export FOO=blee DJANGO_COLORS=nocolor; cd dirname && '
+            'export FOO=blee; cd dirname && '
             'bla '
             'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn'
             ' thing blee'

@@ -24,8 +24,8 @@ class Chapter9bTest(ChapterTest):
 
         # skips
         self.skip_with_check(8, 'check our symlink')
-        self.skip_with_check(23, 'Starting gunicorn')
-        self.skip_with_check(45, 'something more secure later')
+        self.skip_with_check(19, 'Starting gunicorn')
+        self.skip_with_check(41, 'something more secure later')
         self.skip_with_check(53, 'this command tells Systemd')
         self.skip_with_check(55, 'this command actually starts')
         self.skip_with_check(68, 'git status')
@@ -33,7 +33,7 @@ class Chapter9bTest(ChapterTest):
 
         # fixes
         self.replace_command_with_check(
-            43,
+            39,
             'git pull',
             'git fetch'
             ' && git checkout chapter_making_deployment_production_ready'

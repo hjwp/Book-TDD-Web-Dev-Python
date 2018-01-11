@@ -2,9 +2,12 @@
 
 from collections import namedtuple
 import os
+from pathlib import Path
 import json
 from lxml import html
 import subprocess
+
+DEST = Path('/home/harry/workspace/www.obeythetestinggoat.com/content/book')
 
 CHAPTERS = [
     c.replace('.asciidoc', '.html')
@@ -133,11 +136,9 @@ def copy_chapters_across_with_fixes(chapter_info, fixed_toc):
         body.append(analytics_div)
         fixed_contents = html.tostring(parsed)
 
-        target = os.path.join('/home/harry/workspace/www.obeythetestinggoat.com/content/book', chapter)
-        with open(target, 'w') as f:
+        with open(DEST / chapter, 'w') as f:
             f.write(fixed_contents.decode('utf8'))
-        toc = '/home/harry/workspace/www.obeythetestinggoat.com/content/book/toc.html'
-        with open(toc, 'w') as f:
+        with open(DEST / 'toc.html', 'w') as f:
             f.write(html.tostring(fixed_toc).decode('utf8'))
 
 
@@ -174,12 +175,17 @@ def print_toc_md(chapter_info):
         print(f'* [{title}](/book/{chapter})')
 
 
+def rsync_images():
+    subprocess.run(['rsync', '-a', '--delete', '-v', 'images/', DEST / 'images/'])
+
+
 def main():
     make_chapters()
     toc = extract_toc_from_book()
     chapter_info = get_chapter_info()
     fixed_toc = fix_toc(toc, chapter_info)
     copy_chapters_across_with_fixes(chapter_info, fixed_toc)
+    rsync_images()
     print_toc_md(chapter_info)
 
 
