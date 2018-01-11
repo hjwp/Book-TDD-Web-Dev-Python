@@ -672,11 +672,6 @@ def reset_database(host):
         run(f'{manage_dot_py} flush --noinput')  #<2>
 
 
-def create_session_on_server(host, email):
-    manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f'elspeth@{host}'):  #<1>
-        session_key = run(f'{manage_dot_py} create_session {email}')  #<2>
-        return session_key.strip()
 ----
 ====
 
@@ -686,6 +681,56 @@ def create_session_on_server(host, email):
 
 <2> Then, once we're inside the context manager, we can just call
     Fabric commands as if we're in a fabfile.
+
+
+For creating the session, we have a slightly more complex procedure,
+because we need to extract the `SECRET_KEY` and other env vars from
+the current running server, to be able to generate a session key that's
+cryptographically valid for the server:
+
+
+[role="sourcecode small-code"]
+.functional_tests/server_tools.py
+====
+[source,python]
+----
+from fabric.context_managers import settings, shell_env
+[..]
+
+
+def _get_server_env_vars(host):
+    pid = run(f'pgrep -n -f {host}/virtualenv/bin/gunicorn').strip()  #<1>
+    env_lines = run(f'cat /proc/{pid}/environ').split('\x00')  #<2>
+    current_env = dict(l.split('=') for l in env_lines if l)  #<2>
+    return {  #<3>
+        'DJANGO_DEBUG_FALSE': current_env['DJANGO_DEBUG_FALSE'],
+        'DJANGO_SECRET_KEY': current_env['DJANGO_SECRET_KEY'],
+        'SITENAME': current_env['SITENAME'],
+    } 
+
+
+def create_session_on_server(host, email):
+    manage_dot_py = _get_manage_dot_py(host)
+    with settings(host_string=f'elspeth@{host}'):
+        env_vars = _get_server_env_vars(host)  #<4>
+        with shell_env(**env_vars):  #<4>
+            session_key = run(f'{manage_dot_py} create_session {email}')
+            return session_key.strip()
+
+----
+
+
+<1> We determine the pid of the current running Django server using `pgrep`
+
+<2> We then we extract its current environment variables from _/proc_.  We
+    need to do a bit of wrangling to convert the _/proc_ format's null-bytes
+    separators format into a usable dict
+
+<3> And then we return the specific variables we're interested in...
+
+<4> In order to use them in another fabric context manager, `shell_env`,
+    so that they're set when we run `manage.py create_session`.
+
 
 
 Recap: Creating Sessions Locally Versus Staging

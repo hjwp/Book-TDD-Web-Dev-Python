@@ -434,43 +434,60 @@ Provisioning: Nginx and Gunicorn Config Using sed
 ((("Nginx", "configuring using sed")))((("Gunicorn", "configuring using sed")))((("sed (stream editor)")))What
 else do we need to do to get our live site into production? We refer to
 our provisioning notes, which tell us to use the template files to create our
-Nginx virtual host and the Systemd service.  How about a little Unix
-command-line magic?
+Nginx virtual host and the Systemd service.
+
+First we generate a new secret key:
+
+[role="skipme"]
+[subs=""]
+----
+$ <strong>python -c"import random; print(''.join(random.SystemRandom().
+choices('abcdefghijklmnopqrstuvwxyz0123456789', k=50)))"</strong>
+ommffan3x1qn28xmusukyg66t0ajzm7x9ufh2teaqjhuap8vib
+----
+
+
+Now let's use a little Unix command-line magic?
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sed "s/DOMAIN/superlists.ottg.eu/g" \
-    ./deploy_tools/nginx.template.conf \
+elspeth@server:$ *cat ./deploy_tools/nginx.template.conf \
+    | sed "s/DOMAIN/superlists.ottg.eu/g" \
+    | sed s/SEKRIT/ommffan3x1qn28xmusukyg66t0ajzm7x9ufh2teaqjhuap8vib/ \
     | sudo tee /etc/nginx/sites-available/superlists.ottg.eu*
 ----
 
-`sed` ("stream editor") takes a stream of text and performs edits on it. It's
-no accident that the Fabric string substitution command has the same name.  In
-this case we ask it to substitute the string 'DOMAIN' for the address of our
+`sed` ("stream editor") takes a stream of text and performs edits on it.
+In this case we ask it to substitute the string 'DOMAIN' for the address of our
 site, with the `s/replaceme/withthis/g`
 syntax.footnote:[You might have seen nerdy people using this strange
 s/change-this/to-this/ notation on the internet.  Now you know why!]
-We pipe (`|`) the output of that to a root-user process (`sudo`), which uses
-`tee` to write what's piped to it to a file, in this case the Nginx
-sites-available virtualhost config file.
+We pipe (`|`) that to another `sed` process to set our unique SECRET_KEY, and
+then we pipe the output once more output to a root-user process (`sudo`), which
+uses `tee` to write its input a file, in this case the Nginx sites-available
+virtualhost config file.
+
+NOTE: For bonus points, why not build an even bigger Bash "one-liner" that
+    includes the python `random.choices` command to generate the secret key?
+    Answers on a postcard!
 
 Next we activate that file with a symlink:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo ln -s ../sites-available/superlists.ottg.eu \
+elspeth@server:$ *sudo ln -s /etc/nginx/sites-available/superlists.ottg.eu \
     /etc/nginx/sites-enabled/superlists.ottg.eu*
 ----
 
-And we write the Systemd service, with another `sed`:
+And we write the Systemd service, with another, slightly simpler `sed`:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server: *sed "s/DOMAIN/superlists.ottg.eu/g" \
-    ./deploy_tools/gunicorn-systemd.template.service \
+elspeth@server: *cat ./deploy_tools/gunicorn-systemd.template.service \
+    | sed "s/DOMAIN/superlists.ottg.eu/g" \
     | sudo tee /etc/systemd/system/gunicorn-superlists.ottg.eu.service*
 ----
 
