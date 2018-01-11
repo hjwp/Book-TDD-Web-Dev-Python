@@ -159,6 +159,10 @@ class RunServerCommandTest(ChapterTest):
         self.run_server_command('sudo apt install something')
         self.check_runserver_call(mock_subprocess, 'sudo apt install -y something')
 
+    def test_hacks_dash_f_in_journaltct(self, mock_subprocess):
+        self.run_server_command('sudo journalctl -f -u thing')
+        self.check_runserver_call(mock_subprocess, 'sudo journalctl --no-pager -u thing')
+
 
     def test_hacks_in_cd_if_one_set_by_last_command(self, mock_subprocess):
         assert self.current_server_cd is None

@@ -29,7 +29,6 @@ have to figure out a way of managing the database on the test server:
 
 
 //TODO: unskip all these
-[role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
 $ *git push*  # if you haven't already
@@ -40,7 +39,7 @@ $ *fab deploy --host=elspeth@superlists-staging.ottg.eu*
 
 And restart Gunicorn...
 
-[role="skipme"]
+[role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server:$ *sudo systemctl daemon-reload*
@@ -49,42 +48,39 @@ elspeth@server:$ *sudo systemctl restart gunicorn-superlists-staging.ottg.eu*
 
 Here's what happens when we run the functional tests:
 
-[role="skipme small-code"]
+[role="small-code"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-
-======================================================================
-ERROR: test_can_get_email_link_to_log_in
-(functional_tests.test_login.LoginTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/.../functional_tests/test_login.py", line 22, in
-  test_can_get_email_link_to_log_in
-    self.assertIn('Check your email', body.text)
-AssertionError: 'Check your email' not found in 'Server Error (500)'
-
 
 ======================================================================
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
 (functional_tests.test_my_lists.MyListsTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/home/harry/.../book-example/functional_tests/test_my_lists.py",
-  line 34, in test_logged_in_users_lists_are_saved_as_my_lists
+  File "...python-tdd-book/functional_tests/test_my_lists.py", line 34, in
+test_logged_in_users_lists_are_saved_as_my_lists
     self.wait_to_be_logged_in(email)
-  File "/worskpace/functional_tests/base.py", line 42, in wait_to_be_logged_in
-    self.browser.find_element_by_link_text('Log out')
-    [...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: {"method":"link text","selector":"Log out"}
-Stacktrace:
 [...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: Log out
+
+
+======================================================================
+FAIL: test_can_get_email_link_to_log_in (functional_tests.test_login.LoginTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...python-tdd-book/functional_tests/test_login.py", line 22, in
+test_can_get_email_link_to_log_in
+    self.wait_for(lambda: self.assertIn(
+[...]
+AssertionError: 'Check your email' not found in 'Server Error (500)'
 
  ---------------------------------------------------------------------
-Ran 8 tests in 27.933s
+Ran 8 tests in 68.602s
 
-FAILED (errors=2)
+FAILED (failures=1, errors=1)
+
 ----
 
 We can't log in--either with the real email system or with our
@@ -96,33 +92,14 @@ Let's practice a bit of server-side debugging!
 
 
 
-Setting Up Logging
-^^^^^^^^^^^^^^^^^^
-
-
-
+Inspecting Logs on the Server
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("logging")))((("Gunicorn", "logging setup")))In
-order to track this problem down, we have to set up Gunicorn to do some
-logging.  Adjust the Gunicorn config on the server, using `vi` or `nano`:
+order to track this problem down, we need to get some logging information
+out of Django.
 
-[role="sourcecode small-code skipme"]
-.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
-====
-[source,ini]
-----
-ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
-    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
-    --capture-output \
-    --access-logfile access.log \
-    --error-logfile error.log \
-    superlists.wsgi:application
-----
-====
-
-That will put an access log and error log into the '~/sites/$SITENAME' folder.
-
-You should also make sure your 'settings.py' still contains the `LOGGING`
+First, make sure your 'settings.py' still contains the `LOGGING`
 settings which will actually send stuff to the console:
 
 [role="sourcecode currentcontents"]
@@ -149,16 +126,14 @@ LOGGING = {
 ----
 ====
 
-We restart Gunicorn again, and then either rerun the FT, or just try
-to log in manually.  While that happens, we can watch the logs on
-the server with:
+Restart Gunicorn again if necessary, and then either rerun the FT, or just try
+to log in manually.  While that happens, we watch the logs on the server with
+`journalctl -f`:
 
-[role="skipme"]
+[role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo systemctl daemon-reload*
-elspeth@server:$ *sudo systemctl restart gunicorn-superlists-staging.ottg.eu*
-elspeth@server:$ *tail -f error.log*  # assumes we are in ~/sites/$SITENAME folder
+elspeth@server:$ *sudo journalctl -f -u gunicorn-superlists-staging.ottg.eu*
 ----
 
 You should see an error like this:
@@ -180,7 +155,6 @@ Traceback (most recent call last):
 smtplib.SMTPSenderRefused: (530, b'5.5.1 Authentication Required. Learn more
 at\n5.5.1  https://support.google.com/mail/?p=WantAuthError [...]
 - gsmtp', 'noreply@superlists')
-
 ----
 
 Hm, Gmail is refusing to send our emails, is it?  Now why might that be?  Ah
@@ -191,15 +165,15 @@ yes, we haven't told the server what our password is!((("", startref="SScatch21"
 //the logging stuff?
 
 
-Setting Secret Environment Variables on the Server
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Another Environment Variable
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("debugging", "server-side", "setting secret environment variables")))((("environment variables")))((("secret values")))Just
 as in <<chapter_making_deployment_production_ready>>, the place we
 set environment variables on the server is in the Systemd config
 file:
 
-[role="sourcecode small-code skipme"]
+[role="sourcecode small-code"]
 .server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
 ====
 [source,ini]
@@ -215,10 +189,19 @@ Environment=EMAIL_PASSWORD=yoursekritpasswordhere
 
 
 Saving that file, and doing the usual `daemon-reload` and `restart gunicorn`
-dance, we can rerun our FTs, and...
+dance
 
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *sudo systemctl daemon-reload*
+elspeth@server:$ *sudo systemctl restart gunicorn-superlists-staging.ottg.eu*
+elspeth@server:$ *sudo journalctl -f -u gunicorn-superlists-staging.ottg.eu*
+----
 
-[role="skipme small-code"]
+We can rerun our FTs, and...
+
+[role="small-code"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
@@ -238,15 +221,16 @@ element: {"method":"link text","selector":"Log out"}
 
 
 The `my_lists` failure is still the same, but we have more information in our
-login test: the FT gets further, and the site now looks like it's sending emails
-correctly (and the server log shows no errors), but we can't check the email in
-the `mail.outbox`...
+login test: the FT gets further, and the site now looks like it's sending
+emails correctly (and the server log no longer shows any errors), but we can't
+check the email in the `mail.outbox`...
 
 
 Adapting Our FT to Be Able to Test Real Emails via POP3
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))((("Django framework", "sending emails", id="DJFemail21")))((("emails, sending from Django", id="email21")))Ah. That explains it. Now that we're running against a real server rather than
+((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))((("Django framework", "sending emails", id="DJFemail21")))((("emails, sending from Django", id="email21")))Ah.
+That explains it. Now that we're running against a real server rather than
 the `LiveServerTestCase`, we can no longer inspect the local
 `django.mail.outbox` to see sent emails.
 
@@ -430,15 +414,21 @@ TIP: I've just hacked this email-checking code together, and it's currently
     check them, for a small fee.((("", startref="email21")))((("", startref="DJFemail21")))((("", startref="DBservemail21")))
 
 
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests.test_login*]
+[...]
+OK
+----
+
 
 Managing the Test Database on Staging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-
 ((("debugging", "server-side", "managing test databases", id="DBservdatabase21")))((("staging sites", "managing test databases", id="SSmanag21")))((("database testing", "managing test databases", id="DTmanag21")))((("sessions, pre-creating")))Now
-we can rerun our FTs and get to the next failure: our attempt to create
-pre-authenticated sessions doesn't work, so the "My Lists" test fails:
+we can rerun our full FT suite and get to the next failure: our attempt to
+create pre-authenticated sessions doesn't work, so the "My Lists" test fails:
 
 [role="skipme small-code"]
 [subs="specialcharacters,macros"]
@@ -459,7 +449,6 @@ Ran 8 tests in 72.742s
 FAILED (errors=1)
 ----
 
-
 It's because our test utility function `create_pre_authenticated_session` only
 acts on the local database. Let's find out how our tests can manage the
 database on the server.
@@ -468,8 +457,6 @@ database on the server.
 
 A Django Management Command to Create Sessions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
 
 ((("scripts, building standalone")))To
 do things on the server, we'll need to build a self-contained script that
@@ -636,9 +623,8 @@ class FunctionalTest(StaticLiveServerTestCase):
 ----
 ====
 
-<1> This will be our function to reset the server database in between each test. 
-    I'll explain the logic of the session-creation code, which should also 
-    explain how this works.
+<1> This will be our function to reset the server database in between each
+    test.  We'll write that next, using Fabric.
 
 
 
@@ -659,7 +645,7 @@ just need to let it know the "host string" you're connecting to:
 [source,python]
 ----
 from fabric.api import run
-from fabric.context_managers import settings
+from fabric.context_managers import settings, shell_env
 
 
 def _get_manage_dot_py(host):
@@ -694,10 +680,6 @@ cryptographically valid for the server:
 ====
 [source,python]
 ----
-from fabric.context_managers import settings, shell_env
-[..]
-
-
 def _get_server_env_vars(host):
     pid = run(f'pgrep -n -f {host}/virtualenv/bin/gunicorn').strip()  #<1>
     env_lines = run(f'cat /proc/{pid}/environ').split('\x00')  #<2>
@@ -716,8 +698,8 @@ def create_session_on_server(host, email):
         with shell_env(**env_vars):  #<4>
             session_key = run(f'{manage_dot_py} create_session {email}')
             return session_key.strip()
-
 ----
+====
 
 
 <1> We determine the pid of the current running Django server using `pgrep`
@@ -840,7 +822,8 @@ NOTE: I've shown one way of managing the test database, but you could
     experiment with others--for example, if you were using MySQL or Postgres,
     you could open up an SSH tunnel to the server, and use port forwarding to
     talk to the database directly.  You could then amend `settings.DATABASES`
-    during FTs to talk to the tunnelled port.((("", startref="DBservdatabase21")))((("", startref="SSmanag21")))((("", startref="DTmanag21")))
+    during FTs to talk to the tunnelled port.  You'd still need some way of
+    pulling in the staging server environment variables though.((("", startref="DBservdatabase21")))((("", startref="SSmanag21")))((("", startref="DTmanag21")))
 
 
 
@@ -865,37 +848,13 @@ LFMF.
 *******************************************************************************
 
 
-Baking In Our Logging Code
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Upating our Provisioning Notes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 ((("debugging", "server-side", "baking in logging code")))Before
-we finish, let's "bake in" our logging setup. It would be useful to 
-keep our new logging code in there, under source control, so that we can
-debug any future login problems.  They may indicate someone is up to no
-good, after all...
-
-Let's start by saving the Gunicorn config to our template file in
-'deploy_tools':
-
-[role="sourcecode"]
-.deploy_tools/gunicorn-systemd.template.service (ch18l020)
-====
-[source,ini]
-----
-[...]
-Environment=EMAIL_PASSWORD=SEKRIT
-ExecStart=/home/elspeth/sites/DOMAIN/virtualenv/bin/gunicorn \
-    --bind unix:/tmp/DOMAIN.socket \
-    --access-logfile access.log \
-    --error-logfile error.log \
-    superlists.wsgi:application
-[...]
-----
-====
-
-And a little reminder in our provisioning notes about needing to set
-the email password environment variable via that Gunicorn config file:
+we finish, let's make a note about the update to our provisioning
+steps:
 
 [role="sourcecode"]
 .deploy_tools/provisioning_notes.md (ch18l021)
@@ -906,7 +865,8 @@ the email password environment variable via that Gunicorn config file:
 
 * see gunicorn-systemd.template.service
 * replace DOMAIN with, e.g., staging.my-domain.com
-* replace SEKRIT with email password
+* replace EMAILPWD with email password
+* replace SEKRIT with a unique secret key using snippet below:
 [...]
 ----
 ====
@@ -935,12 +895,10 @@ the ability to save their lists on a "My Lists" page.
 .Lessons Learned Catching Bugs in Staging
 *******************************************************************************
 
-
-
-
 Fixtures also have to work remotely::
-    `LiveServerTestCase` ((("fixtures", "staging and")))((("staging sites", "fixtures and")))makes
-it easy to interact with the test database 
+    `LiveServerTestCase`
+    ((("fixtures", "staging and")))((("staging sites", "fixtures and")))makes
+    it easy to interact with the test database 
     using the Django ORM for tests running locally.  Interacting with the 
     database on the staging server is not so straightforward. One solution
     is Fabric and Django management commands, as I've shown, but you should
@@ -948,13 +906,13 @@ it easy to interact with the test database
 
 Be very careful when resetting data on your servers::
     ((("database testing", "safeguarding production databases")))((("production databases")))A
-command that can remotely wipe the entire database on one of your
+    command that can remotely wipe the entire database on one of your
     servers is a dangerous weapon, and you want to be really, really sure
     it's never accidentally going to hit your production data.
 
 Logging is critical to debugging issues on the server::
     ((("logging")))((("debugging", "server-side", "baking in logging code")))At
-the very least, you'll want to be able to see any error messages
+    the very least, you'll want to be able to see any error messages
     that are being generated by the server.  For thornier bugs, you'll also
     want to be able to do the occasional "debug print", and see it end up
     in a file somewhere.

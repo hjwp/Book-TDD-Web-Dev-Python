@@ -1,7 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.6
 import unittest
+import subprocess
 
-from book_tester import ChapterTest
+from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 
 class Chapter18Test(ChapterTest):
@@ -13,14 +14,16 @@ class Chapter18Test(ChapterTest):
 
         # sanity checks
         self.assertEqual(self.listings[0].type, 'other command')
-        self.assertEqual(self.listings[0].skip, True)
+        self.assertEqual(self.listings[1].type, 'output')
 
         # skips
-        #self.skip_with_check(22, 'switch back to master') # comment
+        self.skip_with_check(1, "if you haven't already")
 
         # prep
         self.start_with_checkout()
         self.prep_database()
+
+        vm_restore = 'FABRIC_END'
 
         # hack fast-forward
         skip = False
@@ -29,6 +32,9 @@ class Chapter18Test(ChapterTest):
             self.sourcetree.run_command('git checkout {0}'.format(
                 self.sourcetree.get_commit_spec('ch17l004')
             ))
+
+        if DO_SERVER_COMMANDS:
+            subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
 
         while self.pos < len(self.listings):
             print(self.pos)

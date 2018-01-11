@@ -354,6 +354,8 @@ class ChapterTest(unittest.TestCase):
         if command.startswith('sudo add-apt-repository'):
             command = command.replace('add-apt-repository ', 'apt-add-repository -y ')
             sleep = 1
+        if command.startswith('sudo journalctl -f -u'):
+            command = command.replace('journalctl -f -u', 'journalctl --no-pager -u')
         if command.startswith('git clone https://github.com/hjwp/book-example.git'):
             # hack for first git clone, use branch for manual chapter, and go back
             # one commit to simulate state near beginning of chap.
