@@ -54,7 +54,7 @@ class Chapter18Test(ChapterTest):
 
         while self.pos < len(self.listings):
             print(self.pos)
-            if self.pos == self.email_password_pos:
+            if self.pos == self.email_password_pos and DO_SERVER_COMMANDS:
                 self.handle_set_email_password()
             else:
                 self.recognise_listing_and_process_it()
@@ -65,6 +65,8 @@ class Chapter18Test(ChapterTest):
         self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
         self.sourcetree.run_command('git add . && git commit -m"final commit ch17"')
         self.check_final_diff(ignore=["moves"])
+        if DO_SERVER_COMMANDS:
+            subprocess.check_call(['vagrant', 'snapshot', 'save', 'SERVER_DEBUGGED'])
 
 
 if __name__ == '__main__':

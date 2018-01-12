@@ -37,6 +37,7 @@ DO_SERVER_COMMANDS = True
 if getuser() == 'jenkins':
     DO_SERVER_COMMANDS = False
 
+DO_SERVER_COMMANDS = False  # REMOVE ME
 
 
 def contains(inseq, subseq):

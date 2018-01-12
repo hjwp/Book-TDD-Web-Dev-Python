@@ -18,16 +18,10 @@ class Chapter9cTest(ChapterTest):
         self.assertEqual(self.listings[0].type, 'other command')
         self.assertEqual(self.listings[1].skip, True)
         self.assertEqual(self.listings[2].type, 'code listing with git ref')
-        if not DO_SERVER_COMMANDS:
-            self.skip_with_check(9, 'fab deploy')
-            self.skip_with_check(10, '[elspeth@superlists-staging.ottg.eu]')
-            self.skip_with_check(12, 'fab deploy')
-            self.skip_with_check(13, '[elspeth@superlists.ottg.eu]')
 
         self.start_with_checkout()
 
         vm_restore = 'MAKING_END'
-
         # hack fast-forward
         skip = False
         if skip:
