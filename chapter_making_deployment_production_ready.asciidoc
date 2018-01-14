@@ -619,7 +619,91 @@ OK
 ----
 
 
-Phew.
+Phew.  Back to working again.
+
+
+Using a .env File to Store Our Environment Variables
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Another little refactor.  Setting environment variables manually in various
+shells is a pain, and it'd be nice to have them all available in a single
+place.  The Python world (and other people out there too) seems to be
+standardising around using the convention of a file called *.env* in the
+project root.
+
+First we add it *.env* to our *.gitignore* -- this file is going to be used
+for secrets, and we don't ever want them ending up on Github:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *echo .env >> .gitignore*
+$ *git commit -am"gitignore .env file"*
+$ *git push*
+----
+
+
+Next let's save our environment on the server:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *pwd*
+/home/elspeth/sites/superlists-staging.ottg.eu
+elspeth@server:$ *echo DJANGO_DEBUG_FALSE=y >> .env*
+elspeth@server:$ *echo SITENAME=$SITENAME >>.env*
+----
+
+
+Generating a secure SECRET_KEY
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+While we're at it we'll also generate a more secure secret key using a little
+Python one-liner.
+
+
+[role="server-commands"]
+[subs=""]
+----
+elspeth@server:$ <strong>echo DJANGO_SECRET_KEY=$(
+python -c"import random; print(''.join(random.SystemRandom().
+choices('abcdefghijklmnopqrstuvwxyz0123456789', k=50)))"
+) &gt;&gt; .env</strong>
+elspeth@server:$ <strong>cat .env</strong>
+DJANGO_DEBUG_FALSE=y
+SITENAME=superlists-staging.ottg.eu
+DJANGO_SECRET_KEY=hibogdctu8y55mr8xut3d1x86qmq3p7nwv3iyleqn6caodd5lm
+----
+
+Now let's check our env file works, and restart gunicorn:
+
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *unset DJANGO_SECRET_KEY DJANGO_DEBUG_FALSE SITENAME*
+elspeth@server:$ *echo $DJANGO_DEBUG_FALSE-none*
+-none
+elspeth@server:$ *source .env*
+elspeth@server:$ *echo $DJANGO_DEBUG_FALSE-none*
+y-none
+elspeth@server:$ *./virtualenv/bin/gunicorn --bind \
+    unix:/tmp/$SITENAME.socket superlists.wsgi:application*
+----
+
+
+And we rerun our FTs to check that they agree, everything still works:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+[...]
+OK
+----
+
+
+Excellent!  That went without a hitch :)
 
 
 Using Systemd to Make Sure Gunicorn Starts on Boot
@@ -631,20 +715,7 @@ final step is to make sure that the server starts up Gunicorn automatically
 on boot, and reloads it automatically if it crashes. On Ubuntu, the way to do
 this is using Systemd.
 
-We'll also generate a more secure, random secret key. Here's a little Python
-one-liner to run on your own computer:
-
-[role="skipme"]
-[subs=""]
-----
-$ <strong>python -c"import random; print(''.join(random.SystemRandom().
-choices('abcdefghijklmnopqrstuvwxyz0123456789', k=50)))"</strong>
-
-hibogdctu8y55mr8xut3d1x86qmq3p7nwv3iyleqn6caodd5lm
-----
-
-
-And here's what a Gunicorn config file looks like
+Here's what a Systemd config file looks like
 
 [role="sourcecode small-code"]
 .server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
@@ -658,10 +729,7 @@ Description=Gunicorn server for superlists-staging.ottg.eu
 Restart=on-failure  <1>
 User=elspeth  <2>
 WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu  <3>
-
-Environment=DJANGO_DEBUG_FALSE=y  <4>
-Environment=DJANGO_SECRET_KEY=hibogdctu8y55mr8xut3d1x86qmq3p7nwv3iyleqn6caodd5lm  <4>
-Environment=SITENAME=superlists-staging.ottg.eu  <4>
+EnvironmentFile=/home/elspeth/sites/superlists-staging.ottg.eu/.env  <3>
 
 ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/virtualenv/bin/gunicorn \
     --bind unix:/tmp/superlists-staging.ottg.eu.socket \
@@ -851,10 +919,7 @@ Description=Gunicorn server for DOMAIN
 Restart=on-failure
 User=elspeth
 WorkingDirectory=/home/elspeth/sites/DOMAIN
-
-Environment=DJANGO_DEBUG_FALSE=y
-Environment=DJANGO_SECRET_KEY=SEKRIT
-Environment=SITENAME=DOMAIN
+EnvironmentFile=/home/elspeth/sites/DOMAIN/.env
 
 ExecStart=/home/elspeth/sites/DOMAIN/virtualenv/bin/gunicorn \
     --bind unix:/tmp/DOMAIN.socket \
@@ -897,15 +962,24 @@ eg, on Ubuntu:
 * see nginx.template.conf
 * replace DOMAIN with, e.g., staging.my-domain.com
 
+## Environment File
+
+* create at ~/sites/DOMAIN/.env
+
+    DJANGO_DEBUG_FALSE=y
+    DJANGO_SECRET_KEY=<see below>
+    SITENAME=DOMAIN
+
+* to generate a secret key:
+
+    python -c"import random; print(''.join(random.SystemRandom().
+    choices('abcdefghijklmnopqrstuvwxyz0123456789', k=50)))"
+
+
 ## Systemd service
 
 * see gunicorn-systemd.template.service
 * replace DOMAIN with, e.g., staging.my-domain.com
-* replace SEKRIT with a unique secret key using snippet below:
-
-python -c"import random; print(''.join(random.SystemRandom().
-choices('abcdefghijklmnopqrstuvwxyz0123456789', k=50)))"
-
 
 ## Folder structure:
 
@@ -914,14 +988,15 @@ Assume we have a user account at /home/username
 /home/username
 └── sites
     ├── DOMAIN1
+    │    ├── .env
     │    ├── db.sqlite3
     │    ├── manage.py etc
     │    ├── static
     │    └── virtualenv
     └── DOMAIN2
+         ├── .env
          ├── db.sqlite3
-         ├── manage.py etc
-
+         ├── etc
 ----
 ====
 

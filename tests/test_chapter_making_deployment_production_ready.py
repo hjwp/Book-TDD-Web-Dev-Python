@@ -26,10 +26,10 @@ class Chapter9bTest(ChapterTest):
         self.skip_with_check(8, 'check our symlink')
         self.skip_with_check(19, 'Starting gunicorn')
         self.skip_with_check(41, 'something more secure later')
-        self.skip_with_check(53, 'this command tells Systemd')
-        self.skip_with_check(55, 'this command actually starts')
-        self.skip_with_check(68, 'git status')
-        self.skip_with_check(69, 'see three new files')
+        self.skip_with_check(70, 'this command tells Systemd')
+        self.skip_with_check(72, 'this command actually starts')
+        self.skip_with_check(85, 'git status')
+        self.skip_with_check(86, 'see three new files')
 
         # fixes
         self.replace_command_with_check(
