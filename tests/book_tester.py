@@ -4,6 +4,7 @@ from lxml import html
 from getpass import getuser
 import io
 import os
+from pathlib import Path
 import stat
 import re
 import subprocess
@@ -21,7 +22,6 @@ from book_parser import (
 )
 from sourcetree import Commit, SourceTree
 from update_source_repo import update_sources_for_chapter
-
 
 PHANTOMJS_RUNNER = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
@@ -352,6 +352,12 @@ class ChapterTest(unittest.TestCase):
                     key, val = export_pair.split('=')
                     self.current_server_exports[key] = val
                     print('adding server export', key, val)
+        if 'unset' in command:
+            del self.current_server_exports['DJANGO_SECRET_KEY']
+            del self.current_server_exports['DJANGO_DEBUG_FALSE']
+        if 'source .env' in command:
+            self.current_server_exports['DJANGO_SECRET_KEY'] = 'abc231'
+            self.current_server_exports['DJANGO_DEBUG_FALSE'] = 'y'
 
         if command.startswith('sudo apt install '):
             command = command.replace('apt install ', 'apt install -y ')
