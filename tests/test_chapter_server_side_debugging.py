@@ -20,12 +20,16 @@ class Chapter18Test(ChapterTest):
 
         # skips
         self.skip_with_check(1, "if you haven't already")
+        self.skip_with_check(47, "commit changes first")
         if DO_SERVER_COMMANDS:
             self.replace_command_with_check(
                 13,
                 "EMAIL_PASSWORD=yoursekritpasswordhere",
                 "EMAIL_PASSWORD=" + os.environ['EMAIL_PASSWORD']
             )
+
+        fab_deploy_pos = 49
+        assert 'fab deploy' in self.listings[fab_deploy_pos]
 
         # prep
         self.start_with_checkout()
@@ -46,6 +50,16 @@ class Chapter18Test(ChapterTest):
 
         while self.pos < len(self.listings):
             print(self.pos)
+            if self.pos == fab_deploy_pos + 1:
+                print('hacking in code update on server')
+                self.run_server_command(
+                    'cd /home/elspeth/sites/superlists-staging.ottg.eu'
+                    ' && git checkout chapter_server_side_debugging'
+                    ' && git reset --hard origin/chapter_server_side_debugging',
+                )
+                self.run_server_command(
+                    'sudo systemctl restart gunicorn-superlists-staging.ottg.eu'
+                )
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)

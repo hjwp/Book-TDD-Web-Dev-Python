@@ -196,10 +196,11 @@ def fix_jenkins_pixelsize(actual_text):
 
 
 def fix_creating_database_line(actual_text):
-    if "Creating test database for alias 'default'..." in actual_text:
-        actual_lines = actual_text.split('\n')
-        actual_lines.remove("Creating test database for alias 'default'...")
-        actual_lines.insert(0, "Creating test database for alias 'default'...")
+    creating_db = "Creating test database for alias 'default'..."
+    actual_lines = actual_text.split('\n')
+    if creating_db in actual_lines:
+        actual_lines.remove(creating_db)
+        actual_lines.insert(0, creating_db)
         actual_text = '\n'.join(actual_lines)
     return actual_text
 

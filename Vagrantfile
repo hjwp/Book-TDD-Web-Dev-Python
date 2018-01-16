@@ -64,6 +64,7 @@ Vagrant.configure("2") do |config|
   # Enable provisioning with a shell script. Additional provisioners such as
   # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
   # documentation for more information about their specific syntax and use.
+  ssh_pub_key = File.readlines("#{Dir.home}/.ssh/id_rsa.pub").first.strip#
   config.vm.provision "shell", inline: <<-SHELL
     apt update
     apt install -y dtach tree
@@ -76,5 +77,6 @@ Vagrant.configure("2") do |config|
     chown elspeth /home/elspeth/.ssh/authorized_keys
     echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
     echo 'export DJANGO_COLORS=nocolor' >> /home/elspeth/.profile
+    echo '#{ssh_pub_key}' >> /home/elspeth/.ssh/authorized_keys
   SHELL
 end
