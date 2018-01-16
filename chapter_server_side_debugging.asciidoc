@@ -170,30 +170,12 @@ Another Environment Variable
 
 ((("debugging", "server-side", "setting secret environment variables")))((("environment variables")))((("secret values")))Just
 as in <<chapter_making_deployment_production_ready>>, the place we
-set environment variables on the server is in the Systemd config
-file:
-
-[role="sourcecode small-code"]
-.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
-====
-[source,ini]
-----
-[...]
-Environment=DJANGO_DEBUG_FALSE=y
-Environment=DJANGO_SECRET_KEY=[...]
-Environment=SITENAME=superlists-staging.ottg.eu
-Environment=EMAIL_PASSWORD=yoursekritpasswordhere
-[...]
-----
-====
-
-
-Saving that file, and doing the usual `daemon-reload` and `restart gunicorn`
-dance
+set environment variables on the server is in the _.env_ file:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
+elspeth@server:$ *echo EMAIL_PASSWORD=sekrit >> ~/sites/superlists-staging.ottg.eu*
 elspeth@server:$ *sudo systemctl daemon-reload*
 elspeth@server:$ *sudo systemctl restart gunicorn-superlists-staging.ottg.eu*
 elspeth@server:$ *sudo journalctl -f -u gunicorn-superlists-staging.ottg.eu*
@@ -681,37 +663,29 @@ cryptographically valid for the server:
 [source,python]
 ----
 def _get_server_env_vars(host):
-    pid = run(f'pgrep -n -f {host}/virtualenv/bin/gunicorn').strip()  #<1>
-    env_lines = run(f'cat /proc/{pid}/environ').split('\x00')  #<2>
-    current_env = dict(l.split('=') for l in env_lines if l)  #<2>
-    return {  #<3>
-        'DJANGO_DEBUG_FALSE': current_env['DJANGO_DEBUG_FALSE'],
-        'DJANGO_SECRET_KEY': current_env['DJANGO_SECRET_KEY'],
-        'SITENAME': current_env['SITENAME'],
-    } 
+    env_lines = run(f'cat ~/sites/{host}/.env').split('\n')
+    return dict(l.split('=') for l in env_lines if l)
 
 
 def create_session_on_server(host, email):
     manage_dot_py = _get_manage_dot_py(host)
     with settings(host_string=f'elspeth@{host}'):
-        env_vars = _get_server_env_vars(host)  #<4>
-        with shell_env(**env_vars):  #<4>
+        env_vars = _get_server_env_vars(host)
+        with shell_env(**env_vars):  #<2>
             session_key = run(f'{manage_dot_py} create_session {email}')
             return session_key.strip()
 ----
 ====
 
 
-<1> We determine the pid of the current running Django server using `pgrep`
+<1> We extract and parse the server's current environment variables from the
+    _.env_ file...
 
-<2> We then we extract its current environment variables from _/proc_.  We
-    need to do a bit of wrangling to convert the _/proc_ format's null-bytes
-    separators format into a usable dict
+<2> In order to use them in another fabric context manager, `shell_env`,
+    which sets the environment for the next command...
 
-<3> And then we return the specific variables we're interested in...
-
-<4> In order to use them in another fabric context manager, `shell_env`,
-    so that they're set when we run `manage.py create_session`.
+<3> Which is to run our `create_session` management command, which calls the
+    same `create_pre_authenticated_session` function, but on the server.
 
 
 
@@ -751,14 +725,14 @@ Against staging:
             v                                                   |
 +----------------------------+     +--------+      +------------------------------+
 | server_tools               | --> | fabric | -->  | ./manage.py create_session   |
-| .create_session_on_server  |     |  "run" |      |       (on server)            |
+| .create_session_on_server  |     |  "run" |      |   (on server, using .env)    |
 |        (locally)           |     +--------+      +------------------------------+
 +----------------------------+
 
 ----
 
-In any case, let's see if it works.  First, locally, to check that we didn't break
-anything:
+In any case, let's see if it works.  First, locally, to check that we didn't
+break anything:
 
 
 [subs="specialcharacters,macros"]
@@ -865,22 +839,6 @@ steps:
 
 * see gunicorn-systemd.template.service
 * replace DOMAIN with, e.g., staging.my-domain.com
-* replace EMAILPWD with email password
-* replace SEKRIT with a unique secret key using snippet below:
-[...]
-----
-====
-
-And our Systemd gunicorn template file needs the extra EMAIL_PASSWORD line:
-
-[role="sourcecode"]
-.deploy_tools/gunicorn-systemd.template.service (ch18l020)
-====
-[source,ini]
-----
-[...]
-Environment=SITENAME=DOMAIN
-Environment=EMAIL_PASSWORD=EMAILPWD
 [...]
 ----
 ====
