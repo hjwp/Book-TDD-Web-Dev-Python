@@ -43,7 +43,8 @@ class Chapter9cTest(ChapterTest):
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff()
         if DO_SERVER_COMMANDS:
-            subprocess.check_call(['vagrant', 'snapshot', 'save', 'FABRIC_END'])
+            subprocess.run(['vagrant', 'snapshot', 'delete', 'FABRIC_END'])
+            subprocess.run(['vagrant', 'snapshot', 'save', 'FABRIC_END'], check=True)
 
 
 if __name__ == '__main__':

@@ -62,7 +62,8 @@ class Chapter9Test(ChapterTest):
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff()
         if DO_SERVER_COMMANDS:
-            subprocess.check_call(['vagrant', 'snapshot', 'save', 'MANUAL_END'])
+            subprocess.run(['vagrant', 'snapshot', 'delete', 'MANUAL_END'])
+            subprocess.run(['vagrant', 'snapshot', 'save', 'MANUAL_END'], check=True)
 
 
 
