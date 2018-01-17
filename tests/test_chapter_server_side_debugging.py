@@ -50,7 +50,7 @@ class Chapter18Test(ChapterTest):
 
         while self.pos < len(self.listings):
             print(self.pos)
-            if self.pos == fab_deploy_pos + 1:
+            if self.pos == fab_deploy_pos + 1 and DO_SERVER_COMMANDS:
                 print('hacking in code update on server')
                 self.run_server_command(
                     'cd /home/elspeth/sites/superlists-staging.ottg.eu'
