@@ -357,7 +357,7 @@ class ChapterTest(unittest.TestCase):
         if 'unset' in command:
             del self.current_server_exports['DJANGO_SECRET_KEY']
             del self.current_server_exports['DJANGO_DEBUG_FALSE']
-        if 'source .env' in command:
+        if command == 'set -a; source .env; set +a':
             self.current_server_exports['DJANGO_SECRET_KEY'] = 'abc231'
             self.current_server_exports['DJANGO_DEBUG_FALSE'] = 'y'
 
