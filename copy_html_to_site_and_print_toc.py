@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from collections import namedtuple
-import os
 from pathlib import Path
 import json
 from lxml import html
