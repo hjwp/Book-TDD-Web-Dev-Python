@@ -12,17 +12,17 @@
 > different types of tests: end-to-end/functional vs integration vs unit tests.
 
 
-* Intro and installations (15m, t=15)
-* Our example app - tour (2m, t=17)
-* Codebase tour (3m, t=20)
-* Double-loop TDD demo (15m, t=35)
-* Coding challenge 1:  building the "my lists" feature (35m, t=1h10)
-* Outside-In TDD.  Examples + discussion (10m, t=1h20)
-* Break (5m, t=1h25)
-* Mocks demo: (10m, t=1h35)
-* Next challenge: redo it with a more "purist" approach (15m, t=1h45)
-* Mocks and "Listen to your tests" demo/discussion. (20m, t=2h05)
-* The pitfalls of mocking (10m, t=2h15)
+* Intro and installations (10m, t=10)
+* Our example app - tour (2m, t=12)
+* Codebase tour (5m, t=17)
+* Target site tour (3m, t=20)
+* Coding challenge 1:  building the "my lists" feature (30m, t=50)
+* Outside-In TDD demo.  Examples + discussion (30m, t=1h20)
+* Break (10m, t=1h30)
+* Mocks demo: (10m, t=1h40)
+* Coding challenge 2: redo it with a more "purist" approach (30m, t=1h45)
+* Mocks and "Listen to your tests" demo/discussion. (25m, t=2h10)
+* Coding/debugging challenge 3: why doesn't it work? (20m, t=2h30)
 * Recap + discussion:  the pros and cons of different types of test (10m, t=2h25)
 * end (t=2h25)
 
@@ -66,20 +66,20 @@ passes but not saving.  hand over
 git clone https://github.com/hjwp/book-example/ tdd-workshop
 cd tdd-workshop
 git checkout intermediate-workshop-start
-mkvirtualenv --python=python3.6 tdd-workshop  # or however you like to create virtualenvs
+python3.6 -m venv ./virtualenv  # or however you like to create virtualenvs
+source ./virtualenv/bin/activate
 pip install -r requirements.txt
+# you will also need Firefox and geckodrive. see installation instructions chapter of book
 
 # Take a look around the site  with:
-mkdir ../database
 python manage.py migrate
 python manage.py runserver
 
-# Run the test suite and check everything passes:
-pip install selenium
+# Run the test suite:
 python manage.py test
 
-# you should see it run 60 tests and all but one should pass,
-# expected error = "Unable to locate element: My lists"
+# you should see it run 53 tests and all but one should pass,
+# expected error = NoSuchElementException, "Unable to locate element: My lists"
 ```
 
 If the functional tests give you any trouble, You can try switching from
@@ -163,13 +163,11 @@ lists/models.py:
 ```python
 
 class List(models.Model):
-  pass
-
+    pass
 
 class Item(models.Model):
-    text = models.TextField(default='')
-    list = models.ForeignKey(List, default=None)
-
+    text = models.TextField()
+    list = models.ForeignKey(List)
 ```
 
 
@@ -187,77 +185,24 @@ class Item(models.Model):
 
 **Views**:
 
-* home page
-* create new list (and show errors back on home page if necessary)
-* view existing list (and add extra items to it if necessary)
-
-
 lists/views.py:
 ```python
 
 def home_page(request):
     return render(request, 'home.html', {'form': ItemForm()})
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-lists/views.py:
-```python
 
 def new_list(request):
-    form = ItemForm(data=request.POST)
-    if form.is_valid():
-        list_ = List.objects.create()
-        form.save(for_list=list_)
-        return redirect(list_)
-    else:
-        return render(request, 'home.html', {"form": form})
-```
-
-
-
-
-lists/views.py:
-```python
+    # use form to recreate and redirect to a new list, or render error template
 
 def view_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    form = ExistingListItemForm(for_list=list_)
-    if request.method == 'POST':
-        form = ExistingListItemForm(for_list=list_, data=request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect(list_)
-    return render(request, 'list.html', {'list': list_, "form": form})
+    # retrieve list object
+    # display if GET, use form to add new items if POST
 ```
 
-
-
-
-* forms deal with validation and creating new objects, they live in
-  *lists/forms.py*.  We don't need them for the first part of this workshop.
+* forms live in *lists/forms.py*.  We don't need them for the first part of this workshop.
 
 * login/logout etc are handled by the accounts module, which we won't need to
-  look at today.
-
-
-
-
-
-
-
-
+  look at today.  you can just use any email to log in
 
 
 
@@ -284,27 +229,23 @@ def view_list(request, list_id):
 
 
 
-# Coding challenge 1:  building the "my lists" feature
-
-    git checkout intermediate-workshop-part1
+# Coding challenge 1:  building the "my lists" feature, quick and dirty
 
 ie: Get this FT to pass:
 
     python manage.py test functional_tests.test_my_lists
 
-Ideally: using TDD. Add some unit tests, in *test_models.py* and *test_views.py*.  Get the FT to pass.
-
 
 Tips:
 
+* don't worry about tests for now
 * you'll probably need a foreign key from lists to the user model
 * `request.user` will be available if user is logged in
-* `request.user.is_authenticated()` is False if user is not logged in
+* `request.user.is_authenticated` is False if user is not logged in
 * `list.get_absolute_url()` will give you a url you can use in an <a> tag for the lists page
-* you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it.  You can inherit from base.html.  note the `extra_content` block will be useful
-* you will need to associate the creation of a new list with the current user, if they're logged in
-* if you need a views test to have a logged-in user, you can use  `self.client.force_login(user)`
-* if you want to try manually logging in, you'll need to hack a token.  ask me about this on the day.
+* you will probably want a new template at `lists/templates/my_lists.html`, and a new URL + view for it.  You can inherit from 'base.html'.  note the `extra_content` block will be useful
+* you will need to associate the creation of a new list with the current user, if they're logged in, in the `new_list` view
+* if you want to try manually logging in, you can just enter any email
 
 
 
@@ -600,8 +541,6 @@ and we're done!
 * how many people have never used mocks?
 
 * live demo of mocks
-
-
 
     git checkout intermediate-workshop-part2
     python manage.py test lists
