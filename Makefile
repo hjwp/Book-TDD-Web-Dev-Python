@@ -10,6 +10,7 @@ build: $(HTML_PAGES)
 test: build
 	git submodule init
 	python3 update_source_repo.py
+	PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 \
 	./run_all_tests.sh
 
 %.html: %.asciidoc
@@ -20,12 +21,12 @@ oreilly.%.asciidoc: %.asciidoc
 
 
 test_%: %.html
-	PYTHONHASHSEED=0 \
+	PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 \
 	py.test -s --tb=short ./tests/$@.py
 
 silent_test_%: %.html
 	python3 update_source_repo.py $(subst silent_test_chapter_,,$@)
-	PYTHONHASHSEED=0 \
+	PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 \
 	py.test --tb=short ./tests/$(subst silent_,,$@).py
 
 clean:

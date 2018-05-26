@@ -42,6 +42,10 @@ class Chapter1Test(ChapterTest):
         self.sourcetree.run_command('mkdir -p virtualenv/bin')
         self.sourcetree.run_command('mkdir -p virtualenv/lib')
 
+        # make sure we do write bytecodes so the __pycache__ bit of the book works
+        if 'PYTHONDONTWRITEBYTECODE' in os.environ:
+            del os.environ['PYTHONDONTWRITEBYTECODE']
+
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
