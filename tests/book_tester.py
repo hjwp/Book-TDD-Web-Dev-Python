@@ -606,6 +606,12 @@ class ChapterTest(unittest.TestCase):
         self.assert_console_output_correct(test_run, self.listings[pos])
 
 
+    def unset_PYTHONDONTWRITEBYTECODE(self):
+        # so any references to  __pycache__ in the book work
+        if 'PYTHONDONTWRITEBYTECODE' in os.environ:
+            del os.environ['PYTHONDONTWRITEBYTECODE']
+
+
     def _strip_out_any_pycs(self):
         return
         self.sourcetree.run_command(

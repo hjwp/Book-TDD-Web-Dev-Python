@@ -24,6 +24,7 @@ class Chapter6Test(ChapterTest):
 
         # other prep
         self.start_with_checkout()
+        self.unset_PYTHONDONTWRITEBYTECODE()
         self.run_command(Command('python3 manage.py migrate --noinput'))
 
         # hack fast-forward

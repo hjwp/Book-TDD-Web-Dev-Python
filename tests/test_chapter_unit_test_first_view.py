@@ -28,6 +28,7 @@ class Chapter3Test(ChapterTest):
 
         self.start_with_checkout()
         self.start_dev_server()
+        self.unset_PYTHONDONTWRITEBYTECODE()
 
         print(self.pos)
         assert 'manage.py startapp lists' in self.listings[self.pos]

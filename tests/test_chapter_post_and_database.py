@@ -36,6 +36,7 @@ class Chapter5Test(ChapterTest):
 
         self.start_with_checkout()
         self.start_dev_server()
+        self.unset_PYTHONDONTWRITEBYTECODE()
 
         restarted_after_views = False
         restarted_after_migrate = False

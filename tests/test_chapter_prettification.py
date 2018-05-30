@@ -20,6 +20,7 @@ class Chapter8Test(ChapterTest):
         self.start_with_checkout()
         # other prep
         self.sourcetree.run_command('python3 manage.py migrate --noinput')
+        self.unset_PYTHONDONTWRITEBYTECODE()
 
         # skips
         self.skip_with_check(25, 'the -b means ignore whitespace')
