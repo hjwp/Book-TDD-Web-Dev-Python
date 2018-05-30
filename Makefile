@@ -21,12 +21,12 @@ oreilly.%.asciidoc: %.asciidoc
 
 
 test_%: %.html
-	PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 MOZ_HEADLESS=1 \
 	py.test -s --tb=short ./tests/$@.py
 
 silent_test_%: %.html
 	python3 update_source_repo.py $(subst silent_test_chapter_,,$@)
-	PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 MOZ_HEADLESS=1 \
 	py.test --tb=short ./tests/$(subst silent_,,$@).py
 
 clean:
