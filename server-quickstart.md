@@ -111,7 +111,7 @@ is to map a domain name to your server's IP address.
 
 If you don't already own a domain name you can use (you don't
 have to use the *www.* subdomain, you could use *superlists.yourdomain.com*),
-then you'll need to get on from a "domain registrar".  There are loads
+then you'll need to get one from a "domain registrar".  There are loads
 out there, I quite like Gandi or the slightly-more-friendly (but
 no 2FA) 123-reg.
 
@@ -127,6 +127,14 @@ for example.
 *(tip: DNS changes take time to propagate, so if your domain doesn't
 take you to the server straight away, you may need to wait.  some registrars
 will let you control this using a setting called "TTL")*.
+
+
+## Map your domains with your PaaS provider
+
+At Digital Ocean you go to "Networking" and add your domain that will access your
+droplet. Next you set up your subdomains like staging.domainname or 
+live.domainname as **A-records** by adding those hostnames to the DNS records.
+
 
 
 And now you should be all set to follow the rest of the instructions in 
