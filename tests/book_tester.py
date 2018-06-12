@@ -487,7 +487,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
-        actual_fixed = fix_jenkins_pixelsize(actual_fixed)
+        # actual_fixed = fix_jenkins_pixelsize(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
         actual_fixed = standardise_assertionerror_none(actual_fixed)
