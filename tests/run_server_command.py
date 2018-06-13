@@ -12,14 +12,14 @@ Options:
 
 from docopt import docopt
 from fabric.api import env, run
-import os
 from fabric.contrib.files import put
 import sys
 import tempfile
 
+# this relies on an entry in the hosts file
 env.host_string = 'superlists-staging.ottg.eu'
 # env.port = '2222'
-env.key_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../.vagrant/machines/default/virtualbox/private_key')
+# env.key_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../.vagrant/machines/default/virtualbox/private_key')
 env.user = 'elspeth'
 env.disable_known_hosts = True
 env.warn_only = True

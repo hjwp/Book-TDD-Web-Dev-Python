@@ -20,16 +20,16 @@ class Chapter9Test(ChapterTest):
         self.start_with_checkout()
 
         # skips
-        self.skip_with_check(14, 'replace the URL in the next line with')
-        self.skip_with_check(25, 'do some git config first')
-        self.skip_with_check(34, 'Performing system checks')
-        self.skip_with_check(45, 'Starting development server')
+        self.skip_with_check(13, 'replace the URL in the next line with')
+        self.skip_with_check(24, 'do some git config first')
+        self.skip_with_check(33, 'Performing system checks')
+        self.skip_with_check(44, 'Starting development server')
 
         if not DO_SERVER_COMMANDS:
-            self.skip_with_check(39, 'curl superlists-staging.ottg.eu')
-            self.skip_with_check(40, 'Failed to connect to superlists-staging.ottg.eu')
-            self.skip_with_check(48, 'curl superlists-staging.ottg.eu:8000')
-            self.skip_with_check(49, '<!DOCTYPE html>')
+            self.skip_with_check(38, 'curl superlists-staging.ottg.eu')
+            self.skip_with_check(39, 'Failed to connect to superlists-staging.ottg.eu')
+            self.skip_with_check(47, 'curl superlists-staging.ottg.eu:8000')
+            self.skip_with_check(48, '<!DOCTYPE html>')
 
         vm_restore = None # 'MANUAL_1'
 
@@ -40,7 +40,7 @@ class Chapter9Test(ChapterTest):
             # self.sourcetree.run_command('git checkout {0}'.format(
             #     self.sourcetree.get_commit_spec('ch08l001')
             # ))
-            self.pos = 44
+            self.pos = 43
             self.current_server_cd = '~/sites/$SITENAME'
             self.sourcetree.run_command('git checkout {0}'.format(
                 self.sourcetree.get_commit_spec('ch08l004')
