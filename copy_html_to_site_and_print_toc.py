@@ -175,7 +175,7 @@ def print_toc_md(chapter_info):
 
 
 def rsync_images():
-    subprocess.run(['rsync', '-a', '--delete', '-v', 'images/', DEST / 'images/'])
+    subprocess.run(['rsync', '-a', '-v', 'images/', DEST / 'images/'])
 
 
 def main():
