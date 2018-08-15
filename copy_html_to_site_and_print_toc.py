@@ -109,7 +109,7 @@ def fix_title(contents, chapter, chapter_info):
     titles = parsed.cssselect('h2')
     if titles and titles[0].text.startswith('Appendix A'):
         title = titles[0]
-        title.text = title.text.replace('Appendix A', chapter_info[chapter].chapter_title)
+        title.text = chapter_info[chapter].chapter_title
     return html.tostring(parsed)
 
 def copy_chapters_across_with_fixes(chapter_info, fixed_toc):
