@@ -6,7 +6,7 @@ import re
 COMMIT_REF_FINDER = r'ch\d\dl\d\d\d-?\d?'
 
 class CodeListing(object):
-    COMMIT_REF_FINDER = r'^(.+) \((' + COMMIT_REF_FINDER + ')\)$'
+    COMMIT_REF_FINDER = r'^(.+) \((' + COMMIT_REF_FINDER + r')\)$'
 
     def __init__(self, filename, contents):
         self.is_server_listing = False

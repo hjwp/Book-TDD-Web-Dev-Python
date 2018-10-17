@@ -615,7 +615,7 @@ class ChapterTest(unittest.TestCase):
     def _strip_out_any_pycs(self):
         return
         self.sourcetree.run_command(
-            "find . -name __pycache__ -exec rm -rf {} \;",
+            r"find . -name __pycache__ -exec rm -rf {} \;",
             ignore_errors=True
         )
 
