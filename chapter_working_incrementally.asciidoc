@@ -489,8 +489,8 @@ out for trailing slashes in URLs, both here in the tests and in
 [source,python]
 ----
 urlpatterns = [
-    url(r'^$', views.home_page, name='home'),
-    url(r'^lists/the-only-list-in-the-world/$', views.view_list, name='view_list'),
+    path('', views.home_page, name='home'),
+    path('lists/the-only-list-in-the-world/', views.view_list, name='view_list'),
 ]
 ----
 ====
@@ -953,9 +953,9 @@ Let's build our new URL now:
 [source,python]
 ----
 urlpatterns = [
-    url(r'^$', views.home_page, name='home'),
-    url(r'^lists/new$', views.new_list, name='new_list'),
-    url(r'^lists/the-only-list-in-the-world/$', views.view_list, name='view_list'),
+    path('', views.home_page, name='home'),
+    path('lists/new', views.new_list, name='new_list'),
+    path('lists/the-only-list-in-the-world/', views.view_list, name='view_list'),
 ]
 ----
 ====
@@ -1233,7 +1233,7 @@ Your first error should be:
 
 [subs="specialcharacters,macros"]
 ----
-ImportError: cannot import name 'List'
+ImportError: cannot import name 'List' from 'lists.models'
 ----
 
 Fix that, and then you should see:
@@ -1315,7 +1315,7 @@ Migrations for 'lists':
 Let's see what that gives us:
 
 ----
-AssertionError: 'List object' != <List: List object>
+AssertionError: 'List object (1)' != <List: List object (1)>
 ----
 
 
@@ -1337,11 +1337,15 @@ class List(models.Model):
 
 class Item(models.Model):
     text = models.TextField(default='')
-    list = models.ForeignKey(List, default=None)
+    list = models.ForeignKey(List, default=None, on_delete=models.CASCADE)
 ----
 ====
 //030-2
 
+`ForeignKey` takes the class you want to create the relationship to, and then two
+extra arguments:  `default` you can probably guess, and `on_delete` specifies what
+to do if we delete the related List object.  `CASCADE` says we also want to delete
+the related items, which seems sensible in our case.
 
 
 That'll need a migration too.  Since the last one was a red herring, let's
@@ -1579,18 +1583,18 @@ It's time to learn how we can pass parameters from URLs to views:
 [source,python]
 ----
 urlpatterns = [
-    url(r'^$', views.home_page, name='home'),
-    url(r'^lists/new$', views.new_list, name='new_list'),
-    url(r'^lists/(.+)/$', views.view_list, name='view_list'),
+    path('', views.home_page, name='home'),
+    path('lists/new', views.new_list, name='new_list'),
+    path('lists/<list_id>/', views.view_list, name='view_list'),
 ]
 ----
 ====
 //34
 
 
-We adjust the regular expression for our URL to include a 'capture group',
-`(.+)`, which will match any characters, up to the following `/`. The captured
-text will get passed to the view as an argument.
+We use the special syntax `<parameter>`, putting angle brackets around a name
+for our parameter, and the captured text will get passed to the view as an
+argument.
 
 In other words, if we go to the URL '/lists/1/', `view_list` will get a second
 argument after the normal `request` argument, namely the string `"1"`.
@@ -1601,15 +1605,15 @@ But our view doesn't expect an argument yet! Sure enough, this causes problems:
 ----
 ERROR: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
 [...]
-TypeError: view_list() takes 1 positional argument but 2 were given
+TypeError: view_list() got an unexpected keyword argument 'list_id'
 [...]
 ERROR: test_uses_list_template (lists.tests.ListViewTest)
 [...]
-TypeError: view_list() takes 1 positional argument but 2 were given
+TypeError: view_list() got an unexpected keyword argument 'list_id'
 [...]
 ERROR: test_redirects_after_POST (lists.tests.NewListTest)
 [...]
-TypeError: view_list() takes 1 positional argument but 2 were given
+TypeError: view_list() got an unexpected keyword argument 'list_id'
 FAILED (errors=3)
 ----
 
@@ -1832,58 +1836,6 @@ We get:
 ----
 AssertionError: 0 != 1
 [...]
-AssertionError: 301 != 302 : Response didn't redirect as expected: Response
-code was 301 (expected 302)
-----
-
-
-Beware of Greedy Regular Expressions!
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-((("regular expressions")))((("greedy regular expressions")))That's
-a little strange. We haven't actually specified a URL for
-'/lists/1/add_item' yet, so our expected failure is `404 != 302`.  Why are we
-getting a 301?
-
-This was a bit of a puzzler! It's because we've used a very "greedy"
-regular expression in our URL:
-
-
-[role="sourcecode currentcontents"]
-.superlists/urls.py
-====
-[source,python]
-----
-    url(r'^lists/(.+)/$', views.view_list, name='view_list'),
-----
-====
-
-((("HTML", "POST requests", "redirect following")))((("POST requests", "redirect following")))((("permanent redirect (301)")))Django
-has some built-in code to issue a permanent redirect (301) whenever
-someone asks for a URL which is 'almost' right, except for a missing slash.
-In this case, [keep-together]#'/lists/1/add_item/'# would be a match for
-`lists/(.+)/`, with the `(.+)` capturing `1/add_item`.  So Django "helpfully"
-guesses that we actually wanted the URL with a trailing slash.
-
-We can fix that by making our URL pattern explicitly capture only numerical
-digits, by using the regular expression `\d`:
-
-[role="sourcecode"]
-.superlists/urls.py
-====
-[source,python]
-----
-    url(r'^lists/(\d+)/$', views.view_list, name='view_list'),
-----
-====
-//38
-
-That gives us the failure we expected:
-
-----
-AssertionError: 0 != 1
-[...]
 AssertionError: 404 != 302 : Response didn't redirect as expected: Response
 code was 404 (expected 302)
 ----
@@ -1902,10 +1854,10 @@ existing lists:
 [source,python]
 ----
 urlpatterns = [
-    url(r'^$', views.home_page, name='home'),
-    url(r'^lists/new$', views.new_list, name='new_list'),
-    url(r'^lists/(\d+)/$', views.view_list, name='view_list'),
-    url(r'^lists/(\d+)/add_item$', views.add_item, name='add_item'),
+    path('', views.home_page, name='home'),
+    path('lists/new', views.new_list, name='new_list'),
+    path('lists/<list_id>/', views.view_list, name='view_list'),
+    path('lists/<list_id>/add_item', views.add_item, name='add_item'),
 ]
 ----
 ====
@@ -1949,7 +1901,7 @@ def add_item(request):
 Aha:
 
 ----
-TypeError: add_item() takes 1 positional argument but 2 were given
+TypeError: add_item() got an unexpected keyword argument 'list_id'
 ----
 
 
@@ -2198,17 +2150,19 @@ Then we replace three lines in 'superlists/urls.py' with an `include`:
 ====
 [source,python]
 ----
-from django.conf.urls import include, url
+from django.conf.urls import path, include
 from lists import views as list_views  #<1>
 from lists import urls as list_urls  #<1>
 
 urlpatterns = [
-    url(r'^$', list_views.home_page, name='home'),
-    url(r'^lists/', include(list_urls)),  #<2>
+    path('', list_views.home_page, name='home'),
+    path('lists/', include(list_urls)),
 ]
 ----
 ====
 //45
+
+//TODO: just do import lists.views
 
 <1> While we're at it, we use the `import x as y` syntax to alias `views` and
     `urls`.  This is good practice in your top-level 'urls.py', because it will
@@ -2230,13 +2184,13 @@ of our three URLs, and none of the other stuff from the parent 'urls.py':
 ====
 [source,python]
 ----
-from django.conf.urls import url
+from django.urls import path
 from lists import views
 
 urlpatterns = [
-    url(r'^new$', views.new_list, name='new_list'),
-    url(r'^(\d+)/$', views.view_list, name='view_list'),
-    url(r'^(\d+)/add_item$', views.add_item, name='add_item'),
+    path('new', views.new_list, name='new_list'),
+    path('<list_id>/', views.view_list, name='view_list'),
+    path('<list_id>/add_item', views.add_item, name='add_item'),
 ]
 ----
 ====
