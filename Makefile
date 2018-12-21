@@ -1,6 +1,6 @@
 SOURCES := $(wildcard *.asciidoc)
 HTML_PAGES := $(patsubst %.asciidoc, %.html, ${SOURCES})
-RUN_ASCIIDOCTOR = asciidoctor -a source-highlighter=coderay -a stylesheet=asciidoctor.css -a linkcss -a icons=font -a compat-mode -a '!example-caption' -a last-update-label="License: Creative Commons CC-BY-NC-ND. Last updated:"
+	RUN_ASCIIDOCTOR = asciidoctor -a source-highlighter=coderay -a stylesheet=asciidoctor.css -a linkcss -a icons=font -a compat-mode -a '!example-caption' -a last-update-label='License: Creative Commons <a href="https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode">CC-BY-NC-ND</a>. Last updated:'
 RUN_OREILLY_FLAVOURED_ASCIIDOCTOR = ./asciidoc/asciidoctor/bin/asciidoctor -v --trace -d book --safe -b htmlbook --template-dir ./asciidoc/asciidoctor-htmlbook/htmlbook 
 
 book.html: $(SOURCES)
