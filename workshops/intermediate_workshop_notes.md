@@ -66,7 +66,7 @@ passes but not saving.  hand over
 git clone https://github.com/hjwp/book-example/ tdd-workshop
 cd tdd-workshop
 git checkout intermediate-workshop-start
-python3.6 -m venv ./virtualenv  # or however you like to create virtualenvs
+python3.7 -m venv ./virtualenv  # or however you like to create virtualenvs
 source ./virtualenv/bin/activate
 pip install -r requirements.txt
 # you will also need Firefox and geckodrive. see installation instructions chapter of book

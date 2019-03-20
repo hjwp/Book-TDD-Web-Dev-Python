@@ -427,7 +427,7 @@ class ChapterTest(unittest.TestCase):
         if not os.path.exists(virtualenv_path):
             print('preparing virtualenv')
             self.sourcetree.run_command(
-                'python3.6 -m venv virtualenv'
+                'python3.7 -m venv virtualenv'
             )
             self.sourcetree.run_command(
                 './virtualenv/bin/python -m pip install -r requirements.txt'
