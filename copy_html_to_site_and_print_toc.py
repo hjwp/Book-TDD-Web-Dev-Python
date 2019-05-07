@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 
-import os
+from collections import namedtuple
+from pathlib import Path
 import json
 from lxml import html
 import subprocess
+
+DEST = Path('/home/harry/workspace/www.obeythetestinggoat.com/content/book')
 
 CHAPTERS = [
     c.replace('.asciidoc', '.html')
@@ -11,12 +14,15 @@ CHAPTERS = [
 ]
 for tweak_chap in ['praise.html', 'part1.html', 'part2.html', 'part3.html']:
     CHAPTERS[CHAPTERS.index(tweak_chap)] = tweak_chap.replace('.', '.harry.')
+CHAPTERS.remove('cover.html')
 CHAPTERS.remove('titlepage.html')
 CHAPTERS.remove('copyright.html')
 CHAPTERS.remove('toc.html')
 CHAPTERS.remove('ix.html')
 CHAPTERS.remove('author_bio.html')
 CHAPTERS.remove('colo.html')
+
+ChapterInfo = namedtuple('ChapterInfo', 'href_id chapter_title subheaders xrefs')
 
 
 def make_chapters():
@@ -29,6 +35,13 @@ def parse_chapters():
         raw_html = open(chapter).read()
         yield chapter, html.fromstring(raw_html)
 
+
+def get_anchor_targets(parsed_html):
+    ignores = {'header', 'content', 'footnotes', 'footer', 'footer-text'}
+    all_ids = [
+        a.get('id') for a in parsed_html.cssselect('*[id]')
+    ]
+    return [i for i in all_ids if not i.startswith('_') and i not in ignores]
 
 def get_chapter_info():
     chapter_info = {}
@@ -67,29 +80,39 @@ def get_chapter_info():
             chapter_title = f'Epilogue: {chapter_title}'
 
 
-        chapter_info[chapter] = href_id, chapter_title, subheaders
+        xrefs = get_anchor_targets(parsed_html)
+        chapter_info[chapter] = ChapterInfo(href_id, chapter_title, subheaders, xrefs)
 
     return chapter_info
 
 
 def fix_xrefs(contents, chapter, chapter_info):
-    for other_chap in CHAPTERS:
-        html_id, chapter_title, subheaders = chapter_info[other_chap]
-        old_tag = f'href="#{html_id}"'
-        new_tag = f'href="/book/{other_chap}"'
-        if old_tag in contents:
-            contents = contents.replace(old_tag, new_tag)
-    return contents
+    parsed = html.fromstring(contents)
+    links = parsed.cssselect('a[href^=\#]')
+    for link in links:
+        for other_chap in CHAPTERS:
+            if other_chap == chapter:
+                continue
+            chapter_id = chapter_info[other_chap].href_id
+            href = link.get('href')
+            targets = ['#' + x for x in chapter_info[other_chap].xrefs]
+            if href == '#' + chapter_id:
+                link.set('href', f'/book/{other_chap}')
+            elif href in targets:
+                link.set('href', f'/book/{other_chap}{href}')
+
+    return html.tostring(parsed)
+
 
 def fix_title(contents, chapter, chapter_info):
     parsed = html.fromstring(contents)
     titles = parsed.cssselect('h2')
     if titles and titles[0].text.startswith('Appendix A'):
         title = titles[0]
-        title.text = title.text.replace('Appendix A', chapter_info[chapter][1])
+        title.text = chapter_info[chapter].chapter_title
     return html.tostring(parsed)
 
-def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
+def copy_chapters_across_with_fixes(chapter_info, fixed_toc):
     comments_html = open('disqus_comments.html').read()
     buy_book_div = html.fromstring(open('buy_the_book_banner.html').read())
     analytics_div = html.fromstring(open('analytics.html').read())
@@ -112,11 +135,9 @@ def copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc):
         body.append(analytics_div)
         fixed_contents = html.tostring(parsed)
 
-        target = os.path.join('/home/harry/workspace/www.obeythetestinggoat.com/content/book', chapter)
-        with open(target, 'w') as f:
+        with open(DEST / chapter, 'w') as f:
             f.write(fixed_contents.decode('utf8'))
-        toc = '/home/harry/workspace/www.obeythetestinggoat.com/content/book/toc.html'
-        with open(toc, 'w') as f:
+        with open(DEST / 'toc.html', 'w') as f:
             f.write(html.tostring(fixed_toc).decode('utf8'))
 
 
@@ -130,10 +151,10 @@ def extract_toc_from_book():
 def fix_toc(toc, chapter_info):
     href_mappings = {}
     for chapter in CHAPTERS:
-        html_id, chapter_title, subheaders = chapter_info[chapter]
-        if html_id:
-            href_mappings['#' + html_id] = f'/book/{chapter}'
-        for subheader in subheaders:
+        chap = chapter_info[chapter]
+        if chap.href_id:
+            href_mappings['#' + chap.href_id] = f'/book/{chapter}'
+        for subheader in chap.subheaders:
             href_mappings['#' + subheader] = f'/book/{chapter}#{subheader}'
 
     def fix_link(href):
@@ -149,8 +170,12 @@ def fix_toc(toc, chapter_info):
 
 def print_toc_md(chapter_info):
     for chapter in CHAPTERS:
-        html_id, chapter_title, subheaders = chapter_info[chapter]
-        print(f'* [{chapter_title}](/book/{chapter})')
+        title = chapter_info[chapter].chapter_title
+        print(f'* [{title}](/book/{chapter})')
+
+
+def rsync_images():
+    subprocess.run(['rsync', '-a', '-v', 'images/', DEST / 'images/'])
 
 
 def main():
@@ -158,7 +183,8 @@ def main():
     toc = extract_toc_from_book()
     chapter_info = get_chapter_info()
     fixed_toc = fix_toc(toc, chapter_info)
-    copy_chapters_across_fixing_xrefs(chapter_info, fixed_toc)
+    copy_chapters_across_with_fixes(chapter_info, fixed_toc)
+    rsync_images()
     print_toc_md(chapter_info)
 
 

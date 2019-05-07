@@ -3,13 +3,11 @@
 Django-Rest-Framework
 ---------------------
 
-NOTE: This is a new chapter.  Feedback and suggestions are particularly
-    requested!
 
-(((REST)))
-(((API)))
-(((Django-Rest-Framework)))
-Having "rolled our own" REST API in the last chapter, it's time to take
+
+
+((("Django-Rest-Framework (DRF)", id="DRF33")))Having
+"rolled our own" REST API in the last appendix, it's time to take
 a look at http://www.django-rest-framework.org/[Django-Rest-Framework],
 which is a go-to choice for many Python/Django developers building APIs.
 Just as Django aims to give you all the basic tools that you'll need to
@@ -17,9 +15,9 @@ build a database-driven website (an ORM, templates, and so on), so DRF
 aims to give you all the tools you need to build an API, and thus avoid
 you having to write boilerplate code over and over again.
 
-Writing this appendix, one of the main thing I struggled with was getting the
+Writing this appendix, one of the main things I struggled with was getting the
 exact same API that I'd just implemented manually to be replicated by DRF. 
-Getting the same URL layout and the same JSON data structures I'd defined,
+Getting the same URL layout and the same JSON data structures I'd defined
 proved to be quite a challenge, and I felt like I was fighting the framework.
 
 That's always a warning sign.  The people who built Django-Rest-Framework
@@ -30,19 +28,20 @@ with their view of the world, rather than forcing my own preconceptions
 onto it.
 
 "Don't fight the framework" is one of the great pieces of advice I've heard.
-Either go with the flow, or perhaps re-assess whether you want to be using
+Either go with the flow, or perhaps reassess whether you want to be using
 a framework at all.
 
 We'll work from the API we had at the end of the <<appendix_rest_api,last
-chapter>>, and see if we can rewrite it to use DRF.
+appendix>>, and see if we can rewrite it to use DRF.
 
 
 
 Installation
 ~~~~~~~~~~~~
 
-A quick `pip install` gets us DRF.  I'm just using the latest version, which
-was 3.5.4 at the time of writing.
+((("Django-Rest-Framework (DRF)", "installation")))A
+quick `pip install` gets us DRF.  I'm just using the latest version, which
+was 3.5.4 at the time of writing:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -50,11 +49,12 @@ $ *pip install djangorestframework*
 ----
 
 
-And we add `rest_framework` to `INSTALLED_APPS` in 'settings.py'
+And we add `rest_framework` to `INSTALLED_APPS` in 'settings.py':
 
 
 [role="sourcecode"]
 .superlists/settings.py
+====
 [source,python]
 ----
 INSTALLED_APPS = [
@@ -70,25 +70,30 @@ INSTALLED_APPS = [
     'rest_framework',
 ]
 ----
+====
 
 
-Serializers (well, ModelSerializers really)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Serializers (Well, ModelSerializers, Really)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The http://www.django-rest-framework.org/#tutorial[Django-Rest-Framework tutorial]
+((("Django-Rest-Framework (DRF)", "tutorials")))((("Django-Rest-Framework (DRF)", "ModelSerializers")))The
+http://bit.ly/2t6T6eX[Django-Rest-Framework tutorial]
 is a pretty good resource to learn DRF.  The first thing you'll come across
 is serializers, and specifically in our case, "ModelSerializers". They are
 DRF's way of converting from Django database models to JSON (or possibly other
-formats) that you can send over the wire.
+formats) that you can send over the wire:
 
-// TODO: add an explicit unit test or two for serialization
+// IDEA: add an explicit unit test or two for serialization
 
 
 
 [role="sourcecode"]
-.lists/api.py
+.lists/api.py (ch37l003)
+====
 [source,python]
 ----
+from lists.models import List, Item
+[...]
 from rest_framework import routers, serializers, viewsets
 
 
@@ -106,62 +111,199 @@ class ListSerializer(serializers.ModelSerializer):
         model = List
         fields = ('id', 'items',)
 ----
+====
 
+[role="pagebreak-before"]
+Viewsets (Well, ModelViewsets, Really) and Routers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Viewsets (well, ModelViewsets really) and routers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A ModelViewSet is DRF's way of defining all the different ways you can interact
-with the objects for a particular model via your API. By telling it which
+((("Django-Rest-Framework (DRF)", "ModelViewsets")))A
+ModelViewSet is DRF's way of defining all the different ways you can interact
+with the objects for a particular model via your API. Once you tell it which
 models you're interested in (via the `queryset` attribute) and how to serialize
-them (`serializer_class`), it will then do the rest -- automatically building
-views for you that will let you list, retrieve, update and even delete objects.
+them (`serializer_class`), it will then do the rest--automatically building
+views for you that will let you list, retrieve, update, and even delete objects.
 
-Here's all we need to do for a viewset that'll be able to retrieve items for
+Here's all we need to do for a ViewSet that'll be able to retrieve items for
 a particular list:
 
 
 [role="sourcecode"]
-.lists/api.py
+.lists/api.py (ch37l004)
+====
 [source,python]
 ----
 class ListViewSet(viewsets.ModelViewSet):
     queryset = List.objects.all()
     serializer_class = ListSerializer
 
+
 router = routers.SimpleRouter()
 router.register(r'lists', ListViewSet)
 ----
+====
 
 A 'router' is DRF's way of building URL configuration automatically, and
 mapping them to the functionality provided by the ViewSet.
 
+At this point we can start pointing our 'urls.py' at our new router,
+bypassing the old API code and seeing how our tests do with the new stuff:
+
+[role="sourcecode"]
+.superlists/urls.py (ch37l005)
+====
+[source,python]
+----
+[...]
+# from lists.api import urls as api_urls
+from lists.api import router
+
+urlpatterns = [
+    url(r'^$', list_views.home_page, name='home'),
+    url(r'^lists/', include(list_urls)),
+    url(r'^accounts/', include(accounts_urls)),
+    # url(r'^api/', include(api_urls)),
+    url(r'^api/', include(router.urls)),
+]
+----
+====
+
+That makes loads of our tests fail:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+django.urls.exceptions.NoReverseMatch: Reverse for 'api_list' not found.
+'api_list' is not a valid view function or pattern name.
+[...]
+AssertionError: 405 != 400
+[...]
+AssertionError: {'id': 2, 'items': [{'id': 2, 'text': 'item 1'}, {'id': 3,
+'text': 'item 2'}]} != [{'id': 2, 'text': 'item 1'}, {'id': 3, 'text': 'item
+2'}]
+
+ ---------------------------------------------------------------------
+Ran 54 tests in 0.243s
+
+FAILED (failures=4, errors=10)
+----
+
+Let's take a look at those 10 errors first, all saying they cannot reverse
+`api_list`.  It's because the DRF router uses a different naming convention
+for URLs than the one we used when we coded it manually. You'll see from the
+tracebacks that they're happening when we render a template.  It's 'list.html'.
+We can fix that in just one place; `api_list` becomes `list-detail`:
+
+[role="sourcecode"]
+.lists/templates/list.html (ch37l006)
+====
+[source,html]
+----
+  <script>
+$(document).ready(function () {
+  var url = "{% url 'list-detail' list.id %}";
+});
+  </script>
+----
+====
+
+
+That will get us down to just four failures:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+[...]
+FAIL: test_POSTing_a_new_item (lists.tests.test_api.ListAPITest)
+[...]
+FAIL: test_duplicate_items_error (lists.tests.test_api.ListAPITest)
+[...]
+FAIL: test_for_invalid_input_returns_error_code
+(lists.tests.test_api.ListAPITest)
+[...]
+FAIL: test_get_returns_items_for_correct_list
+(lists.tests.test_api.ListAPITest)
+[...]
+FAILED (failures=4)
+----
+
+
+//TODO use @skip
+
+Let's DONT-ify all the validation tests for now, and save that complexity
+for later:
+
+[role="sourcecode"]
+.lists/tests/test_api.py (ch37l007)
+====
+[source,python]
+----
+[...]
+    def DONTtest_for_invalid_input_nothing_saved_to_db(self):
+        [...]
+    def DONTtest_for_invalid_input_returns_error_code(self):
+        [...]
+    def DONTtest_duplicate_items_error(self):
+        [...]
+----
+====
+
+And now we have just two failures:
+
+[subs="specialcharacters,macros"]
+----
+FAIL: test_POSTing_a_new_item (lists.tests.test_api.ListAPITest)
+[...]
+    self.assertEqual(response.status_code, 201)
+AssertionError: 405 != 201
+[...]
+FAIL: test_get_returns_items_for_correct_list
+(lists.tests.test_api.ListAPITest)
+[...]
+AssertionError: {'id': 2, 'items': [{'id': 2, 'text': 'item 1'}, {'id': 3,
+'text': 'item 2'}]} != [{'id': 2, 'text': 'item 1'}, {'id': 3, 'text': 'item
+2'}]
+[...]
+FAILED (failures=2)
+----
+
+Let's take a look at that last one first. 
+
 DRF's default configuration does provide a slightly different data structure
-to the one we built by hand -- doing a GET for a list gives you its ID, and
+to the one we built by hand--doing a GET for a list gives you its ID, and
 then the list items are inside a key called "items".  That means a slight
 modification to our unit test, before it gets back to passing:
 
 [role="sourcecode"]
-.lists/tests/test_api.py
-[source,python]
+.lists/tests/test_api.py (ch37l008)
+====
+[source,diff]
 ----
-    self.assertEqual(
-        json.loads(response.content.decode('utf8')),
-        {'id': our_list.id, 'items': [
-            {'id': item1.id, 'text': item1.text},
-            {'id': item2.id, 'text': item2.text},
-        ]}
-    )
+@@ -23,10 +23,10 @@ class ListAPITest(TestCase):
+         response = self.client.get(self.base_url.format(our_list.id))
+         self.assertEqual(
+             json.loads(response.content.decode('utf8')),
+-            [
++            {'id': our_list.id, 'items': [
+                 {'id': item1.id, 'text': item1.text},
+                 {'id': item2.id, 'text': item2.text},
+-            ]
++            ]}
+         )
 ----
+====
 
-That's the GET for retrieving list items sorted (and, as we'll see later, we've got a
-bunch of other stuff for free too).  How about adding new ones, using POST?
+That's the GET for retrieving list items sorted (and, as we'll see later, we've
+got a bunch of other stuff for free too).  How about adding new ones, using
+POST?
 
 
-A different URL for POST item 
+A Different URL for POST Item 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This is the point at which I gave up on fighting the framework and just saw
+((("Django-Rest-Framework (DRF)", "POST requests")))This
+is the point at which I gave up on fighting the framework and just saw
 where DRF wanted to take me.  Although it's possible, it's quite torturous to
 do a POST to the "lists" ViewSet in order to add an item to a list.
 
@@ -169,7 +311,8 @@ Instead, the simplest thing is to post to an item view, not a list view:
 
 
 [role="sourcecode"]
-.lists/api.py
+.lists/api.py (ch37l009)
+====
 [source,python]
 ----
 class ItemViewSet(viewsets.ModelViewSet):
@@ -177,46 +320,60 @@ class ItemViewSet(viewsets.ModelViewSet):
     queryset = Item.objects.all()
 
 
-router = routers.SimpleRouter()
-router.register(r'lists', ListViewSet)
+[...]
 router.register(r'items', ItemViewSet)
 ----
-
-// 3. You don't mention that the router urls must be added to url.py manually
-// using 'include(router.urls, namepace:api)' and 'from lists.api import
-// router'
+====
 
 
-So that means we change the test slightly
+So that means we change the test slightly, moving all the POST tests
+out of the [keep-together]#`ListAPITest`# and into a new test class, `ItemsAPITest`:
+
 
 [role="sourcecode"]
-.lists/tests/test_api.py
+.lists/tests/test_api.py (ch37l010)
+====
 [source,python]
 ----
-class ItemsAPITest(TestCase):
-    base_url = reverse('api:item-list')
+@@ -1,3 +1,4 @@
+ import json
++from django.core.urlresolvers import reverse
+ from django.test import TestCase
+ from lists.models import List, Item
+@@ -31,9 +32,13 @@ class ListAPITest(TestCase):
+ 
+ 
++
++class ItemsAPITest(TestCase):
++    base_url = reverse('item-list')
++
+     def test_POSTing_a_new_item(self):
+         list_ = List.objects.create()
+         response = self.client.post(
+-            self.base_url.format(list_.id),
+-            {'text': 'new item'},
++            self.base_url,
++            {'list': list_.id, 'text': 'new item'},
+         )
+         self.assertEqual(response.status_code, 201)
 
-    def test_POSTing_a_new_item(self):
-        list_ = List.objects.create()
-        response = self.client.post(
-            self.base_url,
-            {'list': list_.id, 'text': 'new item'},
-        )
-        self.assertEqual(response.status_code, 201)
-        new_item = list_.item_set.get()
-        self.assertEqual(new_item.text, 'new item')
-[...]
+----
+====
+
+That will give us:
+
+----
+django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id
 ----
 
-// 4. You don't mention that you split the test classes up into two subclasses
-// with different 'base_url's
 
-And so on.  Also need to add the list id to our serialization of items,
-otherwise we don't know what list it's for:
+Until we add the list ID to our serialization of items; otherwise, we don't know
+what list it's for:
 
 
 [role="sourcecode"]
-.lists/api.py
+.lists/api.py (ch37l011)
+====
 [source,python]
 ----
 class ItemSerializer(serializers.ModelSerializer):
@@ -225,32 +382,46 @@ class ItemSerializer(serializers.ModelSerializer):
         model = Item
         fields = ('id', 'list', 'text')
 ----
+====
 
 
-// 5. After adding the list field to ItemSerializer, you need to change the
-// expected output in 'test_get_return_items_for_correct_list' must be changed
-// once again, which you don't mention, although the failing messages are quite
-// clear
-
-
-And that causes a few more associated test changes.
-
-
-
-Adapting the client side
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Our API no longer returns a flat array of the items in a list.  It returns an
-object, with a `.items` attribute that represents the items.  That means a
-small tweak to our `updateItems` function:
+And that causes another small associated test change:
 
 [role="sourcecode"]
-.lists/static/list.js
+.lists/tests/test_api.py (ch37l012)
+====
+[source,python]
+----
+@@ -25,8 +25,8 @@ class ListAPITest(TestCase):
+         self.assertEqual(
+             json.loads(response.content.decode('utf8')),
+             {'id': our_list.id, 'items': [
+-                {'id': item1.id, 'text': item1.text},
+-                {'id': item2.id, 'text': item2.text},
++                {'id': item1.id, 'list': our_list.id, 'text': item1.text},
++                {'id': item2.id, 'list': our_list.id, 'text': item2.text},
+             ]}
+         )
+----
+====
+
+
+Adapting the Client Side
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("Django-Rest-Framework (DRF)", "client-side adaptations")))Our
+API no longer returns a flat array of the items in a list.  It returns an
+object, with a `.items` attribute that represents the items.  That means a
+small tweak to our +update&#x200b;Items+ function:
+
+[role="sourcecode"]
+.lists/static/list.js (ch37l013)
+====
 [source,diff]
 ----
+@@ -3,8 +3,8 @@ window.Superlists = {};
  window.Superlists.updateItems = function (url) {
    $.get(url).done(function (response) {
-+    if (!response.items) {return;}
      var rows = '';
 -    for (var i=0; i<response.length; i++) {
 -      var item = response[i];
@@ -259,18 +430,24 @@ small tweak to our `updateItems` function:
        rows += '\n<tr><td>' + (i+1) + ': ' + item.text + '</td></tr>';
      }
      $('#id_list_table').html(rows);
-   });
- };
+
 ----
+====
 
 And because we're using different URLs for GETing lists and POSTing items,
 we tweak the `initialize` function slightly too.  Rather than multiple
-arguments, we'll switch to using a "params" object containing the required config:
+arguments, we'll switch to using a `params` object containing the required
+config:
  
-[role="sourcecode"]
+[role="sourcecode small-code"]
 .lists/static/list.js
+====
 [source,diff]
 ----
+@@ -11,23 +11,24 @@ window.Superlists.updateItems = function (url) {
+   });
+ };
+ 
 -window.Superlists.initialize = function (url) {
 +window.Superlists.initialize = function (params) {
    $('input[name="text"]').on('keypress', function () {
@@ -296,30 +473,64 @@ arguments, we'll switch to using a "params" object containing the required confi
 +        window.Superlists.updateItems(params.listApiUrl);
        }).fail(function (xhr) {
          $('.has-error').show();
+         if (xhr.responseJSON && xhr.responseJSON.error) {
+----
+====
+
+We reflect that in 'list.html':
+
+[role="sourcecode"]
+.lists/templates/list.html (ch37l014)
+====
+[source,html]
+----
+$(document).ready(function () {
+  window.Superlists.initialize({
+    listApiUrl: "{% url 'list-detail' list.id %}",
+    itemsApiUrl: "{% url 'item-list' %}",
+    listId: {{ list.id }},
+  });
+});
+----
+====
+
+
+And that's actually enough to get the basic FT working again:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests.test_simple_list_creation*]
+[...]
+Ran 2 tests in 15.635s
+
+OK
 ----
 
 
-There's a few more changes to do with error handling, which you can explore in the
+There's a few more changes to do with error handling, which you can explore in
+the
 https://github.com/hjwp/book-example/blob/appendix_DjangoRestFramework/lists/api.py[repo
 for this appendix] if you're curious.
 
 
 
-What Django-Rest-Framework gives you
+What Django-Rest-Framework Gives You
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You may be wondering what the point of using this framework was.
+((("Django-Rest-Framework (DRF)", "benefits of")))You
+may be wondering what the point of using this framework was.
 
 
-Configuration instead of code
+Configuration Instead of Code
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Well, the first advantage is that I've transformed my old procedural view
-function into a more declarative syntax
+function into a more declarative syntax:
 
 
-[role="sourcecode skipme"]
-.lists/api.py (old version)
+[role="sourcecode currentcontents dofirst-ch37l016"]
+.lists/api.py
+====
 [source,python]
 ----
 def list(request, list_id):
@@ -344,14 +555,16 @@ def list(request, list_id):
         content_type='application/json'
     )
 ----
+====
 
 
 If you compare this to the final DRF version, you'll notice that we are
-actually now entirely configuration:
+actually now entirely configured:
 
 
-[role="sourcecode currentcontents"]
-.lists/api.py (new version)
+[role="sourcecode currentcontents dofirst-ch37l019"]
+.lists/api.py
+====
 [source,python]
 ----
 class ItemSerializer(serializers.ModelSerializer):
@@ -393,29 +606,31 @@ router = routers.SimpleRouter()
 router.register(r'lists', ListViewSet)
 router.register(r'items', ItemViewSet)
 ----
+====
 
 
-Free functionality
+Free Functionality
 ^^^^^^^^^^^^^^^^^^
 
-The second advantage is that, by using DRF's `ModelSerializer`, `ViewSet` and
+The second advantage is that, by using DRF's ModelSerializer, ViewSet, and
 routers, I've actually ended up with a much more extensive API than the one I'd
 rolled by hand.
 
-* All the HTTP methods: GET, POST, PUT, PATCH, DELETE, and OPTIONS methods now work,
+* All the HTTP methods, GET, POST, PUT, PATCH, DELETE, and OPTIONS, now work,
   out of the box, for all list and items URLs.
 
-* And a browsable / self-documenting version of the API is available at
-  http://localhost:8000/api/lists/ and http://localhost:8000/api/items. (Try it!)
+* And a browsable/self-documenting version of the API is available at
+  pass:[<em>http://localhost:8000/api/lists/</em>] and pass:[<em>http://localhost:8000/api/items</em>]. (<<figag01>>; try it!)
 
+[[figag01]]
 .A free browsable API for your users
-image::images/drf-screenshot.png["Screenshot of DRF browsable api page at http://localhost:8000/api/items/"]
+image::images/twp2_ag01.png["Screenshot of DRF browsable api page at http://localhost:8000/api/items/"]
 
 
 There's more information in
 http://www.django-rest-framework.org/topics/documenting-your-api/#self-describing-apis[the
 DRF docs], but those are both seriously neat features to be able to offer the
-end-users of your API.
+end users of your API.
 
 
 In short, DRF is a great way of generating APIs, almost automatically, based on
@@ -423,23 +638,23 @@ your existing models structure.  If you're using Django, definitely check it
 out before you start hand-rolling your own API code.
 
 
-.Django-Rest-Framework tips
+.Django-Rest-Framework Tips
 *******************************************************************************
 
-Don't fight the framework::
+((("Django-Rest-Framework (DRF)", "tips for")))Don't fight the framework::
     Going with the flow is often the best way to stay productive.  That, or
     maybe don't use the framework.  Or use it at a lower level.
 
-Routers and Viewsets for the principle of least surprise::
+Routers and ViewSets for the principle of least surprise::
     One of the advantages of DRF is that its generic tools like routers and
-    viewsets will give you a very predictable API, with sensible defaults
+    ViewSets will give you a very predictable API, with sensible defaults
     for its endpoints, URL structure, and responses for different HTTP methods.
 
 Check out the self-documenting, browsable version::
     Check out your API endpoints in a browser. DRF responds differently when it
     detects your API is being accessed by a "normal" web browser, and displays
     a very nice, self-documenting version of itself, which you can share with
-    your users.
+    your users.((("", startref="DRF33")))
 
 *******************************************************************************
 

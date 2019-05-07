@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from lxml import html
+from getpass import getuser
 import io
 import os
 import stat
@@ -21,7 +22,6 @@ from book_parser import (
 from sourcetree import Commit, SourceTree
 from update_source_repo import update_sources_for_chapter
 
-
 PHANTOMJS_RUNNER = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     'my-phantomjs-qunit-runner.js'
@@ -30,6 +30,14 @@ SLIMERJS_BINARY = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     'slimerjs-0.9.0/slimerjs'
 )
+
+
+DO_SERVER_COMMANDS = True
+if getuser() == 'jenkins':
+    DO_SERVER_COMMANDS = False
+if 'NO_SERVER_COMMANDS' in os.environ:
+    DO_SERVER_COMMANDS = False
+
 
 
 def contains(inseq, subseq):
@@ -46,6 +54,13 @@ def wrap_long_lines(text):
         '\n'.join(wrap(p, 79, break_long_words=True, break_on_hyphens=False))
         for p in paragraphs
     )
+
+
+def split_blocks(text):
+    return [
+        block.strip() for block in
+        re.split(r'\n\n+|^.*\[\.\.\..*$', text, flags=re.MULTILINE)
+    ]
 
 
 def fix_test_dashes(output):
@@ -175,11 +190,17 @@ def fix_sqlite_messages(actual_text):
     return fixed_text
 
 
+def fix_jenkins_pixelsize(actual_text):
+    # TODO: remove me when upgrading bootstrap
+    return actual_text.replace('107.0 != 512', '106.5 != 512')
+
+
 def fix_creating_database_line(actual_text):
-    if "Creating test database for alias 'default'..." in actual_text:
-        actual_lines = actual_text.split('\n')
-        actual_lines.remove("Creating test database for alias 'default'...")
-        actual_lines.insert(0, "Creating test database for alias 'default'...")
+    creating_db = "Creating test database for alias 'default'..."
+    actual_lines = actual_text.split('\n')
+    if creating_db in actual_lines:
+        actual_lines.remove(creating_db)
+        actual_lines.insert(0, creating_db)
         actual_text = '\n'.join(actual_lines)
     return actual_text
 
@@ -192,6 +213,8 @@ def fix_interactive_managepy_stuff(actual_text):
         '>>> ', '>>>\n',
     )
 
+
+
 class ChapterTest(unittest.TestCase):
     maxDiff = None
 
@@ -202,6 +225,7 @@ class ChapterTest(unittest.TestCase):
         self.pos = 0
         self.dev_server_running = False
         self.current_server_cd = None
+        self.current_server_exports = {}
 
 
     def tearDown(self):
@@ -214,8 +238,14 @@ class ChapterTest(unittest.TestCase):
         with open(os.path.join(base_dir, filename), encoding='utf-8') as f:
             raw_html = f.read()
         parsed_html = html.fromstring(raw_html)
-        listings_nodes = parsed_html.cssselect('div.listingblock')
-        self.listings = [p for n in listings_nodes for p in parse_listing(n)]
+        all_nodes = parsed_html.cssselect('.exampleblock.sourcecode, div:not(.sourcecode) div.listingblock')
+        listing_nodes = []
+        for ix, node in enumerate(all_nodes):
+            prev = all_nodes[ix - 1]
+            if node not in list(prev.iterdescendants()):
+                listing_nodes.append(node)
+
+        self.listings = [p for n in listing_nodes for p in parse_listing(n)]
 
 
     def check_final_diff(self, ignore=None, diff=None):
@@ -253,6 +283,8 @@ class ChapterTest(unittest.TestCase):
     def start_with_checkout(self):
         update_sources_for_chapter(self.chapter_name, self.previous_chapter)
         self.sourcetree.start_with_checkout(self.chapter_name, self.previous_chapter)
+        # simulate virtualenv folder
+        self.sourcetree.run_command('mkdir -p virtualenv/bin virtualenv/lib')
 
 
     def write_to_file(self, codelisting):
@@ -261,7 +293,7 @@ class ChapterTest(unittest.TestCase):
             "passed a non-Codelisting to write_to_file:\n%s" % (codelisting,)
         )
         print('writing to file', codelisting.filename)
-        write_to_file(codelisting, os.path.join(self.tempdir, 'superlists'))
+        write_to_file(codelisting, self.tempdir)
 
 
     def apply_patch(self, codelisting):
@@ -277,7 +309,7 @@ class ChapterTest(unittest.TestCase):
         self.assertNotIn('malformed', patch_output)
         self.assertNotIn('failed', patch_output.lower())
         codelisting.was_checked = True
-        with open(os.path.join(self.tempdir, 'superlists', codelisting.filename)) as f:
+        with open(os.path.join(self.tempdir, codelisting.filename)) as f:
             print(f.read())
         os.remove(tf.name)
         self.pos += 1
@@ -307,27 +339,84 @@ class ChapterTest(unittest.TestCase):
     )
 
     def run_server_command(self, command, ignore_errors=False):
+        sleep = 0
+        kill_old_runserver = False
+        kill_old_gunicorn = False
+
         cd_finder = re.compile(r'cd (.+)$')
         if cd_finder.match(command):
             self.current_server_cd = cd_finder.match(command).group(1)
-        if command.startswith('sudo apt-get install '):
-            command = command.replace('install ', 'install -y ')
-        if self.current_server_cd:
-            command = 'cd %s && %s' % (self.current_server_cd, command)
-        if '$SITENAME' in command:
-            command = 'SITENAME=superlists-staging.ottg.eu; ' + command
-        if command.endswith('python manage.py runserver'):
+            print('adding server cd', self.current_server_cd)
+        export_finder = re.compile(r'export ([^=]+=\S+) ?([^=]+=\S+)?')
+        if export_finder.match(command):
+            for export_pair in export_finder.match(command).groups():
+                if export_pair is not None:
+                    key, val = export_pair.split('=')
+                    self.current_server_exports[key] = val
+                    print('adding server export', key, val)
+        if 'unset' in command:
+            del self.current_server_exports['DJANGO_SECRET_KEY']
+            del self.current_server_exports['DJANGO_DEBUG_FALSE']
+        if command == 'set -a; source .env; set +a':
+            self.current_server_exports['DJANGO_SECRET_KEY'] = 'abc231'
+            self.current_server_exports['DJANGO_DEBUG_FALSE'] = 'y'
+
+        if command.startswith('sudo apt install '):
+            command = command.replace('apt install ', 'apt install -y ')
+            sleep = 1
+        if command.startswith('sudo add-apt-repository'):
+            command = command.replace('add-apt-repository ', 'apt-add-repository -y ')
+            sleep = 1
+        if command.startswith('sudo journalctl -f -u'):
+            command = command.replace('journalctl -f -u', 'journalctl --no-pager -u')
+        if command.startswith('git clone https://github.com/hjwp/book-example.git'):
+            # hack for first git clone, use branch for manual chapter, and go back
+            # one commit to simulate state near beginning of chap.
             command = command.replace(
-                'python manage.py runserver',
-                'dtach -n /tmp/dtach.sock python manage.py runserver'
+                'git clone https://github.com/hjwp/book-example.git',
+                'git clone -b chapter_manual_deployment https://github.com/hjwp/book-example.git'
+            )
+            command += ' && cd ~/sites/$SITENAME && git reset --hard HEAD^'
+
+        if self.current_server_cd:
+            command = f'cd {self.current_server_cd} && {command}'
+        if self.current_server_exports:
+            exports = ' '.join(f'{k}={v}' for k, v in self.current_server_exports.items())
+            command = f'export {exports}; {command}'
+
+        if 'manage.py runserver' in command:
+            if './virtualenv/bin/python manage.py' in command:
+                command = command.replace(
+                    './virtualenv/bin/python manage.py runserver',
+                    'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver',
+                )
+                sleep = 1
+                kill_old_runserver = True
+            else:
+                # special case first runserver errors
+                ignore_errors = True
+                command = command.replace('python manage.py', 'python3 manage.py')
+
+        if 'bin/gunicorn' in command:
+            kill_old_runserver = True
+            kill_old_gunicorn = True
+            command = command.replace(
+                './virtualenv/bin/gunicorn',
+                'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn',
             )
 
+        if kill_old_runserver:
+            subprocess.run([self.RUN_SERVER_PATH, 'pkill -f runserver'])
+        if kill_old_gunicorn:
+            subprocess.run([self.RUN_SERVER_PATH, 'pkill -f gunicorn'])
+
         print('running command on server', command)
-        commands = ['python2.7', self.RUN_SERVER_PATH]
+        commands = [self.RUN_SERVER_PATH]
         if ignore_errors:
             commands.append('--ignore-errors')
         commands.append(command)
         output = subprocess.check_output(commands).decode('utf8')
+        time.sleep(sleep)
 
         print(output.encode('utf-8'))
         return output
@@ -338,24 +427,25 @@ class ChapterTest(unittest.TestCase):
         if not os.path.exists(virtualenv_path):
             print('preparing virtualenv')
             self.sourcetree.run_command(
-                '/usr/local/bin/python3.6 -m venv ../virtualenv'
+                'python3.7 -m venv virtualenv'
             )
             self.sourcetree.run_command(
-                '../virtualenv/bin/pip install -r requirements.txt'
+                './virtualenv/bin/python -m pip install -r requirements.txt'
             )
 
 
     def prep_database(self):
-        self.sourcetree.run_command('mkdir ../database')
         self.sourcetree.run_command('python manage.py migrate --noinput')
 
 
     def write_file_on_server(self, target, contents):
+        if not DO_SERVER_COMMANDS:
+            return
         with tempfile.NamedTemporaryFile() as tf:
             tf.write(contents.encode('utf8'))
             tf.flush()
             output = subprocess.check_output(
-                ['python2.7', self.RUN_SERVER_PATH, tf.name, target]
+                [self.RUN_SERVER_PATH, tf.name, target]
             ).decode('utf8')
             print(output)
 
@@ -367,14 +457,15 @@ class ChapterTest(unittest.TestCase):
             )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
-        print('checking expected output', expected.encode('utf-8'))
+        print('checking expected output', expected)
+        print('against actual', actual)
         self.assertEqual(
             type(expected), Output,
             "passed a non-Output to run-command:\n%s" % (expected,)
         )
 
         if self.tempdir in actual:
-            actual = actual.replace(self.tempdir, '/...')
+            actual = actual.replace(self.tempdir, '...python-tdd-book')
             actual = actual.replace('/private', '')  # macos thing
 
         if ls:
@@ -396,6 +487,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
+        # actual_fixed = fix_jenkins_pixelsize(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
         actual_fixed = standardise_assertionerror_none(actual_fixed)
@@ -415,6 +507,8 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_callouts(expected_fixed)
         expected_fixed = standardise_assertionerror_none(expected_fixed)
 
+        actual_fixed = actual_fixed.replace('\xa0', ' ')
+        expected_fixed = expected_fixed.replace('\xa0', ' ')
         if '\t' in actual_fixed:
             actual_fixed = re.sub(r'\s+', ' ', actual_fixed)
             expected_fixed = re.sub(r'\s+', ' ', expected_fixed)
@@ -442,10 +536,8 @@ class ChapterTest(unittest.TestCase):
 
     def skip_with_check(self, pos, expected_content):
         listing = self.listings[pos]
-        error = 'Could not find {} in at pos {}: "{}". Listings were:\n{}'.format(
-            expected_content, pos, listing,
-            '\n'.join(str(t) for t in enumerate(self.listings))
-        )
+        all_listings = '\n'.join(str(t) for t in enumerate(self.listings))
+        error = f'Could not find {expected_content} at pos {pos}: "{listing}". Listings were:\n{all_listings}'
         if hasattr(listing, 'contents'):
             if expected_content not in listing.contents:
                 raise Exception(error)
@@ -455,17 +547,24 @@ class ChapterTest(unittest.TestCase):
         listing.skip = True
 
 
+    def replace_command_with_check(self, pos, old, new):
+        listing = self.listings[pos]
+        all_listings = '\n'.join(str(t) for t in enumerate(self.listings))
+        error = f'Could not find {old} at pos {pos}: "{listing}". Listings were:\n{all_listings}'
+        if old not in listing:
+            raise Exception(error)
+        assert type(listing) == Command
+
+        new_listing = Command(listing.replace(old, new))
+        for attr, val in vars(listing).items():
+            setattr(new_listing, attr, val)
+        self.listings[pos] = new_listing
+
+
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
         actual_tree = self.sourcetree.run_command('tree -I *.pyc --noreport', cwd)
-        # special case for first listing:
-        original_tree = expected_tree
-        if expected_tree.startswith('superlists/'):
-            expected_tree = Output(
-                expected_tree.replace('superlists/', '.', 1)
-            )
         self.assert_console_output_correct(actual_tree, expected_tree)
-        original_tree.was_checked = True
 
 
     def assert_all_listings_checked(self, listings, exceptions=[]):
@@ -507,10 +606,16 @@ class ChapterTest(unittest.TestCase):
         self.assert_console_output_correct(test_run, self.listings[pos])
 
 
+    def unset_PYTHONDONTWRITEBYTECODE(self):
+        # so any references to  __pycache__ in the book work
+        if 'PYTHONDONTWRITEBYTECODE' in os.environ:
+            del os.environ['PYTHONDONTWRITEBYTECODE']
+
+
     def _strip_out_any_pycs(self):
         return
         self.sourcetree.run_command(
-            "find . -name __pycache__ -exec rm -rf {} \;",
+            r"find . -name __pycache__ -exec rm -rf {} \;",
             ignore_errors=True
         )
 
@@ -559,11 +664,11 @@ class ChapterTest(unittest.TestCase):
     def check_qunit_output(self, expected_output):
         lists_tests = os.path.join(
             self.tempdir,
-            'superlists/lists/static/tests/tests.html'
+            'lists/static/tests/tests.html'
         )
         accounts_tests_exist = os.path.exists(os.path.join(
             self.sourcetree.tempdir,
-            'superlists', 'accounts', 'static', 'tests', 'tests.html'
+            'accounts/static/tests/tests.html'
         ))
 
         accounts_tests = lists_tests.replace('/lists/', '/accounts/')
@@ -594,12 +699,13 @@ class ChapterTest(unittest.TestCase):
         print("CHECK CURRENT CONTENTS")
         stripped_actual_lines = [l.strip() for l in actual_contents.split('\n')]
         listing_contents = re.sub(r' +#$', '', listing.contents, flags=re.MULTILINE)
-        listing_blocks = re.split(r'^.*\[\.\.\..*$', listing_contents, flags=re.MULTILINE)
-        for block in listing_blocks:
+        for block in split_blocks(listing_contents):
             stripped_block = [line.strip() for line in block.strip().split('\n')]
+            for line in stripped_block:
+                self.assertIn(line, stripped_actual_lines)
             self.assertTrue(
                 contains(stripped_actual_lines, stripped_block),
-                '{}\n\nnot found in\n\n{}'.format(stripped_block, actual_contents)
+                '\n{}\n\nnot found in\n\n{}'.format('\n'.join(stripped_block), '\n'.join(stripped_actual_lines)),
             )
         listing.was_written = True
 
@@ -674,18 +780,78 @@ class ChapterTest(unittest.TestCase):
 
 
     def run_unit_tests(self):
-        if os.path.exists(os.path.join(self.tempdir, 'superlists', 'accounts', 'tests')):
+        if os.path.exists(os.path.join(self.tempdir, 'accounts', 'tests')):
             return self.run_command(Command("python manage.py test lists accounts"))
         else:
             return self.run_command(Command("python manage.py test lists"))
 
 
     def run_fts(self):
-        if os.path.exists(os.path.join(self.tempdir, 'superlists', 'functional_tests')):
+        if os.path.exists(os.path.join(self.tempdir, 'functional_tests')):
             return self.run_command(Command("python manage.py test functional_tests"))
         else:
             return self.run_command(Command("python functional_tests.py"))
 
+    def run_interactive_manage_py(self, listing):
+        output_before = self.listings[self.pos + 1]
+        assert isinstance(output_before, Output)
+
+        LIKELY_INPUTS = ('yes', 'no', '1', '2', "''")
+        user_input = self.listings[self.pos + 2]
+        if isinstance(user_input, Command) and user_input in LIKELY_INPUTS:
+            if user_input == 'yes':
+                print('yes case')
+                # in this case there is moar output after the yes
+                output_after = self.listings[self.pos + 3]
+                assert isinstance(output_after, Output)
+                expected_output = Output(wrap_long_lines(output_before + ' ' + output_after.lstrip()))
+                next_output = None
+            elif user_input == '1':
+                print('migrations 1 case')
+                # in this case there is another hop
+                output_after = self.listings[self.pos + 3]
+                assert isinstance(output_after, Output)
+                first_input = user_input
+                next_input = self.listings[self.pos + 4]
+                assert isinstance(next_input, Command)
+                next_output = self.listings[self.pos + 5]
+                expected_output = Output(wrap_long_lines(
+                    output_before + '\n' + output_after + '\n' + next_output
+                ))
+                user_input = Command(first_input + '\n' + next_input)
+            else:
+                expected_output = output_before
+                output_after = None
+                next_output = None
+            if user_input == '2':
+                ignore_errors = True
+            else:
+                ignore_errors = False
+
+        else:
+            user_input = None
+            expected_output = output_before
+            output_after = None
+            ignore_errors = True
+            next_output = None
+
+        output = self.run_command(listing, user_input=user_input, ignore_errors=ignore_errors)
+        self.assert_console_output_correct(output, expected_output)
+
+        listing.was_checked = True
+        output_before.was_checked = True
+        self.pos += 2
+        if user_input is not None:
+            user_input.was_run = True
+            self.pos += 1
+        if output_after is not None:
+            output_after.was_checked = True
+            self.pos += 1
+        if next_output is not None:
+            self.pos += 2
+            next_output.was_checked = True
+            first_input.was_run = True
+            next_input.was_run = True
 
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
@@ -698,6 +864,11 @@ class ChapterTest(unittest.TestCase):
             print("SKIP")
             listing.was_checked = True
             listing.was_written = True
+            self.pos += 1
+        elif listing.against_server and not DO_SERVER_COMMANDS:
+            print("SKIP AGAINST SERVER")
+            listing.was_checked = True
+            listing.was_run = True
             self.pos += 1
         elif listing.type == 'test':
             print("TEST RUN")
@@ -714,90 +885,49 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'git commit':
             print("COMMIT")
             self.check_commit(self.pos)
-
         elif listing.type == 'interactive manage.py':
             print("INTERACTIVE MANAGE.PY")
-            output_before = self.listings[self.pos + 1]
-            assert isinstance(output_before, Output)
-
-            LIKELY_INPUTS = ('yes', 'no', '1', '2', "''")
-            user_input = self.listings[self.pos + 2]
-            if isinstance(user_input, Command) and user_input in LIKELY_INPUTS:
-                if user_input == 'yes':
-                    print('yes case')
-                    # in this case there is moar output after the yes
-                    output_after = self.listings[self.pos + 3]
-                    assert isinstance(output_after, Output)
-                    expected_output = Output(wrap_long_lines(output_before + ' ' + output_after.lstrip()))
-                    next_output = None
-                elif user_input == '1':
-                    print('migrations 1 case')
-                    # in this case there is another hop
-                    output_after = self.listings[self.pos + 3]
-                    assert isinstance(output_after, Output)
-                    first_input = user_input
-                    next_input = self.listings[self.pos + 4]
-                    assert isinstance(next_input, Command)
-                    next_output = self.listings[self.pos + 5]
-                    expected_output = Output(wrap_long_lines(
-                        output_before + '\n' + output_after + '\n' + next_output
-                    ))
-                    user_input = Command(first_input + '\n' + next_input)
-                else:
-                    expected_output = output_before
-                    output_after = None
-                    next_output = None
-                if user_input == '2':
-                    ignore_errors = True
-                else:
-                    ignore_errors = False
-
-            else:
-                user_input = None
-                expected_output = output_before
-                output_after = None
-                ignore_errors = True
-                next_output = None
-
-            output = self.run_command(listing, user_input=user_input, ignore_errors=ignore_errors)
-            self.assert_console_output_correct(output, expected_output)
-
-            listing.was_checked = True
-            output_before.was_checked = True
-            self.pos += 2
-            if user_input is not None:
-                user_input.was_run = True
-                self.pos += 1
-            if output_after is not None:
-                output_after.was_checked = True
-                self.pos += 1
-            if next_output is not None:
-                self.pos += 2
-                next_output.was_checked = True
-                first_input.was_run = True
-                next_input.was_run = True
-
-
-
+            self.run_interactive_manage_py(listing)
         elif listing.type == 'tree':
             print("TREE")
             self.assert_directory_tree_correct(listing)
             self.pos += 1
 
         elif listing.type == 'server command':
-            server_output = self.run_server_command(listing)
+            if DO_SERVER_COMMANDS:
+                server_output = self.run_server_command(listing)
             listing.was_run = True
             self.pos += 1
             next_listing = self.listings[self.pos]
             if next_listing.type == 'output' and not next_listing.skip:
-                for line in next_listing.split('\n'):
-                    assert line.strip() in server_output
+                if DO_SERVER_COMMANDS:
+                    for line in next_listing.split('\n'):
+                        line = line.split('[...]')[0].strip()
+                        line = re.sub(r'\s+', ' ', line)
+                        server_output = re.sub(r'\s+', ' ', server_output)
+                        self.assertIn(line, server_output)
                 next_listing.was_checked = True
                 self.pos += 1
 
+        elif listing.type == 'against staging':
+            print("AGAINST STAGING")
+            next_listing = self.listings[self.pos + 1]
+            if DO_SERVER_COMMANDS:
+                output = self.run_command(listing, ignore_errors=listing.ignore_errors)
+                listing.was_checked = True
+            else:
+                listing.skip = True
+            if next_listing.type == 'output' and not next_listing.skip:
+                if DO_SERVER_COMMANDS:
+                    self.assert_console_output_correct(output, next_listing)
+                    next_listing.was_checked = True
+                else:
+                    next_listing.skip = True
+                self.pos += 2
+
         elif listing.type == 'other command':
             print("A COMMAND")
-            output = self.run_command(listing)
+            output = self.run_command(listing, ignore_errors=listing.ignore_errors)
             next_listing = self.listings[self.pos + 1]
             if next_listing.type == 'output' and not next_listing.skip:
                 ls = listing.startswith('ls')
@@ -838,6 +968,7 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == 'server code listing':
             print("SERVER CODE")
             self.write_file_on_server(listing.filename, listing.contents)
+            listing.was_written = True
             self.pos += 1
 
         elif listing.type == 'qunit output':

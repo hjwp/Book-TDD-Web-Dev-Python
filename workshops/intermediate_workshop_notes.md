@@ -1,10 +1,5 @@
 # Outline
 
-TODO:
-
-  - switch to chrome in all tags
-
-
 > 1 day: Outside-in TDD with and without mocks (AKA - "listen to your tests").
 > This day will start with a discussion of the "outside-in" technique, a way of
 > deciding which tests to write, and what code to write, in what order, and how
@@ -17,35 +12,26 @@ TODO:
 > different types of tests: end-to-end/functional vs integration vs unit tests.
 
 
-* Intro and installations (15m, t=0)
-* Our example app - tour (5m, t=15)
-* Codebase tour (5m, t=20)
-* Double-loop TDD demo (10m, t=25)
-* Coding challenge 1:  building the "my lists" feature (45m, t=35)
-* Outside-In TDD.  Examples + discussion (20m, t=1h15)
-* Break (15m, t=1h35)
-* Mocks demo: (10m, t=1h50)
-* Next challenge: redo it with a more "purist" approach (15m, t=2h00)
-* Mocks and "Listen to your tests" discussion. (25m, t=2h15)
-* The pitfalls of mocking (15m, t=2h35)
-* Recap + discussion:  the pros and cons of different types of test (15m, t=2h50)
-* end (t=3h00)
-
-
-
-# notes from live session
-- have a better process for outside-in live code bit
-- slides worked well for that bit
-- and for the mocks bit
-- live-coding was fine for mocks intro
-
+* Intro and installations (10m, t=10)
+* Our example app - tour (2m, t=12)
+* Codebase tour (5m, t=17)
+* Target site tour (3m, t=20)
+* Coding challenge 1:  building the "my lists" feature (30m, t=50)
+* Outside-In TDD demo.  Examples + discussion (30m, t=1h20)
+* Break (10m, t=1h30)
+* Mocks demo: (10m, t=1h40)
+* Coding challenge 2: redo it with a more "purist" approach (30m, t=1h45)
+* Mocks and "Listen to your tests" demo/discussion. (25m, t=2h10)
+* Coding/debugging challenge 3: why doesn't it work? (20m, t=2h30)
+* Recap + discussion:  the pros and cons of different types of test (10m, t=2h25)
+* end (t=2h25)
 
 
 
 # notes from prep
 
-live code demo 1:
-git checkout intermediate-workshop-start-harry
+### live code demo 1:
+git checkout intermediate-workshop-start
 add url #, navbar-left, re-run ft
 move down to test views
 client.get /lists/my_lists/
@@ -57,7 +43,7 @@ add my_lists template
 inherit from base
 add block content, h1
 
-live code demo 2:
+### live code demo 2:
 git checkout end-of-live-code
 my_lists.html
 user.list_set.all
@@ -66,7 +52,7 @@ list.name
 then examples back in main prezzo
 
 
-live code demo 3:
+### live code demo 3:
 mockListClass
 see problem with form
 mockItemForm
@@ -80,17 +66,20 @@ passes but not saving.  hand over
 git clone https://github.com/hjwp/book-example/ tdd-workshop
 cd tdd-workshop
 git checkout intermediate-workshop-start
-mkvirtualenv --python=python3 tdd-workshop  # or however you like to create virtualenvs
+python3.7 -m venv ./virtualenv  # or however you like to create virtualenvs
+source ./virtualenv/bin/activate
 pip install -r requirements.txt
+# you will also need Firefox and geckodrive. see installation instructions chapter of book
 
 # Take a look around the site  with:
-mkdir ../database
 python manage.py migrate
 python manage.py runserver
 
-# Run the test suite and check everything passes:
-pip install selenium
-python manage.py test  # all but one should pass
+# Run the test suite:
+python manage.py test
+
+# you should see it run 53 tests and all but one should pass,
+# expected error = NoSuchElementException, "Unable to locate element: My lists"
 ```
 
 If the functional tests give you any trouble, You can try switching from
@@ -170,16 +159,15 @@ color: apprentice? colorful? beachcomber? ironman?
 **Models**:  a list has many items:
 
 
-```python: lists/models.py
+lists/models.py:
+```python
 
 class List(models.Model):
-  pass
-
+    pass
 
 class Item(models.Model):
-    text = models.TextField(default='')
-    list = models.ForeignKey(List, default=None)
-
+    text = models.TextField()
+    list = models.ForeignKey(List)
 ```
 
 
@@ -197,71 +185,24 @@ class Item(models.Model):
 
 **Views**:
 
-* home page
-* create new list (and show errors back on home page if necessary)
-* view existing list (and add extra items to it if necessary)
+lists/views.py:
+```python
 
-
-```python: lists/views.py
 def home_page(request):
     return render(request, 'home.html', {'form': ItemForm()})
-```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-```python: lists/views.py
 def new_list(request):
-    form = ItemForm(data=request.POST)
-    if form.is_valid():
-        list_ = List.objects.create()
-        form.save(for_list=list_)
-        return redirect(list_)
-    else:
-        return render(request, 'home.html', {"form": form})
-```
+    # use form to recreate and redirect to a new list, or render error template
 
-
-
-
-```python: lists/views.py
 def view_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    form = ExistingListItemForm(for_list=list_)
-    if request.method == 'POST':
-        form = ExistingListItemForm(for_list=list_, data=request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect(list_)
-    return render(request, 'list.html', {'list': list_, "form": form})
+    # retrieve list object
+    # display if GET, use form to add new items if POST
 ```
 
-
-
-
-* forms deal with validation and creating new objects, they live in
-  *lists/forms.py*.  We don't need them for the first part of this workshop.
+* forms live in *lists/forms.py*.  We don't need them for the first part of this workshop.
 
 * login/logout etc are handled by the accounts module, which we won't need to
-  look at today.
-
-
-
-
-
-
-
-
+  look at today.  you can just use any email to log in
 
 
 
@@ -288,33 +229,24 @@ def view_list(request, list_id):
 
 
 
-# Coding challenge 1:  building the "my lists" feature
+# Coding challenge 1:  building the "my lists" feature, quick and dirty
 
 ie: Get this FT to pass:
 
     python manage.py test functional_tests.test_my_lists
 
-Ideally: using TDD. Add some unit tests, in *test_models.py* and *test_views.py*.  Get the FT to pass.
 
 Tips:
 
+* don't worry about tests for now
 * you'll probably need a foreign key from lists to the user model
 * `request.user` will be available if user is logged in
-* `request.user.is_authenticated()` is False if user is not logged in
+* `request.user.is_authenticated` is False if user is not logged in
 * `list.get_absolute_url()` will give you a url you can use in an <a> tag for the lists page
-* you will probably want a new template at *lists/templates/my_lists.html*, and a new URL + view for it.  You can inherit from base.html
-* you will need to associate the creation of a new list with the current user, if they're logged in
-* if you need a views test to have a logged-in user, you have two choices
-  - `self.client.force_login(user)`
-  - or, import and call the view function directly with an HttpRequest instance whose .user attribute is set.
-* if you want to try manually logging in with persona, "anything@mockmyid.com" will "just work" (but use "localhost:8000" in your browser, not "127.0.0.1:800")
+* you will probably want a new template at `lists/templates/my_lists.html`, and a new URL + view for it.  You can inherit from 'base.html'.  note the `extra_content` block will be useful
+* you will need to associate the creation of a new list with the current user, if they're logged in, in the `new_list` view
+* if you want to try manually logging in, you can just enter any email
 
-**Help**: Grab my version of the "my lists" template. it will tell you what you need your views to do
-
-    git checkout origin/intermediate-workshop-end -- lists/templates/my_lists.html
-
-
-//TODO: simplify my example my_lists.html
 
 
 
@@ -371,7 +303,8 @@ Additional illustrations
 
 
 
-```python lists/tests/test_views.py
+lists/tests/test_views.py:
+```python
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
         user = User.objects.create(email='a@b.com')
@@ -384,7 +317,8 @@ Additional illustrations
 ```
 
 
-```python lists/views.py
+lists/views.py:
+```python
 
 def new_list(request):
     form = ItemForm(data=request.POST)
@@ -438,7 +372,8 @@ AttributeError: 'List' object has no attribute 'owner'
 So we move down to the models layer:
 
 
-``` python lists/tests/test_models.py
+lists/tests/test_models.py:
+``` python
 
     def test_lists_can_have_owners(self):
         user = User.objects.create(email='a@b.com')
@@ -448,7 +383,8 @@ So we move down to the models layer:
 
 
 
-```python lists/models.py
+lists/models.py:
+```python
 
 class List(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
@@ -504,9 +440,10 @@ Oh no!  what's happening?
 
 
 
-```html lists/templates/my_lists.html
+lists/templates/my_lists.html:
+```html
 
-          <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
+  <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>
 
 ```
 
@@ -527,8 +464,8 @@ Lists need a name attribute (what we'd programmed by wishful thinking)
 
 
 
-
-```python lists/tests/test_models.py
+lists/tests/test_models.py:
+```python
 
     def test_list_name_is_first_item_text(self):
         list_ = List.objects.create()
@@ -537,8 +474,8 @@ Lists need a name attribute (what we'd programmed by wishful thinking)
         self.assertEqual(list_.name, 'first item')
 ```
 
-
-```python lists/models.py
+lists/models.py:
+```python
 
 class List(models.Model):
     # ...
@@ -551,6 +488,8 @@ class List(models.Model):
 
 
 
+
+and we're done!
 
 
 
@@ -603,8 +542,6 @@ class List(models.Model):
 
 * live demo of mocks
 
-
-
     git checkout intermediate-workshop-part2
     python manage.py test lists
 
@@ -641,8 +578,8 @@ Think about:
 
 Did you end up with a test like this?
 
-
-```python lists/tests/test_views
+lists/tests/test_views:
+```python
 
     @patch('lists.views.List')
     def test_list_owner_is_saved_if_user_is_authenticated(self, mockListClass):
@@ -670,8 +607,8 @@ yuck!
 Why is this so hard? What are the tests trying to tell us?
 
 
-
-```python lists/views.py
+lists/views.py:
+```python
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
@@ -702,8 +639,8 @@ What if it was easier?
 
 
 
-
-```python lists/views.py
+lists/views.py:
+```python
 def new_list(request):
     form = NewListForm(data=request.POST)
     if form.is_valid():
@@ -717,8 +654,8 @@ def new_list(request):
 And then we could write a "nice" mocky test like this, rather than a nasty one...
 
 
-
-```python lists/tests/test_views.py
+lists/tests/test_views.py:
+```python
     @patch('lists.views.NewListForm')
     def test_saves_form_with_owner_if_form_valid(self, mockNewListForm):
         mock_form = mockNewListForm.return_value
@@ -734,8 +671,8 @@ And then we could write a "nice" mocky test like this, rather than a nasty one..
 
 of course if we're going to go the whole way, we would rewrite all the tests:
 
-
-```python lists/tests/test_views.py
+lists/tests/test_views.py:
+```python
     def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
 
     def test_saves_form_with_owner_if_form_valid(self, mockNewListForm):
@@ -762,8 +699,8 @@ of course if we're going to go the whole way, we would rewrite all the tests:
 
 Same story at the forms layer:
 
-
-```python lists/forms.py
+lists/forms.py:
+```python
 class NewListForm(models.Form):
 
     def save(self, owner):
@@ -781,8 +718,8 @@ class NewListForm(models.Form):
 Which leads to tests that look like this:
 
 
-
-```python lists/forms.py
+lists/forms.py:
+```python
 
 class NewListFormTest(unittest.TestCase):
 
@@ -816,8 +753,8 @@ But, again, this is a call to "listen to our tests"
 
 
 
-
-```python lists/forms.py
+lists/forms.py:
+```python
 
 class NewListForm(ItemForm):
 
@@ -850,6 +787,8 @@ Can you figure out what went wrong?
 
 
 * lesson:  mocking requires clear identification of contracts, and testing same.
+
+* keeping: some mid-level integration tests around is a good idea.
 
 
 

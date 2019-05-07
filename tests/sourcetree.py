@@ -67,7 +67,7 @@ class SourceTree(object):
 
 
     def get_contents(self, path):
-        with open(os.path.join(self.tempdir, 'superlists', path)) as f:
+        with open(os.path.join(self.tempdir, path)) as f:
             return f.read()
 
 
@@ -83,7 +83,7 @@ class SourceTree(object):
 
     def run_command(self, command, cwd=None, user_input=None, ignore_errors=False, silent=False):
         if cwd is None:
-            cwd = os.path.join(self.tempdir, 'superlists')
+            cwd = self.tempdir
 
         if command == BOOTSTRAP_WGET:
             shutil.copy(
@@ -93,7 +93,13 @@ class SourceTree(object):
             return
         actual_command = command
         if command.startswith('fab deploy'):
-            actual_command = 'cd deploy_tools && ' + command
+            actual_command = f'cd deploy_tools && {command}'
+            actual_command = actual_command.replace(
+                'fab deploy',
+                'fab -D -i ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key deploy'
+            )
+        elif command.startswith('curl'):
+            actual_command = command.replace('curl', 'curl --silent --show-error')
         process = subprocess.Popen(
             actual_command, shell=True, cwd=cwd, executable='/bin/bash',
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -105,6 +111,7 @@ class SourceTree(object):
         self.processes.append(process)
         if 'runserver' in command:
             # can't read output, stdout.read just hangs.
+            # TODO: readline?
             return
 
         if user_input and not user_input.endswith('\n'):
@@ -136,7 +143,6 @@ class SourceTree(object):
 
     def start_with_checkout(self, chapter, previous_chapter):
         print('starting with checkout')
-        self.run_command('mkdir superlists', cwd=self.tempdir)
         self.run_command('git init .')
         self.run_command('git remote add repo "{}"'.format(
             self.get_local_repo_path(chapter)

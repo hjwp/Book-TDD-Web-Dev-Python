@@ -33,10 +33,12 @@ class AppendixVIITest(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.sourcetree.run_command(
-            'git add . && git commit -m"final commit in rest api chapter"'
-        )
-        self.check_final_diff()
+        # TODO:
+        # self.sourcetree.patch_from_commit('ch37l015')
+        # self.sourcetree.patch_from_commit('ch37l017')
+        # self.sourcetree.run_command(
+        #    'git add . && git commit -m"final commit in rest api chapter"'
+        #)
 
 
 if __name__ == '__main__':

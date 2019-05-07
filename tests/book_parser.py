@@ -6,7 +6,7 @@ import re
 COMMIT_REF_FINDER = r'ch\d\dl\d\d\d-?\d?'
 
 class CodeListing(object):
-    COMMIT_REF_FINDER = r'^(.+) \((' + COMMIT_REF_FINDER + ')\)$'
+    COMMIT_REF_FINDER = r'^(.+) \((' + COMMIT_REF_FINDER + r')\)$'
 
     def __init__(self, filename, contents):
         self.is_server_listing = False
@@ -24,6 +24,7 @@ class CodeListing(object):
         self.was_written = False
         self.skip = False
         self.currentcontents = False
+        self.against_server = False
 
 
     def is_diff(self):
@@ -52,7 +53,9 @@ class Command(str):
     def __init__(self, a_string):
         self.was_run = False
         self.skip = False
+        self.ignore_errors = False
         self.server_command = False
+        self.against_server = False
         self.dofirst = None
         str.__init__(a_string)
 
@@ -73,6 +76,8 @@ class Command(str):
             return 'interactive manage.py'
         if self == 'python manage.py collectstatic':
             return 'interactive manage.py'
+        if self.startswith('STAGING_SERVER='):
+            return 'against staging'
         else:
             return 'other command'
 
@@ -89,6 +94,7 @@ class Output(str):
         self.skip = False
         self.dofirst = None
         self.qunit_output = False
+        self.against_server = False
         str.__init__(a_string)
 
     @property
@@ -131,7 +137,7 @@ def parse_output(listing):
 
         command_text = fix_newlines(command.text)
         if output_before.strip().startswith('(virtualenv)'):
-            command_text = 'source ../virtualenv/bin/activate && ' + command_text
+            command_text = 'source ./virtualenv/bin/activate && ' + command_text
         outputs.append(Command(command_text))
 
         output_before = fix_newlines(command.tail)
@@ -191,10 +197,17 @@ def parse_listing(listing):
             listing.skip = True
     if dofirst:
         outputs[0].dofirst = dofirst
+    if 'ignore-errors' in classes:
+        for listing in outputs:
+            if isinstance(listing, Command):
+                listing.ignore_errors = True
     if 'server-commands' in classes:
         for listing in outputs:
             if isinstance(listing, Command):
                 listing.server_command = True
+    if 'against-server' in classes:
+        for listing in outputs:
+            listing.against_server = True
 
     return outputs
 

@@ -3,9 +3,9 @@
 Provisioning with Ansible
 -------------------------
 
-((("provisioning", "with Ansible", sortas="ansible", id="ix_provisioningansible", range="startofrange")))
-((("Ansible", id="ix_ansible", range="startofrange")))
-We used Fabric to automate deploying new versions of the source code to our
+
+((("Ansible", id="ansible29")))((("continuous deployment tools")))((("deployment", "continuous deployment tools")))We
+used Fabric to automate deploying new versions of the source code to our
 servers.  But provisioning a fresh server, and updating the Nginx and Gunicorn
 config files, was all left as a manual process.
 
@@ -19,22 +19,24 @@ can get it working with just two files:
     pip2 install --user ansible  # Python 2 sadly
 
 
-An "inventory file" at `deploy_tools/inventory.ansible` defines what servers we
+An "inventory file" at _deploy_tools/inventory.ansible_ defines what servers we
 can run against:
 
 [role="sourcecode"]
 .deploy_tools/inventory.ansible
+====
 [source,ini]
 ----
 [live]
-superlists.ottg.eu ansible_user=root
+superlists.ottg.eu ansible_become=yes ansible_ssh_user=elspeth
 
 [staging]
-superlists-staging.ottg.eu ansible_user=root
+superlists-staging.ottg.eu ansible_become=yes ansible_ssh_user=elspeth
 
 [local]
-localhost ansible_user=root ansible_ssh_port=6666 ansible_host=127.0.0.1
+localhost ansible_ssh_user=root ansible_ssh_port=6666 ansible_host=127.0.0.1
 ----
+====
 
 (The local entry is just an example, in my case a Virtualbox VM, with port
 forwarding for ports 22 and 80 set up.)
@@ -48,6 +50,7 @@ uses a syntax called YAML:
 
 [role="sourcecode"]
 .deploy_tools/provision.ansible.yaml
+====
 [source,yaml]
 ----
 ---
@@ -58,8 +61,12 @@ uses a syntax called YAML:
       host: "{{ inventory_hostname }}"
 
   tasks:
+
+    - name: Deadsnakes PPA to get Python 3.6
+      apt_repository:
+        repo='ppa:deadsnakes/ppa'
     - name: make sure required packages are installed
-      apt: pkg=nginx,git,python3,python3-venv state=present
+      apt: pkg=nginx,git,python3.7,python3.7-venv state=present
 
     - name: allow long hostnames in nginx
       lineinfile: 
@@ -81,28 +88,29 @@ uses a syntax called YAML:
       notify:
           - restart nginx
 ----
+====
 
 
 The `inventory_hostname` variable is the domain name of the server we're running against.
 I'm using the `vars` section to rename it to "host", just for convenience.
 
-((("Nginx")))
+
 In this section, we install our required software using `apt`, tweak the Nginx
-config to allow long hostnames using a regular expression replacer, and then
-we write the Nginx config file using a template.  This is a modified version
+config to allow long hostnames using a regular expression replacer, and then write the Nginx config file using a template.  This is a modified version
 of the template file we saved into 'deploy_tools/nginx.template.conf' in
-<<deployment-chapter>>, but it now uses a specific templating syntax--Jinja2, which is 
+<<chapter_manual_deployment>>, but it now uses a specific templating syntax--Jinja2, which is 
 actually a lot like the Django template syntax:
 
 [role="sourcecode"]
 .deploy_tools/nginx.conf.j2
+====
 ----
 server {
     listen 80;
     server_name {{ host }};
 
     location /static {
-        alias /home/{{ user }}/sites/{{ host }}/static;
+        alias /home/{{ ansible_ssh_user }}/sites/{{ host }}/static;
     }
 
     location / {
@@ -111,6 +119,7 @@ server {
     }
 }
 ----
+====
 
 
 Configuring Gunicorn, and Using Handlers to Restart Services
@@ -121,6 +130,7 @@ Here's the second half of our playbook:
 
 [role="sourcecode"]
 .deploy_tools/provision.ansible.yaml
+====
 [source,yaml]
 ----
     - name: write gunicorn service script
@@ -130,35 +140,37 @@ Here's the second half of our playbook:
       notify:
           - restart gunicorn
 
-    - name: make sure nginx is running
-      service: name=nginx state=running
-    - name: make sure gunicorn is running
-      service: name=gunicorn-{{ host }} state=running
-
   handlers:
     - name: restart nginx
       service:  name=nginx state=restarted
 
     - name: restart gunicorn
-      service:  name=gunicorn-{{ host }} state=restarted
+      systemd:
+          name=gunicorn-{{ host }}
+          daemon_reload=yes
+          enabled=yes
+          state=restarted
 
 ----
+====
 
-((("Gunicorn")))
+
 Once again we use a template for our Gunicorn config:
 
 [role="sourcecode"]
 .deploy_tools/gunicorn.service.j2
+====
 [source,bash]
 ----
 [Unit]
 Description=Gunicorn server for {{ host }}
 
 [Service]
-User={{ user }}
-WorkingDirectory=/home/{{ user }}/sites/{{ host }}/source
+User={{ ansible_ssh_user }}
+WorkingDirectory=/home/{{ ansible_ssh_user }}/sites/{{ host }}
+EnvironmentFile=/home/{{ ansible_ssh_user }}/sites/{{ host }}/.env
 Restart=on-failure
-ExecStart=/home/{{ user }}/sites/{{ host }}/virtualenv/bin/gunicorn \
+ExecStart=/home/{{ ansible_ssh_user }}/sites/{{ host }}/virtualenv/bin/gunicorn \
     --bind unix:/tmp/{{ host }}.socket \
     --access-logfile ../access.log \
     --error-logfile ../error.log \
@@ -167,6 +179,7 @@ ExecStart=/home/{{ user }}/sites/{{ host }}/virtualenv/bin/gunicorn \
 [Install]
 WantedBy=multi-user.target
 ----
+====
 
 Then we have two "handlers" to restart Nginx and Gunicorn.  Ansible is
 clever, so if it sees multiple steps all call the same handlers, it 
@@ -175,11 +188,12 @@ waits until the last one before calling it.
 
 And that's it!  The command to kick all these off is:
 
+[role="small-code"]
 ----
-ansible-playbook -i inventory.ansible provision.ansible.yaml --limit=staging
+ansible-playbook -i inventory.ansible provision.ansible.yaml --limit=staging --ask-become-pass
 ----
 
-Lots more info in the http://www.ansibleworks.com/docs/[Ansible docs].
+Lots more info in the https://docs.ansible.com/[Ansible docs].
 
 
 What to Do Next
@@ -187,24 +201,25 @@ What to Do Next
 
 I've just given a little taster of what's possible with Ansible.  But the more
 you automate about your deployments, the more confidence you will have in 
-them.  Here's a few more things to look into.
+them.  Here are a few more things to look into.
 
 Move Deployment out of Fabric and into Ansible
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("Fabric")))
-We've seen that Ansible can help with some aspects of provisioning, but it can
+
+((("Fabric", "moving deployment to Ansible")))We've
+seen that Ansible can help with some aspects of provisioning, but it can
 also do pretty much all of our deployment for us.  See if you can extend the
-playbook to do everything that we currently do in our fabric deploy script,
+playbook to do everything that we currently do in our Fabric deploy script,
 including notifying the restarts as required.
-(((range="endofrange", startref="ix_ansible")))
-(((range="endofrange", startref="ix_provisioningansible")))
+
+
 
 Use Vagrant to Spin Up a Local VM 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("Virtualbox")))
-((("Vagrant")))
+
+
 Running tests against the staging site gives us the ultimate confidence that
 things are going to work when we go live, but we can also use a VM on our
 local machine.
@@ -215,6 +230,6 @@ Rewire the FT runner to be able to test against the local VM.
 
 Having a Vagrant config file is particularly helpful when working
 in a team--it helps new developers to spin up servers that look exactly
-like yours.
+like yours.((("", startref="ansible29")))
 
 

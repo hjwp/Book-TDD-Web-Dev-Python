@@ -2,20 +2,10 @@
 Test Isolation, and "Listening to Your Tests"
 ---------------------------------------------
 
-[%autowidth,float="right",caption=,cols="2"]
-|=======
-2+|Chapter info
-|shortname:|chapter_purist_unit_tests
-|=======
-
-WARNING: 2017-03-13: Book upgraded to Python 3.6 and Django 1.11 beta.
-    Before that, there was a big upgrade to Selenium 3 on 2017-01-30. More
-    info https://www.obeythetestinggoat.com/latest-release-the-last-big-one-python-36-django-111-beta.html[on the blog].
 
 
-((("test isolation", id="ix_testisolation", range="startofrange")))
-((("isolated tests", seealso="test isolation")))
-In the last chapter, we made the decision to leave a unit test failing in
+((("functional tests (FTs)", "ensuring isolation", id="FTisolat23")))In
+the preceding chapter, we made the decision to leave a unit test failing in
 the views layer while we proceeded to write more tests and more code at
 the models layer to get it to pass.
 
@@ -27,9 +17,10 @@ to work on lower levels while you're not sure that the higher levels are
 NOTE: I'm grateful to Gary Bernhardt, who took a look at an early draft of the
     previous chapter, and encouraged me to get into a longer discussion of test
     isolation.
-    ((("Bernhardt, Gary")))
+    
 
-Ensuring isolation between layers does involve more effort (and more of the
+((("isolation, ensuring", "benefits and drawbacks of")))Ensuring
+isolation between layers does involve more effort (and more of the
 dreaded mocks!), but it can also help to drive out improved design, as we'll
 see in this chapter. 
 
@@ -37,14 +28,16 @@ see in this chapter.
 Revisiting Our Decision Point: The Views Layer Depends on Unwritten Models Code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("views layer")))
-((("test isolation", "views layer")))
-Let's revisit the point we were at half-way through the last chapter, when we
+
+
+((("isolation, ensuring", "failed test example")))Let's
+revisit the point we were at halfway through the last chapter, when we
 couldn't get the `new_list` view to work because lists didn't have the `.owner`
 attribute yet.  
 
-We'll actually go back in time and check out the old codebase, so that we can
-see how things would have worked if we'd used more isolated tests.
+We'll actually go back in time and check out the old codebase using the tag we
+saved earlier, so that we can see how things would have worked if we'd used
+more isolated tests:
 
 
 [subs="specialcharacters,quotes"]
@@ -53,11 +46,12 @@ $ *git checkout -b more-isolation*  # a branch for this experiment
 $ *git reset --hard revisit_this_point_with_isolated_tests*
 ----
 
-Here's what our failing tests looks like:
+Here's what our failing test looks like:
 
 
 [role="sourcecode currentcontents"]
 .lists/tests/test_views.py
+====
 [source,python]
 ----
 class NewListTest(TestCase):
@@ -70,11 +64,13 @@ class NewListTest(TestCase):
         list_ = List.objects.first()
         self.assertEqual(list_.owner, user)
 ----
+====
 
 And here's what our attempted solution looked like:
 
 [role="sourcecode currentcontents"]
 .lists/views.py
+====
 [source,python]
 ----
 def new_list(request):
@@ -88,6 +84,7 @@ def new_list(request):
     else:
         return render(request, 'home.html', {"form": form})
 ----
+====
 
 And at this point, the view test is failing because we don't have the model
 layer yet:
@@ -98,7 +95,7 @@ AttributeError: 'List' object has no attribute 'owner'
 ----
 
 NOTE: You won't see this error unless you actually check out the old code
-    and revert 'lists/models.py'.  You should definitely do this, part of
+    and revert 'lists/models.py'.  You should definitely do this; part of
     the objective of this chapter is to see whether we really can write 
     tests for a models layer that doesn't exist yet.
 
@@ -106,17 +103,19 @@ NOTE: You won't see this error unless you actually check out the old code
 A First Attempt at Using Mocks for Isolation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("mocks/mocking", "for isolation", sortas="isolation", id="ix_mocksforisolation", range="startofrange")))
-((("test isolation", "mocks/mocking for", id="ix_testisolationmocks")))
-((("test isolation", "views layer", id="ix_testisolationviewslayer", range="startofrange")))
-((("views layer", id="ix_viewslayer", range="startofrange")))
-Lists don't have owners yet, but we can let the views layer tests pretend they
+
+
+
+
+((("isolation, ensuring", "using mocks for", secondary-sortas="mocks for", id="IEmock23")))((("mocks", "isolating tests using", id="Misolate23")))Lists
+don't have owners yet, but we can let the views layer tests pretend they
 do by using a bit of mocking:
 
 //IDEA: rename all "mockList" to "mockListClass"...
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l003)
+====
 [source,python]
 ----
 from unittest.mock import patch
@@ -135,13 +134,14 @@ from unittest.mock import patch
         mock_list = mockListClass.return_value  #<4>
         self.assertEqual(mock_list.owner, user)  #<5>
 ----
+====
 
 <1> We mock out the `List` class to be able to get access to any lists
     that might be created by the view.
 
-<2> We also mock out the `ItemForm`, because otherwise our form will
+<2> We also mock out the `ItemForm`. Otherwise, our form will
     raise an error when we call `form.save()`, because it can't use a
-    mock object as the foreign key for the Item it wants to create.
+    mock object as the foreign key for the +Item+ it wants to create.
     Once you start mocking, it can be hard to stop!
 
 <3> The mock objects are injected into the test's arguments in the
@@ -150,12 +150,12 @@ from unittest.mock import patch
     used to it!
 
 <4> The list instance that the view will have access to 
-    will be the return value of the mocked List class.
+    will be the return value of the mocked `List` class.
 
 <5> And we can make assertions about whether the `.owner` attribute is set on
     it.
 
-If we try to run this test now, it should pass.
+If we try to run this test now, it should pass:
 
 [subs="specialcharacters,macros"]
 ----
@@ -176,13 +176,14 @@ NOTE: Using mocks does tie you to specific ways of using an API.  This is one
 Using Mock side_effects to Check the Sequence of Events
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("mocks/mocking", "Mock side_effects")))
+
 The trouble with this test is that it can still let us get away with writing
-the wrong code by mistake.  Imagine if we accidentally call save before we
+the wrong code by mistake.  Imagine if we accidentally call +save+ before we
 we assign the owner:
 
 [role="sourcecode"]
 .lists/views.py
+====
 [source,python]
 ----
     if form.is_valid():
@@ -192,6 +193,7 @@ we assign the owner:
         form.save(for_list=list_)
         return redirect(list_)
 ----
+====
 
 The test, as it's written now, still passes:
 
@@ -199,16 +201,17 @@ The test, as it's written now, still passes:
 OK
 ----
 
-So we actually need to check, not just that the owner is assigned, but that
-it's assigned 'before' we call save on our list object.
+So strictly speaking, we need to check not just that the owner is assigned, but that
+it's assigned 'before' we call +save+ on our list object.
 
-Here's how we can test the sequence of events using mocks--you can mock out
+Here's how we could test the sequence of events using mocks--you can mock out
 a function, and use it as a spy to check on the state of the world at the
 moment it's called:
 
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l005)
+====
 [source,python]
 ----
     @patch('lists.views.List')
@@ -228,10 +231,11 @@ moment it's called:
 
         mock_list.save.assert_called_once_with()  #<3>
 ----
+====
 
 
 <1> We define a function that makes the assertion about the thing we 
-    want to happen first: checking the list's owner has been set.
+    want to happen first: checking that the list's owner has been set.
 
 <2> We assign that check function as a `side_effect` to the thing we
     want to check happened second.  When the view calls our mocked
@@ -239,40 +243,41 @@ moment it's called:
     set this up before we actually call the function we're testing.
 
 <3> Finally, we make sure that the function with the `side_effect` was
-    actually triggered, ie we did `.save()`.  Otherwise our assertion
-    may actually never have been run.
+    actually triggered--that is, that we did `.save()`.  Otherwise, our
+    assertion may actually never have been run.
 
-TIP: Two common mistakes when using mock side-effects are:  assigning the
-    side effect too late, i.e. 'after' you call the function under test, and
+TIP: Two common mistakes when you're using mock side effects are assigning the
+    side effect too late (i.e., 'after' you call the function under test), and
     forgetting to check that the side-effect function was actually called. And
-    by common, I mean, "I made both these mistakes several times 'while writing
-    this chapter'".
+    by common, I mean, "I made both these mistakes several times _while writing
+    this chapter_.&rdquo;
 
-At this point, if you've still got the "broken" code from above, where we
-assign the owner but call save in the wrong order, you should now see a 
+At this point, if you've still got the "broken" code from earlier, where we
+assign the owner but call +save+ in the wrong order, you should now see a 
 fail:
 
 ----
 FAIL: test_list_owner_is_saved_if_user_is_authenticated
 (lists.tests.test_views.NewListTest)
 [...]
-  File "/.../superlists/lists/views.py", line 17, in new_list
+  File "...python-tdd-book/lists/views.py", line 17, in new_list
     list_.save()
 [...]
-  File "/.../superlists/lists/tests/test_views.py", line 74, in
+  File "...python-tdd-book/lists/tests/test_views.py", line 74, in
 check_owner_assigned
     self.assertEqual(mock_list.owner, user)
 AssertionError: <MagicMock name='List().owner' id='140691452447208'> != <User:
 User object>
 ----
 
-Notice how the failure happens when we try and save, and then go inside 
+Notice how the failure happens when we try to save, and then go inside 
 our `side_effect` function.
 
 We can get it passing again like this:
 
 [role="sourcecode"]
 .lists/views.py
+====
 [source,python]
 ----
     if form.is_valid():
@@ -282,6 +287,7 @@ We can get it passing again like this:
         form.save(for_list=list_)
         return redirect(list_)
 ----
+====
 //006
 
 
@@ -291,22 +297,22 @@ We can get it passing again like this:
 OK
 ----
 
-But, boy, that's getting to be an ugly test!
-(((range="endofrange", startref="ix_testisolationmocks")))
-(((range="endofrange", startref="ix_mocksforisolation")))
+((("", startref="IEmock23")))((("", startref="Misolate23")))But, boy, that's getting to be an ugly test!
+
+
 
 Listen to Your Tests: Ugly Tests Signal a Need to Refactor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("refactoring", "and test isolation",sortas="testisolation")))
-((("test isolation", "refactoring in")))
-Whenever you find yourself having to write a test like this, and you're finding
+
+
+((("isolation, ensuring", "refactoring ugly tests")))((("refactoring")))Whenever
+you find yourself having to write a test like this, and you're finding
 it hard work, it's likely that your tests are trying to tell you something.
-Nine lines of setup (three lines for the mock user, four more lines for
-the request object, and three for our side-effect function) is way too many.
+Eight lines of setup (two lines for mocks, three to set up a user, and three more for our side-effect function) is way too many.
 
 What this test is trying to tell us is that our view is doing too much work,
-dealing with creating a form, creating a new list object 'and' deciding whether
+dealing with creating a form, creating a new list object, 'and' deciding whether
 or not to save an owner for the list.
 
 We've already seen that we can make our views simpler and easier to understand
@@ -316,11 +322,12 @@ does the view need to make decisions about whether or not to save the
 `request.user`?  Again, the form could do that.
 
 While we're giving this form more responsibilities, it feels like it should
-probably get a new name too.  We could call `NewListForm` instead, since
-that's a better representation of what it does... something like this?
+probably get a new name too.  We could call it `NewListForm` instead, since
+that's a better representation of what it does...something like this?
 
 [role="sourcecode skipme"]
 .lists/views.py
+====
 [source,python]
 ----
 # don't enter this code yet, we're only imagining it.
@@ -333,6 +340,7 @@ def new_list(request):
     else:
         return render(request, 'home.html', {"form": form})
 ----
+====
 
 That would be neater!  Let's see how we'd get to that state by using
 fully isolated tests.
@@ -341,10 +349,11 @@ fully isolated tests.
 Rewriting Our Tests for the View to Be Fully Isolated
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("test isolation", "full isolation")))
-Our first attempt at a test suite is for this view was highly 'integrated'.  It
+
+((("isolation, ensuring", "view layer", id="IEviews23")))Our
+first attempt at a test suite for this view was highly 'integrated'.  It
 needed the database layer and the forms layer to be fully functional in order
-for it to pass.   We've started trying to make it more isolated, let's now go
+for it to pass.   We've started trying to make it more isolated, so let's now go
 all the way.
 
 
@@ -358,6 +367,7 @@ back the integrated version, with a skip on it for now:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l008)
+====
 [source,python]
 ----
 import unittest
@@ -376,12 +386,13 @@ class NewListViewIntegratedTest(TestCase):
         list_ = List.objects.first()
         self.assertEqual(list_.owner, user)
 ----
+====
 
 TIP: Have you heard the term "integration test" and are wondering what the
-    difference is with an "integrated test"?  Go and take a peek at the
+    difference is from an "integrated test"?  Go and take a peek at the
     definitions box in <<chapter_hot_lava>>.
-    ((("integration tests")))
-    ((("integrated tests", "vs. integration test", sortas="integration")))
+    
+    
 
 [subs="specialcharacters,macros"]
 ----
@@ -397,12 +408,13 @@ A New Test Suite with Full Isolation
 
 Let's start with a blank slate, and see if we can use isolated tests to drive
 a replacement of our `new_list` view.  We'll call it `new_list2`, build it 
-alongside the old view, and when we're ready, we can swap it in and see if
-the old integrated tests all still pass.
+alongside the old view, and when we're ready, swap it in and see if
+the old integrated tests all still pass:
 
 
 [role="sourcecode"]
 .lists/views.py (ch20l009)
+====
 [source,python]
 ----
 def new_list(request):
@@ -411,12 +423,13 @@ def new_list(request):
 def new_list2(request):
     pass
 ----
+====
 
 
 Thinking in Terms of Collaborators
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("test isolation", "collaborators", id="ix_testisolationcollab", range="startofrange")))
+
 In order to rewrite our tests to be fully isolated, we need to throw out our
 old way of thinking about the tests in terms of the "real" effects of the view
 on things like the database, and instead think of it in terms of the objects it
@@ -424,11 +437,12 @@ collaborates with, and how it interacts with them.
 
 In the new world, the view's main collaborator will be a form object, so we
 mock that out in order to be able to fully control it, and in order to be able
-to define, by wishful thinking, the way we want our form to work.
+to define, by wishful thinking, the way we want our form to work:
 
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l010)
+====
 [source,python]
 ----
 from unittest.mock import patch
@@ -447,12 +461,13 @@ class NewListViewUnitTest(unittest.TestCase):  #<1>
         new_list2(self.request)
         mockNewListForm.assert_called_once_with(data=self.request.POST)  #<4>
 ----
+====
 
 <1> The Django `TestCase` class makes it too easy to write integrated tests.
     As a way of making sure we're writing "pure", isolated unit tests, we'll
-    only use `unittest.TestCase`
+    only use `unittest.TestCase`.
 
-<2> We mock out the NewListForm class (which doesn't even exist yet). It's
+<2> We mock out the +NewListForm+ class (which doesn't even exist yet). It's
     going to be used in all the tests, so we mock it out at the class level.
 
 <3> We set up a basic POST request in `setUp`, building up the request by
@@ -463,11 +478,11 @@ class NewListViewUnitTest(unittest.TestCase):  #<1>
     data from the request.
 
 That will start with a failure, saying we don't have a `NewListForm` in
-our view yet.  
+our view yet:
 
 
 ----
-AttributeError: <module 'lists.views' from '/.../superlists/lists/views.py'>
+AttributeError: <module 'lists.views' from '...python-tdd-book/lists/views.py'>
 does not have the attribute 'NewListForm'
 ----
 
@@ -476,16 +491,19 @@ Let's create a placeholder for it:
 
 [role="sourcecode"]
 .lists/views.py (ch20l011)
+====
 [source,python]
 ----
 from lists.forms import ExistingListItemForm, ItemForm, NewListForm
 [...]
 ----
+====
 
 and:
 
 [role="sourcecode"]
 .lists/forms.py (ch20l012)
+====
 [source,python]
 ----
 class ItemForm(forms.models.ModelForm):
@@ -497,6 +515,7 @@ class NewListForm(object):
 class ExistingListItemForm(ItemForm):
     [...]
 ----
+====
 
 Next we get a real failure:
 
@@ -510,11 +529,13 @@ And we implement like this:
 
 [role="sourcecode"]
 .lists/views.py (ch20l012-2)
+====
 [source,python]
 ----
 def new_list2(request):
     NewListForm(data=request.POST)
 ----
+====
 
 
 [subs="specialcharacters,macros"]
@@ -526,10 +547,11 @@ OK
 ----
 
 
-Let's continue.  If the form is valid, we want to call save on it:
+Let's continue.  If the form is valid, we want to call +save+ on it:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l013)
+====
 [source,python]
 ----
 from unittest.mock import patch, Mock
@@ -555,17 +577,21 @@ class NewListViewUnitTest(unittest.TestCase):
         new_list2(self.request)
         mock_form.save.assert_called_once_with(owner=self.request.user)
 ----
+====
 
+[role="pagebreak-before"]
 That takes us to this:
 
 [role="sourcecode"]
 .lists/views.py (ch20l014)
+====
 [source,python]
 ----
 def new_list2(request):
     form = NewListForm(data=request.POST)
     form.save(owner=request.user)
 ----
+====
 
 
 In the case where the form is valid, we want the view to return a redirect, 
@@ -574,6 +600,7 @@ another of the view's collaborators, the `redirect` function:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l015)
+====
 [source,python]
 ----
     @patch('lists.views.redirect')  #<1>
@@ -588,13 +615,14 @@ another of the view's collaborators, the `redirect` function:
         self.assertEqual(response, mock_redirect.return_value)  #<4>
         mock_redirect.assert_called_once_with(mock_form.save.return_value)  #<5>
 ----
+====
 
 <1> We mock out the `redirect` function, this time at the method level.
 
 <2> `patch` decorators are applied innermost first, so the new mock is injected
-    to our method as before the `mockNewListForm`.
+    to our method before the `mockNewListForm`.
 
-<3> We specify we're testing the case where the form is valid.
+<3> We specify that we're testing the case where the form is valid.
 
 <4> We check that the response from the view is the result of the `redirect`
     function.
@@ -606,6 +634,7 @@ That takes us to here:
 
 [role="sourcecode"]
 .lists/views.py (ch20l016)
+====
 [source,python]
 ----
 def new_list2(request):
@@ -613,6 +642,7 @@ def new_list2(request):
     list_ = form.save(owner=request.user)
     return redirect(list_)
 ----
+====
 
 
 [subs="specialcharacters,macros"]
@@ -622,12 +652,13 @@ $ pass:quotes[*python manage.py test lists*]
 Ran 40 tests in 0.163s
 OK
 ----
-(((range="endofrange", startref="ix_testisolationcollab")))
+
 And now the failure case--if the form is invalid, we want to render
 the home page template:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l017)
+====
 [source,python]
 ----
     @patch('lists.views.render')
@@ -644,6 +675,7 @@ the home page template:
             self.request, 'home.html', {'form': mock_form}
         )
 ----
+====
 
 
 That gives us:
@@ -653,18 +685,21 @@ AssertionError: <HttpResponseRedirect status_code=302, "te[114 chars]%3E"> !=
 <MagicMock name='render()' id='140244627467408'>
 ----
 
-TIP: When using assert methods on mocks, like `assert_called_` `once_with`,
+TIP: When using assert methods on mocks, like +assert_called_&#8203;once_with+,
     it's doubly important to make sure you run the test and see it fail.
     It's all too easy to make a typo in your assert function name and
     end up calling a mock method that does nothing (mine was to write
-    `asssert_called_once_with` with three essses, try it!)
+    `asssert_called_once_with` with three essses; try it!).
 
+//TODO: this is now a duplicate warning compared to mocking chapter.
+// replace all assert_calleds with self.assertEquals?
 
 We make a deliberate mistake, just to make sure our tests are comprehensive:
 
 
 [role="sourcecode"]
 .lists/views.py (ch20l018)
+====
 [source,python]
 ----
 def new_list2(request):
@@ -674,11 +709,13 @@ def new_list2(request):
         return redirect(list_)
     return render(request, 'home.html', {'form': form})
 ----
+====
 
-That passes but it shouldn't!  One more test then:
+That passes, but it shouldn't!  One more test then:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l019)
+====
 [source,python]
 ----
     def test_does_not_save_if_form_invalid(self, mockNewListForm):
@@ -687,6 +724,7 @@ That passes but it shouldn't!  One more test then:
         new_list2(self.request)
         self.assertFalse(mock_form.save.called)
 ----
+====
 
 
 Which fails:
@@ -696,13 +734,15 @@ Which fails:
 AssertionError: True is not false
 ----
 
-(((range="endofrange", startref="ix_testisolationviewslayer")))
-(((range="endofrange", startref="ix_viewslayer")))
-And we get to to our neat, small finished view:
+
+
+((("", startref="IEviews23")))And
+we get to to our neat, small finished view:
 
 
 [role="sourcecode"]
 .lists/views.py
+====
 [source,python]
 ----
 def new_list2(request):
@@ -712,6 +752,7 @@ def new_list2(request):
         return redirect(list_)
     return render(request, 'home.html', {'form': form})
 ----
+====
 
 ...
 
@@ -726,9 +767,10 @@ OK
 Moving Down to the Forms Layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("test isolation", "ORM code", id="ix_testisolationORM", range="startofrange")))
-((("test isolation", "forms layer", id="ix_testisolationformslayer", range="startofrange")))
-So we've built up our view function based on a "wishful thinking" version
+
+
+((("isolation, ensuring", "forms layer", id="IEforms23")))So
+we've built up our view function based on a "wishful thinking" version
 of a form called `NewListForm`, which doesn't even exist yet. 
 
 We'll need the form's save method to create a new list, and a new item based on
@@ -753,7 +795,7 @@ class NewListForm(models.Form):
 ----
 
 This implementation depends on two classes from the model layer, `Item` and
-`List`.  So, what would a well isolated test look like?
+`List`.  So, what would a well-isolated test look like?
 
 
 [role="skipme"]
@@ -789,19 +831,20 @@ class NewListFormTest(unittest.TestCase):
     dictionary where it stores validated data.
 
 <3> We use the `side_effect` method to make sure that, when we save the new
-    item object, we're doing so with a saved List and with the correct item
+    item object, we're doing so with a saved `List` and with the correct item
     text.
 
 <4> As always, we double-check that our side-effect function was actually
     called.
 
-Yuck!  What an ugly test!
+Yuck!  What an ugly test!  Let's not even bother saving that to disk,
+we can do better.
 
 
 Keep Listening to Your Tests: Removing ORM Code from Our Application
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Again, these tests are trying to tell us something:  the Django ORM
+((("Object-Relational Mapper (ORM)")))Again, these tests are trying to tell us something:  the Django ORM
 is hard to mock out, and our form class needs to know too much about
 how it works.  Programming by wishful thinking again, what would
 be a simpler API that our form could use?  How about something like
@@ -815,18 +858,19 @@ this:
         List.create_new(first_item_text=self.cleaned_data['text'])
 ----
 
-Our wishful thinking says: how about we had a helper method that
-would live on the List 
+Our wishful thinking says: how about a helper method that
+would live on the `List` 
 classfootnote:[It could easily just be a standalone function, but hanging it on
 the model class is a nice way to keep track of where it lives, and gives a bit 
 more of a hint as to what it will do.]
-and it will encapsulate all the logic of saving a new list object and
-its associated first item.
+and encapsulate all the logic of saving a new list object and
+its associated first item?
 
 So let's write a test for that instead:
 
 [role="sourcecode"]
 .lists/tests/test_forms.py (ch20l021)
+====
 [source,python]
 ----
 import unittest
@@ -855,12 +899,15 @@ class NewListFormTest(unittest.TestCase):
             first_item_text='new item text'
         )
 ----
+====
 
-And while we're at it we can test the case where the user is an authenticated
+[role="pagebreak-before"]
+And while we're at it, we can test the case where the user is an authenticated
 user too:
 
 [role="sourcecode"]
 .lists/tests/test_forms.py (ch20l022)
+====
 [source,python]
 ----
     @patch('lists.forms.List.create_new')
@@ -875,16 +922,19 @@ user too:
             first_item_text='new item text', owner=user
         )
 ----
+====
 
 You can see this is a much more readable test. Let's start implementing
 our new form.  We start with the import:
 
 [role="sourcecode"]
 .lists/forms.py (ch20l023)
+====
 [source,python]
 ----
 from lists.models import Item, List
 ----
+====
 
 Now mock tells us to create a placeholder for our `create_new` method:
 
@@ -896,6 +946,7 @@ AttributeError: <class 'lists.models.List'> does not have the attribute
 
 [role="sourcecode"]
 .lists/models.py
+====
 [source,python]
 ----
 class List(models.Model):
@@ -906,6 +957,7 @@ class List(models.Model):
     def create_new():
         pass
 ----
+====
 //24
 
 
@@ -913,6 +965,7 @@ And after a few steps, we should end up with a form save method like this:
 
 [role="sourcecode small-code"]
 .lists/forms.py (ch20l025)
+====
 [source,python]
 ----
 class NewListForm(ItemForm):
@@ -923,6 +976,7 @@ class NewListForm(ItemForm):
         else:
             List.create_new(first_item_text=self.cleaned_data['text'])
 ----
+====
 
 
 And passing tests:
@@ -933,23 +987,22 @@ $ pass:quotes[*python manage.py test lists*]
 Ran 44 tests in 0.192s
 OK
 ----
-(((range="endofrange", startref="ix_testisolationformslayer")))
-((("helper functions/methods")))
 
 
 .Hiding ORM Code Behind Helper Methods
 *******************************************************************************
-One of the techniques that emerged from our use of isolated tests was the
+((("helper methods")))One
+of the techniques that emerged from our use of isolated tests was the
 "ORM helper method".
 
 Django's ORM lets you get things done quickly with a reasonably readable
 syntax (it's certainly much nicer than raw SQL!).  But some people like to
-try and minimise the amount of ORM code in the application--particularly
+try to minimise the amount of ORM code in the application--particularly
 removing it from the views and forms layers.
 
 One reason is that it makes it much easier to test those layers.  But another
 is that it forces us to build helper functions that express our domain 
-logic more clearly. Compare:
+logic more clearly. [keep-together]#Compare#:
 
 
 [role="skipme"]
@@ -971,7 +1024,7 @@ With:
     List.create_new(first_item_text=self.cleaned_data['text'])
 ----
 
-This also applies to read queries as well as write. Imagine something like
+This applies to read queries as well as write. Imagine something like
 this:
 
 [role="skipme"]
@@ -991,8 +1044,8 @@ Versus a helper method, like:
 When we build helper functions, we can give them names that express what we
 are doing in terms of the business domain, which can actually make our code
 more legible, as well as giving us the benefit of keeping all ORM calls at
-the model layer, and thus making our whole application more loosely coupled.
-(((range="endofrange", startref="ix_testisolationORM")))
+the model layer, and thus making our whole application more loosely coupled.((("", startref="IEforms23")))
+
 *******************************************************************************
 
 
@@ -1000,14 +1053,16 @@ the model layer, and thus making our whole application more loosely coupled.
 Finally, Moving Down to the Models Layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("test isolation", "models layer", id="ix_testisolationmodels", range="startofrange")))
-At the models layer, we no longer need to write isolated tests--the whole
+
+((("isolation, ensuring", "models layer", id="IEmodels23")))At
+the models layer, we no longer need to write isolated tests--the whole
 point of the models layer is to integrate with the database, so it's appropriate
 to write integrated tests:
-((("integrated tests", id="ix_integratedtests", range="startofrange")))
+
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch20l026)
+====
 [source,python]
 ----
 class ListModelTest(TestCase):
@@ -1024,6 +1079,7 @@ class ListModelTest(TestCase):
         new_list = List.objects.first()
         self.assertEqual(new_item.list, new_list)
 ----
+====
 
 Which gives:
 
@@ -1036,6 +1092,7 @@ And that will take us to a first cut implementation that looks like this:
 
 [role="sourcecode"]
 .lists/models.py (ch20l027)
+====
 [source,python]
 ----
 class List(models.Model):
@@ -1048,9 +1105,10 @@ class List(models.Model):
         list_ = List.objects.create()
         Item.objects.create(text=first_item_text, list=list_)
 ----
+====
 
 Notice we've been able to get all the way down to the models layer,
-driving a nice design for the views and forms layers, and the List
+driving a nice design for the views and forms layers, and the `List`
 model still doesn't support having an owner!
 
 Now let's test the case where the list should have an owner, and
@@ -1058,6 +1116,7 @@ add:
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch20l028)
+====
 [source,python]
 ----
 from django.contrib.auth import get_user_model
@@ -1070,11 +1129,13 @@ User = get_user_model()
         new_list = List.objects.first()
         self.assertEqual(new_list.owner, user)
 ----
+====
 
 And while we're at it, we can write the tests for the new owner attribute:
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch20l029)
+====
 [source,python]
 ----
 class ListModelTest(TestCase):
@@ -1087,14 +1148,15 @@ class ListModelTest(TestCase):
     def test_list_owner_is_optional(self):
         List().full_clean()  # should not raise
 ----
+====
 
 These two are almost exactly the same tests we used in the last chapter, 
 but I've re-written them slightly so they don't actually save objects--just
-having them as in-memory objects is enough to for this test.
+having them as in-memory objects is enough for this test.
 
-TIP:  Use in-memory (unsaved) model objects in your tests whenever you can, it
+TIP:  Use in-memory (unsaved) model objects in your tests whenever you can; it
     makes your tests faster.
-    ((("in-memory model objects")))
+    
 
 That gives:
 
@@ -1117,6 +1179,7 @@ We implement, just like we did in the last chapter:
 
 [role="sourcecode"]
 .lists/models.py (ch20l030-1)
+====
 [source,python]
 ----
 from django.conf import settings
@@ -1127,6 +1190,7 @@ class List(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
     [...]
 ----
+====
 
 That will give us the usual integrity failures, until we do a migration:
 
@@ -1154,6 +1218,7 @@ Let's deal with the first one, which is for our `create_new` method:
 
 [role="sourcecode"]
 .lists/models.py (ch20l030-3)
+====
 [source,python]
 ----
     @staticmethod
@@ -1161,15 +1226,16 @@ Let's deal with the first one, which is for our `create_new` method:
         list_ = List.objects.create(owner=owner)
         Item.objects.create(text=first_item_text, list=list_)
 ----
-(((range="endofrange", startref="ix_testisolationmodels")))
+====
+
 
 
 
 Back to Views
 ^^^^^^^^^^^^^
 
-((("test isolation", "views layer")))
-((("views layer")))
+
+
 Two of our old integrated tests for the views layer are failing. What's happening?
 
 ----
@@ -1183,6 +1249,7 @@ owners yet:
 
 [role="sourcecode currentcontents"]
 .lists/views.py
+====
 [source,python]
 ----
     if form.is_valid():
@@ -1190,6 +1257,7 @@ owners yet:
         list_.owner = request.user
         list_.save()
 ----
+====
 
 
 This is the point at which we realise that our old code wasn't fit for purpose.
@@ -1197,6 +1265,7 @@ Let's fix it to get all our tests passing:
 
 [role="sourcecode"]
 .lists/views.py (ch20l031)
+====
 [source,python]
 ----
 def new_list(request):
@@ -1215,8 +1284,10 @@ def new_list(request):
 def new_list2(request):
     [...]
 ----
+====
 
-NOTE:  One of the benefits of integrated tests is that they help you to catch
+NOTE:  ((("", startref="IEmodels23")))((("integrated tests", "benefits and drawbacks of")))One
+of the benefits of integrated tests is that they help you to catch
     less predictable interactions like this.  We'd forgotten to write a test
     for the case where the user is not authenticated, but because the
     integrated tests use the stack all the way down, errors from the model
@@ -1235,17 +1306,20 @@ OK
 The Moment of Truth (and the Risks of Mocking)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("mocks/mocking", "risks")))
-So let's try switching out our old view, and activating our new view. We
+
+((("mocks", "benefits and drawbacks of")))((("isolation, ensuring", "risks of mocking")))So
+let's try switching out our old view, and activating our new view. We
 can make the swap in 'urls.py':
 
 [role="sourcecode"]
 .lists/urls.py
+====
 [source,python]
 ----
 [...]
     url(r'^new$', views.new_list2, name='new_list'),
 ----
+====
 
 We should also remove the `unittest.skip` from our integrated test class, to
 see if our new code for list owners really works:
@@ -1253,6 +1327,7 @@ see if our new code for list owners really works:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l033)
+====
 [source,python]
 ----
 class NewListViewIntegratedTest(TestCase):
@@ -1264,6 +1339,7 @@ class NewListViewIntegratedTest(TestCase):
         [...]
         self.assertEqual(list_.owner, user)
 ----
+====
 
 So what happens when we run our tests? Oh no!
 
@@ -1275,7 +1351,7 @@ ERROR: test_can_save_a_POST_request
 [...]
 ERROR: test_redirects_after_POST
 (lists.tests.test_views.NewListViewIntegratedTest)
-  File "/.../superlists/lists/views.py", line 30, in new_list2
+  File "...python-tdd-book/lists/views.py", line 30, in new_list2
     return redirect(list_)
 [...]
 TypeError: argument of type 'NoneType' is not iterable
@@ -1293,16 +1369,19 @@ a list item:
 
 [role="sourcecode currentcontents"]
 .lists/views.py
+====
 [source,python]
 ----
         list_ = form.save(owner=request.user)
         return redirect(list_)
 ----
+====
 
 But we forgot to make it return anything:
 
 [role="sourcecode currentcontents small-code"]
 .lists/forms.py
+====
 [source,python]
 ----
     def save(self, owner):
@@ -1311,14 +1390,15 @@ But we forgot to make it return anything:
         else:
             List.create_new(first_item_text=self.cleaned_data['text'])
 ----
+====
 
 
 
 Thinking of Interactions Between Layers as "Contracts"
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("test isolation", "interactions between layers")))
-Ultimately, even if we had been writing nothing but isolated unit tests, our
+
+((("isolation, ensuring", "layer interactions as contracts", id="IEinteract23")))Ultimately, even if we had been writing nothing but isolated unit tests, our
 functional tests would have picked up this particular slip-up.  But ideally
 we'd want our feedback cycle to be quicker--functional tests may take a
 couple of minutes to run, or even a few hours once your app starts to grow.  Is
@@ -1334,6 +1414,7 @@ Here's the part of the contract that we missed:
 
 [role="sourcecode currentcontents"]
 .lists/tests/test_views.py
+====
 [source,python]
 ----
     @patch('lists.views.redirect')
@@ -1348,6 +1429,7 @@ Here's the part of the contract that we missed:
         self.assertEqual(response, mock_redirect.return_value)
         mock_redirect.assert_called_once_with(mock_form.save.return_value)  #<1>
 ----
+====
 
 <1> The mocked `form.save` function is returning an object, which we expect
     our view to be able to use.
@@ -1356,13 +1438,14 @@ Here's the part of the contract that we missed:
 Identifying Implicit Contracts
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("contracts, implicit")))
-((("mocks/mocking", "implicit contracts")))
+
+
 It's worth reviewing each of the tests in `NewListViewUnitTest` and seeing
 what each mock is saying about the implicit contract:
 
 [role="sourcecode currentcontents"]
 .lists/tests/test_views.py
+====
 [source,python]
 ----
     def test_passes_POST_data_to_NewListForm(self, mockNewListForm):
@@ -1395,11 +1478,12 @@ what each mock is saying about the implicit contract:
     def test_renders_home_template_with_form_if_form_invalid(
         [...]
 ----
+====
 
 <1> We need to be able to initialise our form by passing it a POST request
     as data.
 
-<2> It should have an `is_valid()` function which returns True or False
+<2> It should have an `is_valid()` function which returns +True+ or +False+
     appropriately, based on the input data.
 
 <3> The form should have a `.save` method which will accept a `request.user`,
@@ -1408,14 +1492,14 @@ what each mock is saying about the implicit contract:
 <4> The form's `.save` method should return a new list object, for our view
     to redirect the user to.
 
-If we have a look through our form tests, we'll see that, actually, only item %3%
-is tested explicitly.  On items %1% and %2% we were lucky--they're default 
+If we have a look through our form tests, we'll see that, actually, only item (3)
+is tested explicitly.  On items (1) and (2) we were lucky--they're default 
 features of a Django `ModelForm`, and they are actually covered by our
 tests for the parent `ItemForm` class.  
 
-But contract clause number &#x278d; managed to slip through the net.
+But contract clause number (4) managed to slip through the net.
 
-NOTE: When doing outside-in TDD with isolated tests, you need to keep track of
+NOTE: When doing Outside-In TDD with isolated tests, you need to keep track of
     each test's implicit assumptions about the contract which the next layer
     should implement, and remember to test each of those in turn later.  You
     could use our scratchpad for this, or create a placeholder test with
@@ -1429,6 +1513,7 @@ Let's add a new test that our form should return the new saved list:
 
 [role="sourcecode"]
 .lists/tests/test_forms.py (ch20l038-1)
+====
 [source,python]
 ----
     @patch('lists.forms.List.create_new')
@@ -1439,13 +1524,15 @@ Let's add a new test that our form should return the new saved list:
         response = form.save(owner=user)
         self.assertEqual(response, mock_List_create_new.return_value)
 ----
+====
 
 And, actually, this is a good example--we have an implicit contract
-with the `List.create_new`, we want it to return the new list object.
-Let's add a placeholder test for that.
+with the `List.create_new`; we want it to return the new list object.
+Let's add a placeholder test for that:
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch20l038-2)
+====
 [source,python]
 ----
 class ListModelTest(TestCase):
@@ -1454,8 +1541,9 @@ class ListModelTest(TestCase):
     def test_create_returns_new_list_object(self):
         self.fail()
 ----
+====
 
-So, we have one test failures that's telling us to fix the form save:
+So, we have one test failure that's telling us to fix the form save:
 
 ----
 AssertionError: None != <MagicMock name='create_new()' id='139802647565536'>
@@ -1467,6 +1555,7 @@ Like this:
 
 [role="sourcecode small-code"]
 .lists/forms.py (ch20l039-1)
+====
 [source,python]
 ----
 class NewListForm(ItemForm):
@@ -1477,8 +1566,9 @@ class NewListForm(ItemForm):
         else:
             return List.create_new(first_item_text=self.cleaned_data['text'])
 ----
+====
 
-That's a start, now we should look at our placeholder test:
+That's a start; now we should look at our placeholder test:
 
 ----
 [...]
@@ -1493,6 +1583,7 @@ We flesh it out:
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch20l039-2)
+====
 [source,python]
 ----
     def test_create_returns_new_list_object(self):
@@ -1500,6 +1591,7 @@ We flesh it out:
         new_list = List.objects.first()
         self.assertEqual(returned, new_list)
 ----
+====
 
 ...
 
@@ -1511,6 +1603,7 @@ And we add our return value:
 
 [role="sourcecode"]
 .lists/models.py (ch20l039-3)
+====
 [source,python]
 ----
     @staticmethod
@@ -1519,8 +1612,10 @@ And we add our return value:
         Item.objects.create(text=first_item_text, list=list_)
         return list_
 ----
+====
 
-And that gets us to a fully passing test suite:
+((("", startref="IEinteract23")))And
+that gets us to a fully passing test suite:
 
 [subs="specialcharacters,macros"]
 ----
@@ -1535,7 +1630,7 @@ OK
 One More Test
 ~~~~~~~~~~~~~
 
-That's our code for saving list owners test-driven all the way down and 
+That's our code for saving list owners, test-driven all the way down and 
 working.  But our functional test isn't passing quite yet:
 
 [subs="specialcharacters,macros"]
@@ -1551,6 +1646,7 @@ objects.  Again, we can grab the test and code from the last chapter:
 
 [role="sourcecode"]
 .lists/tests/test_models.py (ch20l040)
+====
 [source,python]
 ----
     def test_list_name_is_first_item_text(self):
@@ -1560,18 +1656,21 @@ objects.  Again, we can grab the test and code from the last chapter:
         self.assertEqual(list_.name, 'first item')
 
 ----
+====
 
 (Again, since this is a model-layer test, it's OK to use the ORM. You could
-conceivably write this test using mocks, but there wouldn't be much point).
+conceivably write this test using mocks, but there wouldn't be much point.)
 
 [role="sourcecode"]
 .lists/models.py (ch20l041)
+====
 [source,python]
 ----
     @property
     def name(self):
         return self.item_set.first().text
 ----
+====
 
 
 And that gets us to a passing FT!
@@ -1590,8 +1689,9 @@ OK
 Tidy Up: What to Keep from Our Integrated Test Suite
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("test isolation", "cleanup after", id="ix_testisolationcleanup", range="startofrange")))
-Now everything is working, we can remove some redundant tests, and decide
+
+((("isolation, ensuring", "removing redundant code", id="IEredund23")))Now
+everything is working, we can remove some redundant tests, and decide
 whether we want to keep any of our old integrated tests.
 
 
@@ -1602,6 +1702,7 @@ We can get rid of the test for the old save method on the `ItemForm`:
 
 [role="sourcecode"]
 .lists/tests/test_forms.py
+====
 [source,diff]
 ----
 --- a/lists/tests/test_forms.py
@@ -1620,13 +1721,14 @@ We can get rid of the test for the old save method on the `ItemForm`:
 -        self.assertEqual(new_item.list, list_)
 -
 ----
-
+====
 
 And in our actual code, we can get rid of two redundant save methods in
 'forms.py':
 
 [role="sourcecode"]
 .lists/forms.py
+====
 [source,diff]
 ----
 --- a/lists/forms.py
@@ -1654,6 +1756,7 @@ And in our actual code, we can get rid of two redundant save methods in
 -        return forms.models.ModelForm.save(self)
 -
 ----
+====
 
 
 Removing the Old Implementation of the View
@@ -1664,6 +1767,7 @@ We can now completely remove the old `new_list` view, and rename `new_list2` to
 
 [role="sourcecode skipme"]
 .lists/tests/test_views.py
+====
 [source,diff]
 ----
 -from lists.views import new_list, new_list2
@@ -1689,9 +1793,11 @@ We can now completely remove the old `new_list` view, and rename `new_list2` to
 [.. several more]
 
 ----
+====
 
 [role="sourcecode dofirst-ch20l045"]
 .lists/urls.py
+====
 [source,diff]
 ----
 --- a/lists/urls.py
@@ -1706,10 +1812,12 @@ We can now completely remove the old `new_list` view, and rename `new_list2` to
      url(r'^users/(.+)/$', views.my_lists, name='my_lists'),
  ]
 ----
+====
 
 
 [role="sourcecode"]
 .lists/views.py (ch20l047)
+====
 [source,python]
 ----
 def new_list(request):
@@ -1718,6 +1826,7 @@ def new_list(request):
         list_ = form.save(owner=request.user)
         [...]
 ----
+====
 
 
 And a quick check that all the tests still pass:
@@ -1726,7 +1835,7 @@ And a quick check that all the tests still pass:
 OK
 ----
 
-
+[role="pagebreak-before less_space"]
 Removing Redundant Code at the Forms Layer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1738,12 +1847,13 @@ integration problems.  That's perfectly valid.
 
 On the other hand, we saw how integrated tests can warn you when you've made
 small mistakes in integrating your layers.  We could keep just a couple of
-tests around as "sanity-checks", to give us a quicker feedback cycle. 
+tests around as "sanity checks", to give us a quicker feedback cycle. 
 
 How about these three:
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l048)
+====
 [source,python]
 ----
 class NewListViewIntegratedTest(TestCase):
@@ -1768,30 +1878,32 @@ class NewListViewIntegratedTest(TestCase):
         list_ = List.objects.first()
         self.assertEqual(list_.owner, user)
 ----
+====
 
 If you're going to keep any intermediate-level tests at all,  I like these
 three because they feel like they're doing the most "integration" jobs:  they
 test the full stack, from the request down to the actual database, and they
-cover the three most important use cases of our view.
-(((range="endofrange", startref="ix_testisolationcleanup")))
+cover the three most important use cases of our view.((("", startref="IEredund23")))
+
 
 
 Conclusions: When to Write Isolated Versus Integrated Tests
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("test isolation", "isolated vs. integrated tests")))
-((("isolated tests", "vs. integrated tests", sortas="integratedtests")))
-((("integrated tests", "vs. isolated tests", sortas="isolatedtests")))
-Django's testing tools make it very easy to quickly put together integrated
+
+
+
+((("isolation, ensuring", "vs. integrated tests", secondary-sortas="integrated tests", id="IEinteg23")))((("integrated tests", "vs. isolated", secondary-sortas="isolated", id="IEisol23")))Django's
+testing tools make it very easy to quickly put together integrated
 tests.  The test runner helpfully creates a fast, in-memory version of your
-database and resets it for you in between each tests.  The `TestCase` class
-and the Test Client make it easy to test your views, from checking whether
+database and resets it for you in between each test.  The `TestCase` class
+and the test client make it easy to test your views, from checking whether
 database objects are modified, confirming that your URL mappings work, and
 inspecting the rendering of the templates.  This lets you get started with
 testing very easily and get good coverage across your whole stack.
 
 On the other hand, these kinds of integrated tests won't necessarily deliver
-the full benefit that rigorous unit testing and outside-in TDD are meant to
+the full benefit that rigorous unit testing and Outside-In TDD are meant to
 confer in terms of design.
 
 If we look at the example in this chapter, compare the code we had before and
@@ -1833,22 +1945,22 @@ refactor the view function?  I know I didn't in the first draft of this book.
 I'd like to think I would have "in real life", but it's hard to be sure.  But
 writing isolated tests does make you very aware of where the complexities in
 your code lie.
-((("refactoring", "and test isolation", sortas="testisolation")))
-((("test isolation", "refactoring in")))
+
+
 
 
 Let Complexity Be Your Guide
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-((("test isolation", "complexity in")))
+
 I'd say the point at which isolated tests start to become worth it is to do 
 with complexity.  The example in this book is extremely simple, so it's not
-often been worth it so far.  Even in the example in this chapter, I can
+usually been worth it so far.  Even in the example in this chapter, I can
 convince myself I didn't really 'need' to write those isolated tests.
 
 But once an application gains a little more complexity--if it starts growing
 any more layers between views and models, if you find yourself writing  helper
-methods, or your own classes, then you will probably gain from writing more 
+methods, or if you're writing your own classes, then you will probably gain from writing more 
 isolated tests.
 
 
@@ -1875,13 +1987,14 @@ staging server.  It may be worth it if each layer delivers incremental
 benefits.
 
 It's a judgement call.  I hope that, by going through this chapter, I've given
-you a feel for what the trade-offs are.
+you a feel for what the trade-offs are. There's more discussion on this in
+<<chapter_hot_lava>>.((("", startref="IEinteg23")))((("", startref="IEisol23")))
 
 
 Onwards!
 ^^^^^^^^
 
-We're happy with our new version, so let's bring them across to master:
+We're happy with our new version, so let's bring it across to master:
 
 
 [subs="specialcharacters,quotes"]
@@ -1896,44 +2009,46 @@ $ *git reset --hard more-isolation*  # reset master to our branch.
 
 In the meantime--those FTs are taking an annoyingly long time to run.  I
 wonder if there's something we can do about that?
-(((range="endofrange", startref="ix_integratedtests")))
-(((range="endofrange", startref="ix_testisolation")))
 
 
-.On the Pros and Cons of Different Types of Test, and Decoupling ORM code
-*******************************************************************************
+
+[role="pagebreak-before less_space"]
+.On the Pros and Cons of Different Types of Tests, pass:[<br/>]and Decoupling ORM Code
+****
 
 Functional tests::
-    * Provide the best guarantee that your application really works correctly,
-    from the point of view of the user.
-    * But: it's a slower feedback cycle,
-    * And they don't necessarily help you write clean code.
-    ((("functional tests/testing (FT)", "pros and cons")))
-    ((("test types")))
+    * ((("functional tests (FTs)", "benefits and drawbacks of")))Provide
+the best guarantee that your application really works correctly,
+    from the point of view of the user
+    * But: it's a slower feedback cycle
+    * And they don't necessarily help you write clean code
+    
+    
 
-Integrated tests (reliant on, e.g., the ORM or the Django Test Client)::
-    * Are quick to write,
-    * Easy to understand,
-    * Will warn you of any integration issues,
-    * But may not always drive good design (that's up to you!).
+Integrated tests (reliant on, for example, the ORM or the Django Test Client)::
+    * ((("integrated tests", "benefits and drawbacks of")))Are
+quick to write
+    * Are easy to understand
+    * Will warn you of any integration issues
+    * But: may not always drive good design (that's up to you!)
     * And are usually slower than isolated tests
-    ((("integrated tests", "pros and cons")))
+    
 
 Isolated ("mocky") tests::
-    * These involve the most hard work.
-    * They can be harder to read and understand,
-    * But: these are the best ones for guiding you towards better design.
-    * And they run the fastest.
-    ((("isolated tests", "pros and cons")))
+    * ((("mocks", "benefits and drawbacks of")))((("isolation, ensuring", "benefits and drawbacks of")))Involve
+the most hard work
+    * Can be harder to read and understand
+    * But: are the best ones for guiding you towards better design
+    * And run the fastest
+    
 
 Decoupling our application from ORM code::
-    When striving to write isolated tests, one of the consequences is that we
+    ((("Object-Relational Mapper (ORM)")))One
+of the consequences of striving to write isolated tests is that we
     find ourselves forced to remove ORM code from places like views and forms,
     by hiding it behind helper functions or methods.  This can be beneficial in
     terms of decoupling your application from the ORM, but also just because it
     makes your code more readable. As with all things, it's a judgement call as
-    to whether the additional effort is worth it in particular circumstances.
-    ((("test isolation", "ORM code")))
-
-*******************************************************************************
+    to whether the additional effort is worth it in particular circumstances.((("", startref="FTisolat23")))
+****
 

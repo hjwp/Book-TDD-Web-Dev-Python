@@ -1,7 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.7
 import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch, call
+import subprocess
 from textwrap import dedent
 
 from book_tester import (
@@ -9,16 +10,14 @@ from book_tester import (
     PHANTOMJS_RUNNER,
     contains,
     wrap_long_lines,
+    split_blocks,
 
 )
 from book_parser import (
+    CodeListing,
     Command,
     Output,
 )
-from test_write_to_file import *  # noqa
-from test_book_parser import *  # noqa
-from test_source_updater import *  # noqa
-from test_sourcetree import *  # noqa
 
 
 
@@ -133,86 +132,149 @@ class RunCommandTest(ChapterTest):
 
 
 
+
+@patch('book_tester.subprocess')
 class RunServerCommandTest(ChapterTest):
 
-    @patch('book_tester.subprocess')
-    def test_uses_python2_run_server_command(self, mock_subprocess):
+    def test_returns_subporcess_output(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        result = self.run_server_command('foo bar')
+        result = self.run_server_command('anything')
         assert result == 'some bytes'
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'foo bar'],
-        )
 
 
-    @patch('book_tester.subprocess')
-    def test_hacks_in_dash_y_for_apt_gets(self, mock_subprocess):
+    def test_uses_run_server_command(self, mock_subprocess):
         mock_subprocess.check_output.return_value = b'some bytes'
-        result = self.run_server_command('sudo apt-get install something')
-        assert result == 'some bytes'
-        self.RUN_SERVER_PATH = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
-        )
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'sudo apt-get install -y something'],
+        self.run_server_command('foo bar')
+        assert mock_subprocess.check_output.call_args == call(
+            [self.RUN_SERVER_PATH, 'foo bar'],
         )
 
 
-    @patch('book_tester.subprocess')
-    def test_hacks_in_SITENAME_if_needed(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b'some bytes'
-        result = self.run_server_command('mkdir /foo/$SITENAME')
-        assert result == 'some bytes'
-        self.RUN_SERVER_PATH = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), 'run_server_command.py')
-        )
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; mkdir /foo/$SITENAME'],
-        )
-        # but not for the export itself
-        self.run_server_command('export SITENAME=foo')
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'export SITENAME=foo'],
-        )
+    def check_runserver_call(self, mock_subprocess, expected):
+        args, kwargs = mock_subprocess.check_output.call_args
+        assert args[0][1] == expected
 
 
-    @patch('book_tester.subprocess')
+    def test_hacks_in_dash_y_for_apts(self, mock_subprocess):
+        self.run_server_command('sudo apt install something')
+        self.check_runserver_call(mock_subprocess, 'sudo apt install -y something')
+
+    def test_hacks_dash_f_in_journaltct(self, mock_subprocess):
+        self.run_server_command('sudo journalctl -f -u thing')
+        self.check_runserver_call(mock_subprocess, 'sudo journalctl --no-pager -u thing')
+
+
     def test_hacks_in_cd_if_one_set_by_last_command(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b'some bytes'
         assert self.current_server_cd is None
         self.run_server_command('cd /foo')
         assert self.current_server_cd == '/foo'
         self.run_server_command('do something')
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'cd /foo && do something'],
+        self.check_runserver_call(mock_subprocess, 'cd /foo && do something')
+
+
+    def test_spots_env_vars(self, mock_subprocess):
+        assert self.current_server_exports == {}
+        self.run_server_command('export THING=foo')
+        assert self.current_server_exports == {'THING': 'foo'}
+
+
+    def test_spots_multiple_env_vars(self, mock_subprocess):
+        assert self.current_server_exports == {}
+        self.run_server_command('export THING=foo OTHER=2')
+        assert self.current_server_exports == {'THING': 'foo', 'OTHER': '2'}
+
+
+    def test_dashes_worke(self, mock_subprocess):
+        assert self.current_server_exports == {}
+        self.run_server_command('export THING=foo-bar OTHER=2-3')
+        assert self.current_server_exports == {'THING': 'foo-bar', 'OTHER': '2-3'}
+
+    def test_injects_env_vars(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'bar', 'BAZ': 'furble'}
+        self.run_server_command('hi there')
+        self.check_runserver_call(
+            mock_subprocess,
+            'export FOO=bar BAZ=furble; hi there'
         )
 
 
-    @patch('book_tester.subprocess')
-    def test_hacks_in_cd_correctly_when_theres_also_a_SITENAME(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b'some bytes'
-        assert self.current_server_cd is None
-        self.run_server_command('cd /foo/$SITENAME')
+
+    def test_env_and_cd_together(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
         self.run_server_command('do something')
-        mock_subprocess.check_output.assert_called_with(
-            ['python2.7', self.RUN_SERVER_PATH, 'SITENAME=superlists-staging.ottg.eu; cd /foo/$SITENAME && do something'],
+        self.check_runserver_call(
+            mock_subprocess,
+            'export FOO=blee; cd dirname && do something'
         )
 
 
-    @patch('book_tester.subprocess')
     def test_hacks_in_dtach_for_runserver(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b'some bytes'
-        self.run_server_command('cd /foo/$SITENAME')
-        self.run_server_command('source ../virtualenv/bin/activate && python3 manage.py runserver')
-        mock_subprocess.check_output.assert_called_with(
-            [
-                'python2.7',
-                self.RUN_SERVER_PATH,
-                'SITENAME=superlists-staging.ottg.eu;'
-                ' cd /foo/$SITENAME && source ../virtualenv/bin/activate'
-                ' && dtach -n /tmp/dtach.sock python3 manage.py runserver'
-            ],
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
+        self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
+        self.check_runserver_call(
+            mock_subprocess,
+            'export FOO=blee; cd dirname && '
+            'bla '
+            'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
+            ' blee'
         )
+
+    def test_adds_pkill_old_for_runserver(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
+        self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
+        self.assertEqual(
+            mock_subprocess.run.call_args_list[-1],
+            call([self.RUN_SERVER_PATH, 'pkill -f runserver'])
+        )
+
+
+    def test_hacks_in_dtach_for_gunicorn(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
+        self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
+        self.check_runserver_call(
+            mock_subprocess,
+            'export FOO=blee; cd dirname && '
+            'bla '
+            'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn'
+            ' thing blee'
+        )
+
+
+    def test_adds_two_pkill_olds_for_gunicorn(self, mock_subprocess):
+        self.current_server_exports = {'FOO': 'blee'}
+        self.current_server_cd = 'dirname'
+        self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
+        self.assertEqual(
+            mock_subprocess.run.call_args_list[-2],
+            call([self.RUN_SERVER_PATH, 'pkill -f runserver'])
+        )
+        self.assertEqual(
+            mock_subprocess.run.call_args_list[-1],
+            call([self.RUN_SERVER_PATH, 'pkill -f gunicorn'])
+        )
+
+
+
+
+class GetListingsTest(ChapterTest):
+    chapter_name = 'chapter_01'
+
+    def test_get_listings_gets_exampleblock_code_listings_and_regular_listings(self):
+        self.parse_listings()
+        self.assertEqual(self.listings[0].type, 'code listing')
+        self.assertEqual(
+            self.listings[0].contents.split()[:3],
+            ['from', 'selenium', 'import']
+        )
+        self.assertEqual(self.listings[1], 'python functional_tests.py')
+        self.assertEqual(self.listings[1].type, 'test')
+        self.assertEqual(self.listings[2].type, 'output')
+
+
 
 
 
@@ -421,8 +483,8 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_working_directory_substitution(self):
-        expected = Output('bla bla /.../foo stuff')
-        actual = 'bla bla %s/foo stuff' % (self.tempdir,)
+        expected = Output('bla bla ...python-tdd-book/foo stuff')
+        actual = f'bla bla {self.tempdir}/foo stuff'
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
@@ -610,18 +672,18 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
     def test_ignores_screenshot_times(self):
         actual = (
-            'screenshotting to /.../superlists/functional_tests/screendumps/MyListsTes\n'
+            'screenshotting to ...python-tdd-book/functional_tests/screendumps/MyListsTes\n'
             't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.38.\n'
             'png\n'
-            'dumping page HTML to /.../superlists/functional_tests/screendumps/MyLists\n'
+            'dumping page HTML to ...python-tdd-book/functional_tests/screendumps/MyLists\n'
             'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.\n'
             '38.html\n'
         )
         expected = Output(
-            'screenshotting to /.../superlists/functional_tests/screendumps/MyListsTes\n'
+            'screenshotting to ...python-tdd-book/functional_tests/screendumps/MyListsTes\n'
             't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2013-04-09T13.40.39.\n'
             'png\n'
-            'dumping page HTML to /.../superlists/functional_tests/screendumps/MyLists\n'
+            'dumping page HTML to ...python-tdd-book/functional_tests/screendumps/MyLists\n'
             'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-04-04T12.43.\n'
             '42.html\n'
         )
@@ -728,7 +790,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             ERROR: test_root_url_resolves_to_home_page_view (lists.tests.HomePageTest)
             ----------------------------------------------------------------------
             Traceback (most recent call last):
-              File "/.../superlists/lists/tests.py", line 8, in test_root_url_resolves_to_home_page_view
+              File "...python-tdd-book/lists/tests.py", line 8, in test_root_url_resolves_to_home_page_view
                 found = resolve('/')
               File "/usr/local/lib/python2.7/dist-packages/django/core/urlresolvers.py", line 440, in resolve
                 return get_resolver(urlconf).resolve(path)
@@ -897,8 +959,73 @@ class CurrentContentsTest(ChapterTest):
         self.check_current_contents(listing, actual_contents)  # should not raise
 
 
+    def test_checks_ignores_blank_lines(self):
+        actual_contents = dedent(
+            """
+            line 1
+            line 2
 
-class TestContains:
+
+            line 3
+
+
+            line 4
+            line 5
+            """
+        )
+        listing = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+
+            line 3
+
+            line 4
+            """).lstrip()
+        )
+        listing.currentcontents = True
+        self.check_current_contents(listing, actual_contents)  # should not raise
+
+        listing2 = CodeListing(filename='file2.txt', contents=dedent(
+            """
+            line 1
+            line 2
+            line 3
+
+            line 4
+            """).lstrip()
+        )
+        with self.assertRaises(AssertionError):
+            self.check_current_contents(listing2, actual_contents)
+
+
+class SplitBlocksTest(unittest.TestCase):
+
+    def test_splits_on_multi_newlines(self):
+        assert split_blocks(dedent(
+            '''
+            this
+            is block 1
+
+            this is block 2
+            '''
+        )) == ['this\nis block 1', 'this is block 2']
+
+
+
+    def test_splits_on_elipsis(self):
+        assert split_blocks(dedent(
+            '''
+            this
+            is block 1
+            [...]
+            this is block 2
+            '''
+        )) == ['this\nis block 1', 'this is block 2']
+
+
+
+class TestContains(unittest.TestCase):
 
     def test_smoketest(self):
         assert contains([1, 2, 3, 4], [1, 2])

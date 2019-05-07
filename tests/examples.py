@@ -1,36 +1,39 @@
-CODE_LISTING_WITH_CAPTION = """<div class="listingblock sourcecode">
+CODE_LISTING_WITH_CAPTION = """<div class="exampleblock sourcecode">
 <div class="title">functional_tests.py</div>
-<div class="content"><!-- Generator: GNU source-highlight 3.1.6
-by Lorenzo Bettini
-http://www.lorenzobettini.it
-http://www.gnu.org/software/src-highlite -->
-<pre><tt><span style="font-weight: bold"><span style="color: #000080">from</span></span> selenium <span style="font-weight: bold"><span style="color: #000080">import</span></span> webdriver
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="python"><span class="keyword">from</span> <span class="include">selenium</span> <span class="keyword">import</span> <span class="include">webdriver</span>
 
-browser <span style="color: #990000">=</span> webdriver<span style="color: #990000">.</span><span style="font-weight: bold"><span style="color: #000000">Firefox</span></span><span style="color: #990000">()</span>
-browser<span style="color: #990000">.</span><span style="font-weight: bold"><span style="color: #000000">get</span></span><span style="color: #990000">(</span><span style="color: #FF0000">'http://localhost:8000'</span><span style="color: #990000">)</span>
+browser = webdriver.Firefox()
+browser.get(<span class="string"><span class="delimiter">'</span><span class="content">http://localhost:8000</span><span class="delimiter">'</span></span>)
 
-<span style="font-weight: bold"><span style="color: #0000FF">assert</span></span> <span style="color: #FF0000">'Django'</span> <span style="font-weight: bold"><span style="color: #0000FF">in</span></span> browser<span style="color: #990000">.</span>title</tt></pre></div></div>"""
+<span class="keyword">assert</span> <span class="string"><span class="delimiter">'</span><span class="content">Django</span><span class="delimiter">'</span></span> <span class="keyword">in</span> browser.title</code></pre>
+</div>
+</div>
+</div>
+</div>"""
 
-CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF = """<div class="listingblock sourcecode">
-<div class="listingblock sourcecode">
-<div class="title">functional_tests/tests.py (ch07l001)</div>
-<div class="content"><div class="highlight"><pre><span class="k">class</span> <span class="nc">NewVisitorTest</span><span class="p">(</span><span class="n">LiveServerTestCase</span><span class="p">):</span>
-    <span class="p">[</span><span class="o">...</span><span class="p">]</span>
+CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF = """<div class="exampleblock sourcecode">
+<div class="title">functional_tests/tests.py (ch06l001)</div>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="python"><span class="keyword">from</span> <span class="include">django.test</span> <span class="keyword">import</span> <span class="include">LiveServerTestCase</span>
+<span class="keyword">from</span> <span class="include">selenium</span> <span class="keyword">import</span> <span class="include">webdriver</span>
+<span class="keyword">from</span> <span class="include">selenium.webdriver.common.keys</span> <span class="keyword">import</span> <span class="include">Keys</span>
+<span class="keyword">import</span> <span class="include">time</span>
 
 
-    <span class="k">def</span> <span class="nf">test_layout_and_styling</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="c"># Edith goes to the home page</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">browser</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">live_server_url</span><span class="p">)</span>
+<span class="keyword">class</span> <span class="class">NewVisitorTest</span>(LiveServerTestCase):
 
-        <span class="c"># She notices the input box is nicely centered</span>
-        <span class="n">inputbox</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">browser</span><span class="o">.</span><span class="n">find_element_by_tag_name</span><span class="p">(</span><span class="s">'input'</span><span class="p">)</span>
-        <span class="n">window_width</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">browser</span><span class="o">.</span><span class="n">get_window_size</span><span class="p">()[</span><span class="s">'width'</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">assertAlmostEqual</span><span class="p">(</span>
-            <span class="n">inputbox</span><span class="o">.</span><span class="n">location</span><span class="p">[</span><span class="s">'x'</span><span class="p">]</span> <span class="o">+</span> <span class="n">inputbox</span><span class="o">.</span><span class="n">size</span><span class="p">[</span><span class="s">'width'</span><span class="p">]</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span>
-            <span class="n">window_width</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span>
-            <span class="n">delta</span><span class="o">=</span><span class="mi">3</span>
-        <span class="p">)</span>
-</pre></div></div></div>"""
+    <span class="keyword">def</span> <span class="function">setUp</span>(<span class="predefined-constant">self</span>):
+        [...]</code></pre>
+</div>
+</div>
+</div>
+</div>"""
+
 
 
 SERVER_COMMAND = """<div class="listingblock server-commands">
@@ -120,11 +123,12 @@ OUTPUTS_WITH_CURRENTCONTENTS = """
 
 OUTPUT_QUNIT = """
 <div class="listingblock qunit-output">
-<div class="title">Expected results from Qunit in browser</div>
 <div class="content">
-<pre><code>2 assertions of 2 passed, 0 failed.
-1. smoke test (0, 2, 2)</code></pre>
-</div></div>"""
+<pre>2 assertions of 2 passed, 0 failed.
+1. smoke test (2)</pre>
+</div>
+</div>
+"""
 
 OUTPUT_WITH_CONTINUATION = """
 <div class="listingblock">
@@ -196,14 +200,14 @@ ERROR: test_cannot_add_empty_list_items
 (functional_tests.test_list_item_validation.ItemValidationTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/.../superlists/functional_tests/test_list_item_validation.py", line
+  File "...python-tdd-book/functional_tests/test_list_item_validation.py", line
 15, in test_cannot_add_empty_list_items
     self.wait_for(lambda: self.assertEqual(  <i class="conum" data-value="1"></i><b>(1)</b>
-  File "/.../superlists/functional_tests/base.py", line 37, in wait_for
+  File "...python-tdd-book/functional_tests/base.py", line 37, in wait_for
     raise e  <i class="conum" data-value="2"></i><b>(2)</b>
-  File "/.../superlists/functional_tests/base.py", line 34, in wait_for
+  File "...python-tdd-book/functional_tests/base.py", line 34, in wait_for
     return fn()  <i class="conum" data-value="2"></i><b>(2)</b>
-  File "/.../superlists/functional_tests/test_list_item_validation.py", line
+  File "...python-tdd-book/functional_tests/test_list_item_validation.py", line
 16, in &lt;lambda&gt;  <i class="conum" data-value="3"></i><b>(3)</b>
     self.browser.find_element_by_css_selector('.has-error').text,  <i class="conum" data-value="3"></i><b>(3)</b>
 [...]

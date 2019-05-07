@@ -19,8 +19,7 @@ class GetFileTest(unittest.TestCase):
 
     def test_get_contents(self):
         sourcetree = SourceTree()
-        os.makedirs(sourcetree.tempdir + '/superlists')
-        with open(sourcetree.tempdir + '/superlists/foo.txt', 'w') as f:
+        with open(sourcetree.tempdir + '/foo.txt', 'w') as f:
             f.write('bla bla')
         assert sourcetree.get_contents('foo.txt') == 'bla bla'
 
@@ -93,7 +92,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
         self.sourcetree.apply_listing_from_commit(listing)
 
 
-        with open(self.sourcetree.tempdir + '/superlists/file1.txt') as f:
+        with open(self.sourcetree.tempdir + '/file1.txt') as f:
             assert f.read() == dedent(
                 """
                 file 1 line 1
@@ -515,11 +514,10 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         assert os.path.exists(os.path.join(sourcetree.tempdir, 'foo'))
 
 
-    def test_default_directory_is_superlists(self):
+    def test_default_directory_is_tempdir(self):
         sourcetree = SourceTree()
-        os.makedirs(os.path.join(sourcetree.tempdir, 'superlists'))
         sourcetree.run_command('touch foo')
-        assert os.path.exists(os.path.join(sourcetree.tempdir, 'superlists', 'foo'))
+        assert os.path.exists(os.path.join(sourcetree.tempdir, 'foo'))
 
 
     def test_returns_output(self):
@@ -578,7 +576,6 @@ class SourceTreeRunCommandTest(unittest.TestCase):
 
     def test_running_interactive_command(self):
         sourcetree = SourceTree()
-        sourcetree.run_command('mkdir superlists', cwd=sourcetree.tempdir)
 
         command = "python3 -c \"print('input please?'); a = input();print('OK' if a=='yes' else 'NO')\""
         output = sourcetree.run_command(command, user_input='no')
@@ -587,20 +584,20 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         assert 'OK' in output
 
 
-    def test_special_cases_wget_bootstrap(self):
+    @patch('sourcetree.subprocess')
+    def test_special_cases_fab_deploy(self, mock_subprocess):
+        mock_subprocess.Popen.return_value.returncode = 0
+        mock_subprocess.Popen.return_value.communicate.return_value = 'a', 'b'
         sourcetree = SourceTree()
-        sourcetree.run_command('mkdir superlists', cwd=sourcetree.tempdir)
-        with patch('sourcetree.subprocess') as mock_subprocess:
-            mock_subprocess.Popen.return_value.communicate.return_value = (
-                'bla bla', None
-            )
-            sourcetree.run_command(BOOTSTRAP_WGET)
-            assert not mock_subprocess.Popen.called
-        assert os.path.exists(os.path.join(sourcetree.tempdir, 'superlists', 'bootstrap.zip'))
-        diff = sourcetree.run_command('diff %s bootstrap.zip' % (
-            os.path.join(os.path.dirname(__file__), '..', 'downloads', 'bootstrap.zip'))
+        sourcetree.run_command('fab deploy:host=elspeth@superlists-staging.ottg.eu')
+        expected = (
+            'cd deploy_tools &&'
+            ' fab -D -i'
+            ' ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key'
+            ' deploy:host=elspeth@superlists-staging.ottg.eu'
         )
-        assert diff == ''
+        assert mock_subprocess.Popen.call_args[0][0] == expected
+
 
 
 class CommitTest(unittest.TestCase):
