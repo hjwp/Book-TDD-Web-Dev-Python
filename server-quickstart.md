@@ -46,7 +46,9 @@ and [here](https://www.digitalocean.com/community/tutorials/how-to-use-ssh-keys-
 ## Start a Droplet
 
 A "droplet" is Digital Ocean's name for a server.  Pick the default Ubuntu,
-the cheapest type, and whichever region is closest to you.
+the cheapest type, and whichever region is closest to you. You won't need
+access to the ancillary services that are available (Block storage, a VPC
+network, IPv6, User-Data, Monitoring or Back-Ups)
 
 * Choose **New SSH Key** and upload your public key from above
 
