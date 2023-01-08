@@ -37,7 +37,7 @@ class Chapter22Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
 
-        self.sourcetree.run_command('find . -name \*.orig -exec rm {} \;')
+        self.sourcetree.tidy_up_after_patches()
         # final branch includes a suggested implementation...
         # so just check diff up to the last listing
         commit = self.sourcetree.get_commit_spec('ch22l013')
