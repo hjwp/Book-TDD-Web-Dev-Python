@@ -36,7 +36,6 @@ oreilly.%.asciidoc: %.asciidoc
 
 
 test_%: %.html
-	env | sort
 	pytest -s --tb=short ./tests/$@.py
 
 silent_test_%: %.html
