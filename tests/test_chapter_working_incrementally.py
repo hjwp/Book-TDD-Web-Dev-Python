@@ -36,9 +36,9 @@ class Chapter7Test(ChapterTest):
         # hack fast-forward
         skip = False
         if skip:
-            self.pos = 106
+            self.pos = 99
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l036-1"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l034"))
             )
 
         while self.pos < touch_pos:

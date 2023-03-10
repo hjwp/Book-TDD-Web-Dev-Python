@@ -1571,11 +1571,11 @@ https://docs.python.org/3/reference/lexical_analysis.html#f-strings[docs]
 Running the unit tests gives an expected 404, and another related error:
 
 ----
-FAIL: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+FAIL: test_displays_only_items_for_that_list
 AssertionError: 404 != 200 : Couldn't retrieve content: Response code was 404
 (expected 200)
 [...]
-FAIL: test_uses_list_template (lists.tests.ListViewTest)
+FAIL: test_uses_list_template
 AssertionError: No templates used to render the response
 ----
 
@@ -1595,7 +1595,7 @@ It's time to learn how we can pass parameters from URLs to views:
 urlpatterns = [
     path('', views.home_page, name='home'),
     path('lists/new', views.new_list, name='new_list'),
-    path('lists/<list_id>/', views.view_list, name='view_list'),
+    path('lists/<int:list_id>/', views.view_list, name='view_list'),
 ]
 ----
 ====
@@ -1614,18 +1614,20 @@ If we go to '/lists/foo/', we get `view_list(request, "foo")`.
 But our view doesn't expect an argument yet! Sure enough, this causes problems:
 
 ----
-ERROR: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+ERROR: test_displays_only_items_for_that_list
 [...]
-TypeError: view_list() takes 1 positional argument but 2 were given
+TypeError: view_list() got an unexpected keyword argument 'list_id'
 [...]
-ERROR: test_uses_list_template (lists.tests.ListViewTest)
+ERROR: test_uses_list_template
 [...]
-TypeError: view_list() takes 1 positional argument but 2 were given
+TypeError: view_list() got an unexpected keyword argument 'list_id'
 [...]
-ERROR: test_redirects_after_POST (lists.tests.NewListTest)
+FAIL: test_redirects_after_POST
 [...]
-TypeError: view_list() takes 1 positional argument but 2 were given
-FAILED (errors=3)
+AssertionError: 404 != 200 : Couldn't retrieve redirection page
+'/lists/the-only-list-in-the-world/': response code was 404 (expected 200)
+[...]
+FAILED (failures=1, errors=2)
 ----
 
 We can fix that easily with a dummy parameter in 'views.py':
@@ -1643,7 +1645,7 @@ def view_list(request, list_id):
 Now we're down to our expected failure:
 
 ----
-FAIL: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+FAIL: test_displays_only_items_for_that_list
 [...]
 AssertionError: 1 != 0 : Response should not contain 'other list item 1'
 ----
@@ -1669,12 +1671,13 @@ def view_list(request, list_id):
 Adjusting new_list to the New World
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Oops, now we get errors in another test:
+Oops, now we get a failure in another test:
 
 ----
-ERROR: test_redirects_after_POST (lists.tests.NewListTest)
-ValueError: invalid literal for int() with base 10:
-'the-only-list-in-the-world'
+FAIL: test_redirects_after_POST
+
+AssertionError: 404 != 200 : Couldn't retrieve redirection page
+'/lists/the-only-list-in-the-world/': response code was 404 (expected 200)
 ----
 
 Let's take a look at this test then, since it's moaning:
@@ -1756,7 +1759,7 @@ Well, almost:
 F.
 ======================================================================
 FAIL: test_can_start_a_list_for_one_user
-(functional_tests.tests.NewVisitorTest)
+(functional_tests.tests.NewVisitorTest.test_can_start_a_list_for_one_user)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
   File "...python-tdd-book/functional_tests/tests.py", line 68, in
@@ -1842,44 +1845,20 @@ NOTE: Are you wondering about `other_list`?  A bit like in the tests for
     of those, after all). It's a judgement call, but this one feels worth it.
     There's some more discussion of this in <<testing-for-stupidity>>.
 
-We get:
+
+And that fails as expected, the list item is not saved,
+and the new URL currently returns a 404:
 
 ----
 AssertionError: 0 != 1
 [...]
-AssertionError: 301 != 302 : Response didn't redirect as expected: Response
-code was 301 (expected 302)
+AssertionError: 404 != 302 : Response didn't redirect as expected: Response
+code was 404 (expected 302)
 ----
 
+////
+(old code 
 
-Beware of Greedy Regular Expressions!
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-((("regular expressions")))((("greedy regular expressions")))That's
-a little strange. We haven't actually specified a URL for
-'/lists/1/add_item' yet, so our expected failure is `404 != 302`.  Why are we
-getting a 301?
-
-This was a bit of a puzzler! It's because we've used a very "greedy"
-capture group in our URL:
-
-
-[role="sourcecode currentcontents"]
-.superlists/urls.py
-====
-[source,python]
-----
-    path('lists/<list_id>/', views.view_list, name='view_list'),
-----
-====
-
-((("HTML", "POST requests", "redirect following")))((("POST requests", "redirect following")))((("permanent redirect (301)")))Django
-has some built-in code to issue a permanent redirect (301) whenever
-someone asks for a URL which is 'almost' right, except for a missing slash.
-In this case, [keep-together]#'/lists/1/add_item/'# would be a match for
-`lists/(.+)/`, with the `(.+)` capturing `1/add_item`.  So Django "helpfully"
-guesses that we actually wanted the URL with a trailing slash.
 
 We can fix that by making our URL pattern explicitly capture only numerical
 digits, by using the prefix `int:`:
@@ -1894,19 +1873,11 @@ digits, by using the prefix `int:`:
 ====
 //38
 
-That gives us the failure we expected:
+////
 
-----
-AssertionError: 0 != 1
-[...]
-AssertionError: 404 != 302 : Response didn't redirect as expected: Response
-code was 404 (expected 302)
-----
 
 The Last New URL
 ^^^^^^^^^^^^^^^^
-
-
 
 Now we've got our expected 404, let's add a new URL for adding new items to
 existing lists:
@@ -1917,10 +1888,10 @@ existing lists:
 [source,python]
 ----
 urlpatterns = [
-    url(r'^$', views.home_page, name='home'),
-    url(r'^lists/new$', views.new_list, name='new_list'),
-    url(r'^lists/(\d+)/$', views.view_list, name='view_list'),
-    url(r'^lists/(\d+)/add_item$', views.add_item, name='add_item'),
+    path('', views.home_page, name='home'),
+    path('lists/new', views.new_list, name='new_list'),
+    path('lists/<int:list_id>/', views.view_list, name='view_list'),
+    path('lists/<int:list_id>/add_item', views.add_item, name='add_item'),
 ]
 ----
 ====
@@ -1964,7 +1935,7 @@ def add_item(request):
 Aha:
 
 ----
-TypeError: add_item() takes 1 positional argument but 2 were given
+TypeError: add_item() got an unexpected keyword argument 'list_id'
 ----
 
 
@@ -2113,7 +2084,7 @@ That, of course, will break one of our old tests, because the template
 needed `items`:
 
 ----
-FAIL: test_displays_only_items_for_that_list (lists.tests.ListViewTest)
+FAIL: test_displays_only_items_for_that_list
 [...]
 AssertionError: False is not true : Couldn't find 'itemey 1' in response
 ----
@@ -2244,13 +2215,13 @@ of our three URLs, and none of the other stuff from the parent 'urls.py':
 ====
 [source,python]
 ----
-from django.conf.urls import url
+from django.urls import path
 from lists import views
 
 urlpatterns = [
-    url(r'^new$', views.new_list, name='new_list'),
-    url(r'^(\d+)/$', views.view_list, name='view_list'),
-    url(r'^(\d+)/add_item$', views.add_item, name='add_item'),
+    path('lists/new', views.new_list, name='new_list'),
+    path('lists/<int:list_id>/', views.view_list, name='view_list'),
+    path('lists/<int:list_id>/add_item', views.add_item, name='add_item'),
 ]
 ----
 ====
