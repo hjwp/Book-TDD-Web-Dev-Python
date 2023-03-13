@@ -122,12 +122,12 @@ that their business model is based on ads, so there will be ads
 all over your domain until you configure it.
 
 Once you have a domain, you need to set up a couple of **A-records** in
-its DNS configration, one for your "staging" subdomain and one for your
+its DNS configuration, one for your "staging" subdomain and one for your
 "live" subdomain.  Mine are *superlists.ottg.eu* and *superlists-staging.ottg.eu*
 for example.
 
 *(tip: DNS changes take time to propagate, so if your domain doesn't
-take you to the server straight away, you may need to wait.  some registrars
+take you to the server straight away, you may need to wait.  Some registrars
 will let you control this using a setting called "TTL")*.
 
 
