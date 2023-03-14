@@ -525,7 +525,7 @@ class ChapterTest(unittest.TestCase):
             elif line.startswith(' '):
                 self.assertLineIn(line, actual_lines)
             else:
-                self.assertLineIn(line, [l.strip() for l in actual_lines])
+                self.assertLineIn(line.rstrip(), [l.strip() for l in actual_lines])
 
         if len(expected_lines) > 4 and '[...' not in expected_fixed:
             if expected.type != 'qunit output':
