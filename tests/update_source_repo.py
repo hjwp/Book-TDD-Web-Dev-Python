@@ -44,7 +44,7 @@ def update_sources_for_chapter(chapter, previous_chapter):
 
     # check out current branch, local version, for final diff
     subprocess.check_output(['git', 'checkout', chapter], cwd=source_dir)
-    if getpass.getuser() == 'jenkins':
+    if os.environ.get("CI") == "true":
         # if in CI, we use the submodule commit, to check that the submodule
         # config is up to date
         print('resetting submodule to', commit_specified_by_submodule)
