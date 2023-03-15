@@ -224,9 +224,7 @@ def check_listing_matches_commit(listing, commit, future_contents):
         if new_line.strip() not in stripped_listing_lines:
             # print('stripped_listing_lines', stripped_listing_lines)
             raise ApplyCommitException(
-                'could not find commit new line {0} in listing:\n{1}'.format(
-                    new_line, listing.contents
-                )
+                f"could not find commit new line {new_line!r} in listing:\n{listing.contents}"
             )
 
     future_lines = future_contents.split('\n')
