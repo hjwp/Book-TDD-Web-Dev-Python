@@ -25,7 +25,7 @@ class Chapter5Test(ChapterTest):
         assert "request.POST.get" in self.listings[views_pos].contents
 
         nutemplate_pos = 77
-        assert "{'items': items}" in self.listings[nutemplate_pos].contents
+        assert '{"items": items}' in self.listings[nutemplate_pos].contents
 
         migrate_pos = 81
         assert 'migrate' in self.listings[migrate_pos]
