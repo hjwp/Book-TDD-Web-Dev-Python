@@ -6,7 +6,6 @@ import os
 
 from book_parser import CodeListing
 from sourcetree import (
-    BOOTSTRAP_WGET,
     ApplyCommitException,
     Commit,
     SourceTree,
@@ -824,7 +823,6 @@ class CheckChunksTest(unittest.TestCase):
         with self.assertRaises(ApplyCommitException):
             check_chunks_against_future_contents(code, future_contents)
 
-
     def test_leading_blank_lines_in_listing_are_ignored(self):
         code = dedent(
             """
@@ -843,6 +841,40 @@ class CheckChunksTest(unittest.TestCase):
             """
         ).strip()
         check_chunks_against_future_contents(code, future_contents)  # should not raise
+
+    def test_thing(self):
+        code = dedent(
+            """
+            [...]
+            item.save()
+
+            return render(
+                request,
+                "home.html",
+                {"new_item_text": item.text},
+            )
+            """
+        )
+        future_contents = dedent(
+            """
+            from django.shortcuts import render
+            from lists.models import Item
+
+
+            def home_page(request):
+                item = Item()
+                item.text = request.POST.get("item_text", "")
+                item.save()
+
+                return render(
+                    request,
+                    "home.html",
+                    {"new_item_text": item.text},
+                )
+            """
+        ).strip()
+        check_chunks_against_future_contents(code, future_contents)  # should not raise
+
 
     def test_trailing_blank_lines_in_listing_are_ignored(self):
         code = dedent(

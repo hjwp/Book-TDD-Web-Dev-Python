@@ -294,11 +294,13 @@ def split_into_chunks(code):
     chunk = ""
     for line in code.splitlines():
         if line.strip() == "[...]":
-            yield chunk
-            chunk = ""
+            if chunk:
+                yield chunk
+                chunk = ""
         elif line.startswith("[...]"):
-            yield chunk
-            chunk = ""
+            if chunk:
+                yield chunk
+                chunk = ""
         elif line.endswith("[...]"):
             linestart, _, _ = line.partition("[...]")
             chunk += linestart
