@@ -263,6 +263,10 @@ def check_chunks_against_future_contents(listing_contents, future_contents):
                     f"{len(missing_lines)} lines did not match future contents"
                 )
             else:
+                print('reindented listing')
+                print(repr(reindented_chunk))
+                print('future contents')
+                print(repr(future_contents))
                 raise ApplyCommitException(f"Commit lines in wrong order (?)")
 
 
@@ -301,7 +305,10 @@ def split_into_chunks(code):
             yield chunk
             chunk = ""
         else:
-            chunk = f"{chunk}\n{line}"
+            if chunk:
+                chunk = f"{chunk}\n{line}"
+            else:
+                chunk = line
 
     if chunk:
         yield chunk

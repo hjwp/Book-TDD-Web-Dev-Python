@@ -825,6 +825,25 @@ class CheckChunksTest(unittest.TestCase):
             check_chunks_against_future_contents(code, future_contents)
 
 
+    def test_leading_blank_lines_in_listing_are_ignored(self):
+        code = dedent(
+            """
+            def method1(self):
+                # amend method 1
+                return 2
+
+            """
+        )
+        future_contents = dedent(
+            """
+            class Thing:
+                def method1(self):
+                    # amend method 1
+                    return 2
+            """
+        ).strip()
+        check_chunks_against_future_contents(code, future_contents)  # should not raise
+
     def test_trailing_blank_lines_in_listing_are_ignored(self):
         code = dedent(
             """
