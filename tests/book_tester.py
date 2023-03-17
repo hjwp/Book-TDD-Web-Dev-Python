@@ -465,7 +465,7 @@ class ChapterTest(unittest.TestCase):
         )
 
         if self.tempdir in actual:
-            actual = actual.replace(self.tempdir, '...python-tdd-book')
+            actual = actual.replace(self.tempdir, '...goat-book')
             actual = actual.replace('/private', '')  # macos thing
 
         if ls:

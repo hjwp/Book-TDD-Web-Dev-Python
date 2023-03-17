@@ -200,14 +200,14 @@ ERROR: test_cannot_add_empty_list_items
 (functional_tests.test_list_item_validation.ItemValidationTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "...python-tdd-book/functional_tests/test_list_item_validation.py", line
+  File "...goat-book/functional_tests/test_list_item_validation.py", line
 15, in test_cannot_add_empty_list_items
     self.wait_for(lambda: self.assertEqual(  <i class="conum" data-value="1"></i><b>(1)</b>
-  File "...python-tdd-book/functional_tests/base.py", line 37, in wait_for
+  File "...goat-book/functional_tests/base.py", line 37, in wait_for
     raise e  <i class="conum" data-value="2"></i><b>(2)</b>
-  File "...python-tdd-book/functional_tests/base.py", line 34, in wait_for
+  File "...goat-book/functional_tests/base.py", line 34, in wait_for
     return fn()  <i class="conum" data-value="2"></i><b>(2)</b>
-  File "...python-tdd-book/functional_tests/test_list_item_validation.py", line
+  File "...goat-book/functional_tests/test_list_item_validation.py", line
 16, in &lt;lambda&gt;  <i class="conum" data-value="3"></i><b>(3)</b>
     self.browser.find_element_by_css_selector('.has-error').text,  <i class="conum" data-value="3"></i><b>(3)</b>
 [...]
