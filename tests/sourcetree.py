@@ -267,7 +267,7 @@ def check_chunks_against_future_contents(listing_contents, future_contents):
                 print(repr(reindented_chunk))
                 print('future contents')
                 print(repr(future_contents))
-                raise ApplyCommitException(f"Commit lines in wrong order (?)")
+                raise ApplyCommitException(f"Commit lines in wrong order, or listing is missing a [...] (?)")
 
 
 
