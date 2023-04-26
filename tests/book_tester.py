@@ -284,7 +284,7 @@ class ChapterTest(unittest.TestCase):
         update_sources_for_chapter(self.chapter_name, self.previous_chapter)
         self.sourcetree.start_with_checkout(self.chapter_name, self.previous_chapter)
         # simulate virtualenv folder
-        self.sourcetree.run_command('mkdir -p virtualenv/bin virtualenv/lib')
+        self.sourcetree.run_command('mkdir -p .venv/bin .venv/lib')
 
 
     def write_to_file(self, codelisting):
@@ -385,10 +385,10 @@ class ChapterTest(unittest.TestCase):
             command = f'export {exports}; {command}'
 
         if 'manage.py runserver' in command:
-            if './virtualenv/bin/python manage.py' in command:
+            if './.venv/bin/python manage.py' in command:
                 command = command.replace(
-                    './virtualenv/bin/python manage.py runserver',
-                    'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver',
+                    './.venv/bin/python manage.py runserver',
+                    'dtach -n /tmp/dtach.sock ./.venv/bin/python manage.py runserver',
                 )
                 sleep = 1
                 kill_old_runserver = True
@@ -401,8 +401,8 @@ class ChapterTest(unittest.TestCase):
             kill_old_runserver = True
             kill_old_gunicorn = True
             command = command.replace(
-                './virtualenv/bin/gunicorn',
-                'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn',
+                './.venv/bin/gunicorn',
+                'dtach -n /tmp/dtach.sock ./.venv/bin/gunicorn',
             )
 
         if kill_old_runserver:
@@ -423,14 +423,14 @@ class ChapterTest(unittest.TestCase):
 
 
     def prep_virtualenv(self):
-        virtualenv_path = os.path.join(self.tempdir, 'virtualenv')
+        virtualenv_path = os.path.join(self.tempdir, '.venv')
         if not os.path.exists(virtualenv_path):
             print('preparing virtualenv')
             self.sourcetree.run_command(
-                'python3.7 -m venv virtualenv'
+                'python -m venv .venv'
             )
             self.sourcetree.run_command(
-                './virtualenv/bin/python -m pip install -r requirements.txt'
+                './.venv/bin/python -m pip install -r requirements.txt'
             )
 
 

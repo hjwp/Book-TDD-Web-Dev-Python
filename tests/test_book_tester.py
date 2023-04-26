@@ -212,19 +212,19 @@ class RunServerCommandTest(ChapterTest):
     def test_hacks_in_dtach_for_runserver(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'blee'}
         self.current_server_cd = 'dirname'
-        self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
+        self.run_server_command('bla ./.venv/bin/python manage.py runserver blee')
         self.check_runserver_call(
             mock_subprocess,
             'export FOO=blee; cd dirname && '
             'bla '
-            'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
+            'dtach -n /tmp/dtach.sock ./.venv/bin/python manage.py runserver'
             ' blee'
         )
 
     def test_adds_pkill_old_for_runserver(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'blee'}
         self.current_server_cd = 'dirname'
-        self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
+        self.run_server_command('bla ./.venv/bin/python manage.py runserver blee')
         self.assertEqual(
             mock_subprocess.run.call_args_list[-1],
             call([self.RUN_SERVER_PATH, 'pkill -f runserver'])
@@ -234,12 +234,12 @@ class RunServerCommandTest(ChapterTest):
     def test_hacks_in_dtach_for_gunicorn(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'blee'}
         self.current_server_cd = 'dirname'
-        self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
+        self.run_server_command('bla ./.venv/bin/gunicorn thing blee')
         self.check_runserver_call(
             mock_subprocess,
             'export FOO=blee; cd dirname && '
             'bla '
-            'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn'
+            'dtach -n /tmp/dtach.sock ./.venv/bin/gunicorn'
             ' thing blee'
         )
 
@@ -247,7 +247,7 @@ class RunServerCommandTest(ChapterTest):
     def test_adds_two_pkill_olds_for_gunicorn(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'blee'}
         self.current_server_cd = 'dirname'
-        self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
+        self.run_server_command('bla ./.venv/bin/gunicorn thing blee')
         self.assertEqual(
             mock_subprocess.run.call_args_list[-2],
             call([self.RUN_SERVER_PATH, 'pkill -f runserver'])

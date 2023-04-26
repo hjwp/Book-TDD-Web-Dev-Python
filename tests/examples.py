@@ -44,7 +44,7 @@ SERVER_COMMAND = """<div class="listingblock server-commands">
 
 COMMANDS_WITH_VIRTUALENV = """<div class="listingblock">
 <div class="content">
-<pre><code>$ <strong>source ../virtualenv/bin/activate</strong>
+<pre><code>$ <strong>source ../.venv/bin/activate</strong>
 (virtualenv)$ <strong>python manage.py test lists</strong>
 [...]
 ImportError: No module named django</code></pre>

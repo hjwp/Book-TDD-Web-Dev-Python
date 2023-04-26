@@ -39,8 +39,8 @@ class Chapter1Test(ChapterTest):
         self.listings[8] = Output(str(self.listings[8]).replace('$', ''))
 
         # prep folder as it would be
-        self.sourcetree.run_command('mkdir -p virtualenv/bin')
-        self.sourcetree.run_command('mkdir -p virtualenv/lib')
+        self.sourcetree.run_command('mkdir -p .venv/bin')
+        self.sourcetree.run_command('mkdir -p .venv/lib')
 
         self.unset_PYTHONDONTWRITEBYTECODE()
         while self.pos < len(self.listings):
