@@ -10,9 +10,10 @@ from book_tester import (
     Output,
 )
 
+
 class Chapter4Test(ChapterTest):
-    chapter_name = 'chapter_philosophy_and_refactoring'
-    previous_chapter = 'chapter_unit_test_first_view'
+    chapter_name = "chapter_philosophy_and_refactoring"
+    previous_chapter = "chapter_unit_test_first_view"
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -25,10 +26,8 @@ class Chapter4Test(ChapterTest):
         self.start_with_checkout()
         self.start_dev_server()
 
-        self.skip_with_check(8, 'wibble')
-        self.skip_with_check(9, 'wibble')
-        self.skip_with_check(31, 'add the untracked templates folder')
-        self.skip_with_check(33, 'review the changes')
+        self.skip_with_check(27, "add the untracked templates folder")
+        self.skip_with_check(29, "review the changes")
 
         while self.pos < len(self.listings):
             print(self.pos, self.listings[self.pos].type)
@@ -39,5 +38,5 @@ class Chapter4Test(ChapterTest):
         self.check_final_diff()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
