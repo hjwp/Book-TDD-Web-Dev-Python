@@ -211,7 +211,7 @@ class SourceTree(object):
         files = self.get_files_from_commit_spec(commit_spec)
         if files != [listing.filename]:
             raise ApplyCommitException(
-                f"wrong files in listing: {listing.filenames} should have been {files}"
+                f"wrong files in listing {listing.commit_ref}: {listing.filename!r} should have been {files}"
             )
         future_contents = self.show_future_version(commit_spec, listing.filename)
 
