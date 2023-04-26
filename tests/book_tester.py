@@ -137,6 +137,12 @@ def standardise_library_paths(output):
     )
 
 
+def standardise_geckodriver_tracebacks(output):
+    return re.sub(
+        r'@chrome://remote/(.+):(\d+:\d+)$', r'@chrome://\1:XXX:XXX', output, flags=re.MULTILINE,
+    )
+
+
 def strip_test_speed(output):
     return re.sub(
         r"Ran (\d+) tests? in \d+\.\d\d\ds",
@@ -475,6 +481,7 @@ class ChapterTest(unittest.TestCase):
             return
 
         actual_fixed = standardise_library_paths(actual)
+        actual_fixed = standardise_geckodriver_tracebacks(actual_fixed)
         actual_fixed = wrap_long_lines(actual_fixed)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_js_test_speed(actual_fixed)
@@ -493,6 +500,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = standardise_assertionerror_none(actual_fixed)
 
         expected_fixed = standardise_library_paths(expected)
+        expected_fixed = standardise_geckodriver_tracebacks(expected_fixed)
         expected_fixed = fix_test_dashes(expected_fixed)
         expected_fixed = strip_test_speed(expected_fixed)
         expected_fixed = strip_js_test_speed(expected_fixed)

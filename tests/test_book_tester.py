@@ -572,6 +572,21 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         with self.assertRaises(AssertionError):
             self.assert_console_output_correct(actual, expected)
 
+    def test_ignores_geckodriver_stacktrace_line_numbers(self):
+        actual = dedent("""
+            Stacktrace:
+            RemoteError@chrome://remote/content/shared/RemoteError.sys.mjs:8:8
+            WebDriverError@chrome://remote/content/shared/webdriver/Errors.sys.mjs:188:3
+            """).rstrip()
+        expected = Output(dedent("""
+            Stacktrace:
+            RemoteError@chrome://remote/content/shared/RemoteError.sys.mjs:9:8
+            WebDriverError@chrome://remote/content/shared/webdriver/Errors.sys.mjs:180:6
+            """).rstrip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
+
 
     def test_ignores_mock_ids(self):
         actual = dedent("""
