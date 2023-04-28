@@ -30,7 +30,7 @@ class Chapter5Test(ChapterTest):
         print(self.listings[nutemplate_pos])
         assert '{"items": items}' in self.listings[nutemplate_pos].contents
 
-        migrate_pos = 84
+        migrate_pos = 86
         assert "migrate" in self.listings[migrate_pos]
         assert self.listings[migrate_pos].type == "interactive manage.py"
 
