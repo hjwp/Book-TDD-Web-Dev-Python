@@ -332,7 +332,7 @@ Let's start by seeing how the template syntax lets us include a Python object in
 The notation is `{{ ... }}`, which displays the object as a string:
 
 [role="sourcecode small-code"]
-.lists/templates/home.html  (ch05l008)
+.lists/templates/home.html (ch05l008)
 ====
 [source,html]
 ----
@@ -1330,16 +1330,70 @@ OK
 
 We're at green, time for a little refactor!
 
+Looking at views.py, there's a small change
 
-TODO little tidy up, do Item.objects.create()?  Maybe get rid of new_item_text too?
+[role="sourcecode currentcontents"]
+.list/views.py
+====
+[source,python]
+----
+def home_page(request):
+    if request.method == "POST":
+        item = Item()  # <1>
+        item.text = request.POST["item_text"]  # <1>
+        item.save()  # <1>
+        return redirect("/")
+
+    return render(
+        request,
+        "home.html",
+        {"new_item_text": request.POST.get("item_text", "")},  # <2>
+    )
+----
+
+<1> There's a quicker way to do these 3 lines with `.objects.create()`
+<2> This line doesn't seem quite right now, in fact it won't work at all.
+    Let's make a note on our scratchpad to sort out passing list items to the template.
+    It's actually closely related to "Display multiple items",
+    so we'll put it next to that one:
+
+[role="scratchpad"]
+*****
+* '[strikethrough line-through]#Don't save blank items for every request#'
+* 'Code smell: POST test is too long?'
+* 'Pass existing list items to the template somehow'
+* 'Display multiple items in the table'
+* 'Support more than one list!'
+*****
+
+And here's the refactored version of _views.py_ using the `.objects.create()`
+helper method that Django provides, for one-line creation of objects:
+
+[role="sourcecode"]
+.lists/views.py (ch05l031)
+====
+[source,python]
+----
+def home_page(request):
+    if request.method == "POST":
+        Item.objects.create(text=request.POST["item_text"])
+        return redirect("/")
+
+    return render(
+        request,
+        "home.html",
+        {"new_item_text": request.POST.get("item_text", "")},
+    )
+
+----
+====
 
 
 === Better Unit Testing Practice: Each Test Should Test One Thing
 
 ((("unit tests", "testing only one thing")))
 ((("testing best practices")))
-Our view now does a redirect after a POST, which is good practice,
-and we've shortened the unit test somewhat, but we can still do better.
+Let's address the "POST test is too long" code smell.
 
 Good unit testing practice says that each test should only test one thing. The
 reason is that it makes it easier to track down bugs.  Having multiple
@@ -1352,7 +1406,7 @@ You may not always write perfect unit tests with single assertions on your
 first go, but now feels like a good time to separate out our concerns:
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/tests.py (ch05l032)
 ====
 [source,python]
 ----
@@ -1364,8 +1418,7 @@ first go, but now feels like a good time to separate out our concerns:
 
     def test_redirects_after_POST(self):
         response = self.client.post("/", data={"item_text": "A new list item"})
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["location"], "/")
+        self.assertRedirects(response, "/")
 ----
 ====
 
@@ -1381,69 +1434,76 @@ OK
 ----
 
 
-Rendering Items in the Template
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Rendering Items in the Template
 
-
-
-((("database testing", "rendering items in the template", id="DTrender05")))Much
-better!  Back to our to-do list:
+((("database testing", "rendering items in the template", id="DTrender05")))
+Much better!  Back to our to-do list:
 
 [role="scratchpad"]
 *****
 * '[strikethrough line-through]#Don't save blank items for every request#'
 * '[strikethrough line-through]#Code smell: POST test is too long?#'
+* 'Pass existing list items to the template somehow'
 * 'Display multiple items in the table'
 * 'Support more than one list!'
 *****
 
 Crossing things off the list is almost as satisfying as seeing tests pass!
 
-((("list items")))The
-third item is the last of the "easy" ones. Let's have a new unit test
-that checks that the template can also display multiple list items:
+The third and fourth items are the last of the "easy" ones.
+Our view now does the right thing for POST requests,
+it saves new list items to the database.
+Now we want GET requests to load all currently existing list items,
+and pass them to the template for rendering.
+Let's have a new unit test for that:
 
 [role="sourcecode"]
-.lists/tests.py
+.lists/tests.py (ch05l033)
 ====
 [source,python]
 ----
 class HomePageTest(TestCase):
-    [...]
+    def test_uses_home_template(self):
+        [...]
 
     def test_displays_all_list_items(self):
         Item.objects.create(text="itemey 1")
         Item.objects.create(text="itemey 2")
-
         response = self.client.get("/")
+        self.assertContains(response, "itemey 1")
+        self.assertContains(response, "itemey 2")
 
-        self.assertIn("itemey 1", response.content.decode())
-        self.assertIn("itemey 2", response.content.decode())
+    def test_can_save_a_POST_request(self):
+        [...]
 ----
 ====
 
 
+////
+TODO: find a new home for this:
 NOTE: Are you wondering about the line spacing in the test? I'm grouping
       together two lines at the beginning which set up the test, one line in
       the middle which actually calls the code under test, and the
       assertions at the end. This isn't obligatory, but it does help see the
       structure of the test. Arrange-Act-Assert is the typical structure
       for a unit test.
+////
 
 
 That fails as expected:
 
 ----
-AssertionError: 'itemey 1' not found in '<html>\n    <head>\n [...]
+AssertionError: False is not true : Couldn't find 'itemey 1' in response
 ----
 
-((("templates", "tags", "{% for ... endfor %}")))((("{% for ... endfor %}")))The
-Django template syntax has a tag for iterating through lists,
- `{% for .. in .. %}`; we can use it like this:
+((("templates", "tags", "{% for ... endfor %}")))
+((("{% for ... endfor %}")))
+The Django template syntax has a tag for iterating through lists,
+`{% for .. in .. %}`; we can use it like this:
 
 
 [role="sourcecode"]
-.lists/templates/home.html
+.lists/templates/home.html (ch05l034)
 ====
 [source,html]
 ----
@@ -1460,13 +1520,13 @@ will render with multiple `<tr>` rows, one for each item in the variable
 `items`.  Pretty neat!  I'll introduce a few more bits of Django template
 magic as we go, but at some point you'll want to go and read up on the rest of
 them in the
-https://docs.djangoproject.com/en/1.11/topics/templates/[Django docs].
+https://docs.djangoproject.com/en/4.2/topics/templates/[Django docs].
 
 Just changing the template doesn't get our tests to green; we need to actually
 pass the items to it from our home page view:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch05l035)
 ====
 [source,python]
 ----
@@ -1490,11 +1550,12 @@ $ pass:quotes[*python functional_tests.py*]
 AssertionError: 'To-Do' not found in 'OperationalError at /'
 ----
 
-((("", startref="DTrender05")))((("debugging", "manual visits")))Oops, apparently not.  Let's use another functional test debugging technique,
-and it's one of the most straightforward: manually visiting the site!  Open
-up pass:[<em>http://localhost:8000</em>] in your web browser, and you'll see a Django debug
-page saying "no such table: lists_item", as in <<operationalerror>>.
-
+((("", startref="DTrender05")))
+((("debugging", "manual visits")))
+Oops, apparently not.  Let's use another functional test debugging technique,
+and it's one of the most straightforward: manually visiting the site!
+Open up pass:[<em>http://localhost:8000</em>] in your web browser,
+and you'll see a Django debug page saying "no such table: lists_item", as in <<operationalerror>>.
 
 
 [[operationalerror]]
@@ -1504,22 +1565,20 @@ image::images/twp2_0502.png["OperationalError at / no such table: lists_item"]
 
 
 [role="pagebreak-before less_space"]
-Creating Our Production Database with migrate
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Creating Our Production Database with migrate
 
+((("database testing", "production database creation", id="DTproduction05")))
+((("database migrations")))
+Another helpful error message from Django,
+which is basically complaining that we haven't set up the database properly.
+How come everything worked fine in the unit tests, I hear you ask?
+Because Django creates a special 'test database' for unit tests;
+it's one of the magical things that Django's `TestCase` does.
 
-
-((("database testing", "production database creation", id="DTproduction05")))((("database migrations")))Another
-helpful error message from Django, which is basically complaining that
-we haven't set up the database properly.  How come everything worked fine
-in the unit tests, I hear you ask?  Because Django creates a special 'test
-database' for unit tests; it's one of the magical things that Django's
-`TestCase` does.
-
-To set up our "real" database, we need to create it.  SQLite databases
-are just a file on disk, and you'll see in 'settings.py' that Django,
-by default, will just put it in a file called 'db.sqlite3' in the base
-project directory:
+To set up our "real" database, we need to explicitly create it.
+SQLite databases are just a file on disk,
+and you'll see in 'settings.py' that Django, by default, will just put it in a file
+called 'db.sqlite3' in the base project directory:
 
 [role="sourcecode currentcontents"]
 .superlists/settings.py
@@ -1528,7 +1587,7 @@ project directory:
 ----
 [...]
 # Database
-# https://docs.djangoproject.com/en/4.1/ref/settings/#databases
+# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 DATABASES = {
     "default": {
@@ -1539,10 +1598,10 @@ DATABASES = {
 ----
 ====
 
-We've told Django everything it needs to create the database, first via
-'models.py' and then when we created the migrations file.  To actually apply
-it to creating a real database, we use another Django Swiss Army knife
-'manage.py' command, `migrate`:
+We've told Django everything it needs to create the database,
+first via 'models.py' and then when we created the migrations file.
+To actually apply it to creating a real database,
+we use another Django Swiss Army knife 'manage.py' command, `migrate`:
 
 
 [subs="specialcharacters,macros"]
@@ -1584,18 +1643,12 @@ AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
 peacock feathers', '1: Use peacock feathers to make a fly']
 ----
 
-// -- usually fails instead with:
-
-// selenium.common.exceptions.InvalidSelectorException: Message: Given css'
-// selector expression "tr" is invalid: TypeError: can\'t access dead object'
-
-
 
 So close!  We just need to get our list numbering right.  Another awesome
 Django template tag, `forloop.counter`, will help here:
 
 [role="sourcecode"]
-.lists/templates/home.html
+.lists/templates/home.html (ch05l036)
 ====
 [source,html]
 ----
@@ -1608,10 +1661,17 @@ Django template tag, `forloop.counter`, will help here:
 
 If you try it again, you should now see the FT get to the end:
 
+[subs="specialcharacters,macros"]
 ----
-    self.fail("Finish the test!")
-AssertionError: Finish the test!
+$ pass:quotes[*python functional_tests.py*]
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 5.036s
+
+OK
 ----
+
+Hooray!
 
 But, as it's running, you may notice something is amiss, like in
 <<items_left_over_from_previous_run>>.
@@ -1650,7 +1710,8 @@ And then (after restarting your server!) reassure yourself that the FT still
 passes.
 
 Apart from that little bug in our functional testing, we've got some code
-that's more or less working.  Let's do a commit.((("", startref="DTproduction05")))
+that's more or less working.  Let's do a commit.
+((("", startref="DTproduction05")))
 
 
 Start by doing a *`git status`* and a *`git diff`*, and you should see changes

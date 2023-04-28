@@ -240,7 +240,7 @@ def check_listing_matches_commit(listing, commit, future_contents):
         if new_line.strip() not in stripped_listing_lines:
             # print('stripped_listing_lines', stripped_listing_lines)
             raise ApplyCommitException(
-                f"could not find commit new line {new_line!r} in listing:\n{listing.contents}"
+                f"could not find commit new line {new_line!r} in listing {listing.commit_ref}:\n{listing.contents}"
             )
 
     check_chunks_against_future_contents(listing.contents, future_contents)
