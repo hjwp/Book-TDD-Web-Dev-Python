@@ -16,15 +16,15 @@ class Chapter7Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, "code listing currentcontents")
+        self.assertEqual(self.listings[0].type, "output")
         self.assertEqual(self.listings[1].type, "output")
 
         # skips
         self.skip_with_check(40, "should show 4 changed files")  # git
         self.skip_with_check(45, "add a message summarising")  # git
-        self.skip_with_check(63, "5 changed files")  # git
-        self.skip_with_check(65, "forms x2")  # git
-        self.skip_with_check(92, "3 changed files")  # git
+        self.skip_with_check(62, "5 changed files")  # git
+        self.skip_with_check(64, "forms x2")  # git
+        self.skip_with_check(91, "3 changed files")  # git
         touch_pos = 33
         touch = self.listings[touch_pos]
         assert "touch" in touch
