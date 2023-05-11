@@ -33,7 +33,6 @@ class Chapter1Test(ChapterTest):
 
         # sanity checks
         self.assertEqual(type(self.listings[0]), CodeListing)
-        # self.assertEqual(self.listings[1].skip, True)
 
         self.skip_with_check(6, 'Performing system checks...') # after runserver
         self.listings[8] = Output(str(self.listings[8]).replace('$', ''))
@@ -46,7 +45,6 @@ class Chapter1Test(ChapterTest):
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()
-
 
         self.assert_all_listings_checked(self.listings)
 
