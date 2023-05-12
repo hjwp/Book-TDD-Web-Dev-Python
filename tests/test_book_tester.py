@@ -212,19 +212,19 @@ class RunServerCommandTest(ChapterTest):
     def test_hacks_in_dtach_for_runserver(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'blee'}
         self.current_server_cd = 'dirname'
-        self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
+        self.run_server_command('bla ./.venv/bin/python manage.py runserver blee')
         self.check_runserver_call(
             mock_subprocess,
             'export FOO=blee; cd dirname && '
             'bla '
-            'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver'
+            'dtach -n /tmp/dtach.sock ./.venv/bin/python manage.py runserver'
             ' blee'
         )
 
     def test_adds_pkill_old_for_runserver(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'blee'}
         self.current_server_cd = 'dirname'
-        self.run_server_command('bla ./virtualenv/bin/python manage.py runserver blee')
+        self.run_server_command('bla ./.venv/bin/python manage.py runserver blee')
         self.assertEqual(
             mock_subprocess.run.call_args_list[-1],
             call([self.RUN_SERVER_PATH, 'pkill -f runserver'])
@@ -234,12 +234,12 @@ class RunServerCommandTest(ChapterTest):
     def test_hacks_in_dtach_for_gunicorn(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'blee'}
         self.current_server_cd = 'dirname'
-        self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
+        self.run_server_command('bla ./.venv/bin/gunicorn thing blee')
         self.check_runserver_call(
             mock_subprocess,
             'export FOO=blee; cd dirname && '
             'bla '
-            'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn'
+            'dtach -n /tmp/dtach.sock ./.venv/bin/gunicorn'
             ' thing blee'
         )
 
@@ -247,7 +247,7 @@ class RunServerCommandTest(ChapterTest):
     def test_adds_two_pkill_olds_for_gunicorn(self, mock_subprocess):
         self.current_server_exports = {'FOO': 'blee'}
         self.current_server_cd = 'dirname'
-        self.run_server_command('bla ./virtualenv/bin/gunicorn thing blee')
+        self.run_server_command('bla ./.venv/bin/gunicorn thing blee')
         self.assertEqual(
             mock_subprocess.run.call_args_list[-2],
             call([self.RUN_SERVER_PATH, 'pkill -f runserver'])
@@ -483,7 +483,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
 
     def test_working_directory_substitution(self):
-        expected = Output('bla bla ...python-tdd-book/foo stuff')
+        expected = Output('bla bla ...goat-book/foo stuff')
         actual = f'bla bla {self.tempdir}/foo stuff'
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
@@ -571,6 +571,21 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
         with self.assertRaises(AssertionError):
             self.assert_console_output_correct(actual, expected)
+
+    def test_ignores_geckodriver_stacktrace_line_numbers(self):
+        actual = dedent("""
+            Stacktrace:
+            RemoteError@chrome://remote/content/shared/RemoteError.sys.mjs:8:8
+            WebDriverError@chrome://remote/content/shared/webdriver/Errors.sys.mjs:188:3
+            """).rstrip()
+        expected = Output(dedent("""
+            Stacktrace:
+            RemoteError@chrome://remote/content/shared/RemoteError.sys.mjs:9:8
+            WebDriverError@chrome://remote/content/shared/webdriver/Errors.sys.mjs:180:6
+            """).rstrip()
+        )
+
+        self.assert_console_output_correct(actual, expected)
 
 
     def test_ignores_mock_ids(self):
@@ -672,18 +687,18 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
 
     def test_ignores_screenshot_times(self):
         actual = (
-            'screenshotting to ...python-tdd-book/functional_tests/screendumps/MyListsTes\n'
+            'screenshotting to ...goat-book/functional_tests/screendumps/MyListsTes\n'
             't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.38.\n'
             'png\n'
-            'dumping page HTML to ...python-tdd-book/functional_tests/screendumps/MyLists\n'
+            'dumping page HTML to ...goat-book/functional_tests/screendumps/MyLists\n'
             'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.\n'
             '38.html\n'
         )
         expected = Output(
-            'screenshotting to ...python-tdd-book/functional_tests/screendumps/MyListsTes\n'
+            'screenshotting to ...goat-book/functional_tests/screendumps/MyListsTes\n'
             't.test_logged_in_users_lists_are_saved_as_my_lists-window0-2013-04-09T13.40.39.\n'
             'png\n'
-            'dumping page HTML to ...python-tdd-book/functional_tests/screendumps/MyLists\n'
+            'dumping page HTML to ...goat-book/functional_tests/screendumps/MyLists\n'
             'Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-04-04T12.43.\n'
             '42.html\n'
         )
@@ -790,7 +805,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             ERROR: test_root_url_resolves_to_home_page_view (lists.tests.HomePageTest)
             ----------------------------------------------------------------------
             Traceback (most recent call last):
-              File "...python-tdd-book/lists/tests.py", line 8, in test_root_url_resolves_to_home_page_view
+              File "...goat-book/lists/tests.py", line 8, in test_root_url_resolves_to_home_page_view
                 found = resolve('/')
               File "/usr/local/lib/python2.7/dist-packages/django/core/urlresolvers.py", line 440, in resolve
                 return get_resolver(urlconf).resolve(path)

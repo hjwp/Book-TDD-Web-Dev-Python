@@ -203,7 +203,7 @@ class SourceTree(object):
 
     def apply_listing_from_commit(self, listing):
         commit_spec = self.get_commit_spec(listing.commit_ref)
-        commit_info = self.run_command("git show %s" % (commit_spec,))
+        commit_info = self.run_command("git show -w %s" % (commit_spec,))
         print("Applying listing from commit.\nListing:\n" + listing.contents)
 
         commit = Commit.from_diff(commit_info)
@@ -211,9 +211,7 @@ class SourceTree(object):
         files = self.get_files_from_commit_spec(commit_spec)
         if files != [listing.filename]:
             raise ApplyCommitException(
-                "wrong files in listing: {0} should have been {1}".format(
-                    listing.filename, files
-                )
+                f"wrong files in listing {listing.commit_ref}: {listing.filename!r} should have been {files}"
             )
         future_contents = self.show_future_version(commit_spec, listing.filename)
 
@@ -242,7 +240,7 @@ def check_listing_matches_commit(listing, commit, future_contents):
         if new_line.strip() not in stripped_listing_lines:
             # print('stripped_listing_lines', stripped_listing_lines)
             raise ApplyCommitException(
-                f"could not find commit new line {new_line!r} in listing:\n{listing.contents}"
+                f"could not find commit new line {new_line!r} in listing {listing.commit_ref}:\n{listing.contents}"
             )
 
     check_chunks_against_future_contents(listing.contents, future_contents)

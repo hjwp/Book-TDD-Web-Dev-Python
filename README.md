@@ -27,7 +27,6 @@ and collaboration (typo-fixes by pull request are very much encouraged).
 
 * Pre-requisites for the test suite:
 ```console   
-$ mkvirtualenv --python=python3 tddbook
 $ pip install -r requirements.txt
 $ git submodule update --init
 ```

@@ -23,7 +23,7 @@ class Chapter3Test(ChapterTest):
         self.assertEqual(type(self.listings[2]), CodeListing)
 
         self.skip_with_check(10, 'will show you')
-        final_ft = 41
+        final_ft = 43
         self.assertIn('Finish the test', self.listings[final_ft + 1])
 
         self.start_with_checkout()

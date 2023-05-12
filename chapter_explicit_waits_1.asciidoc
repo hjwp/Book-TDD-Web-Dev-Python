@@ -1,62 +1,60 @@
 [[chapter_explicit_waits_1]]
-Improving Functional Tests: Ensuring Isolation and Removing Voodoo Sleeps
--------------------------------------------------------------------------
+== Improving Functional Tests: Ensuring Isolation and Removing Voodoo Sleeps
 
-Before we dive in and fix our real problem, let's take care of a couple
-of housekeeping items. At the end of the last chapter, we made a note
-that different test runs were interfering with each other, so we'll fix
-that.  I'm also not happy with all these ++time.sleep++s peppered through
-the code; they seem a bit unscientific, so we'll replace them with something
-more reliable.
+Before we dive in and fix our real problem,
+let's take care of a couple of housekeeping items.
+At the end of the last chapter, we made a note
+that different test runs were interfering with each other, so we'll fix that.
+I'm also not happy with all these ++time.sleep++s peppered through the code;
+they seem a bit unscientific, so we'll replace them with something more reliable.
 
 [role="scratchpad"]
 *****
-* 'Clean up after FT runs'
-* 'Remove time.sleeps'
+* _Clean up after FT runs_
+* _Remove time.sleeps_
 *****
 
-Both of these changes will be moving towards testing "best practices",
+Both of these changes will be moving us towards testing "best practices",
 making our tests more deterministic and more reliable.
 
 
-Ensuring Test Isolation in Functional Tests
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Ensuring Test Isolation in Functional Tests
 
 
+((("functional tests (FTs)", "ensuring isolation", id="FTisolation06")))
+((("isolation, ensuring", "in functional tests", secondary-sortas="functional tests", id="isolation06")))
+We ended the last chapter with a classic testing problem:
+how to ensure _isolation_ between tests.
+Each run of our functional tests was leaving list items lying around in the database,
+and that would interfere with the test results when you next ran the tests.
 
-((("functional tests (FTs)", "ensuring isolation", id="FTisolation06")))((("isolation, ensuring", "in functional tests", secondary-sortas="functional tests", id="isolation06")))We
-ended the last chapter with a classic testing problem:  how to ensure
-'isolation' between tests.  Each run of our functional tests was leaving list
-items lying around in the database, and that would interfere with the test
-results when you next ran the tests.
+((("unit tests", "in Django", "test databases", secondary-sortas="Django")))
+When we run _unit_ tests,
+the Django test runner automatically creates a brand new test database
+(separate from the real one),
+which it can safely reset before each individual test is run,
+and then throw away at the end.
+But our functional tests currently run against the "real" database, _db.sqlite3_.
 
-((("unit tests", "in Django", "test databases", secondary-sortas="Django")))When
-we run 'unit' tests, the Django test runner automatically creates a brand
-new test database (separate from the real one), which it can safely reset
-before each individual test is run, and then throw away at the end.  But our
-functional tests currently run against the "real" database, 'db.sqlite3'.
-
-One way to tackle this would be to "roll our own" solution, and add some code
-to 'functional_tests.py' which would do the cleaning up. The `setUp` and
-`tearDown` methods are perfect for this sort of thing.
+One way to tackle this would be to "roll our own" solution,
+and add some code to _functional_tests.py_ which would do the cleaning up.
+The `setUp` and `tearDown` methods are perfect for this sort of thing.
 
 
-
-
-((("LiveServerTestCase class")))Since
-Django 1.4 though, there's a new class called `LiveServerTestCase` which
-can do this work for you. It will automatically create a test database (just
-like in a unit test run), and start up a development server for the functional
-tests to run against. Although as a tool it has some limitations which we'll
-need to work around later, it's dead useful at this stage, so let's check it
-out.
+((("LiveServerTestCase class")))
+But since this is a common problem, Django supplies a test class called `LiveServerTestCase`
+which addresses this issue.
+It will automatically create a test database (just like in a unit test run),
+and start up a development server for the functional tests to run against.
+Although as a tool it has some limitations which we'll need to work around later,
+it's dead useful at this stage, so let's check it out.
 
 `LiveServerTestCase` expects to be run by the Django test runner using
-'manage.py'. As of Django 1.6, the test runner will find any files whose name
-begins with 'test'.  To keep things neat and tidy, let's make a folder for
-our functional tests, so that it looks a bit like an app. All Django needs is
-for it to be a valid Python package directory (i.e., one with a
-+++<i>___init___.py</i>+++ in it):
+_manage.py_, which will run tests from any files whose name begins with _test__.
+To keep things neat and tidy, let's make a folder for our functional tests,
+so that it looks a bit like an app.
+All Django needs is for it to be a valid Python package directory
+(i.e., one with a +++<i>___init___.py</i>+++ in it):
 
 [subs=""]
 ----
@@ -64,10 +62,12 @@ $ <strong>mkdir functional_tests</strong>
 $ <strong>touch functional_tests/__init__.py</strong>
 ----
 
-((("Git", "moving files")))Then
-we 'move' our functional tests, from being a standalone file called
-'functional_tests.py', to being the 'tests.py' of the `functional_tests` app.
-We use *`git mv`* so that Git notices that we've moved the file:
+((("Git", "moving files")))
+Now we want to 'move' our functional tests,
+from being a standalone file called 'functional_tests.py',
+to being the 'tests.py' of the `functional_tests` app.
+We use *`git mv`* so that Git keeps track of the fact that this
+is the same file and should have a single history.
 
 
 [subs=""]
@@ -85,29 +85,28 @@ At this point your directory tree should look like this:
 │   ├── __init__.py
 │   └── tests.py
 ├── lists
+│   ├── __init__.py
+│   ├── __pycache__
 │   ├── admin.py
 │   ├── apps.py
-│   ├── __init__.py
 │   ├── migrations
 │   │   ├── 0001_initial.py
 │   │   ├── 0002_item_text.py
 │   │   ├── __init__.py
 │   │   └── __pycache__
 │   ├── models.py
-│   ├── __pycache__
 │   ├── templates
 │   │   └── home.html
 │   ├── tests.py
 │   └── views.py
 ├── manage.py
-├── superlists
-│   ├── __init__.py
-│   ├── __pycache__
-│   ├── settings.py
-│   ├── urls.py
-│   └── wsgi.py
-└── virtualenv
-    ├── [...]
+└── superlists
+    ├── __init__.py
+    ├── __pycache__
+    ├── asgi.py
+    ├── settings.py
+    ├── urls.py
+    └── wsgi.py
 ----
 
 'functional_tests.py' is gone, and has turned into 'functional_tests/tests.py'.
@@ -150,7 +149,7 @@ Next, instead of hardcoding the visit to localhost port 8000,
 ====
 [source,python]
 ----
-    def test_can_start_a_list_and_retrieve_it_later(self):
+    def test_can_start_a_todo_list(self):
         # Edith has heard about a cool new online to-do app. She goes
         # to check out its homepage
         self.browser.get(self.live_server_url)
@@ -160,8 +159,11 @@ Next, instead of hardcoding the visit to localhost port 8000,
 We can also remove the `if __name__ == '__main__'` from the end if we want,
 since we'll be using the Django test runner to launch the FT.
 
-Now we are able to run our functional tests using the Django test runner, by
-telling it to run just the tests for our new `functional_tests` app:
+
+TODO -- FIXES FROM HERE
+
+Now we are able to run our functional tests using the Django test runner,
+by telling it to run just the tests for our new `functional_tests` app:
 
 [subs="specialcharacters,macros"]
 ----
@@ -169,29 +171,20 @@ $ pass:quotes[*python manage.py test functional_tests*]
 Creating test database for alias 'default'...
 Found 1 test(s).
 System check identified no issues (0 silenced).
-F
-======================================================================
-FAIL: test_can_start_a_list_and_retrieve_it_later (functional_tests.tests.NewVi
-sitorTest.test_can_start_a_list_and_retrieve_it_later)
+.
  ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...python-tdd-book/functional_tests/tests.py", line 59, in
-test_can_start_a_list_and_retrieve_it_later
-    self.fail("Finish the test!")
-AssertionError: Finish the test!
+Ran 1 test in 10.519s
 
- ---------------------------------------------------------------------
-Ran 1 test in 6.578s
-
-FAILED (failures=1)
+OK
 Destroying test database for alias 'default'...
 ----
 
 [role="pagebreak-before"]
 The FT gets through to the `self.fail`, just like it did before the refactor.
-You'll also notice that if you run the tests a second time, there aren't any
-old list items lying around from the previous test--it has cleaned up after
-itself.  Success! We should commit it as an atomic change:
+You'll also notice that if you run the tests a second time,
+there aren't any old list items lying around from the previous test--it
+has cleaned up after itself.
+Success! We should commit it as an atomic change:
 
 [subs=""]
 ----
@@ -201,43 +194,37 @@ $ <strong>git diff --staged -M</strong>
 $ <strong>git commit</strong>  # msg eg "make functional_tests an app, use LiveServerTestCase"
 ----
 
-((("Git", "detecting moved files")))The
-`-M` flag on the `git diff` is a useful one. It means "detect moves", so it
+((("Git", "detecting moved files")))
+The `-M` flag on the `git diff` is a useful one. It means "detect moves", so it
 will notice that 'functional_tests.py' and 'functional_tests/tests.py' are the
 same file, and show you a more sensible diff (try it without the flag!).
 
 
 
+==== Running Just the Unit Tests
 
-Running Just the Unit Tests
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-((("Django framework", "running functional and/or unit tests")))Now
-if we run `manage.py test`, Django will run both the functional and the
-unit tests:
+((("Django framework", "running functional and/or unit tests")))
+Now if we run `manage.py test`,
+Django will run both the functional and the unit tests:
 
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test*]
 Creating test database for alias 'default'...
-......F
-======================================================================
-FAIL: test_can_start_a_list_and_retrieve_it_later (functional_tests.tests.NewVi
-sitorTest.test_can_start_a_list_and_retrieve_it_later)
-
-[...]
-AssertionError: Finish the test!
-
+Found 7 test(s).
+System check identified no issues (0 silenced).
+.......
  ---------------------------------------------------------------------
-Ran 7 tests in 6.732s
+Ran 7 tests in 10.859s
 
-FAILED (failures=1)
+OK
+Destroying test database for alias 'default'...
 ----
 
-((("", startref="FTisolation06")))((("", startref="isolation06")))In
-order to run just the unit tests, we can specify that we want to
+((("", startref="FTisolation06")))
+((("", startref="isolation06")))
+In order to run just the unit tests, we can specify that we want to
 only run the tests for the `lists` app:
 
 [subs="specialcharacters,macros"]
@@ -266,26 +253,30 @@ Destroying test database for alias 'default'...
     *`python manage.py test lists`*
 
 What to do if I say "run the tests", and you're not sure which ones I mean?
-Have another look at the flowchart at the end of <<chapter_philosophy_and_refactoring>>, and try to
-figure out where we are.  As a rule of thumb, we usually only run the
-functional tests once all the unit tests are passing, so if in doubt, try both!
+Have another look at the flowchart at the end of <<chapter_philosophy_and_refactoring>>,
+and try to figure out where we are.
+As a rule of thumb, we usually only run the functional tests once all the unit tests are passing,
+so if in doubt, try both!
 
 *******************************************************************************
 
 
 
-Aside: Upgrading Selenium and Geckodriver
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Aside: Upgrading Selenium and Geckodriver
 
-((("Selenium", "upgrading")))((("Geckodriver", "upgrading")))((("Firefox", "upgrading")))((("functional tests (FTs)", "troubleshooting hung tests")))((("troubleshooting", "hung functional tests")))As
-I was running through this chapter again today, I found the FTs hung when I
-tried to run them.
+((("Selenium", "upgrading")))
+((("Geckodriver", "upgrading")))
+((("Firefox", "upgrading")))
+((("functional tests (FTs)", "troubleshooting hung tests")))
+((("troubleshooting", "hung functional tests")))
+As I was running through this chapter again today,
+I found the FTs hung when I tried to run them.
 
-It turns out that Firefox had auto-updated itself overnight, and my versions
-of Selenium and Geckodriver needed upgrading too.  A quick visit to the
-https://github.com/mozilla/geckodriver/releases[geckodriver releases page]
-confirmed there was a new version out.  So a few downloads and upgrades were
-in order:
+It turns out that Firefox had auto-updated itself overnight,
+and my versions of Selenium and Geckodriver needed upgrading too.
+A quick visit to the https://github.com/mozilla/geckodriver/releases[geckodriver releases page]
+confirmed there was a new version out.
+So a few downloads and upgrades were in order:
 
 * A quick `pip install --upgrade selenium` first.
 
@@ -304,10 +295,11 @@ indeed, it's quite unlikely that it'll happen right now for you, but it may
 happen at some point, and this seemed as good a place as any to talk about
 it, since we're doing some [keep-together]#housekeeping#.
 
-It's one of the things you have to put up with when using Selenium. Although
-it is possible to pin your browser and Selenium versions (on a CI server, for
-example), browser versions don't stand still out in the real world, and you
-need to keep up with what your users have.
+It's one of the things you have to put up with when using Selenium.
+Although it is possible to pin your browser and Selenium versions
+(on a CI server, for example),
+browser versions don't stand still out in the real world,
+and you need to keep up with what your users have.
 
 NOTE: If something strange is going on with your FTs, it's always worth
     trying to upgrade Selenium.
@@ -316,11 +308,13 @@ Back to our regular programming now.
 
 
 
-On Implicit and Explicit Waits, and Voodoo time.sleeps
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== On Implicit and Explicit Waits, and Voodoo time.sleeps
 
-((("functional tests (FTs)", "implicit/explicit waits and time.sleeps", id="FTimplicit06")))((("implicit and explicit waits", id="implicit06")))((("explicit and implicit waits", id="explicit06")))((("time.sleeps", id="timesleep06")))Let's
-talk about the `time.sleep` in our FT:
+((("functional tests (FTs)", "implicit/explicit waits and time.sleeps", id="FTimplicit06")))
+((("implicit and explicit waits", id="implicit06")))
+((("explicit and implicit waits", id="explicit06")))
+((("time.sleeps", id="timesleep06")))
+Let's talk about the `time.sleep` in our FT:
 
 [role="sourcecode currentcontents"]
 .functional_tests/tests.py
@@ -337,42 +331,44 @@ talk about the `time.sleep` in our FT:
 ====
 
 
-This is what's called an "explicit wait".  That's by contrast with
-"implicit waits":  in certain cases, Selenium tries to wait "automatically" for
-you when it thinks the page is loading.  It even provides a method called
-`implicitly_wait` that lets you control how long it will wait if you ask it for
-an element that doesn't seem to be on the page yet.
+This is what's called an "explicit wait".
+That's by contrast with "implicit waits":
+in certain cases, Selenium tries to wait "automatically" for you, when it thinks the page is loading.
+It even provides a method called `implicitly_wait`
+that lets you control how long it will wait
+if you ask it for an element that doesn't seem to be on the page yet.
 
 In fact, in the first edition, I was able to rely entirely on implicit waits.
 The problem is that implicit waits are always a little flakey, and with the
-release of Selenium 3, implicit waits became even more unreliable. At the same
-time, the general opinion from the Selenium team was that implicit waits were
-just a bad idea, and to be [keep-together]#avoided#.
+release of Selenium 4, implicit waits were disabled by default.
+At the same time, the general opinion from the Selenium team was that implicit
+waits were just a bad idea,
+and https://www.selenium.dev/documentation/webdriver/waits/[to be avoided].
 
 
-So this edition has explicit waits from the very beginning. But the problem
-is that those ++time.sleep++s have their own issues.  Currently we're waiting
-for one second, but who's to say that's the right amount of time?  For most
-tests we run against our own machine, one second is way too long, and it's
-going to really slow down our FT runs. 0.1s would be fine.  But the problem is
-that if you set it that low, every so often you're going to get a spurious
-failure because, for whatever reason, the laptop was being a bit slow just
-then.  And even at 1s you can never be quite sure you're not going to get
-random failures that don't indicate a real problem, and false positives
-in tests are a real annoyance (there's lots more on this in
+So this edition has explicit waits from the very beginning.
+But the problem is that those ++time.sleep++s have their own issues.
+
+Currently we're waiting for one second, but who's to say that's the right amount of time?
+For most tests we run against our own machine, one second is way too long,
+and it's going to really slow down our FT runs. 0.1s would be fine.
+But the problem is that if you set it that low,
+every so often you're going to get a spurious failure
+because, for whatever reason, the laptop was being a bit slow just then.
+And even at 1s you can never be quite sure you're not going to get random failures that don't indicate a real problem,
+and false positives in tests are a real annoyance (there's lots more on this in
 https://martinfowler.com/articles/nonDeterminism.html[an article by Martin Fowler]).
 
 
-TIP: ((("NoSuchElementException")))((("StaleElementException")))Unexpected
-`NoSuchElementException` and `StaleElementException` errors
-    are the usual symptoms of forgetting an explicit wait.  Try removing the
-    `time.sleep` and see if you get one.
+((("NoSuchElementException")))
+((("StaleElementException")))
+TIP: Unexpected `NoSuchElementException` and `StaleElementException` errors
+    are often a sign that you need an explicit wait.
 
-So let's replace our sleeps with a tool that will wait for just as long as is
-needed, up to a nice long timeout to catch any glitches.  We'll rename
-`check_for_row_in_list_table` to `wait_for_row_in_list_table`, and add some
-polling/retry logic to it:
-
+So let's replace our sleeps with a tool that will wait for just as long as is needed,
+up to a nice long timeout to catch any glitches.
+We'll rename `check_for_row_in_list_table` to `wait_for_row_in_list_table`,
+and add some polling/retry logic to it:
 
 
 [role="sourcecode"]
@@ -407,41 +403,42 @@ MAX_WAIT = 5  # <1>
     to set the maximum amount of time we're prepared to wait.
     5 seconds should be enough to catch any glitches or random slowness.
 
-<2> Here's the loop, which will keep going forever, unless we get to
-    one of two possible exit routes.
+<2> Here's the loop, which will keep going forever,
+    unless we get to one of two possible exit routes.
 
-<3> Here are our three lines of assertions from the old version of the
-    method.
+<3> Here are our three lines of assertions from the old version of the method.
 
-<4> If we get through them and our assertion passes, we return from the
-    function and escape the loop.
+<4> If we get through them and our assertion passes,
+    we return from the function and escape the loop.
 
-<5> But if we catch an exception, we wait a short amount of time and loop
-    around to retry.  There are two types of exceptions we want to catch:
-    `WebDriverException` for when the page hasn't loaded and Selenium can't
-    find the table element on the page, and `AssertionError` for when the
-    table is there, but it's perhaps a table from before the page reloads,
+<5> But if we catch an exception, we wait a short amount of time and loop around to retry.
+    There are two types of exceptions we want to catch:
+    `WebDriverException` for when the page hasn't loaded
+    and Selenium can't find the table element on the page,
+    and `AssertionError` for when the table is there,
+    but it's perhaps a table from before the page reloads,
     so it doesn't have our row in yet.
 
-<6> Here's our second escape route. If we get to this point, that means our
-    code kept raising exceptions every time we tried it until we exceeded our
-    timeout.  So this time, we re-raise the exception and let it bubble up to
-    our test, and most likely end up in our traceback, telling us why the test
-    failed.
+<6> Here's our second escape route.
+    If we get to this point, that means our code kept raising exceptions
+    every time we tried it until we exceeded our timeout.
+    So this time, we re-raise the exception and let it bubble up to our test,
+    and most likely end up in our traceback, telling us why the test failed.
 
-Are you thinking this code is a little ugly, and makes it a bit harder to see
-exactly what we're doing?  I agree. <<self.wait-for,Later on>>, we'll refactor
-out a general `wait_for` helper, to separate the timing and re-raising logic
-from the test assertions.  But we'll wait until we need it in multiple places.
+Are you thinking this code is a little ugly,
+and makes it a bit harder to see exactly what we're doing? I agree.
+<<self.wait-for,Later on>>, we'll refactor out a general `wait_for` helper,
+to separate the timing and re-raising logic from the test assertions.
+But we'll wait until we need it in multiple places.
 
 
 NOTE: If you've used Selenium before, you may know that it has a few
-    http://www.seleniumhq.org/docs/04_webdriver_advanced.jsp[helper functions to do waits].
-    I'm not a big fan of them. Over the course of the book we'll build a couple
-    of wait helper tools which I think will make for nice, readable code, but
-    of course you should check out the homegrown Selenium waits in your own
-    time, and see what you think of them.
-
+    https://www.selenium.dev/documentation/webdriver/waits/#explicit-wait[helper functions to do waits].
+    I'm not a big fan of them.
+    Over the course of the book we'll build a couple of wait helper tools
+    which I think will make for nice, readable code,
+    but of course you should check out the homegrown Selenium waits in your own time,
+    and see if you prefer them.
 
 Now we can rename our method calls, and remove the voodoo ++time.sleep++s:
 
@@ -479,25 +476,15 @@ $ pass:quotes[*python manage.py test*]
 Creating test database for alias 'default'...
 Found 7 test(s).
 System check identified no issues (0 silenced).
-......F
-======================================================================
-FAIL: test_can_start_a_list_and_retrieve_it_later (functional_tests.tests.NewVi
-sitorTest.test_can_start_a_list_and_retrieve_it_later)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...python-tdd-book/functional_tests/tests.py", line 68, in
-test_can_start_a_list_and_retrieve_it_later
-    self.fail("Finish the test!")
-AssertionError: Finish the test!
-
+.......
  ---------------------------------------------------------------------
 Ran 7 tests in 4.552s
 
-FAILED (failures=1)
+OK
 Destroying test database for alias 'default'...
 ----
 
-We get to the same place, and notice we've shaved a couple of seconds off the
+Hooray we're back to passing, get to the same place, and notice we've shaved a couple of seconds off the
 execution time too.  That might not seem like a lot right now, but it all adds
 up.
 
@@ -561,12 +548,17 @@ and do one final test run:
 ----
 $ pass:quotes[*python manage.py test*]
 [...]
-AssertionError: Finish the test!
+OK
 ----
 
 
 Great. With that little interlude over, let's crack on with getting our
-application actually working for multiple lists.((("", startref="FTimplicit06")))((("", startref="implicit06")))((("", startref="explicit06")))((("", startref="timesleep06")))
+application actually working for multiple lists.
+((("", startref="FTimplicit06")))
+((("", startref="implicit06")))
+((("", startref="explicit06")))
+((("", startref="timesleep06")))
+
 
 
 .Testing "Best Practices" Applied in this Chapter
@@ -596,4 +588,3 @@ Don't rely on Selenium's implicit waits::
     than implict", as the Zen of Python says, so prefer explicit waits.
 
 *******************************************************************************
-

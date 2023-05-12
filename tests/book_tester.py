@@ -137,6 +137,12 @@ def standardise_library_paths(output):
     )
 
 
+def standardise_geckodriver_tracebacks(output):
+    return re.sub(
+        r'@chrome://remote/(.+):(\d+:\d+)$', r'@chrome://\1:XXX:XXX', output, flags=re.MULTILINE,
+    )
+
+
 def strip_test_speed(output):
     return re.sub(
         r"Ran (\d+) tests? in \d+\.\d\d\ds",
@@ -284,7 +290,7 @@ class ChapterTest(unittest.TestCase):
         update_sources_for_chapter(self.chapter_name, self.previous_chapter)
         self.sourcetree.start_with_checkout(self.chapter_name, self.previous_chapter)
         # simulate virtualenv folder
-        self.sourcetree.run_command('mkdir -p virtualenv/bin virtualenv/lib')
+        self.sourcetree.run_command('mkdir -p .venv/bin .venv/lib')
 
 
     def write_to_file(self, codelisting):
@@ -385,10 +391,10 @@ class ChapterTest(unittest.TestCase):
             command = f'export {exports}; {command}'
 
         if 'manage.py runserver' in command:
-            if './virtualenv/bin/python manage.py' in command:
+            if './.venv/bin/python manage.py' in command:
                 command = command.replace(
-                    './virtualenv/bin/python manage.py runserver',
-                    'dtach -n /tmp/dtach.sock ./virtualenv/bin/python manage.py runserver',
+                    './.venv/bin/python manage.py runserver',
+                    'dtach -n /tmp/dtach.sock ./.venv/bin/python manage.py runserver',
                 )
                 sleep = 1
                 kill_old_runserver = True
@@ -401,8 +407,8 @@ class ChapterTest(unittest.TestCase):
             kill_old_runserver = True
             kill_old_gunicorn = True
             command = command.replace(
-                './virtualenv/bin/gunicorn',
-                'dtach -n /tmp/dtach.sock ./virtualenv/bin/gunicorn',
+                './.venv/bin/gunicorn',
+                'dtach -n /tmp/dtach.sock ./.venv/bin/gunicorn',
             )
 
         if kill_old_runserver:
@@ -423,14 +429,14 @@ class ChapterTest(unittest.TestCase):
 
 
     def prep_virtualenv(self):
-        virtualenv_path = os.path.join(self.tempdir, 'virtualenv')
+        virtualenv_path = os.path.join(self.tempdir, '.venv')
         if not os.path.exists(virtualenv_path):
             print('preparing virtualenv')
             self.sourcetree.run_command(
-                'python3.7 -m venv virtualenv'
+                'python -m venv .venv'
             )
             self.sourcetree.run_command(
-                './virtualenv/bin/python -m pip install -r requirements.txt'
+                './.venv/bin/python -m pip install -r requirements.txt'
             )
 
 
@@ -465,7 +471,7 @@ class ChapterTest(unittest.TestCase):
         )
 
         if self.tempdir in actual:
-            actual = actual.replace(self.tempdir, '...python-tdd-book')
+            actual = actual.replace(self.tempdir, '...goat-book')
             actual = actual.replace('/private', '')  # macos thing
 
         if ls:
@@ -475,6 +481,7 @@ class ChapterTest(unittest.TestCase):
             return
 
         actual_fixed = standardise_library_paths(actual)
+        actual_fixed = standardise_geckodriver_tracebacks(actual_fixed)
         actual_fixed = wrap_long_lines(actual_fixed)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_js_test_speed(actual_fixed)
@@ -493,6 +500,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = standardise_assertionerror_none(actual_fixed)
 
         expected_fixed = standardise_library_paths(expected)
+        expected_fixed = standardise_geckodriver_tracebacks(expected_fixed)
         expected_fixed = fix_test_dashes(expected_fixed)
         expected_fixed = strip_test_speed(expected_fixed)
         expected_fixed = strip_js_test_speed(expected_fixed)
@@ -561,9 +569,8 @@ class ChapterTest(unittest.TestCase):
         self.listings[pos] = new_listing
 
 
-
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
-        actual_tree = self.sourcetree.run_command('tree -I *.pyc --noreport', cwd)
+        actual_tree = self.sourcetree.run_command('tree -v -I *.pyc --noreport', cwd)
         self.assert_console_output_correct(actual_tree, expected_tree)
 
 
