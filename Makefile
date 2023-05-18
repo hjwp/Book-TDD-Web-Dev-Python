@@ -8,41 +8,62 @@ RUN_OREILLY_FLAVOURED_ASCIIDOCTOR = ./asciidoc/asciidoctor/bin/asciidoctor -v --
 export PYTHONHASHSEED = 0
 export PYTHONDONTWRITEBYTECODE = 1
 export MOZ_HEADLESS = 1
+
+# required for firefox snap to work via geckodriver.
 export TMPDIR := $(HOME)/snap/firefox/common/tmp
-
 $(TMPDIR):
-	make -p $(TMPDIR)
+	mkdir -p $(TMPDIR)
 
+part%.forbook.asciidoc: part%.asciidoc
+	cat $(subst .forbook.,.,$@)  \
+		| sed 's/^== /= /' \
+		| sed '/partintro/d' \
+		| sed '/^--$$/d' \
+		> $@
+
+
+book.html: part1.forbook.asciidoc
+book.html: part2.forbook.asciidoc
+book.html: part3.forbook.asciidoc
 book.html: $(SOURCES)
 
+.PHONY: build
 build: $(HTML_PAGES) $(TMPDIR)
 
+.PHONY: test
 test: build
 	git submodule init
 	python tests/update_source_repo.py
 	./run_all_tests.sh
 
+.PHONY: testall
 testall: build
 	pytest --tb=short --color=yes --numprocesses=auto tests/test_chapter_*
 
+.PHONY: testall4
 testall4: build
 	pytest --tb=short --color=yes --numprocesses=4 tests/test_chapter_*
 
 %.html: %.asciidoc
 	$(RUN_ASCIIDOCTOR) $<
 
+.PHONY: oreilly.%.asciidoc
 oreilly.%.asciidoc: %.asciidoc
 	$(RUN_OREILLY_FLAVOURED_ASCIIDOCTOR) $(subst oreilly.,,$@)
 
 
-test_%: %.html
+.PHONY: test_%
+test_%: %.html $(TMPDIR)
 	pytest -s --tb=short ./tests/$@.py
 
-silent_test_%: %.html
+.PHONY: silent_test_%
+silent_test_%: %.html $(TMPDIR)
 	python tests/update_source_repo.py $(subst silent_test_chapter_,,$@)
-	py.test --tb=short ./tests/$(subst silent_,,$@).py
+	pytest --tb=short ./tests/$(subst silent_,,$@).py
 
+.PHONY: clean
 clean:
+	rm -rf $(TMPDIR)
 	rm -v $(HTML_PAGES)
 
 .PHONY = test clean test_chapter_%
