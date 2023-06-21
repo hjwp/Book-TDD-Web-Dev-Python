@@ -235,6 +235,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def tearDown(self):
+        print(f"finished running test in {self.sourcetree.tempdir}")
         self.sourcetree.cleanup()
 
 
