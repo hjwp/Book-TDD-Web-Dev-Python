@@ -20,12 +20,12 @@ class Chapter7Test(ChapterTest):
         self.assertEqual(self.listings[1].type, "output")
 
         # skips
-        self.skip_with_check(40, "should show 4 changed files")  # git
-        self.skip_with_check(45, "add a message summarising")  # git
-        self.skip_with_check(62, "5 changed files")  # git
-        self.skip_with_check(64, "forms x2")  # git
-        self.skip_with_check(91, "3 changed files")  # git
-        touch_pos = 33
+        self.skip_with_check(51, "should show 4 changed files")  # git
+        self.skip_with_check(56, "add a message summarising")  # git
+        self.skip_with_check(73, "5 changed files")  # git
+        self.skip_with_check(75, "forms x2")  # git
+        self.skip_with_check(102, "3 changed files")  # git
+        touch_pos = 41
         touch = self.listings[touch_pos]
         assert "touch" in touch
 
