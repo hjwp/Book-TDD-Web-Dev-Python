@@ -20,12 +20,12 @@ class Chapter7Test(ChapterTest):
         self.assertEqual(self.listings[1].type, "output")
 
         # skips
-        self.skip_with_check(51, "should show 4 changed files")  # git
-        self.skip_with_check(56, "add a message summarising")  # git
-        self.skip_with_check(73, "5 changed files")  # git
-        self.skip_with_check(75, "forms x2")  # git
-        self.skip_with_check(102, "3 changed files")  # git
-        touch_pos = 41
+        self.skip_with_check(53, "should show 4 changed files")  # git
+        self.skip_with_check(58, "add a message summarising")  # git
+        self.skip_with_check(75, "5 changed files")  # git
+        self.skip_with_check(77, "forms x2")  # git
+        self.skip_with_check(104, "3 changed files")  # git
+        touch_pos = 42
         touch = self.listings[touch_pos]
         assert "touch" in touch
 
@@ -34,11 +34,11 @@ class Chapter7Test(ChapterTest):
         self.run_command(Command("python3 manage.py migrate --noinput"))
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
-            self.pos = 19
+            self.pos = 93
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l009"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l035"))
             )
 
         while self.pos < touch_pos:
