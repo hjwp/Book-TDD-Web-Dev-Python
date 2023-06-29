@@ -1200,7 +1200,8 @@ def test_can_save_a_POST_request(self):
 
 <3> We check that the item's text is correct.
 
-// DAVID: Actually it isn't - it returns None if there are no objects.
+
+// DAVID: re <2>, Actually it isn't - it returns None if there are no objects.
 // objects.get() is closer as it raises an exception (albeit a different one).
 // I would generally use `get()` over `first()` if I only expect there to be
 // one as I get an earlier failure and it also catches if there are two instead
@@ -1209,6 +1210,27 @@ def test_can_save_a_POST_request(self):
 // specifying it using `order_by` somehow. This is a cause of flakey tests.
 //
 // One more thing: we could do `Item.objects.get(text="A new list item")` instead.
+
+
+
+// JAN: I see what you want to show here. Yet, I have one problem with this test. It's using two different levels of abstraction - HTTP client and DB model. In other words, you're testing iplementation details (I'm posting to server and it needs to store this to database). I know it's Django so it's hard to not test implementation details. Nevertheless, I think it's worth to think about it. That's because this is one of the most common pitfalls that I see in tests. Such tests lock you down to specific implemetation. Consequently, you need to change them whenever you change the implementation. For example, let's say that we want TODO list to be temporary thing - it's stored only for 7 days. And we want to use Redis for it due to TTL. We'll need to rewrite such test. That means that this test is not resistant to refactoring (e.g., we'll refactor first and use TTL=100 years). I'd maybe try to follow similar principle as you did in FT. Let's write a test that can't pass just by returning sent data. You used two requests and 2 assertions. I think such test will be much more valuable than mixture of client and DB model. It could look like this:
+////
+====
+[source,python]
+----
+def test_can_save_a_POST_request(self):
+    response = self.client.post("/", data={"item_text": "A new list item"})
+    self.assertContains(response, "A new list item")
+    
+    response = self.client.post("/", data={"item_text": "Kiss your wife"})
+    self.assertContains(response, "A new list item")
+    self.assertContains(response, "Kiss your wife")
+    
+    self.assertTemplateUsed(response, "home.html")
+----
+====
+////
+// JAN: Such test will pass as long as you use something to persist TODO items across requests. To make it pass at this point, you'll need to either spent a lot of code to trick it or use models which is simpler.
 
 
 ((("unit tests", "length of")))This
@@ -1593,6 +1615,7 @@ class HomePageTest(TestCase):
         [...]
 ----
 ====
+// JAN: I think it would be better to use actuall TODO examples instead of itemey 1 and itemey 2
 
 
 ////
