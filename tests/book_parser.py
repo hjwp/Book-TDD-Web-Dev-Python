@@ -28,7 +28,12 @@ class CodeListing(object):
 
 
     def is_diff(self):
-        return any(l.count('@@') > 1 for l in self.contents.split('\n'))
+        lines = self.contents.split('\n')
+        if any(l.count('@@') > 1 for l in lines):
+            return True
+        if len([l for l in lines if l.startswith("+") or l.startswith("-")]) > 2:
+            return True
+
 
 
     @property
