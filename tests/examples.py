@@ -221,3 +221,28 @@ Ran 1 test in 10.575s
 FAILED (errors=1)</pre>
 </div>
 </div>'''
+
+EXAMPLE_DIFF_LISTING = """
+<div class="exampleblock sourcecode small-code">
+<div class="title">lists/templates/home.html (ch07l018)</div>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="diff">   &lt;body&gt;
+<span class="line delete"><span class="delete">-</span>    &lt;h1&gt;<span class="eyecatcher">Your</span> To-Do list&lt;/h1&gt;</span>
+<span class="line insert"><span class="insert">+</span>    &lt;h1&gt;<span class="eyecatcher">Start a new</span> To-Do list&lt;/h1&gt;</span>
+     &lt;form method=&quot;POST&quot; action=&quot;/&quot;&gt;
+       &lt;input name=&quot;item_text&quot; id=&quot;id_new_item&quot; placeholder=&quot;Enter a to-do item&quot; /&gt;
+       {% csrf_token %}
+     &lt;/form&gt;
+<span class="line delete"><span class="delete">-</span>    &lt;table id=&quot;id_list_table&quot;&gt;</span>
+<span class="line delete"><span class="delete">-</span>      {% for item in items %}</span>
+<span class="line delete"><span class="delete">-</span>        &lt;tr&gt;&lt;td&gt;{{ forloop.counter }}: {{ item.text }}&lt;/td&gt;&lt;/tr&gt;</span>
+<span class="line delete"><span class="delete">-</span>      {% endfor %}</span>
+<span class="line delete"><span class="delete">-</span>    &lt;/table&gt;</span>
+   &lt;/body&gt;</code></pre>
+</div>
+</div>
+</div>
+</div>
+"""
