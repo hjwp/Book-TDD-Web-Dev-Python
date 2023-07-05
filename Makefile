@@ -58,7 +58,6 @@ test_%: %.html $(TMPDIR)
 
 .PHONY: silent_test_%
 silent_test_%: %.html $(TMPDIR)
-	python tests/update_source_repo.py $(subst silent_test_chapter_,,$@)
 	pytest --tb=short ./tests/$(subst silent_,,$@).py
 
 .PHONY: clean
