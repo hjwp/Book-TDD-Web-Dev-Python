@@ -644,7 +644,8 @@ class ChapterTest(unittest.TestCase):
 
     def run_js_tests(self, tests_path):
         output = subprocess.check_output(
-            ['phantomjs', PHANTOMJS_RUNNER, tests_path]
+            ['phantomjs', PHANTOMJS_RUNNER, tests_path],
+            env={**os.environ, "OPENSSL_CONF": "/dev/null"},
         ).decode()
         # some fixes to make phantom more like firefox
         output = output.replace('at file', '@file')
