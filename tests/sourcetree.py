@@ -136,7 +136,12 @@ class SourceTree(object):
             print("sending user input: {}".format(user_input))
         output, _ = process.communicate(user_input)
         if process.returncode and not ignore_errors:
-            if " test" in command or "functional_tests" in command or "diff" in command or "migrate" in command:
+            if (
+                " test" in command
+                or "functional_tests" in command
+                or "diff" in command
+                or "migrate" in command
+            ):
                 return output
             print(
                 "process %s return a non-zero code (%s)" % (command, process.returncode)
@@ -164,24 +169,19 @@ class SourceTree(object):
     def start_with_checkout(self, chapter, previous_chapter):
         print("starting with checkout")
         self.run_command("git init .")
-        self.run_command(
-            'git remote add repo "{}"'.format(self.get_local_repo_path(chapter))
-        )
+        self.run_command(f'git remote add repo "{self.get_local_repo_path(chapter)}"')
         self.run_command("git fetch repo")
+        # NB - relies on previous_chapter existing as a branch in the chapter local_repo_path
         self.run_command("git reset --hard repo/{}".format(previous_chapter))
         print(self.run_command("git status"))
         self.chapter = chapter
 
     def get_commit_spec(self, commit_ref):
-        return "repo/{chapter}^{{/--{commit_ref}--}}".format(
-            chapter=self.chapter, commit_ref=commit_ref
-        )
+        return f"repo/{self.chapter}^{{/--{commit_ref}--}}"
 
     def get_files_from_commit_spec(self, commit_spec):
         return self.run_command(
-            "git diff-tree --no-commit-id --name-only --find-renames -r {}".format(
-                commit_spec
-            )
+            f"git diff-tree --no-commit-id --name-only --find-renames -r {commit_spec}"
         ).split()
 
     def show_future_version(self, commit_spec, path):
@@ -243,7 +243,7 @@ def check_listing_matches_commit(listing, commit, future_contents):
                 f"could not find commit new line {new_line!r} in listing {listing.commit_ref}:\n{listing.contents}"
             )
 
-    check_chunks_against_future_contents(listing.contents, future_contents)
+    check_chunks_against_future_contents("\n".join(listing_lines), future_contents)
 
 
 def check_chunks_against_future_contents(listing_contents, future_contents):
@@ -261,12 +261,13 @@ def check_chunks_against_future_contents(listing_contents, future_contents):
                     f"{len(missing_lines)} lines did not match future contents"
                 )
             else:
-                print('reindented listing')
+                print("reindented listing")
                 print(repr(reindented_chunk))
-                print('future contents')
+                print("future contents")
                 print(repr(future_contents))
-                raise ApplyCommitException(f"Commit lines in wrong order, or listing is missing a [...] (?)")
-
+                raise ApplyCommitException(
+                    f"Commit lines in wrong order, or listing is missing a [...] (?)"
+                )
 
 
 def get_offset(lines, future_lines):
