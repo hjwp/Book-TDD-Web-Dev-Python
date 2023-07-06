@@ -1,9 +1,10 @@
-#!/usr/bin/env python3.7
 import os
-import unittest
-from unittest.mock import Mock, patch, call
+import pytest
+import shutil
 import subprocess
+import unittest
 from textwrap import dedent
+from unittest.mock import Mock, patch, call
 
 from book_tester import (
     ChapterTest,
@@ -1114,6 +1115,7 @@ class TestContains(unittest.TestCase):
         assert contains([1, 2, 3], [1, 2, 3])
 
 
+@pytest.mark.skipif(not shutil.which("phantomjs"), reason="PhantomJS not available")
 class CheckQunitOuptutTest(ChapterTest):
     def test_partial_listing_passes(self):
         self.chapter_name = "chapter_javascript"
