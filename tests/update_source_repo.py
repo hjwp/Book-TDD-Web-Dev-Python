@@ -65,13 +65,20 @@ def update_sources_for_chapter(chapter, previous_chapter=None):
         print("skipping {} reset on dev machine".format(chapter))
 
 
+def checkout_testrepo_branches():
+    testrepo_dir = os.path.join(BASE_FOLDER, "tests/testrepo")
+    for branchname in ["chapter_16", "master", "chapter_20", "chapter_17"]:
+        subprocess.check_output(["git", "checkout", branchname], cwd=testrepo_dir)
+
 def main():
     """
-    update sources for all chapters
+    update submodule folders for all chapters,
+    making sure previous and current branches are locally checked out
     """
     for chapter, previous_chapter in zip(CHAPTERS, [None, *CHAPTERS]):
         update_sources_for_chapter(chapter, previous_chapter=previous_chapter)
 
+    checkout_testrepo_branches()
 
 if __name__ == "__main__":
     main()
