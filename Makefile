@@ -14,7 +14,7 @@ export TMPDIR := $(HOME)/snap/firefox/common/tmp
 $(TMPDIR):
 	mkdir -p $(TMPDIR)
 
-part%.forbook.asciidoc: part%.asciidoc
+%.forbook.asciidoc: %.asciidoc
 	cat $(subst .forbook.,.,$@)  \
 		| sed 's/^== /= /' \
 		| sed '/partintro/d' \
@@ -22,6 +22,7 @@ part%.forbook.asciidoc: part%.asciidoc
 		> $@
 
 
+book.html: praise.forbook.asciidoc
 book.html: part1.forbook.asciidoc
 book.html: part2.forbook.asciidoc
 book.html: part3.forbook.asciidoc
