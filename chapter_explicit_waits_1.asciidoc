@@ -1,9 +1,7 @@
 [[chapter_explicit_waits_1]]
 == Improving Functional Tests: Ensuring Isolation and Removing Voodoo Sleeps
 
-Before we dive in and fix our real problem,
-// DAVID: This wrongfooted me. What real problem? Even reading back
-// over the end of the previous chapter, I'm not sure what is meant here.
+Before we dive in and fix our single-global-list problem,
 let's take care of a couple of housekeeping items.
 At the end of the last chapter, we made a note
 that different test runs were interfering with each other, so we'll fix that.
@@ -80,11 +78,6 @@ $ <strong>git status</strong> # shows the rename to functional_tests/tests.py an
 
 At this point your directory tree should look like this:
 
-// DAVID: worth providing the command to run to show this?
-// Also slight difference in terms of which __pycache__ directories
-// are there. Maybe nicer to include a command that excludes those
-// directories, it's just clutter.
-
 ----
 .
 ├── db.sqlite3
@@ -93,14 +86,12 @@ At this point your directory tree should look like this:
 │   └── tests.py
 ├── lists
 │   ├── __init__.py
-│   ├── __pycache__
 │   ├── admin.py
 │   ├── apps.py
 │   ├── migrations
 │   │   ├── 0001_initial.py
 │   │   ├── 0002_item_text.py
-│   │   ├── __init__.py
-│   │   └── __pycache__
+│   │   └── __init__.py
 │   ├── models.py
 │   ├── templates
 │   │   └── home.html
@@ -109,7 +100,6 @@ At this point your directory tree should look like this:
 ├── manage.py
 └── superlists
     ├── __init__.py
-    ├── __pycache__
     ├── asgi.py
     ├── settings.py
     ├── urls.py
@@ -187,8 +177,7 @@ Destroying test database for alias 'default'...
 ----
 
 [role="pagebreak-before"]
-// DAVID: There is no self.fail now?
-The FT gets through to the `self.fail`, just like it did before the refactor.
+The FT still passes, reassuring us that our refactor didn't break anything.
 You'll also notice that if you run the tests a second time,
 there aren't any old list items lying around from the previous test--it
 has cleaned up after itself.
@@ -198,18 +187,9 @@ Success! We should commit it as an atomic change:
 ----
 $ <strong>git status</strong> # functional_tests.py renamed + modified, new __init__.py
 $ <strong>git add functional_tests</strong>
-$ <strong>git diff --staged -M</strong>
+$ <strong>git diff --staged</strong>
 $ <strong>git commit</strong>  # msg eg "make functional_tests an app, use LiveServerTestCase"
 ----
-
-((("Git", "detecting moved files")))
-The `-M` flag on the `git diff` is a useful one. It means "detect moves", so it
-will notice that 'functional_tests.py' and 'functional_tests/tests.py' are the
-same file, and show you a more sensible diff (try it without the flag!).
-
-// SEBASTIAN: Since git 2.9.0 -M is enabled by default :)
-//      https://github.com/git/git/blob/master/Documentation/RelNotes/2.9.0.txt#L7
-// CSANAD:  This might be outdated. I get the same output for both with and without the `-M`
 
 
 ==== Running Just the Unit Tests
@@ -312,8 +292,8 @@ Although it is possible to pin your browser and Selenium versions
 browser versions don't stand still out in the real world,
 and you need to keep up with what your users have.
 
-NOTE: If something strange is going on with your FTs, it's always worth
-    trying to upgrade Selenium.
+NOTE: If something strange is going on with your FTs,
+    it's always worth trying to upgrade Selenium.
 
 Back to our regular programming now.
 
@@ -395,7 +375,13 @@ from selenium.common.exceptions import WebDriverException
 import time
 
 MAX_WAIT = 5  # <1>
-[...]
+
+
+class NewVisitorTest(LiveServerTestCase):
+    def setUp(self):
+        [...]
+    def tearDown(self):
+        [...]
 
     def wait_for_row_in_list_table(self, row_text):
         start_time = time.time()
@@ -405,19 +391,12 @@ MAX_WAIT = 5  # <1>
                 rows = table.find_elements(By.TAG_NAME, "tr")
                 self.assertIn(row_text, [row.text for row in rows])
                 return  # <4>
-            except (AssertionError, WebDriverException) as e:  # <5>
+            except (AssertionError, WebDriverException):  # <5>
                 if time.time() - start_time > MAX_WAIT:  # <6>
-                    raise e  # <6>
+                    raise  # <6>
                 time.sleep(0.5)  # <5>
 ----
 ====
-
-// DAVID: suggest adding the class name in here too as it looks strange having
-// the method just floating there.
-
-// DAVID: might want to consider removing the `as e` and change `raise e` to just `raise`,
-// just for a bit less code.
-
 
 <1> We'll use a constant called `MAX_WAIT`
     to set the maximum amount of time we're prepared to wait.
@@ -426,38 +405,39 @@ MAX_WAIT = 5  # <1>
 <2> Here's the loop, which will keep going forever,
     unless we get to one of two possible exit routes.
 
-<3> Here are our three lines of assertions from the old version of the method.
+<3> Here are our three lines of assertions
+    from the old version of the method.
 
 <4> If we get through them and our assertion passes,
     we return from the function and escape the loop.
 
-<5> But if we catch an exception, we wait a short amount of time and loop around to retry.
+<5> But if we catch an exception,
+    we wait a short amount of time and loop around to retry.
     There are two types of exceptions we want to catch:
     `WebDriverException` for when the page hasn't loaded
     and Selenium can't find the table element on the page,
     and `AssertionError` for when the table is there,
     but it's perhaps a table from before the page reloads,
     so it doesn't have our row in yet.
-// SEBASTIAN: I'd made a comment (maybe below because point 5 is quite long) that
-//      by lowering the time we sleep @ # (5) we can potentially save some time
-//      As a trade-off, we'll be checking more often and this will hammer the CPU.
 
 <6> Here's our second escape route.
     If we get to this point, that means our code kept raising exceptions
     every time we tried it until we exceeded our timeout.
-    So this time, we re-raise the exception and let it bubble up to our test,
-    and most likely end up in our traceback, telling us why the test failed.
+    So this time, we re-raise the exception
+    and let it bubble up to our test,
+    and most likely end up in our traceback,
+    telling us why the test failed.
 
 Are you thinking this code is a little ugly,
-and makes it a bit harder to see exactly what we're doing? I agree.
-<<self.wait-for,Later on>>, we'll refactor out a general `wait_for` helper,
+and makes it a bit harder to see exactly what we're doing?
+I agree. <<self.wait-for,Later on>>,
+we'll refactor out a general `wait_for` helper,
 to separate the timing and re-raising logic from the test assertions.
 But we'll wait until we need it in multiple places.
 
-
 NOTE: If you've used Selenium before, you may know that it has a few
     https://www.selenium.dev/documentation/webdriver/waits/#explicit-wait[helper functions to do waits].
-    I'm not a big fan of them.
+    I'm not a big fan of them, though not for any objective reason really.
     Over the course of the book we'll build a couple of wait helper tools
     which I think will make for nice, readable code,
     but of course you should check out the homegrown Selenium waits in your own time,
@@ -507,13 +487,15 @@ OK
 Destroying test database for alias 'default'...
 ----
 
-Hooray we're back to passing, get to the same place, and notice we've shaved a couple of seconds off the
-execution time too.  That might not seem like a lot right now, but it all adds
-up.
+Hooray we're back to passing,
+and notice we've shaved a couple of seconds off the execution time too.
+That might not seem like a lot right now, but it all adds up.
 
-Just to check we've done the right thing, let's deliberately break the test
-in a couple of ways and see some errors.  First let's check that if we
-look for some row text that will never appear, we get the right error:
+Just to check we've done the right thing,
+let's deliberately break the test
+in a couple of ways and see some errors.
+First let's check that if we look for some row text that will never appear,
+we get the right error:
 
 
 [role="sourcecode"]
@@ -521,12 +503,13 @@ look for some row text that will never appear, we get the right error:
 ====
 [source,python]
 ----
-    rows = table.find_elements(By.TAG_NAME, "tr")
-    self.assertIn("foo", [row.text for row in rows])
-    return
+def wait_for_row_in_list_table(self, row_text):
+    [...]
+        rows = table.find_elements(By.TAG_NAME, "tr")
+        self.assertIn("foo", [row.text for row in rows])
+        return
 ----
 ====
-// DAVID: worth including the method name here, so it's easier to find where we are?
 
 We see we still get a nice self-explanatory test failure message:
 
@@ -536,9 +519,15 @@ We see we still get a nice self-explanatory test failure message:
 AssertionError: 'foo' not found in ['1: Buy peacock feathers']
 ----
 
-// DAVID: this change does come with the down side that
-// the test takes a lot longer to fail. Might be worth
-// calling this out at this point.
+NOTE: Did you get a bit bored waiting 5 seconds for the test to fail?
+    That's one of the downsides of explicit waits.
+    There's a tricky tradeoff between waiting long enough
+    that little glitches don't throw you,
+    versus waiting so long that expected failures are painfully slow to watch.
+    Making MAX_WAIT configurable so that it's fast in local dev,
+    but more conservative on Continuous Integration (CI) servers
+    can be a good idea.
+    See <<chapter_CI>> for an introduction to CI.
 
 Let's put that back the way it was and break something else:
 
@@ -579,14 +568,14 @@ OK
 ----
 
 
-Great. With that little interlude over, let's crack on with getting our
-application actually working for multiple lists.
+Great. With that little interlude over,
+let's crack on with getting our application actually working
+for multiple lists.  Don't forget to commit first!
 ((("", startref="FTimplicit06")))
 ((("", startref="implicit06")))
 ((("", startref="explicit06")))
 ((("", startref="timesleep06")))
 
-// DAVID: worth getting us to commit this change?
 
 .Testing "Best Practices" Applied in this Chapter
 *******************************************************************************
@@ -601,20 +590,20 @@ Ensuring test isolation and managing global state::
 
 
 Avoid "voodoo" sleeps::
-    Whenever we need to wait for something to load, it's always tempting to
-    throw in a quick-and-dirty `time.sleep`.  But the problem is that the
-    length of time we wait is always a bit of a shot in the dark, either too
-    short and vulnerable to spurious failures, or too long and it'll slow down
-    our test runs.  Prefer a retry loop that polls our app and moves on as soon
-    as possible.
-
-// SEBASTIAN: I'd also mention that what is sufficient on local computer, may not
-//     be enough on another person's computer, especially in test runners in CI.
+    Whenever we need to wait for something to load,
+    it's always tempting to throw in a quick-and-dirty `time.sleep`.
+    But the problem is that the length of time we wait
+    is always a bit of a shot in the dark,
+    either too short and vulnerable to spurious failures,
+    or too long and it'll slow down our test runs.
+    Prefer a retry loop that polls our app
+    and moves on as soon as possible.
 
 Don't rely on Selenium's implicit waits::
-    Selenium does theoretically do some "implicit" waits, but the
-    implementation varies between browsers, and at the time of writing was
-    highly unreliable in the Selenium 3 Firefox driver.  "Explicit is better
-    than implicit", as the Zen of Python says, so prefer explicit waits.
+    Selenium does theoretically do some "implicit" waits,
+    but the implementation varies between browsers,
+    and is not always reliable.
+    "Explicit is better than implicit", as the Zen of Python says,
+    so prefer explicit waits.
 
 *******************************************************************************

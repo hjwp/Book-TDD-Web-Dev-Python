@@ -571,7 +571,7 @@ class ChapterTest(unittest.TestCase):
 
 
     def assert_directory_tree_correct(self, expected_tree, cwd=None):
-        actual_tree = self.sourcetree.run_command('tree -v -I *.pyc --noreport', cwd)
+        actual_tree = self.sourcetree.run_command('tree -v -I __pycache__ --noreport', cwd)
         self.assert_console_output_correct(actual_tree, expected_tree)
 
 
