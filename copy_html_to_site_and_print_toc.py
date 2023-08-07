@@ -13,7 +13,7 @@ CHAPTERS = [
     for c in json.loads(open('atlas.json').read())['files']
 ]
 for tweak_chap in ['praise.html', 'part1.html', 'part2.html', 'part3.html']:
-    CHAPTERS[CHAPTERS.index(tweak_chap)] = tweak_chap.replace('.', '.harry.')
+    CHAPTERS[CHAPTERS.index(tweak_chap)] = tweak_chap.replace('.', '.forbook.')
 CHAPTERS.remove('cover.html')
 CHAPTERS.remove('titlepage.html')
 CHAPTERS.remove('copyright.html')
