@@ -23,9 +23,9 @@ class Chapter8Test(ChapterTest):
         self.unset_PYTHONDONTWRITEBYTECODE()
 
         # skips
-        self.skip_with_check(25, 'the -b means ignore whitespace')
+        self.skip_with_check(25, 'the -w means ignore whitespace')
         self.skip_with_check(28, 'leave static, for now')
-        self.skip_with_check(51, 'will now show all the bootstrap')
+        self.skip_with_check(50, 'will now show all the bootstrap')
 
         # hack fast-forward
         skip = False

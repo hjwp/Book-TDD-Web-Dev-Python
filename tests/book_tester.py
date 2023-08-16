@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 from lxml import html
 from getpass import getuser
 import io
@@ -196,9 +194,12 @@ def fix_sqlite_messages(actual_text):
     return fixed_text
 
 
-def fix_jenkins_pixelsize(actual_text):
-    # TODO: remove me when upgrading bootstrap
-    return actual_text.replace('107.0 != 512', '106.5 != 512')
+def standardize_layout_test_pixelsize(actual_text):
+    return re.sub(
+        r'103.333\d+ != 512 within 10 delta \(408.666\d+',
+        r'103.333... != 512 within 10 delta (408.666...',
+        actual_text
+    )
 
 
 def fix_creating_database_line(actual_text):
@@ -495,7 +496,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
-        # actual_fixed = fix_jenkins_pixelsize(actual_fixed)
+        actual_fixed = standardize_layout_test_pixelsize(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
         actual_fixed = standardise_assertionerror_none(actual_fixed)

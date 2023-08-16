@@ -97,12 +97,6 @@ class SourceTree(object):
         if cwd is None:
             cwd = self.tempdir
 
-        if command == BOOTSTRAP_WGET:
-            shutil.copy(
-                os.path.join(os.path.dirname(__file__), "../downloads/bootstrap.zip"),
-                os.path.join(cwd, "bootstrap.zip"),
-            )
-            return
         actual_command = command
         if command.startswith("fab deploy"):
             actual_command = f"cd deploy_tools && {command}"
