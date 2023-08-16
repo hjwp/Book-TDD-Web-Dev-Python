@@ -8,7 +8,7 @@ from book_tester import (
 )
 
 class Chapter6Test(ChapterTest):
-    chapter_name = 'chapter_explicit_waits_1'
+    chapter_name = 'chapter_06_explicit_waits_1'
     previous_chapter = 'chapter_05_post_and_database'
 
     def test_listings_and_commands_and_output(self):

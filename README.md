@@ -38,7 +38,7 @@ $ make test
 
 * To test an individual chapter, eg:
 ```console
-$ make test_chapter_explicit_waits_1
+$ make test_chapter_06_explicit_waits_1
 ```
 
 * Unit tests (tests for the tests for the tests in the testing book)

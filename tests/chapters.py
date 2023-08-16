@@ -5,7 +5,7 @@ CHAPTERS = [
     "chapter_03_unit_test_first_view",
     "chapter_04_philosophy_and_refactoring",
     "chapter_05_post_and_database",
-    "chapter_explicit_waits_1",
+    "chapter_06_explicit_waits_1",
     "chapter_working_incrementally",
     # part 2
     "chapter_prettification",
