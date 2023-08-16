@@ -8,7 +8,7 @@ CHAPTERS = [
     "chapter_06_explicit_waits_1",
     "chapter_07_working_incrementally",
     # part 2
-    "chapter_prettification",
+    "chapter_08_prettification",
     "chapter_manual_deployment",
     "chapter_making_deployment_production_ready",
     "chapter_automate_deployment_with_fabric",
