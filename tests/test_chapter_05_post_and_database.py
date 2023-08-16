@@ -11,7 +11,7 @@ from book_tester import (
 
 
 class Chapter5Test(ChapterTest):
-    chapter_name = "chapter_post_and_database"
+    chapter_name = "chapter_05_post_and_database"
     previous_chapter = "chapter_04_philosophy_and_refactoring"
 
     def test_listings_and_commands_and_output(self):
