@@ -9,7 +9,7 @@ from book_tester import (
 
 
 class Chapter7Test(ChapterTest):
-    chapter_name = "chapter_working_incrementally"
+    chapter_name = "chapter_07_working_incrementally"
     previous_chapter = "chapter_06_explicit_waits_1"
 
     def test_listings_and_commands_and_output(self):
