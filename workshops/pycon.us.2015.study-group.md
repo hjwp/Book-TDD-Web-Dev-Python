@@ -86,7 +86,7 @@ All the source code for the book can be found at
 
     https://github.com/hjwp/book-example/
 
-And each chapter has its own branch, eg `chapter_philosophy_and_refactoring`, `chapter_15`, `appendix_III` etc
+And each chapter has its own branch, eg `chapter_04_philosophy_and_refactoring`, `chapter_15`, `appendix_III` etc
 
 
 # Additional notes

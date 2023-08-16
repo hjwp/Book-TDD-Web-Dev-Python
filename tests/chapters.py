@@ -3,7 +3,7 @@ CHAPTERS = [
     "chapter_01",
     "chapter_02_unittest",
     "chapter_03_unit_test_first_view",
-    "chapter_philosophy_and_refactoring",
+    "chapter_04_philosophy_and_refactoring",
     "chapter_post_and_database",
     "chapter_explicit_waits_1",
     "chapter_working_incrementally",
