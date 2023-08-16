@@ -21,7 +21,7 @@ and collaboration (typo-fixes by pull request are very much encouraged).
 - install [asciidoctor](http://asciidoctor.org/), and the *coderay* gem.
 - `make build` will build each chapter as its own html file
 - `make book.html` will create a single file
-- `make chapter_post_and_database.html`, eg, will build chapter 5
+- `make chapter_05_post_and_database.html`, eg, will build chapter 5
 
 # Running the tests
 
@@ -38,7 +38,7 @@ $ make test
 
 * To test an individual chapter, eg:
 ```console
-$ make test_chapter_explicit_waits_1
+$ make test_chapter_06_explicit_waits_1
 ```
 
 * Unit tests (tests for the tests for the tests in the testing book)
