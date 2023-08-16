@@ -2,7 +2,7 @@ CHAPTERS = [
     # part 1
     "chapter_01",
     "chapter_02_unittest",
-    "chapter_unit_test_first_view",
+    "chapter_03_unit_test_first_view",
     "chapter_philosophy_and_refactoring",
     "chapter_post_and_database",
     "chapter_explicit_waits_1",
