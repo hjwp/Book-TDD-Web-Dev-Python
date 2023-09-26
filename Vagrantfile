@@ -83,19 +83,20 @@ Vagrant.configure("2") do |config|
   # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
   # documentation for more information about their specific syntax and use.
   ssh_pub_key = File.readlines("#{Dir.home}/.ssh/id_rsa.pub").first.strip#
-  config.vm.provision "shell", inline: <<-SHELL
-    apt update
-    apt upgrade -y
-    apt install -y dtach tree
 
-    useradd -m -s /bin/bash elspeth
-    usermod -a -G sudo elspeth
-    echo 'elspeth:elspieelspie' | chpasswd
-    mkdir -p /home/elspeth/.ssh
-    cp /home/ubuntu/.ssh/authorized_keys /home/elspeth/.ssh
-    chown elspeth /home/elspeth/.ssh/authorized_keys
-    echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
-    echo 'export DJANGO_COLORS=nocolor' >> /home/elspeth/.profile
-    echo '#{ssh_pub_key}' >> /home/elspeth/.ssh/authorized_keys
-  SHELL
+  # config.vm.provision "shell", inline: <<-SHELL
+  #   apt update
+  #   apt upgrade -y
+  #   apt install -y dtach tree
+
+  #   useradd -m -s /bin/bash elspeth
+  #   usermod -a -G sudo elspeth
+  #   echo 'elspeth:elspieelspie' | chpasswd
+  #   mkdir -p /home/elspeth/.ssh
+  #   cp /home/ubuntu/.ssh/authorized_keys /home/elspeth/.ssh
+  #   chown elspeth /home/elspeth/.ssh/authorized_keys
+  #   echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
+  #   echo 'export DJANGO_COLORS=nocolor' >> /home/elspeth/.profile
+  #   echo '#{ssh_pub_key}' >> /home/elspeth/.ssh/authorized_keys
+  # SHELL
 end
