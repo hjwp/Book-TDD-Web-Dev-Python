@@ -1,7 +1,7 @@
 # Ultra-brief instructions for how to get a Linux server
 
 These instructions are meant as companion to the 
-[deployment chapter of my book](http://www.obeythetestinggoat.com/book/chapter_09_docker.html).
+[deployment chapter of my book](http://www.obeythetestinggoat.com/book/chapter_manual_deployment.html).
 They're almost telegraphic in style, but I hope they're better than nothing!
 
 

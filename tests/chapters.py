@@ -9,7 +9,7 @@ CHAPTERS = [
     "chapter_07_working_incrementally",
     # part 2
     "chapter_08_prettification",
-    "chapter_09_docker",
+    "chapter_manual_deployment",
     "chapter_making_deployment_production_ready",
     "chapter_automate_deployment_with_fabric",
     "chapter_organising_test_files",
