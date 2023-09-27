@@ -1,120 +1,215 @@
-[[chapter_manual_deployment]]
-== Testing Deployment Using a Staging Site
-
-.🚧 Warning, this chapter uses Django 1.11
-*******************************************************************************
-As part of my work on the third edition of the book,
-I'm upgrading to Django 4, but I haven't reached this chapter yet. Sorry!
-
-To follow along with this chapter, it's probably easiest to reset your code
-to match my example code on github:
-
-https://github.com/hjwp/book-example/tree/chapter_08_prettification
-
-And you should also probably delete and re-create your virtualenv with
-* Python 3.8 or 3.9
-* and Django 1.11  (`pip install "django <2"`)
-
-Alternatively, you can muddle through and try and figure out
-how to make things work with Django 4 etc, but be aware that
-the listings below won't be quite right.
-
-*******************************************************************************
-
+[[chapter_09_docker]]
+== Deployment Part 1: Docker
 
 [quote, 'http://bit.ly/2uhCXnH[Devops Borat]']
 ______________________________________________________________
 Is all fun and game until you are need of put it in production.
 ______________________________________________________________
 
-((("deployment", "testing using staging sites", id="DEPstage09")))It's
-time to deploy the first version of our site and make it public.  They say
-that if you wait until you feel ready to ship, then you've waited too long.
+((("deployment", "testing using staging sites", id="DEPstage09")))
+It's time to deploy the first version of our site and make it public.
+ They say that if you wait until you feel _ready_ to ship,
+then you've waited too long.
 
-Is our site usable?  Is it better than nothing? Can we make lists on it? Yes,
-yes, yes.
+Is our site usable?
+Is it better than nothing?
+Can we make lists on it?
+Yes, yes, yes.
 
-No, you can't log in yet.  No, you can't mark tasks as completed.  But do we
-really need any of that stuff? Not really--and you can never be sure what
-your users are 'actually' going to do with your site once they get their 
-hands on it. We think our users want to use the site for to-do lists, but maybe
-they actually want to use it to make "top 10 best fly-fishing spots" lists, for
-which you don't need any kind of ``mark completed'' function. We won't know
-until we put it out there.
+No, you can't log in yet.
+No, you can't mark tasks as completed.
+But do we really need any of that stuff?
+Not really--and you can never be sure
+what your users are _actually_ going to do with your site
+once they get their hands on it.
+We think our users want to use the site for to-do lists,
+but maybe they actually want to use it
+to make "top 10 best fly-fishing spots" lists,
+for which you don't _need_ any kind of "mark completed" function.
+We won't know until we put it out there.
 
-In this chapter we're going to go through and actually deploy our site to a
-real, live web server.  
+Over the next couple of chapters we're going to go through
+and actually deploy our site to a real, live web server.
 
-You might be tempted to skip this chapter--there's lots of daunting stuff
-in it, and maybe you think this isn't what you signed up for. But I 'strongly' 
-urge you to give it a go.  This is one of the sections of the book I'm most
-pleased with, and it's one that people often write to me saying they were
-really glad they stuck through it. 
+You might be tempted to skip this bit--there's
+lots of daunting stuff in it,
+and maybe you think this isn't what you signed up for.
+But I _strongly_ urge you to give it a go.
+This is one of the sections of the book I'm most pleased with,
+and it's one that people often write to me
+saying they were really glad they stuck through it.
 
-If you've never done a server deployment before, it will demystify a whole
-world for you, and there's nothing like the feeling of seeing your site live on
-the actual internet. Give it a buzzword name like "DevOps" if that's what it
-takes to convince you it's worth it.
+If you've never done a server deployment before,
+it will demystify a whole world for you,
+and there's nothing like the feeling of seeing your site live
+on the actual internet.
+Give it a buzzword name like "DevOps"
+if that's what it takes to convince you it's worth it.
 
-NOTE: Why not ping me a note once your site is live on the web, and send me
-    the URL? It always gives me a warm and fuzzy feeling...
+// TODO move this to next chapter
+
+NOTE: Why not ping me a note once your site is live on the web,
+    and send me the URL?
+    It always gives me a warm and fuzzy feeling...
     obeythetestinggoat@gmail.com.
 
 
 
-TDD and the Danger Areas of Deployment
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== TDD and the Danger Areas of Deployment
 
-((("staging sites", "benefits of")))Deploying
-a site to a live web server can be a tricky topic.  Oft-heard is the
-forlorn cry __"but it works on my machine!"__
+Deploying a site to a live web server can be a tricky topic.
+Oft-heard is the forlorn cry __"but it works on my machine!"__
 
-
-((("deployment", "danger areas of")))Some
-of the danger areas of deployment include:
+((("deployment", "danger areas of")))
+Some of the danger areas of deployment include:
 
 Networking::
-    Once we're off our own machine, networking issues come in: making
-    sure the DNS service is routing our domain to the correct IP address
-    for our server, making sure our server is configured to listen to
-    traffic coming in from the world, making sure it's using the right
-    ports, and making sure any firewalls in the way are configured to let
-    traffic through.
+    Once we're off our own machine, networking issues come in:
+    making sure that DNS is routing our domain
+    to the correct IP address for our server,
+    making sure our server is configured
+    to listen to traffic coming in from the world,
+    making sure it's using the right ports,
+    and making sure any firewalls in the way
+    are configured to let traffic through.
 
 Dependencies::
-    We need to make sure that the packages our software relies on (Python,
-    Django, and so on) are installed on the server, and have the correct
-    versions.
-    
-The database:: 
-    There can be permissions and path issues, and we need to be careful about
-    preserving data between deploys.
-    
-Static files (CSS, JavaScript, images, etc.)::
-    ((("static files", "challenges of")))Web servers usually need special
-    configuration for serving these.
+    We need to make sure that the packages our software relies on
+    (Python, Django, and so on) are installed on the server,
+    and have the correct versions.
 
-    
+The database::
+    There can be permissions and path issues,
+    and we need to be careful about preserving data between deploys.
+
+Static files (CSS, JavaScript, images, etc.)::
+    Web servers usually need special configuration for serving these.
+    ((("static files", "challenges of")))
+
+Security::
+    Once we're on the public internet,
+    we need to worry more about security.
+    Various settings that are really useful for local development
+    (like the Django debug page)
+    become dangerous in production
+    (because they expose our source code in tracebacks)
+
+
+One way to approach the problem is to get a server,
+and start manually configuring and installing everything,
+hacking about until it works,
+and maybe think about automating things laterfootnote:[
+This was, more or less, the approach I took in earlier editions of the book.
+With a fair bit of testing thrown in of course.].
+
+But if there's one thing we've learned
+in the world of agile/lean software development,
+it's that taking smaller steps usually pays off.
+
+How can we take smaller, safer steps towards a production deployment?
+Can we _simulate_ the process of moving to a server,
+so that we can iron out all the bugs,
+before we actually take the plunge?
+
+Absolutely we can.  And from the title of the chapter,
+I'm sure you're already guessing that Docker is going
+to be part of the answer.
+
+
+=== Docker, Containers and Virtualization
+
+// TODO: experiment with moving this intro to docker
+// to before the tdd danger areas bit.
+
+Docker is a commercial product that wraps several free
+and open source technologies from the world of Linux,
+sometimes referred to as "containerization".
+
+You may have already heard of the idea of "virtualization",
+which allows a single physical computer to pretend to be several machines.
+Pioneered by IBM (amongst others) on mainframes in the 1960s,
+it rose to mainstream adoption in the 90s,
+where it was sold as a way to optimise resource usage in datacentres.
+AWS, for example, was an offshoot of Amazon,
+who were using virtualization already,
+and realised they could sell some spare capacity on their servers
+to customers outside the business.
+
+So when you come to deploy your code to a real server in a datacentre,
+it will be using virtualization.
+And actually you can use virtualization on your own machine,
+with software like Virtualbox or KVM.
+
+But that can be fiddly to set up!
+And nowadays, thanks to containerization, we can do better.
+Because containerization is a kind of even-more-virtual virtualization.
+
+Conceptually, "regular" virtualization works at the hardware level,
+it gives you multiple virtual machines (VMs)
+that pretend to be physical computers, on a single real machine.
+So you can run multiple operating systems inside separate VMs
+on the same physical box.
+
+Containers work at the operating system level.
+It gives you multiple virtual operating systems that
+all run on a single real OS.
+So you can run multiple programs inside separate virtual operating systems,
+using a single real host operating system and kernel.
+
+The upshot of this is that containers are much "cheaper".
+You can start one up in milliseconds,
+and you can run hundreds on the same machine.
+
+
+==== Containers and your CV
+
+That's all well and good for the _theoretical_ justification.
+But let's get to the _real_ reason for using this technology,
+which, as always, is:
+"it's fashionable so it's going to look good on my CV."
+
+For the purposes of this book,
+that's not such a bad justification really.
+Yes I think it's going to be a nice way to have a "pretend"
+deployment on our own machine, before we try the real one.
+
+But also, containers are so popular nowadays,
+that it's very likely that you're going to encounter them at work
+(if you haven't already).
+For many working developers,
+a container image is the final artifact of their work,
+it's what they "deliver",
+and most of the rest of the deployment process
+is taken care of by someone else.
+
+
+=== Docker and the danger areas of deployment
+
+How will containerizing our software help with the danger areas?
+
+* Containers are like a little virtual server,
+  so they will force us to address many of the problems
+  like dependency management 
 
 But there are solutions to all of these.  In order:
 
+((("staging sites", "benefits of")))
 *   Using a 'staging site', on the same infrastructure as the production site,
     can help us test out our deployments and get things right before we go to
     the "real" site.
-    
+
 
 *   We can also 'run our functional tests against the staging site'. That will
     reassure us that we have the right code and packages on the server, and
     since we now have a "smoke test" for our site layout, we'll know that the
     CSS is loaded correctly.
-    
+
 
 *   ((("virtual environment (virtualenv)", "server-based")))Just
     like on our own PC, a 'virtualenv' is useful on the server for
     managing packages and dependencies when you might be running more than one
     Python [keep-together]#application#.
-    
-[role="pagebreak-before"]
+
 *   ((("automated deployment", "benefits of")))((("automated deployment", see="also Fabric")))And
     finally, 'automation, automation, automation'.  By using an automated
     script to deploy new versions, and by using the same script to deploy to
@@ -124,11 +219,11 @@ But there are solutions to all of these.  In order:
     call a "development" server, and some others would also like to distinguish
     "preproduction" servers.  Whatever we call it, the point is to have
     somewhere we can try our code out in an environment that's as similar as
-    possible to the real production server.] 
-    
-     
+    possible to the real production server.]
 
-Over the next few pages I'm going to go through 'a' deployment procedure.  It 
+
+
+Over the next few pages I'm going to go through 'a' deployment procedure.  It
 isn't meant to be the 'perfect' deployment procedure, so please don't take
 it as being best practice, or a recommendation--it's meant to be an
 illustration, to show the kinds of issues involved in deployment and where
@@ -231,14 +326,14 @@ tests [keep-together]#"normally"#:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests*] 
+$ pass:quotes[*python manage.py test functional_tests*]
 [...]
 Ran 3 tests in 8.544s
 
 OK
 ----
 
-And now we can try them against our staging server URL.  I'm planning to 
+And now we can try them against our staging server URL.  I'm planning to
 host my staging server at 'superlists-staging.ottg.eu':
 
 
@@ -295,7 +390,7 @@ Ran 3 tests in 10.518s
 FAILED (errors=3)
 ----
 
-NOTE: If, on Windows, you see an error saying something like 
+NOTE: If, on Windows, you see an error saying something like
     "STAGING_SERVER is not recognized as a command", it's probably because
     you're not using Git-Bash.  Take another look at the
     &#x201c;<<pre-requisites>>&#x201d; section.
@@ -356,7 +451,7 @@ system for now.
 
 As you go through this chapter, you should be aware that provisioning is
 something that varies a lot, and that as a result there are few universal
-best practices for deployment.  So, rather than trying to remember the 
+best practices for deployment.  So, rather than trying to remember the
 specifics of what I'm doing here, you should be trying to understand the
 rationale, so that you can apply the same kind of thinking in the
 specific future circumstances you encounter.
@@ -438,7 +533,7 @@ User Accounts, SSH, and Privileges
 In these instructions, I'm assuming that you have a nonroot user account set
 up that has "sudo" privileges, so whenever we need to do something that
 requires root access, we use sudo, and I'm explicit about that in the various
-instructions that follow. 
+instructions that follow.
 
 My user is called "elspeth", but you can call yours whatever you like!  Just
 remember to substitute it in all the places I've hardcoded it below.
@@ -514,8 +609,8 @@ we go.
 NOTE: One rule of thumb for distinguishing provisioning from deployment is
     that you tend to need root permissions for the former, but you don't for
     the latter.
-    
-    
+
+
 We need a directory for the source to live in.  We'll put it somewhere
 in the home folder of our nonroot user; in my case it would be at
 '/home/elspeth' (this is likely to be the setup on any shared hosting system,
@@ -636,7 +731,7 @@ Now we do a `git push` to send our updates up to our code-sharing site:
 $ *git push*
 ----
 
-And we can pull those changes down to the server: 
+And we can pull those changes down to the server:
 
 [role="server-commands skipme"]
 [subs="specialcharacters,quotes"]
@@ -818,7 +913,7 @@ aka the "localhost" IP address.  But we're trying to reach it from
 the outside, via the server's "real" public address.
 
 
-But Django isn't listening on that address by default.  
+But Django isn't listening on that address by default.
 Here's how we tell it to listen on all addresses.  Use Ctrl-C to
 interrupt the `runserver` process, and restart it like this:
 
@@ -894,7 +989,7 @@ Hacking ALLOWED_HOSTS in settings.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Don't be disheartened!  We may have just fixed one problem only to run straight
-into another, but this problem is definitely a much easier one.  At least we 
+into another, but this problem is definitely a much easier one.  At least we
 can talk to the server!  And it's giving us a helpful pointer.  Try opening the
 site manually (<<django-disallowedhosts-error>>):
 
@@ -983,11 +1078,11 @@ NOTE: The tests saved us from potential embarrassment there.  The site 'looked'
     slight exaggeration for effect, maybe we 'would' have checked, but what
     happens as the site gets bigger and more complex? You can't check
     everything. The tests can.
-    
+
 [[django-debug-screen]]
 .But the database isn't
 image::images/twp2_0904.png["Django DEBUG page showing database error"]
-    
+
 
 
 
@@ -1054,7 +1149,7 @@ production-ready.((("", startref="DEPstage09")))
 
 
 
-.Test-Driving Server Configuration and Deployment 
+.Test-Driving Server Configuration and Deployment
 *******************************************************************************
 
 Tests take some of the uncertainty out of deployment::
@@ -1062,8 +1157,8 @@ Tests take some of the uncertainty out of deployment::
     developers, server administration is always "fun", by which I mean, a
     process full of uncertainty and surprises. My aim during this chapter was
     to show that a functional test suite can take some of the uncertainty out
-    of the process.  
-    
+    of the process.
+
 Some typical pain points--networking, ports, static files, and the database::
     The things that you need to keep an eye out for on any deployment include
     making sure your database configuration, static files, software
