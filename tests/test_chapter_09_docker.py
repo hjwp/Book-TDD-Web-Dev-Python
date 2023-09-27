@@ -7,7 +7,7 @@ from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 
 class Chapter9Test(ChapterTest):
-    chapter_name = 'chapter_manual_deployment'
+    chapter_name = 'chapter_09_docker'
     previous_chapter = 'chapter_08_prettification'
 
     def test_listings_and_commands_and_output(self):
