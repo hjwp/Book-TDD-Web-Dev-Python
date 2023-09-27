@@ -86,13 +86,13 @@ Static files (CSS, JavaScript, images, etc.)::
     Web servers usually need special configuration for serving these.
     ((("static files", "challenges of")))
 
-Security::
+Security and Configuration::
     Once we're on the public internet,
     we need to worry more about security.
     Various settings that are really useful for local development
     (like the Django debug page)
     become dangerous in production
-    (because they expose our source code in tracebacks)
+    (because they expose our source code in tracebacks).
 
 
 One way to approach the problem is to get a server,
@@ -185,11 +185,31 @@ is taken care of by someone else.
 
 === Docker and the danger areas of deployment
 
+(TODO: expand this section, is just bullet points atm)
+
 How will containerizing our software help with the danger areas?
 
 * Containers are like a little virtual server,
   so they will force us to address many of the problems
-  like dependency management 
+  like dependency management and configuration.
+
+* We can use the containers to package up as much
+  of the functionality of our application as possible,
+  which in turn will minimise the amount of configuration
+  we need to do to our actual servers
+
+* We can test our containers work by running our functional tests
+  against them.
+
+* Later, when we deploy our containers to a staging site,
+  we can run the FTs against that too.
+
+* If we automate container creation and deployment to staging,
+  and we've tested both those things, then we will have
+  minimised the risk of deployment to production.
+
+////
+old content follows. is there anything we want to rescue from here?
 
 But there are solutions to all of these.  In order:
 
@@ -221,73 +241,53 @@ But there are solutions to all of these.  In order:
     somewhere we can try our code out in an environment that's as similar as
     possible to the real production server.]
 
+////
+
+=== Our deployment procedure
+
+Over the next few pages I'm going to go through _a_ deployment procedure.
+It isn't meant to be the _perfect_ deployment procedure,
+so please don't take it as being best practice,
+or a recommendation--it's meant to be an illustration,
+to show the kinds of issues involved in deployment,
+and where testing fits in.
 
 
-Over the next few pages I'm going to go through 'a' deployment procedure.  It
-isn't meant to be the 'perfect' deployment procedure, so please don't take
-it as being best practice, or a recommendation--it's meant to be an
-illustration, to show the kinds of issues involved in deployment and where
-testing fits in.
+**This chapter: containerizing our software**
+
+* Adapt our FTs so they can run against a container
+
+* Build a minimal Dockerfile with everything we need to run our site,
+  learn how to build and run a container on our machine,
+  and run our FTs against it.
+
+* Gradually, incrementally change the container configuration
+  to make it production-ready,
+  regularly runing the Fts to check we didn't break anything.
+
+// gunicorn, DEBUG=False, secret key, etc
 
 
-.Deployment Chapters Overview
-*******************************************************************************
+**Next chapter: automated deployment**
 
-There's lots of stuff in the next three chapters, so here's an overview to help you
-keep your bearings:
-
-**This chapter: getting a basic manual deployment up and running**
-
-* Adapt our FTs so they can run against a staging server.
-
-* Spin up a server, install all the required software on it, and point our
-  staging and live domains at it.
-
-* Upload our code to the server using Git.
-
-* Try and get a quick-and-dirty version of our site running on the staging domain
-  using the Django dev server.
-
-* Set up a virtualenv on the server and make sure the database and
-  static files are working.
-
-* As we go, we'll keep running our FT, to tell us what's working and what's
-  not.
-
-
-**Next chapter: moving to a production-ready config**
-
-* Move from our quick-and-dirty version to a production-ready configuration.
-
-* Stop using the Django dev server, use Nginx and Gunicorn as web servers,
-  configure efficient static file serving, set our app to start automatically
-  on boot with Systemd.
-
-* Security: Use environment variables to set +DEBUG+ to +False+, change the
-  +SECRET_KEY+, and so on
-
-[role="pagebreak-before"]
-**Third deployment chapter: automating the deployment**
-
-* Once we have a working config, we'll write a script to automate the process
-  we've just been through manually, so that we can deploy our site
-  automatically in future.
-
-* Finally we'll use this script to deploy the production version of our site
-  on its real domain.
-
-*******************************************************************************
+* (maybe?) ssh into the server and configure it manually first?
+* figure out all the SSH permissions and DNS issues
+* we'll use Ansible to build an automated script that can deploy
+  our container to staging
+* use our FTs to test staging
+* then deploy to prodddd
 
 
 
-As Always, Start with a Test
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== As Always, Start with a Test
 
-
-((("environment variables")))((("staging sites", "adapting functional tests for", id="SSadapt09")))Let's
-adapt our functional tests slightly so that it can be run against
-a staging site, instead of the local dev server. We'll do it by checking for an
-environment variable called `STAGING_SERVER`:
+((("environment variables")))
+((("staging sites", "adapting functional tests for", id="SSadapt09")))
+Let's adapt our functional tests slightly
+so that it can be run against a standalone server,
+instead of the one that `LiveServerTestCase` creates for us.
+We'll do it by checking for an environment variable
+called `TEST_SERVER`:
 
 
 [role="sourcecode"]
@@ -302,9 +302,9 @@ class NewVisitorTest(StaticLiveServerTestCase):
 
     def setUp(self):
         self.browser = webdriver.Firefox()
-        staging_server = os.environ.get('STAGING_SERVER')  #<1>
-        if staging_server:
-            self.live_server_url = 'http://' + staging_server  #<2>
+        test_server = os.environ.get('TEST_SERVER')  #<1>
+        if test_server:
+            self.live_server_url = 'http://' + test_server  #<2>
 ----
 ====
 
@@ -316,7 +316,7 @@ that sometimes, but I also want to be able to selectively tell it not to
 bother, and to use a real server instead.
 
 <1> The way I decided to do it is using an environment variable called
-    `STAGING_SERVER`.
+    `TEST_SERVER`.
 
 <2> Here's the hack: we replace `self.live_server_url` with the address of
     our "real" server.
@@ -333,19 +333,13 @@ Ran 3 tests in 8.544s
 OK
 ----
 
-And now we can try them against our staging server URL.  I'm planning to
-host my staging server at 'superlists-staging.ottg.eu':
-
-
-NOTE: A clarification: in this chapter, we run tests 'against' our staging
-    server, not 'on' our staging server.  So we still run the tests from our
-    own laptop, but they target the site that's running on the server.
+And now we can try them against our docker server URL.
 
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
 
 EEE
 ======================================================================
@@ -391,7 +385,7 @@ FAILED (errors=3)
 ----
 
 NOTE: If, on Windows, you see an error saying something like
-    "STAGING_SERVER is not recognized as a command", it's probably because
+    "TEST_SERVER is not recognized as a command", it's probably because
     you're not using Git-Bash.  Take another look at the
     &#x201c;<<pre-requisites>>&#x201d; section.
 
@@ -411,7 +405,7 @@ $ *git commit -am "Hack FT runner to be able to test staging"*
 ----
 
 
-TIP: Don't use `export` to set the 'STAGING_SERVER' environment variable;
+TIP: Don't use `export` to set the 'TEST_SERVER' environment variable;
     otherwise, all your subsequent test runs in that terminal will be against
     staging (and that can be very confusing if you're not expecting it).
     Setting it explicitly inline each time you run the FTs is best.
@@ -809,7 +803,7 @@ fails:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests \
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests \
     --failfast*]
 [...]
 selenium.common.exceptions.WebDriverException: Message: Reached error page: [...]
@@ -825,13 +819,13 @@ You may remember that Django's runserver usually chooses to run on port 8000.
 But a "normal" web server should run on port 80, and that's where our FTs are
 currently looking, on 'superlists-staging.ottg.eu'.
 
-But we can actually use our `STAGING_SERVER` variable to point the tests at
+But we can actually use our `TEST_SERVER` variable to point the tests at
 port 8000. Let's try that:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
     --failfast*]
 
 selenium.common.exceptions.WebDriverException: Message: Reached error page: [...]
@@ -956,7 +950,7 @@ Looks good at first glance!  Let's try our FTs again:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
     --failfast*]
 
 ======================================================================
@@ -1057,7 +1051,7 @@ Let's see what our functional tests say:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
     --failfast*]
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
@@ -1120,7 +1114,7 @@ And try the FTs again:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests*]
 [...]
 
 ...
@@ -1173,4 +1167,3 @@ Tests allow us to experiment and work incrementally::
     we'll see in the next chapter).
 
 *******************************************************************************
-
