@@ -925,31 +925,26 @@ Let's go through and see if we can fix each of these things one by one.
 Switching to Gunicorn
 ~~~~~~~~~~~~~~~~~~~~~
 
-((("production-ready deployment", "using Gunicorn", secondary-sortas="Gunicorn")))((("Gunicorn", "switching to")))Do
-you know why the Django mascot is a pony?  The story is that Django
+((("production-ready deployment", "using Gunicorn", secondary-sortas="Gunicorn")))
+((("Gunicorn", "switching to")))
+Do you know why the Django mascot is a pony?  The story is that Django
 comes with so many things you want: an ORM, all sorts of middleware,
 the admin site... "What else do you want, a pony?" Well, Gunicorn stands
 for "Green Unicorn", which I guess is what you'd want next if you already
 had a pony...
 
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *./.venv/bin/pip install gunicorn*
+pip install gunicorn
+pip freeze | grep gunicorn >> requirements.txt
 ----
 
 Gunicorn will need to know a path to a WSGI server, which is usually
 a function called `application`.  Django provides one in 'superlists/wsgi.py':
 
+----
+CMD ["/venv/bin/gunicorn", "--bind", ":80", "superlists.wsgi:application"]
+----
 
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *./.venv/bin/gunicorn superlists.wsgi:application*
-2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.19.7.1
-2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
-[...]
-----
 
 But if we run the functional tests, once again you'll see that they are
 warning us of a problem. The test for adding list items passes happily, but the
@@ -968,8 +963,8 @@ And indeed, if you take a look at the site, you'll find the CSS is all broken,
 as in <<site-with-broken-css>>.
 
 The reason that the CSS is broken is that although the Django dev server will
-serve static files magically for you, Gunicorn doesn't.  Now is the time to
-tell Nginx to do it instead.
+serve static files magically for you, Gunicorn doesn't.
+
 
 
 [[site-with-broken-css]]
@@ -980,59 +975,14 @@ image::images/twp2_1001.png["The site is up, but CSS is broken"]
 One step forward, one step backward, but once again we've identified the
 problem nice and early. Moving on!
 
+////
 TIP: At this point if you see a "502 - Bad Gateway", it's probably because you
     forgot to restart Gunicorn.
+////
 
 
+=== Static Files with Whitenoise
 
-Getting Nginx to Serve Static Files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("production-ready deployment", "serving static files with Nginx")))((("Nginx", "serving static files with")))((("static files", "serving with Nginx")))First
-we run `collectstatic` to copy all the static files to a folder where 
-Nginx can find them:
-
-[role="server-commands"]
-[subs="specialcharacters,macros"]
-----
-elspeth@server:$ pass:quotes[*./.venv/bin/python manage.py collectstatic --noinput*]
-[...]
-15 static files copied to '/home/elspeth/sites/superlists-staging.ottg.eu/static'
-elspeth@server:$ pass:quotes[*ls static/*]
-base.css  bootstrap
-----
-
-Now we tell Nginx to start serving those static files for us, by
-adding a second `location` directive to the config:
-
-[role="sourcecode"]
-.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name superlists-staging.ottg.eu;
-
-    location /static {
-        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
-    }
-
-    location / {
-        proxy_pass http://localhost:8000;
-    }
-}
-----
-====
-
-Reload Nginx and restart Gunicorn...
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *./.venv/bin/gunicorn superlists.wsgi:application*
-----
 
 And if you take another manual look at your site, things should look much
 healthier. Let's rerun our FTs:
@@ -1054,80 +1004,20 @@ Phew.
 
 
 
-Switching to Using Unix Sockets
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Using Environment Variables to Adjust Settings for Production
 
-((("production-ready deployment", "switching to Unix domain sockets")))((("Unix domain sockets")))((("Nginx", "switching to Unix domain sockets")))((("Gunicorn", "switching to Unix domain sockets")))When
-we want to serve both staging and live, we can't have both servers trying
-to use port 8000.  We could decide to allocate different ports, but that's a
-bit arbitrary, and it would be dangerously easy to get it wrong and start
-the staging server on the live port, or vice versa.
-
-A better solution is to use Unix domain sockets--they're like files on disk,
-but can be used by Nginx and Gunicorn to talk to each other.  We'll put our
-sockets in '/tmp'.  Let's change the proxy settings in Nginx:
-
-[role="sourcecode"]
-.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name superlists-staging.ottg.eu;
-
-    location /static {
-        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
-    }
-
-    location / {
-        proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
-    }
-}
-----
-====
-
-Now we restart Gunicorn, but this time telling it to listen on a socket instead
-of on the default port:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *./.venv/bin/gunicorn --bind \
-    unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
-----
-
-
-And again, we rerun the functional test again, to make sure things still pass:
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-OK
-----
-
-Hooray, a change that went without a hitch for once!footnote:[If you're using
-Fedora/CentOS, you may run into an issue with private _tmp_ directories.
-https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues/93[more info here]]
-Moving on...
-
-
-
-Using Environment Variables to Adjust Settings for Production
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("DEBUG settings")))((("production-ready deployment", "DEBUG=false and
-ALLOWED_HOSTS")))((("ALLOWED_HOSTS")))((("security issues and settings",
-"ALLOWED_HOSTS")))((("tracebacks")))We know there are several things in
+((("DEBUG settings")))
+((("production-ready deployment", "DEBUG=false and ALLOWED_HOSTS")))
+((("ALLOWED_HOSTS")))
+((("security issues and settings", "ALLOWED_HOSTS")))
+((("tracebacks")))
+We know there are several things in
 _settings.py_ that we want to change for production:
 
 
 * +ALLOWED_HOSTS+ is currently set to "*" which isn't secure.  We want it
   to be set to only match the site we're supposed to be serving
-  (_superlists-staging.ottg.eu_).
+  (_localhost_ for now, but someday soon, a real domain).
 
 * +DEBUG+ mode is all very well for hacking about on your own server, but
   leaving those pages full of tracebacks available to the world
@@ -1206,11 +1096,7 @@ and restart Gunicorn:
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *git pull*
-elspeth@server:$ *export DJANGO_DEBUG_FALSE=y DJANGO_SECRET_KEY=abc123*
-# we'll set the secret to something more secure later!
-elspeth@server:$ *./.venv/bin/gunicorn --bind \
-    unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
+ENV DJANGO_DEBUG_OFF=1
 ----
 
 
