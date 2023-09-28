@@ -330,6 +330,12 @@ And now we can try them against our docker server URL,
 which once we've done the right docker magic,
 will be at _http://locahost:8888_
 
+TIP: I'm deliberately choosing a different port to run Docker-django on (8888)
+    from the default port that a local `manage.py runserver` would choose (8080),
+    to avoid getting in the situation where I _think_ I (or my tests)
+    are looking at Docker, when they're actually looking at a local `runserver`
+    that I'd left running in some terminal somewhere.
+
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -426,61 +432,153 @@ $ *git commit -m "Move all our code into a src folder"*
 
 === A First Cut of a Dockerfile
 
-* deliberately wont work, django not installed
+Think of a Dockerfile as defining a brand new computer,
+that we're going to use to run our django server on.
+What do we need to do?  Something like this, right?
+
+1. Install an operating system
+2. Make sure it has Python on it
+2. Get our source code onto it
+3. Run `python manage.py runserver`
+
 
 .Dockerfile
 ====
 [source,dockerfile]
 ----
-FROM python:slim
+FROM python:slim  <1>
 
-COPY src /src
+COPY src /src  <2>
 
-WORKDIR /src
+WORKDIR /src  <3>
 
-CMD python manage.py runserver
+CMD python manage.py runserver  <4>
 ----
 ====
 
+<1> The `FROM` line is usually the first thing in a Dockerfile,
+    and it says which _base image_ we are starting from.
+    Docker images are built from other Docker images!
+    It's not quite turtles all the way down, but almost.
+    So this is the equivalent of choosing a base operating system,
+    but images can actually have lots of software preinstalled too.
+    You can browse various base images on DockerHub,
+    we're using one that's published by the Python Software Foundation,
+    called "slim" because it's as small as possible.
+    It's based on a popular version of Linux called Debian,
+    and of course it comes with Python already installed on it.
+
+<2> The `COPY` command lets you copy files
+    from your own computer into the container image.
+    We use it to copy all our source code from the newly-created _src_ folder,
+    into a similary named folder at the root of the container image
+
+<3> `WORKDIR` sets the current working directory for all subsequent commands.
+     It's a bit like doing `cd /src`
+
+<4> Finally the `CMD`, er, command tells docker wich, um,
+    command you want it to run by default,
+    when you start a container based on that image.
+
+* deliberately wont work, django not installed
+
+
 === Building a Docker Image and Running a Docker Container
 
+You build a container with `docker build <path-containing-dockerfile>`
+and we'll use the `-t <tagname>` argument to "tag" our image
+with a memorable name.
 
-`docker build -t superlists`
+It's typical to invoke `docker build` from the folder that contains your Dockerfile,
+so the last argument is usally `.`:
 
-`docker run superlists`
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*docker build -t superlists .*]
+
+[+] Building 8.4s (8/8) FINISHED                            docker:default
+ => [internal] load build definition from Dockerfile                  0.0s
+ => => transferring dockerfile: 115B                                  0.0s
+ => [internal] load .dockerignore                                     0.1s
+ => => transferring context: 2B                                       0.0s
+ => [internal] load metadata for docker.io/library/python:slim        0.0s
+ => [internal] load build context                                     0.2s
+ => => transferring context: 68.54kB                                  0.1s
+ => [1/3] FROM docker.io/library/python:slim                          0.0s
+ => CACHED [2/3] COPY src /src                                        0.0s
+ => CACHED [3/3] WORKDIR /src                                         0.0s
+ => exporting to image                                                0.0s
+ => => exporting layers                                               0.0s
+ => => writing image sha256:7b8e1c9fa68e7bad7994fa41e2aca852ca79f01a  0.0s
+ => => naming to docker.io/library/superlists                         0.0s
+$ pass:quotes[*docker images*]
+REPOSITORY    TAG       IMAGE ID       CREATED          SIZE
+superlists    latest    7b8e1c9fa68e   13 minutes ago   155MB
+----
+
+Once you've built an image,
+you can run one or more containers based on that image, using `docker run`.
+What happens when we run ours
+(again, we'll use the `-t` argument to find our image using its tag)?
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*docker run superlists*]
+Traceback (most recent call last):
+  File "/src/manage.py", line 11, in main
+    from django.core.management import execute_from_command_line
+ModuleNotFoundError: No module named 'django'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/src/manage.py", line 22, in <module>
+    main()
+  File "/src/manage.py", line 13, in main
+    raise ImportError(
+ImportError: Couldn't import Django. Are you sure it's installed and available
+on your PYTHONPATH environment variable? Did you forget to activate a virtual
+environment?
+----
+
+Ah, we forgot that we need to install Django.
 
 
 === Virtualenv and requirements.txt
 
-* some content from old chap:
-
 Just like on our own machine,
 a virtualenv is useful in a deployed environment to make
 sure we have full control over the packages installed for a particular
-project.  
+project.
 
 To reproduce our local virtualenv,
-we can "save" the list of packages we're
-using by creating a 'requirements.txt' file. Back on our own machine:
+we can "save" the list of packages we're using
+by creating a 'requirements.txt' file.
 
 [subs="specialcharacters,quotes"]
 ----
-$ *pip show django*
-# shows something
-$ *echo "django==1.11.13" > requirements.txt*
+$ *pip freeze*
+# shows all ur packages. Find django
+$ *pip freeze | grep -i django== >> requirements.txt*
 $ *git add requirements.txt*
 $ *git commit -m "Add requirements.txt for virtualenv"*
 ----
 
-NOTE: You may be wondering why we didn't add our other dependency,
-    Selenium, to our requirements.  The reason is that Selenium is
-    only a dependency for the tests, not the application code (we're
-    never going to run the tests on the server itself).  Some
-    people like to also create a file called 'dev-requirements.txt'.
+You may be wondering why we didn't add our other dependency,
+Selenium, to our requirements.
+As always, I have to gloss over some nuance and tradeoffs,
+but the short answer is that Selenium is only a dependency for the tests,
+not the application code;
+we're never going to run the tests directly on our production servers.
 
+When you have a moment, you might want to do some further reading
+on running your tests in Docker, and generating "lockfiles".
 
-
-We create our virtualenv just like we did on our own machine:
+In any case, back in our Dockerfile, we can create a virtualenv
+just like we did on our own machine with `python -m venv`,
+and then we can use the special `-r` flag for `pip install`,
+to point it at our requirements file:
 
 .Dockerfile
 ====
@@ -488,20 +586,39 @@ We create our virtualenv just like we did on our own machine:
 ----
 FROM python:slim
 
-RUN python -m venv /venv
+RUN python -m venv /venv  <1>
 
-COPY requirements.txt requirements.txt
-RUN /venv/bin/pip install -r requirements.txt
+COPY requirements.txt requirements.txt  <2>
+RUN /venv/bin/pip install -r requirements.txt  <3>
 
 COPY src /src
 
 WORKDIR /src
 
-CMD /venv/bin/python manage.py runserver
+CMD /venv/bin/python manage.py runserver  <4>
 ----
 ====
 
-NB Cant use `./.venv/bin/activate` like we do locally.
+<1> Here's where we create our virtualenv
+<2> We copy our requirements file in, just like the src folder
+<3> You can't really "activate" a virtualenv inside a Dockerfile,
+    so instead we provide the full path to the virtualenv version of `pip`
+    when we want to do the `pip install`.
+    Notice the `-r`
+<4> Relatedly, we switch from using the system default Python
+    to using the full path to the Python that's in our virtualenv,
+    when running `manage.py`.
+
+TIP: Forgetting the `-r` and running `pip install requirements.txt`
+    is such a common error, that I recommend you do it _right now_
+    and get familiar with the error message,
+    because (at the time of writing), it's not that obvious.
+
+
+==== ports
+
+doesnt work, show screenshot, and/or ft run.
+
 
 
 ==== database
@@ -595,7 +712,7 @@ but we can't get to it from the outside.
 What about from the inside?
 
 
-* `docker exec* 
+* `docker exec*
 
 Try running `curl` on the server itself
 (you'll need a second SSH shell onto your
@@ -924,7 +1041,7 @@ had a pony...
 
 ----
 pip install gunicorn
-pip freeze | grep gunicorn >> requirements.txt
+pip freeze | grep -i gunicorn >> requirements.txt
 ----
 
 Gunicorn will need to know a path to a WSGI server, which is usually
@@ -1132,7 +1249,7 @@ But what's wrong with `ALLOWED_HOSTS`? After double-checking it for typos, we
 might do a little more Googling with some relevant keywords:
 https://www.google.co.uk/search?q=django+allowed+hosts+nginx[Django
 ALLOWED_HOSTS Nginx]. Once again, the
-https://www.digitalocean.com/community/questions/bad-request-400-django-nginx-gunicorn-on-debian-7[first result] 
+https://www.digitalocean.com/community/questions/bad-request-400-django-nginx-gunicorn-on-debian-7[first result]
 gives us the clue we need.
 
 
@@ -1323,7 +1440,7 @@ WantedBy=multi-user.target <6>
 
 Systemd is joyously simple to configure (especially if you've ever had the
 dubious pleasure of writing an `init.d` script), and is fairly
-self-explanatory. 
+self-explanatory.
 
 <1> `Restart=on-failure` will restart the process automatically if it crashes.
 
@@ -1342,7 +1459,7 @@ self-explanatory.
     service to start on boot.
 
 Systemd scripts live in '/etc/systemd/system', and their names must end in
-'.service'. 
+'.service'.
 
 Now we tell Systemd to start Gunicorn with the `systemctl` command:
 
@@ -1386,7 +1503,7 @@ Gunicorn and Systemd into the mix, should things not go according to plan:
 
 - Remember to restart both services whenever you make changes.
 
-- If you make changes to the Systemd config file, you need to 
+- If you make changes to the Systemd config file, you need to
   run `daemon-reload` before `systemctl restart` to see the effect
   of your changes.
 
@@ -1404,9 +1521,9 @@ of packages we need in our virtualenvs:
 [subs="specialcharacters,quotes"]
 ----
 $ *pip install gunicorn*
-$ *pip freeze | grep gunicorn >> requirements.txt*
+$ *pip freeze | grep -i gunicorn >> requirements.txt*
 $ *git commit -am "Add gunicorn to virtualenv requirements"*
-$ *git push* 
+$ *git push*
 ----
 
 
@@ -1446,7 +1563,7 @@ Deployment::
 
 
 Assuming we're not ready to entirely automate our provisioning process, how
-should we save the results of our investigation so far?  I would say that 
+should we save the results of our investigation so far?  I would say that
 the Nginx and Systemd config files should probably be saved somewhere, in
 a way that makes it easy to reuse them later.  Let's save them in a new
 subfolder in our repo.
@@ -1665,7 +1782,7 @@ Security::
     fail2ban and watching its logfiles to see just how quickly it picks up on
     random drive-by attempts to brute force your SSH login.  The internet is a
     wild place!
-    
+
 *******************************************************************************
 
 .Test-Driving Server Configuration and Deployment
