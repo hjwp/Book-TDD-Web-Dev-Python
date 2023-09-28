@@ -1,6 +1,5 @@
 [[chapter_10_ansible]]
-Getting to a Production-Ready Deployment
-----------------------------------------
+== Infrastructure As Code with Ansbile
 
 .🚧 Warning, this chapter is heavily under construction
 *******************************************************************************
@@ -16,25 +15,18 @@ It might be best to skip ahead to [[chapter_organising_test_files]]
 
 *******************************************************************************
 
+[quote, 'Cay Horstman']
+______________________________________________________________
+Automate, automate, automate.
+______________________________________________________________
 
-((("deployment", "getting to production-ready", id="DPprodready10")))Our
-deployment is working fine but it's not production-ready.  Let's try
-to get it there, using the tests to guide us.
-
-In a way we're applying the Red-Green-Refactor cycle to our server deployment.
-Our hacky deployment got us to Green, and now we're going to Refactor, working
-incrementally (just as we would while coding), trying to move from working
-state to working state, and using the FTs to detect any regressions.
-
-////
-I'm planning to host my staging server at 'superlists-staging.ottg.eu':
-
-
-NOTE: A clarification: in this chapter, we run tests 'against' our staging
-    server, not 'on' our staging server.  So we still run the tests from our
-    own laptop, but they target the site that's running on the server.
-////
-
+((("deployment", "automating with Fabric", id="Dfarbric11")))
+((("infrastructure as code")))
+Automating deployment is critical for our staging tests to mean anything.
+By making sure the deployment procedure is repeatable, we give ourselves
+assurances that everything will go well when we deploy to production. (These
+days people sometimes use the words "infrastructure as code" to describe
+automation of deployments, and provisioning.)
 
 
 Getting a Domain Name
@@ -161,1093 +153,6 @@ See the guide linked above if you need tips on creating a sudo user.
 
 
 
-What We Need to Do
-~~~~~~~~~~~~~~~~~~
-
-What's wrong with our hacky deployment?  A few things: first, we need to host
-our app on the "normal" port 80 so that people can access it using a regular
-URL.
-
-Perhaps more importantly, we shouldn't use the Django dev server for
-production; it's not designed for real-life workloads.  Instead, we'll use the
-popular combination of the Nginx web server and the Gunicorn Python/WSGI
-server.
-
-((("DEBUG settings")))Several settings in 'settings.py' are currently
-unacceptable too. `DEBUG=True`, is strongly recommended against for production,
-and we'll want to fix `ALLOWED_HOSTS`, and set a unique `SECRET_KEY` too.
-
-Finally, we don't want to have to SSH in to our server to actually start the site.
-Instead,  we'll write a Systemd config file so that it starts up automatically
-whenever the server (re)boots.
-
-Let's go through and see if we can fix each of these things one by one.
-
-
-Switching to Nginx
-~~~~~~~~~~~~~~~~~~
-
-Installation
-^^^^^^^^^^^^
-
-
-((("Nginx", "installation")))We'll
-need a real web server, and all the cool kids are using Nginx these days,
-so we will too.  Having fought with Apache for many years, I can tell
-you it's a blessed relief in terms of the readability of its config files,
-if nothing else!
-
-Installing Nginx on my server was a matter of doing an `apt install`, and I could
-then see the default Nginx "Hello World" screen:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo apt install nginx*
-elspeth@server:$ *sudo systemctl start nginx*
-----
-
-Now you should be able to go to the normal port-80 URL address of your server, and see the
-"Welcome to nginx" page at this point, as in <<nginx-it-works>>.
-
-TIP: If you don't see it, it may be because your firewall does not open port 80
-    to the world. On AWS, for example, you may need to configure the "security
-    group" for your server to open port 80.
-
-[[nginx-it-works]]
-.Nginx--it works!
-image::images/twp2_0901.png["The default 'Welcome to nginx!' page"]
-
-
-
-
-The FT Now Fails, But Show Nginx Is Running
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("Nginx", "confirming operation of")))We can also confirm that if
-we run the FT _without_ specifying port 8000, we see them fail again--one of them
-in particular should now mention Nginx:
-
-[role="small-code against-server"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: [id="id_new_item"]
-[...]
-AssertionError: 'To-Do' not found in 'Welcome to nginx!'
-----
-
-Next we'll configure the Nginx web server to talk to Django
-   
-
-Simple Nginx Configuration
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("Nginx", "configuring")))We
-create an Nginx config file to tell it to send requests for our staging
-site along to Django. A minimal config looks like this:
-
-[role="sourcecode"]
-.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name superlists-staging.ottg.eu;
-
-    location / {
-        proxy_pass http://localhost:8000;
-    }
-}
-----
-====
-
-This config says it will only listen for our staging domain, and will "proxy"
-all requests to the local port 8000 where it expects to find Django
-waiting to respond.
-
-I saved this to a file called 'superlists-staging.ottg.eu' inside the
-'/etc/nginx/sites-available' folder.
-
-NOTE: Not sure how to edit a file on the server?  There's always vi, which I'll
-    keep encouraging you to learn a bit of, but perhaps today is already too
-    full of new things. Try the relatively beginner-friendly 
-    http://www.howtogeek.com/howto/42980/the-beginners-guide-to-nano-the-linux-command-line-text-editor/[`nano`]
-    instead. Note you'll also need to use `sudo` because the file is in a
-    system folder.
-
-We then add it to the enabled sites for the server by creating a symlink to it:
-
-[role="server-commands small-code"]
-[subs="specialcharacters,quotes"]
-----
-# reset our env var (if necessary)
-elspeth@server:$ *export SITENAME=superlists-staging.ottg.eu*
-
-elspeth@server:$ *cd /etc/nginx/sites-enabled/*
-elspeth@server:$ *sudo ln -s /etc/nginx/sites-available/$SITENAME $SITENAME*
-
-# check our symlink has worked:
-elspeth@server:$ *readlink -f $SITENAME*
-/etc/nginx/sites-available/superlists-staging.ottg.eu
-----
-
-That's the Debian/Ubuntu preferred way of saving Nginx configurations--the real
-config file in 'sites-available', and a symlink in 'sites-enabled'; the idea is
-that it makes it easier to switch sites on or off.
-
-We also may as well remove the default "Welcome to nginx" config, to avoid any
-[keep-together]#confusion#:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo rm /etc/nginx/sites-enabled/default*
-----
-
-And now to test it.  First we reload nginx and restart our server:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *cd ~/sites/$SITENAME*
-elspeth@server:$ *./.venv/bin/python manage.py runserver 8000*
-----
-
-TIP: ((("Nginx", "troubleshooting")))((("troubleshooting", "Nginx operation")))If
-    you ever find that Nginx isn't behaving as expected, try the command
-    `sudo nginx -t`, which does a config test and will warn you of any 
-    problems in your configuration files.
-
-
-And now we can try our FTs without the port 8000:
-
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests --failfast*]
-[...]
-
-...
- ---------------------------------------------------------------------
-Ran 3 tests in 10.718s
-
-OK
-----
-
-Hooray!  Back to a working state.
-
-NOTE: I also had to edit '/etc/nginx/nginx.conf' and uncomment a line saying
-    `server_names_hash_bucket_size 64;` to get my long domain name to work.
-    You may not have this problem; Nginx will warn you when you do a `reload`
-    if it has any trouble with its config files.
-
-
-.Tips on Debugging Nginx
-*******************************************************************************
-((("server provisioning")))((("debugging", "server provisioning")))Deployments
-are tricky!  If ever things don't go exactly as expected, here are
-a few tips and things to look out for, particularly around Nginx.
-
-- I'm sure you already have, but double-check that each file is exactly where
-  it should be and has the right contents--a single stray character can make
-  all the difference.
-
-- Nginx error logs go into '/var/log/nginx/error.log'.
-
-- You can ask Nginx to "check" its config using the `-t` flag: `nginx -t`
-
-- Make sure your browser isn't caching an out-of-date response.  Use
-  Ctrl-Refresh, or start a new private browser window.
-
-- This may be clutching at straws, but I've sometimes seen inexplicable
-  behaviour on the server that's only been resolved when I fully restarted it
-  with a `sudo reboot`.
-
-If you ever get completely stuck, there's always the option of blowing away
-your server and starting again from scratch!  It should go faster the second
-time...
-
-*******************************************************************************
-
-
-Switching to Gunicorn
-~~~~~~~~~~~~~~~~~~~~~
-
-((("production-ready deployment", "using Gunicorn", secondary-sortas="Gunicorn")))((("Gunicorn", "switching to")))Do
-you know why the Django mascot is a pony?  The story is that Django
-comes with so many things you want: an ORM, all sorts of middleware,
-the admin site... "What else do you want, a pony?" Well, Gunicorn stands
-for "Green Unicorn", which I guess is what you'd want next if you already
-had a pony...
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *./.venv/bin/pip install gunicorn*
-----
-
-Gunicorn will need to know a path to a WSGI server, which is usually
-a function called `application`.  Django provides one in 'superlists/wsgi.py':
-
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *./.venv/bin/gunicorn superlists.wsgi:application*
-2013-05-27 16:22:01 [10592] [INFO] Starting gunicorn 0.19.7.1
-2013-05-27 16:22:01 [10592] [INFO] Listening at: http://127.0.0.1:8000 (10592)
-[...]
-----
-
-But if we run the functional tests, once again you'll see that they are
-warning us of a problem. The test for adding list items passes happily, but the
-test for layout + styling fails.  Good job, tests!
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-AssertionError: 117.0 != 512 within 10 delta
-FAILED (failures=1)
-----
-
-And indeed, if you take a look at the site, you'll find the CSS is all broken,
-as in <<site-with-broken-css>>.
-
-The reason that the CSS is broken is that although the Django dev server will
-serve static files magically for you, Gunicorn doesn't.  Now is the time to
-tell Nginx to do it instead.
-
-
-[[site-with-broken-css]]
-.Broken CSS
-image::images/twp2_1001.png["The site is up, but CSS is broken"]
-
-
-One step forward, one step backward, but once again we've identified the
-problem nice and early. Moving on!
-
-TIP: At this point if you see a "502 - Bad Gateway", it's probably because you
-    forgot to restart Gunicorn.
-
-
-
-Getting Nginx to Serve Static Files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("production-ready deployment", "serving static files with Nginx")))((("Nginx", "serving static files with")))((("static files", "serving with Nginx")))First
-we run `collectstatic` to copy all the static files to a folder where 
-Nginx can find them:
-
-[role="server-commands"]
-[subs="specialcharacters,macros"]
-----
-elspeth@server:$ pass:quotes[*./.venv/bin/python manage.py collectstatic --noinput*]
-[...]
-15 static files copied to '/home/elspeth/sites/superlists-staging.ottg.eu/static'
-elspeth@server:$ pass:quotes[*ls static/*]
-base.css  bootstrap
-----
-
-Now we tell Nginx to start serving those static files for us, by
-adding a second `location` directive to the config:
-
-[role="sourcecode"]
-.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name superlists-staging.ottg.eu;
-
-    location /static {
-        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
-    }
-
-    location / {
-        proxy_pass http://localhost:8000;
-    }
-}
-----
-====
-
-Reload Nginx and restart Gunicorn...
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *./.venv/bin/gunicorn superlists.wsgi:application*
-----
-
-And if you take another manual look at your site, things should look much
-healthier. Let's rerun our FTs:
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-
-...
- ---------------------------------------------------------------------
-Ran 3 tests in 10.718s
-
-OK
-----
-
-Phew.
-
-
-
-Switching to Using Unix Sockets
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("production-ready deployment", "switching to Unix domain sockets")))((("Unix domain sockets")))((("Nginx", "switching to Unix domain sockets")))((("Gunicorn", "switching to Unix domain sockets")))When
-we want to serve both staging and live, we can't have both servers trying
-to use port 8000.  We could decide to allocate different ports, but that's a
-bit arbitrary, and it would be dangerously easy to get it wrong and start
-the staging server on the live port, or vice versa.
-
-A better solution is to use Unix domain sockets--they're like files on disk,
-but can be used by Nginx and Gunicorn to talk to each other.  We'll put our
-sockets in '/tmp'.  Let's change the proxy settings in Nginx:
-
-[role="sourcecode"]
-.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name superlists-staging.ottg.eu;
-
-    location /static {
-        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
-    }
-
-    location / {
-        proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
-    }
-}
-----
-====
-
-Now we restart Gunicorn, but this time telling it to listen on a socket instead
-of on the default port:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl reload nginx*
-elspeth@server:$ *./.venv/bin/gunicorn --bind \
-    unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
-----
-
-
-And again, we rerun the functional test again, to make sure things still pass:
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-OK
-----
-
-Hooray, a change that went without a hitch for once!footnote:[If you're using
-Fedora/CentOS, you may run into an issue with private _tmp_ directories.
-https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues/93[more info here]]
-Moving on...
-
-
-
-Using Environment Variables to Adjust Settings for Production
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("DEBUG settings")))((("production-ready deployment", "DEBUG=false and
-ALLOWED_HOSTS")))((("ALLOWED_HOSTS")))((("security issues and settings",
-"ALLOWED_HOSTS")))((("tracebacks")))We know there are several things in
-_settings.py_ that we want to change for production:
-
-
-* +ALLOWED_HOSTS+ is currently set to "*" which isn't secure.  We want it
-  to be set to only match the site we're supposed to be serving
-  (_superlists-staging.ottg.eu_).
-
-* +DEBUG+ mode is all very well for hacking about on your own server, but
-  leaving those pages full of tracebacks available to the world
-  https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
-
-* `SECRET_KEY` is used by Django for some of its crypto--things like cookies
-  and CSRF protection. It's good practice to make sure the secret key on the
-  server is different from the one in your source code repo, because that code
-  might be visible to strangers.  We'll want to generate a new, random one but
-  then keep it the same for the foreseeable future (find out more in the
-  https://docs.djangoproject.com/en/1.11/topics/signing/[Django docs]).
-
-Development, staging and live sites always have some differences
-in their configuration. Environment variables are a good place to
-store those different settings.  See
-http://www.clearlytech.com/2014/01/04/12-factor-apps-plain-english/["the
-12-factor app"].footnote:[
-Another common way of handling this is to have different versions of
-_settings.py_ for dev and prod.  That can work fine too, but it can
-get confusing to manage.  Environment variables also have the advantage
-of working for non-Django stuff too...]
-
-
-Here's one way to make it work:
-
-
-[role="sourcecode"]
-.superlists/settings.py (ch08l004)
-====
-[source,python]
-----
-if 'DJANGO_DEBUG_FALSE' in os.environ:  #<1>
-    DEBUG = False
-    SECRET_KEY = os.environ['DJANGO_SECRET_KEY']  #<2>
-    ALLOWED_HOSTS = [os.environ['SITENAME']]  #<2>
-else:
-    DEBUG = True  #<3>
-    SECRET_KEY = 'insecure-key-for-dev'
-    ALLOWED_HOSTS = []
-----
-====
-
-<1> We say we'll use an environment variable called `DJANGO_DEBUG_FALSE`
-    to switch debug mode off, and in effect require production settings
-    (it doesn't matter what we set it to, just that it's there).
-
-<2> And now we say that, if debug mode is off, we _require_ the
-    `SECRET_KEY` and `ALLOWED_HOSTS` to be set by two more environment
-    variables (one of which can be the `$SITENAME` variable we've been
-    using at the command-line so far).
-
-<3> Otherwise we fall-back to the insecure, debug mode settings that
-    are useful for Dev.
-
-There are other ways you might set up the logic, making various variables
-optional, but I think this gives us a little bit of protection against
-accidentally forgetting to set one.  The end result is that you don't
-need to set any of them for dev, but production needs all three, and it
-will error if any are missing.
-
-TIP: Better to fail hard than allow a typo in an environment variable name to
-    leave you running with insecure settings.
-
-Let's do our usual dance of committing locally, and pushing to GitHub:
-
-[role="small-code"]
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "use env vars for prod settings DEBUG, ALLOWED_HOSTS, SECRET_KEY"*
-$ *git push*
-----
-
-Then pull it down on the server, export a couple of environment variables,
-and restart Gunicorn:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *git pull*
-elspeth@server:$ *export DJANGO_DEBUG_FALSE=y DJANGO_SECRET_KEY=abc123*
-# we'll set the secret to something more secure later!
-elspeth@server:$ *./.venv/bin/gunicorn --bind \
-    unix:/tmp/superlists-staging.ottg.eu.socket superlists.wsgi:application*
-----
-
-
-And use a test run to reassure ourselves that things still work...
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests --failfast*]
-[...]
-AssertionError: 'To-Do' not found in ''
-----
-
-Oops.  Let's take a look manually: <<django-400-error>>.
-
-[[django-400-error]]
-.An ugly 400 error
-image::images/twp2_1002.png["An unfriendly page showing 400 Bad Request"]
-
-
-Essential Googling the Error Message
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Something's gone wrong.  But once again, by running our FTs frequently,
-we're able to identify the problem early, before we've changed too many things.
-In this case the only thing we've changed is _settings.py_. We've changed three
-settings—which one might be at fault?
-
-Let's use the tried and tested "Googling the error message" technique
-(<<googling-the-error>>).
-
-
-[[googling-the-error]]
-.An indispensable publication (source: https://news.ycombinator.com/item?id=11459601[])
-image::images/twp2_1003.png["Cover of a fake O'Reilly book called Googling the Error Message",400]
-
-The very first link in my search results for
-https://www.google.co.uk/?q=django+400+bad+request[Django 400 Bad Request] suggests that a 400 error is usually to do with `ALLOWED_HOSTS`.  In the
-last chapter we had a nice Django Debug page saying "DisallowedHost error"
-(<<django-disallowedhosts-error>>), but now because we have `DEBUG=False`, we
-just get the minimal, unfriendly 400 page.
-
-But what's wrong with `ALLOWED_HOSTS`? After double-checking it for typos, we
-might do a little more Googling with some relevant keywords:
-https://www.google.co.uk/search?q=django+allowed+hosts+nginx[Django
-ALLOWED_HOSTS Nginx]. Once again, the
-https://www.digitalocean.com/community/questions/bad-request-400-django-nginx-gunicorn-on-debian-7[first result] 
-gives us the clue we need.
-
-
-Fixing ALLOWED_HOSTS with Nginx: passing on the Host header
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The problem turns out to be that, by default, Nginx strips out the Host
-headers from requests it forwards, and it makes it "look like" they came
-from _localhost_ after all.  We can tell it to forward on the original host
-header by adding the `proxy_set_header` directive:
-
-
-[role="sourcecode"]
-.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name superlists-staging.ottg.eu;
-
-    location /static {
-        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
-    }
-
-    location / {
-        proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
-        proxy_set_header Host $host;
-    }
-}
-----
-====
-
-Reload Nginx once more:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl reload nginx*
-----
-
-And then we try our FTs again:
-
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-OK
-----
-
-
-Phew.  Back to working again.
-
-
-Using a .env File to Store Our Environment Variables
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Another little refactor.  Setting environment variables manually in various
-shells is a pain, and it'd be nice to have them all available in a single
-place.  The Python world (and other people out there too) seems to be
-standardising around using the convention of a file called _.env_ in the
-project root.
-
-First we add _.env_ to our __.gitignore__—this file is going to be used
-for secrets, and we don't ever want them ending up on GitHub:
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *echo .env >> .gitignore*
-$ *git commit -am"gitignore .env file"*
-$ *git push*
-----
-
-
-Next let's save our environment on the server:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *pwd*
-/home/elspeth/sites/superlists-staging.ottg.eu
-elspeth@server:$ *echo DJANGO_DEBUG_FALSE=y >> .env*
-elspeth@server:$ *echo SITENAME=$SITENAME >>.env*
-----
-
-
-NOTE: The way I've used the environment files in _settings.py_ means
-    that the _.env_ file is not required on your own machine, only
-    in staging/production.
-
-
-Generating a secure SECRET_KEY
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-While we're at it we'll also generate a more secure secret key using a little
-Python one-liner.
-
-
-[role="server-commands"]
-[subs=""]
-----
-elspeth@server:$ <strong>echo DJANGO_SECRET_KEY=$(
-python3.7 -c"import random; print(''.join(random.SystemRandom().
-choices('abcdefghijklmnopqrstuvwxyz0123456789', k=50)))"
-) &gt;&gt; .env</strong>
-elspeth@server:$ <strong>cat .env</strong>
-DJANGO_DEBUG_FALSE=y
-SITENAME=superlists-staging.ottg.eu
-DJANGO_SECRET_KEY=[...]
-----
-
-Now let's check our env file works, and restart gunicorn:
-
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *unset DJANGO_SECRET_KEY DJANGO_DEBUG_FALSE SITENAME*
-elspeth@server:$ *echo $DJANGO_DEBUG_FALSE-none*
--none
-elspeth@server:$ *set -a; source .env; set +a*
-elspeth@server:$ *echo $DJANGO_DEBUG_FALSE-none*
-y-none
-elspeth@server:$ *./.venv/bin/gunicorn --bind \
-    unix:/tmp/$SITENAME.socket superlists.wsgi:application*
-----
-
-
-And we rerun our FTs to check that they agree, everything still works:
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-OK
-----
-
-
-Excellent!  That went without a hitch :)
-
-
-TIP: I've shown the use of a _.env_ file and manually extracting environment
-    variables in _settings.py_, but there are some plugins that do this stuff
-    for you that are definitely worth investigating.  Look into
-    https://django-environ.readthedocs.io/en/latest/[django-environ],
-    https://github.com/jpadilla/django-dotenv[django-dotenv], and
-    https://docs.pipenv.org/[Pipenv].
-
-
-
-Using Systemd to Make Sure Gunicorn Starts on Boot
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-((("production-ready deployment", "using Systemd for automatic booting/reloading")))((("Systemd")))((("Gunicorn", "automatic booting/reloading of")))Our
-final step is to make sure that the server starts up Gunicorn automatically
-on boot, and reloads it automatically if it crashes. On Ubuntu, the way to do
-this is using Systemd.
-
-Here's what a Systemd config file looks like
-
-[role="sourcecode small-code"]
-.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
-====
-[source,bash]
-----
-[Unit]
-Description=Gunicorn server for superlists-staging.ottg.eu
-
-[Service]
-Restart=on-failure  <1>
-User=elspeth  <2>
-WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu  <3>
-EnvironmentFile=/home/elspeth/sites/superlists-staging.ottg.eu/.env  <4>
-
-ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/.venv/bin/gunicorn \
-    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
-    superlists.wsgi:application  <5>
-
-[Install]
-WantedBy=multi-user.target <6>
-----
-====
-
-Systemd is joyously simple to configure (especially if you've ever had the
-dubious pleasure of writing an `init.d` script), and is fairly
-self-explanatory. 
-
-<1> `Restart=on-failure` will restart the process automatically if it crashes.
-
-<2> `User=elspeth` makes the process run as the "elspeth" user.
-
-<3> `WorkingDirectory` sets the current working directory.
-
-<4> `EnvironmentFile` points Systemd towards our _.env_ file and tells it
-    to load environment variables from there.
-
-<5> `ExecStart` is the actual process to execute.  I'm using the ++\++ line
-    continuation characters to split the full command over multiple lines,
-    for readability, but it could all go on one line.
-
-<6> `WantedBy` in the `[Install]` section is what tells Systemd we want this
-    service to start on boot.
-
-Systemd scripts live in '/etc/systemd/system', and their names must end in
-'.service'. 
-
-Now we tell Systemd to start Gunicorn with the `systemctl` command:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-# this command is necessary to tell Systemd to load our new config file
-elspeth@server:$ *sudo systemctl daemon-reload*
-# this command tells Systemd to always load our service on boot
-elspeth@server:$ *sudo systemctl enable gunicorn-superlists-staging.ottg.eu*
-# this command actually starts our service
-elspeth@server:$ *sudo systemctl start gunicorn-superlists-staging.ottg.eu*
-----
-
-(You should find the `systemctl` command responds to tab completion, including
-of the service name, by the way.)
-
-Now we can rerun the FTs to see that everything still works. You can even test
-that the site comes back up if you reboot the server!
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-OK
-----
-
-
-.More Debugging Tips and Commands
-*******************************************************************************
-
-A few more places to look and things to try, now that we've introduced
-Gunicorn and Systemd into the mix, should things not go according to plan:
-
-- ((("debugging", "Systemd")))You can check the Systemd logs using
-  `sudo journalctl -u gunicorn-superlists-staging.ottg.eu`.
-
-- You can ask Systemd to check the validity of your service configuration:
-  `systemd-analyze verify /path/to/my.service`.
-
-- Remember to restart both services whenever you make changes.
-
-- If you make changes to the Systemd config file, you need to 
-  run `daemon-reload` before `systemctl restart` to see the effect
-  of your changes.
-
-*******************************************************************************
-
-
-
-Saving Our Changes: Adding Gunicorn to Our requirements.txt
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("requirements.txt")))((("Gunicorn", "adding to requirements.txt")))Back
-in the 'local' copy of your repo, we should add Gunicorn to the list
-of packages we need in our virtualenvs:
-
-[subs="specialcharacters,quotes"]
-----
-$ *pip install gunicorn*
-$ *pip freeze | grep gunicorn >> requirements.txt*
-$ *git commit -am "Add gunicorn to virtualenv requirements"*
-$ *git push* 
-----
-
-
-NOTE: ((("Windows", "Gunicorn support")))On
-    Windows, at the time of writing, Gunicorn would `pip install` quite
-    happily, but it wouldn't actually work if you tried to use it.  Thankfully
-    we only ever run it on the server, so that's not a problem. And, Windows
-    support is
-    http://stackoverflow.com/questions/11087682/does-gunicorn-run-on-windows[being discussed]...
-
-
-
-
-
-Thinking About Automating
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("production-ready deployment", "preparing for automation", id="PRDauto10")))((("automated deployment", "preparing for")))Let's
-recap our provisioning and deployment procedures:
-
-Provisioning::
-1. Assume we have a user account and home folder
-2. `add-apt-repository ppa:deadsnakes/ppa && apt update`
-3. `apt install nginx git python3.7 python3.7-venv`
-4. Add Nginx config for virtual host
-5. Add Systemd job for Gunicorn (including unique +SECRET_KEY+)
-
-Deployment::
-1. Create directory in '~/sites'
-2. Pull down source code
-3. Start virtualenv in 'virtualenv'
-4. `pip install -r requirements.txt`
-5. `manage.py migrate` for database
-6. `collectstatic` for static files
-7. Restart Gunicorn job
-8. Run FTs to check everything works
-
-
-Assuming we're not ready to entirely automate our provisioning process, how
-should we save the results of our investigation so far?  I would say that 
-the Nginx and Systemd config files should probably be saved somewhere, in
-a way that makes it easy to reuse them later.  Let's save them in a new
-subfolder in our repo.
-
-
-Saving Templates for Our Provisioning Config Files
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("templates", "saving for provisioning config files", id="TMPprovision10")))First,
- we create the subfolder:
-
-[subs="specialcharacters,quotes"]
-----
-$ *mkdir deploy_tools*
-----
-
-[role="pagebreak-before"]
-Here's a generic template for our Nginx config:
-
-[role="sourcecode"]
-.deploy_tools/nginx.template.conf
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name DOMAIN;
-
-    location /static {
-        alias /home/elspeth/sites/DOMAIN/static;
-    }
-
-    location / {
-        proxy_pass http://unix:/tmp/DOMAIN.socket;
-        proxy_set_header Host $host;
-    }
-}
-----
-====
-
-And here's one for the Gunicorn Sytemd service:
-
-[role="sourcecode"]
-.deploy_tools/gunicorn-systemd.template.service
-====
-[source,bash]
-----
-[Unit]
-Description=Gunicorn server for DOMAIN
-
-[Service]
-Restart=on-failure
-User=elspeth
-WorkingDirectory=/home/elspeth/sites/DOMAIN
-EnvironmentFile=/home/elspeth/sites/DOMAIN/.env
-
-ExecStart=/home/elspeth/sites/DOMAIN/.venv/bin/gunicorn \
-    --bind unix:/tmp/DOMAIN.socket \
-    superlists.wsgi:application
-
-[Install]
-WantedBy=multi-user.target
-----
-====
-
-Now it's easy for us to use those two files to generate
-a new site, by doing a find and replace on `DOMAIN`.
-
-For the rest, just keeping a few notes is OK. Why not keep
-them in a file in the repo too?
-
-[role="sourcecode"]
-.deploy_tools/provisioning_notes.md
-====
-[source,rst]
-----
-Provisioning a new site
-=======================
-
-## Required packages:
-
-* nginx
-* Python 3.6
-* virtualenv + pip
-* Git
-
-eg, on Ubuntu:
-
-    sudo add-apt-repository ppa:deadsnakes/ppa
-    sudo apt update
-    sudo apt install nginx git python3.7 python3.7-venv
-
-## Nginx Virtual Host config
-
-* see nginx.template.conf
-* replace DOMAIN with, e.g., staging.my-domain.com
-
-## Systemd service
-
-* see gunicorn-systemd.template.service
-* replace DOMAIN with, e.g., staging.my-domain.com
-
-## Folder structure:
-
-Assume we have a user account at /home/username
-
-/home/username
-└── sites
-    ├── DOMAIN1
-    │    ├── .env
-    │    ├── db.sqlite3
-    │    ├── manage.py etc
-    │    ├── static
-    │    └── virtualenv
-    └── DOMAIN2
-         ├── .env
-         ├── db.sqlite3
-         ├── etc
-----
-====
-
-We can do a commit for those:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add deploy_tools*
-$ *git status* # see three new files
-$ *git commit -m "Notes and template config files for provisioning"*
-----
-
-[role="pagebreak-before"]
-((("", startref="PRDauto10")))((("", startref="TMPprovision10")))Our
-source tree will now look something like this:
-
-[subs=""]
-----
-.
-├── deploy_tools
-│   ├── gunicorn-systemd.template.service
-│   ├── nginx.template.conf
-│   └── provisioning_notes.md
-├── functional_tests
-│   ├── [...]
-├── lists
-│   ├── __init__.py
-│   ├── models.py
-│   ├── [...]
-│   ├── static
-│   │   ├── base.css
-│   │   └── bootstrap
-│   │       ├── [...]
-│   ├── templates
-│   │   ├── base.html
-│   │   ├── [...]
-│   ├── tests.py
-│   ├── urls.py
-│   └── views.py
-├── manage.py
-├── requirements.txt
-├── static
-│   ├── [...]
-├── superlists
-│   ├── [...]
-└── virtualenv
-    ├── [...]
-
-----
-
-
-
-Saving Our Progress
-~~~~~~~~~~~~~~~~~~~
-
-
-Being able to run our FTs against a staging server can be very reassuring.
-But, in most cases, you don't want to run your FTs against your "real" server.
-In order to "save our work", and reassure ourselves that the production server
-will work just as well as the real server, we need to make our deployment
-process repeatable.((("", startref="DPprodready10")))
-
-Automation is the answer, and it's the topic of the next chapter.
-
-[role="pagebreak-before less_space"]
-.Production-Readiness for Server Deployments
-*******************************************************************************
-
-((("production-ready deployment", "best practices for")))A
-few things to think about when trying to build a production-ready server
-[keep-together]#environment#:
-
-Don't use the Django dev server in production::
-    ((("Gunicorn", "benefits of")))Something
-    like Gunicorn or uWSGI is a better tool for running Django; it
-    will let you run multiple workers, for example.
-
-Don't use Django to serve your static files::
-    ((("static files", "serving with Nginx")))There's
-    no point in using a Python process to do the simple job of serving
-    static files. Nginx can do it, but so can other web servers like Apache or
-    uWSGI.
-
-Check your settings.py for dev-only settings::
-    `DEBUG=True`, `ALLOWED_HOSTS` and `SECRET_KEY` are the ones we came across,
-    but you will probably have others (we'll see more when we start to send
-    emails from the server).
-
-Security::
-    ((("security issues and settings", "server security")))((("Platform-As-A-Service (PaaS)")))A
-    serious discussion of server security is beyond the scope of this book,
-    and I'd warn against running your own servers without learning a good bit
-    more about it. (One reason people choose to use a PaaS to host their
-    code is that it means a slightly fewer security issues to worry about.)
-    If you'd like a place to start, here's as good a place as any:
-    https://plusbryan.com/my-first-5-minutes-on-a-server-or-essential-security-for-linux-servers[My first 5 minutes on a server].
-    I can definitely recommend the eye-opening experience of installing
-    fail2ban and watching its logfiles to see just how quickly it picks up on
-    random drive-by attempts to brute force your SSH login.  The internet is a
-    wild place!
-    
-*******************************************************************************
-
-
 .General Server Debugging Tips
 *******************************************************************************
 
@@ -1262,3 +167,388 @@ out what went wrong before moving forward again.
 It's just as easy to fall into the Refactoring-Cat trap on the server!
 
 *******************************************************************************
+
+
+
+
+
+
+Configuring Domains for Staging and Live
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We don't want to be messing about with IP addresses all the time, so we should
+point our staging and live domains to the server. At my registrar, the control
+screens looked a bit like <<registrar-control-screens>>.
+
+[[registrar-control-screens]]
+.Domain setup
+image::images/twp2_0902.png["Registrar control screens for two domains"]
+
+//TODO: adjust illustration to show "superlists" not "book-example"
+
+((("A-Records")))In
+the DNS system, pointing a domain at a specific IP address is called an
+"A-Record".  All registrars are slightly different, but a bit of clicking
+around should get you to the right screen in yours.  You'll need two A-records:
+one for the staging address and one for the live one.  No need to worry about
+any other type of record.
+
+DNS records take some time to "propagate" around the world (it's controlled
+by a setting called "TTL", Time To Live), so once you've set up your A-record,
+you can check its progress on a "propagation checking" service like this one: https://www.whatsmydns.net/#A/superlists-staging.ottg.eu[].
+
+
+
+=== Old content from Provisioning with Ansible chapter
+
+
+((("Ansible", id="ansible29")))((("continuous deployment tools")))((("deployment", "continuous deployment tools")))We
+used Fabric to automate deploying new versions of the source code to our
+servers.  But provisioning a fresh server, and updating the Nginx and Gunicorn
+config files, was all left as a manual process.
+
+This is the kind of job that's increasingly given to tools called
+"Configuration Management" or "Continuous Deployment" tools.  Chef and Puppet
+were the first popular ones, and in the Python world there's Salt and Ansible.
+
+Of all of these, Ansible is the easiest to get started with.  We
+can get it working with just two files:
+
+    pip2 install --user ansible  # Python 2 sadly
+
+
+An "inventory file" at _deploy_tools/inventory.ansible_ defines what servers we
+can run against:
+
+[role="sourcecode"]
+.deploy_tools/inventory.ansible
+====
+[source,ini]
+----
+[live]
+superlists.ottg.eu ansible_become=yes ansible_ssh_user=elspeth
+
+[staging]
+superlists-staging.ottg.eu ansible_become=yes ansible_ssh_user=elspeth
+
+[local]
+localhost ansible_ssh_user=root ansible_ssh_port=6666 ansible_host=127.0.0.1
+----
+====
+
+(The local entry is just an example, in my case a Virtualbox VM, with port
+forwarding for ports 22 and 80 set up.)
+
+
+Installing System Packages and Nginx
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Next the Ansible "playbook", which defines what to do on the server.  This
+uses a syntax called YAML:
+
+[role="sourcecode"]
+.deploy_tools/provision.ansible.yaml
+====
+[source,yaml]
+----
+---
+
+- hosts: all
+
+  vars:
+      host: "{{ inventory_hostname }}"
+
+  tasks:
+
+    - name: Deadsnakes PPA to get Python 3.6
+      apt_repository:
+        repo='ppa:deadsnakes/ppa'
+    - name: make sure required packages are installed
+      apt: pkg=nginx,git,python3.7,python3.7-venv state=present
+
+    - name: allow long hostnames in nginx
+      lineinfile:
+        dest=/etc/nginx/nginx.conf
+        regexp='(\s+)#? ?server_names_hash_bucket_size'
+        backrefs=yes
+        line='\1server_names_hash_bucket_size 64;'
+
+    - name: add nginx config to sites-available
+      template: src=./nginx.conf.j2 dest=/etc/nginx/sites-available/{{ host }}
+      notify:
+          - restart nginx
+
+    - name: add symlink in nginx sites-enabled
+      file:
+          src=/etc/nginx/sites-available/{{ host }}
+          dest=/etc/nginx/sites-enabled/{{ host }}
+          state=link
+      notify:
+          - restart nginx
+----
+====
+
+
+The `inventory_hostname` variable is the domain name of the server we're running against.
+I'm using the `vars` section to rename it to "host", just for convenience.
+
+
+In this section, we install our required software using `apt`, tweak the Nginx
+config to allow long hostnames using a regular expression replacer, and then write the Nginx config file using a template.  This is a modified version
+of the template file we saved into 'deploy_tools/nginx.template.conf' in
+<<chapter_09_docker>>, but it now uses a specific templating syntax--Jinja2, which is
+actually a lot like the Django template syntax:
+
+[role="sourcecode"]
+.deploy_tools/nginx.conf.j2
+====
+----
+server {
+    listen 80;
+    server_name {{ host }};
+
+    location /static {
+        alias /home/{{ ansible_ssh_user }}/sites/{{ host }}/static;
+    }
+
+    location / {
+        proxy_set_header Host {{ host }};
+        proxy_pass http://unix:/tmp/{{ host }}.socket;
+    }
+}
+----
+====
+
+
+Configuring Gunicorn, and Using Handlers to Restart Services
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Here's the second half of our playbook:
+
+[role="sourcecode"]
+.deploy_tools/provision.ansible.yaml
+====
+[source,yaml]
+----
+    - name: write gunicorn service script
+      template:
+          src=./gunicorn.service.j2
+          dest=/etc/systemd/system/gunicorn-{{ host }}.service
+      notify:
+          - restart gunicorn
+
+  handlers:
+    - name: restart nginx
+      service:  name=nginx state=restarted
+
+    - name: restart gunicorn
+      systemd:
+          name=gunicorn-{{ host }}
+          daemon_reload=yes
+          enabled=yes
+          state=restarted
+
+----
+====
+
+
+Once again we use a template for our Gunicorn config:
+
+[role="sourcecode"]
+.deploy_tools/gunicorn.service.j2
+====
+[source,bash]
+----
+[Unit]
+Description=Gunicorn server for {{ host }}
+
+[Service]
+User={{ ansible_ssh_user }}
+WorkingDirectory=/home/{{ ansible_ssh_user }}/sites/{{ host }}
+EnvironmentFile=/home/{{ ansible_ssh_user }}/sites/{{ host }}/.env
+Restart=on-failure
+ExecStart=/home/{{ ansible_ssh_user }}/sites/{{ host }}/.venv/bin/gunicorn \
+    --bind unix:/tmp/{{ host }}.socket \
+    --access-logfile ../access.log \
+    --error-logfile ../error.log \
+    superlists.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+----
+====
+
+Then we have two "handlers" to restart Nginx and Gunicorn.  Ansible is
+clever, so if it sees multiple steps all call the same handlers, it
+waits until the last one before calling it.
+
+
+And that's it!  The command to kick all these off is:
+
+[role="small-code"]
+----
+ansible-playbook -i inventory.ansible provision.ansible.yaml --limit=staging --ask-become-pass
+----
+
+Lots more info in the https://docs.ansible.com/[Ansible docs].
+
+
+What to Do Next
+~~~~~~~~~~~~~~~
+
+I've just given a little taster of what's possible with Ansible.  But the more
+you automate about your deployments, the more confidence you will have in
+them.  Here are a few more things to look into.
+
+Move Deployment out of Fabric and into Ansible
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+((("Fabric", "moving deployment to Ansible")))We've
+seen that Ansible can help with some aspects of provisioning, but it can
+also do pretty much all of our deployment for us.  See if you can extend the
+playbook to do everything that we currently do in our Fabric deploy script,
+including notifying the restarts as required.
+
+
+
+Use Vagrant to Spin Up a Local VM
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+
+Running tests against the staging site gives us the ultimate confidence that
+things are going to work when we go live, but we can also use a VM on our
+local machine.
+
+Download Vagrant and Virtualbox, and see if you can get Vagrant to build a
+dev server on your own PC, using our Ansible playbook to deploy code to it.
+Rewire the FT runner to be able to test against the local VM.
+
+Having a Vagrant config file is particularly helpful when working
+in a team--it helps new developers to spin up servers that look exactly
+like yours.((("", startref="ansible29")))
+
+
+
+
+Deploying to Live
+^^^^^^^^^^^^^^^^^
+
+
+So, let's try using it for our live site!
+
+[role="small-code against-server"]
+[subs=""]
+----
+$ <strong>fab deploy:host=elspeth@superlists.ottg.eu</strong>
+
+Done.
+Disconnecting from elspeth@superlists.ottg.eu... done.
+----
+
+
+'Brrp brrp brpp'. You can see the script follows a slightly different path,
+doing a `git clone` to bring down a brand new repo instead of a `git pull`.
+It also needs to set up a new virtualenv from scratch, including a fresh
+install of pip and Django. The `collectstatic` actually creates new files this
+time, and the `migrate` seems to have worked too.
+
+
+
+Git Tag the Release
+~~~~~~~~~~~~~~~~~~~
+
+
+((("Git", "tagging releases")))One
+final bit of admin.  In order to preserve a historical marker,
+we'll use Git tags to mark the state of the codebase that reflects
+what's currently live on the server:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *git tag LIVE*
+$ *export TAG=$(date +DEPLOYED-%F/%H%M)*  # this generates a timestamp
+$ *echo $TAG* # should show "DEPLOYED-" and then the timestamp
+$ *git tag $TAG*
+$ *git push origin LIVE $TAG* # pushes the tags up
+----
+
+Now it's easy, at any time, to check what the difference is between
+our current codebase and what's live on the servers.  This will come
+in useful in a few chapters, when we look at database migrations. Have
+a look at the tag in the history:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git log --graph --oneline --decorate*
+[...]
+----
+
+
+Anyway, you now have a live website!  Tell all your friends!  Tell your mum, if
+no one else is interested!  And, in the next chapter, it's back to coding
+again.((("", startref="Fstage11")))
+
+
+
+Further Reading
+~~~~~~~~~~~~~~~
+
+
+((("Fabric", "additional resources")))((("automated deployment", "additional resources")))There's
+no such thing as the One True Way in deployment, and I'm no grizzled
+expert in any case.  I've tried to set you off on a reasonably sane path, but
+there's plenty of things you could do differently, and lots, lots more to learn
+besides.  Here are some resources I used for inspiration:
+
+
+* http://hynek.me/talks/python-deployments[Solid Python Deployments for Everybody] by Hynek Schlawack
+
+* http://bit.ly/U6tUo5[Git-based fabric deployments are awesome] by Dan Bravender
+
+* The deployment chapter of <<twoscoops,Two Scoops of Django>> by Dan
+  Greenfeld and Audrey Roy
+
+* http://12factor.net/[The 12-factor App] by the Heroku team
+
+
+
+[role="pagebreak-before less_space"]
+.Automated Deployments
+*******************************************************************************
+
+Fabric::
+    ((("automated deployment", "best practices for")))((("Fabric", "automated deployment best practices")))Fabric
+lets you run commands on servers from inside Python scripts. This
+    is a great tool for automating server admin tasks.
+
+
+Idempotency::
+    ((("idempotency")))If
+your deployment script is deploying to existing servers, you need to
+    design them so that they work against a fresh installation 'and' against
+    a server that's already configured.
+
+
+Keep config files under source control::
+    Make sure your only copy of a config file isn't on the server!  They
+    are critical to your application, and should be under version control
+    like anything else.
+
+Automating provisioning::
+    Ultimately, 'everything' should be automated, and that includes spinning up
+    brand new servers and ensuring they have all the right software installed.
+    This will involve interacting with the API of your hosting provider.
+
+Configuration management tools::
+    ((("configuration management tools")))((("Ansible")))((("Vagrant")))Fabric
+is very flexible, but its logic is still based on scripting. More
+    advanced tools take a more "declarative" approach, and can make your life
+    even easier.  Ansible and Vagrant are two worth checking out (see
+    <<appendix3>>), but there are many more (Chef, Puppet, Salt, Juju...).((("", startref="Dfarbric11")))
+
+*******************************************************************************
+

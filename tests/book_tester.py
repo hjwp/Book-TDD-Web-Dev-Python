@@ -382,7 +382,7 @@ class ChapterTest(unittest.TestCase):
             # one commit to simulate state near beginning of chap.
             command = command.replace(
                 'git clone https://github.com/hjwp/book-example.git',
-                'git clone -b chapter_manual_deployment https://github.com/hjwp/book-example.git'
+                'git clone -b chapter_09_docker https://github.com/hjwp/book-example.git'
             )
             command += ' && cd ~/sites/$SITENAME && git reset --hard HEAD^'
 
