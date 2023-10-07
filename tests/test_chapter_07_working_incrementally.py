@@ -20,7 +20,7 @@ class Chapter7Test(ChapterTest):
         self.assertEqual(self.listings[1].type, "output")
 
         # skips
-        self.skip_with_check(53, "should show 4 changed files")  # git
+        self.skip_with_check(53, "should show 5 changed files")  # git
         self.skip_with_check(58, "add a message summarising")  # git
         self.skip_with_check(75, "5 changed files")  # git
         self.skip_with_check(77, "forms x2")  # git
