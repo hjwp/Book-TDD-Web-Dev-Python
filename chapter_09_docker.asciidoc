@@ -330,7 +330,7 @@ And now we can try them against our docker server URL,
 which once we've done the right docker magic,
 will be at _http://locahost:8888_
 
-TIP: I'm deliberately choosing a different port to run Docker-django on (8888)
+TIP: I'm deliberately choosing a different port to run Dockerised Django on (8888)
     from the default port that a local `manage.py runserver` would choose (8080),
     to avoid getting in the situation where I _think_ I (or my tests)
     are looking at Docker, when they're actually looking at a local `runserver`
@@ -355,7 +355,7 @@ test_can_start_a_list_for_one_user
 selenium.common.exceptions.WebDriverException: Message: Reached error page: abo
 ut:neterror?e=connectionFailure&u=http%3A//localhost:8888/&c=UTF-8&
 f=regular&d=Firefox%20can%27t%20establish%20a%20connection%20to%20the%20server%
-20at%20superlists-staging.ottg.eu.
+20at%20locahost.
 
 
 ======================================================================
@@ -480,7 +480,7 @@ CMD python manage.py runserver  <4>
     command you want it to run by default,
     when you start a container based on that image.
 
-* deliberately wont work, django not installed
+// deliberately wont work, django not installed
 
 
 === Building a Docker Image and Running a Docker Container
@@ -556,6 +556,10 @@ on your PYTHONPATH environment variable? Did you forget to activate a virtual
 environment?
 ----
 
+TODO: note on the fact that you can't ctrl-c the process.
+    explain docker -it.
+
+
 Ah, we forgot that we need to install Django.
 
 
@@ -595,8 +599,10 @@ but the short answer is that Selenium is only a dependency for the tests,
 not the application code;
 we're never going to run the tests directly on our production servers.
 
-When you have a moment, you might want to do some further reading
-on running your tests in Docker, and generating "lockfiles".
+NOTE: When you have a moment,
+    you might want to do some further reading
+    on running your tests in Docker,
+    and generating "lockfiles".
 
 In any case, back in our Dockerfile, we can create a virtualenv
 just like we did on our own machine with `python -m venv`,
@@ -635,26 +641,58 @@ CMD /venv/bin/python manage.py runserver  <4>
 TIP: Forgetting the `-r` and running `pip install requirements.txt`
     is such a common error, that I recommend you do it _right now_
     and get familiar with the error message,
-    because (at the time of writing), it's not that obvious.
+    because (at the time of writing), it's not that helpful.
+    And it's a mistake I still make, all the time..
 
+
+==== database migration
+
+when we run it we spot a warning about migrations
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker run -it superlists*
+You have 19 unapplied migration(s). Your project may not work properly until
+you apply the migrations for app(s): auth, contenttypes, lists, sessions.
+Run 'python manage.py migrate' to apply them.
+----
+
+so we add that to our dockerfile
+
+
+[role="sourcecode"]
+.Dockerfile
+====
+[source,dockerfile]
+----
+CMD /venv/bin/python manage.py migrate
+CMD /venv/bin/python manage.py runserver
+----
+====
+
+and try again
 
 ==== ports
 
 doesnt work, show screenshot, and/or ft run.
 
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./manage.py test functional_tests \
 
+selenium.common.exceptions.WebDriverException: Message: Reached error page: about:neterror[...]
+----
 
-==== database
-
-migrate
+----
+CMD /venv/bin/python manage.py runserver  <4>
+----
 
 
 
 === Using the FT to Check That Our Container Works
 
-Let's see what our FTs think about this version of our site running on
-the server. I'll use the `--failfast` option to exit as soon as a single test
-fails:
+Let's see what our FTs think about this Docker version of our site.
+I'll use the `--failfast` option to exit as soon as a single test fails:
 
 
 [role="small-code"]
@@ -669,25 +707,38 @@ selenium.common.exceptions.WebDriverException: Message: Reached error page: [...
 Nope!  What's going on here?  Time for a little debugging.
 
 
-=== Debugging a Container That Doesn't Seem to Work at All
 
-* old content:
+=== Debugging a Container Networking Problems
 
-You may remember that Django's runserver usually chooses to run on port 8000.
-But a "normal" web server should run on port 80, and that's where our FTs are
-currently looking, on 'localhost:8888'.
+First let's try and take a look ourselves, in our browser:
 
-But we can actually use our `TEST_SERVER` variable to point the tests at
-port 8000. Let's try that:
+[[firefox-unable-to-connect-screenshot]]
+.Cannot connect on that port
+image::images/firefox-unable-to-connect.png["Firefox showing the 'Unable to connect' error"]
 
-[role="small-code"]
-[subs="specialcharacters,macros"]
+
+Now let's take another look at the output from our `docker run`
+
+
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888:8000 ./manage.py test functional_tests \
-    --failfast*]
-
-selenium.common.exceptions.WebDriverException: Message: Reached error page: [...]
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
 ----
+
+Aha, wrong port.  Let's change that:
+
+.Dockerfile
+====
+[source,dockerfile]
+----
+CMD /venv/bin/python manage.py runserver 8888
+----
+
+Still won't work.
+
+////
+
+OLD CONTENT FOLLOWS
 
 Nope, that didn't work earlier.  Let's try an even lower-level smoke test, the
 traditional Unix utility "curl" -- it's a command-line tool for making web
@@ -704,7 +755,108 @@ refused
 And maybe just to be sure, we could even open up our web browser and type in
 'http://localhost:8888', and confirm using a familiar tool
 that things aren't working. Nope.
+////
 
+
+=== Running code "inside" the container with docker exec
+
+// TODO use --name arg to docker run??
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker ps*  # make not of container name
+$ *docker exec -it <container-name> bash*
+$ *apt-get update*
+Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+Get:2 http://deb.debian.org/debian bookworm-updates InRelease [52.1 kB]
+Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [48.0 kB]
+[...]
+$ *apt-get install curl*
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  libbrotli1 libcurl4 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5
+librtmp1 libsasl2-2 libsasl2-modules
+  libsasl2-modules-db libssh2-1 publicsuffix
+[...]
+$ *curl -iv http://localhost:8000*
+*   Trying 127.0.0.1:8000...
+* Connected to localhost (127.0.0.1) port 8000 (#0)
+> GET / HTTP/1.1
+> Host: localhost:8000
+> User-Agent: curl/7.88.1
+> Accept: */*
+>
+< HTTP/1.1 200 OK
+HTTP/1.1 200 OK
+[...]
+<!doctype html>
+<html lang="en">
+
+  <head>
+    <title>To-Do lists</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="/static/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  </head>
+
+  <body>
+[...]
+----
+
+OK so we can see django is serving our site _inside_ the container,
+why can't we see it _outside_??
+
+Basically we need to do two things:
+
+==== exposing docker ports
+
+docker runs in its own little world,
+need to expose ports.  explain A:B syntax.
+
+[subs="specialcharacters,quotes"]
+----
+$ *podman run -p 8888:8888 -it superlists*
+----
+
+==== Essential Googling the Error Message
+
+the `-p` argument to `docker run` is something you just learn,
+fairly on in learning docker.
+But the next debugging step is a fair bit more obscure.
+We'll have to resort to the tried and tested
+"Googling the error message" technique instead
+(<<googling-the-error>>).
+
+
+[[googling-the-error]]
+.An indispensable publication (source: https://news.ycombinator.com/item?id=11459601[])
+image::images/orly-essential-googling-the-error-message.png["Cover of a fake O'Reilly book called Googling the Error Message",400]
+
+
+Everyone's search results are a little different,
+and mine are perhaps shaped by years of working with docker and django,
+but I found the answer in my very first result
+(see <<google-results-screenshot>>),
+which was a https://stackoverflow.com/questions/49476217/docker-cant-access-django-server[stackoverflow post].
+
+
+[[google-results-screenshot]]
+.Google can still deliver results
+image::images/google-results-with-stackoverflow.png["Google results with a useful stackoverflow post in first position",400]
+
+
+So we need to tell django to bind to any IP address,
+because container networking doesn't always have 127.0.0.1
+as the address of _localhost_:
+
+.Dockerfile
+====
+[source,dockerfile]
+----
+CMD /venv/bin/python manage.py runserver 0.0.0.0:8888
+----
 
 .On Debugging
 *******************************************************************************
@@ -730,90 +882,9 @@ It always seems hopeless at first!  But eventually you get there.
 
 *******************************************************************************
 
-We're pretty sure the server is running and listening on port 8000,
-but we can't get to it from the outside.
-What about from the inside?
 
 
-* `docker exec*
-
-Try running `curl` on the server itself
-(you'll need a second SSH shell onto your
-server, so as not to interrupt the existing `runserver` process):
-
-
-[role="server-commands small-code"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *curl localhost:8000*
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-
-    [...]
-    <title>To-Do lists</title>
-    [...]
-
-  </body>
-</html>
-----
-
-Ah-ha!  That looks like the HTML for our site.  So we 'can' reach it from the
-server itself, just not from the outside.  What could be going on?
-
-
-Actually there's clue in the output that Django printed out earlier when
-we ran `runserver`:
-
-
-[role="skipme small-code"]
-----
-Starting development server at http://127.0.0.1:8000/
-----
-
-Django's development server is configured to listen on 127.0.0.1,
-aka the "localhost" IP address.  But we're trying to reach it from
-the outside, via the server's "real" public address.
-
-
-But Django isn't listening on that address by default.
-Here's how we tell it to listen on all addresses.  Use Ctrl-C to
-interrupt the `runserver` process, and restart it like this:
-
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *./.venv/bin/python manage.py runserver 0.0.0.0:8000*
-[...]
-Starting development server at http://0.0.0.0:8000/
-----
-
-
-And in a second SSH shell, we can confirm it works from the server:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *curl localhost:8000*
-<!DOCTYPE html>
-[...]
-</html>
-----
-
-What about from our own laptop?
-
-[subs="specialcharacters,quotes"]
-----
-$ *curl superlists-staging.ottg.eu:8000*
-<!DOCTYPE html>
-<html lang="en">
-[...]
-</body>
-</html>
-----
-
-Looks good at first glance!  Let's try our FTs again:
+Let's try our FTs again:
 
 
 [role="small-code"]
@@ -821,7 +892,29 @@ Looks good at first glance!  Let's try our FTs again:
 ----
 $ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
     --failfast*]
+Found 3 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 26.965s
 
+OK
+----
+
+
+
+AMAZING IT ACTUALLY WORKS
+
+commit commit commit.
+
+
+TODO: maybe move all this lot to a "making production-ready" chapter after all??
+
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
 ======================================================================
 FAIL: test_can_start_a_list_for_one_user
 (functional_tests.tests.NewVisitorTest)
@@ -1246,21 +1339,14 @@ Oops.  Let's take a look manually: <<django-400-error>>.
 image::images/twp2_1002.png["An unfriendly page showing 400 Bad Request"]
 
 
-Essential Googling the Error Message
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== allowed hosts
 
 Something's gone wrong.  But once again, by running our FTs frequently,
 we're able to identify the problem early, before we've changed too many things.
 In this case the only thing we've changed is _settings.py_. We've changed three
 settings—which one might be at fault?
 
-Let's use the tried and tested "Googling the error message" technique
-(<<googling-the-error>>).
-
-
-[[googling-the-error]]
-.An indispensable publication (source: https://news.ycombinator.com/item?id=11459601[])
-image::images/twp2_1003.png["Cover of a fake O'Reilly book called Googling the Error Message",400]
+Let's use the "Googling the error message" technique again.
 
 The very first link in my search results for
 https://www.google.co.uk/?q=django+400+bad+request[Django 400 Bad Request] suggests that a 400 error is usually to do with `ALLOWED_HOSTS`.  In the
