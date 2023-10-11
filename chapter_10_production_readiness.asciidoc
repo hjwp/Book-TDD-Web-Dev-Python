@@ -96,6 +96,19 @@ problem nice and early. Moving on!
 
 === Static Files with Whitenoise
 
+[role="sourcecode"]
+.lists/tests.py (ch00l000)
+====
+[source,python]
+----
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    [...]
+
+----
+====
 
 
 And if you take another manual look at your site, things should look much
@@ -104,7 +117,7 @@ healthier. Let's rerun our FTs:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests --failfast*]
 [...]
 
 ...
@@ -121,56 +134,58 @@ Phew.
 === Using Environment Variables to Adjust Settings for Production
 
 ((("DEBUG settings")))
-((("production-ready deployment", "DEBUG=false and ALLOWED_HOSTS")))
-((("ALLOWED_HOSTS")))
-((("security issues and settings", "ALLOWED_HOSTS")))
-((("tracebacks")))
 We know there are several things in
 _settings.py_ that we want to change for production:
 
 
+////
 * +ALLOWED_HOSTS+ is currently set to "*" which isn't secure.  We want it
   to be set to only match the site we're supposed to be serving
   (_localhost_ for now, but someday soon, a real domain).
+////
 
 * +DEBUG+ mode is all very well for hacking about on your own server, but
   leaving those pages full of tracebacks available to the world
   https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
 
-* `SECRET_KEY` is used by Django for some of its crypto--things like cookies
-  and CSRF protection. It's good practice to make sure the secret key on the
-  server is different from the one in your source code repo, because that code
-  might be visible to strangers.  We'll want to generate a new, random one but
-  then keep it the same for the foreseeable future (find out more in the
-  https://docs.djangoproject.com/en/1.11/topics/signing/[Django docs]).
+* `SECRET_KEY` is used by Django for some of its crypto--things
+    like cookies and CSRF protection.
+    It's good practice to make sure the secret key in production is different
+    from the one in your source code repo,
+    because that code might be visible to strangers.
+    We'll want to generate a new, random one
+    but then keep it the same for the foreseeable future
+    (find out more in the https://docs.djangoproject.com/en/4.2/topics/signing/[Django docs]).
 
-Development, staging and live sites always have some differences
-in their configuration. Environment variables are a good place to
-store those different settings.  See
-http://www.clearlytech.com/2014/01/04/12-factor-apps-plain-english/["the
-12-factor app"].footnote:[
-Another common way of handling this is to have different versions of
-_settings.py_ for dev and prod.  That can work fine too, but it can
-get confusing to manage.  Environment variables also have the advantage
-of working for non-Django stuff too...]
+Development, staging and production sites always have some differences
+in their configuration.
+Environment variables are a good place to store those different settings.
+See http://www.clearlytech.com/2014/01/04/12-factor-apps-plain-english/[
+"the 12-factor app"].footnote:[
+Another common way of handling this
+is to have different versions of _settings.py_ for dev and prod.
+That can work fine too, but it can get confusing to manage.
+Environment variables also have the advantage of working for non-Django stuff too...
+]
 
 
 Here's one way to make it work:
 
 
 [role="sourcecode"]
-.superlists/settings.py (ch08l004)
+.superlists/settings.py (ch10l005)
 ====
 [source,python]
 ----
-if 'DJANGO_DEBUG_FALSE' in os.environ:  #<1>
+import os
+[...]
+
+if "DJANGO_DEBUG_FALSE" in os.environ:  #<1>
     DEBUG = False
-    SECRET_KEY = os.environ['DJANGO_SECRET_KEY']  #<2>
-    ALLOWED_HOSTS = [os.environ['SITENAME']]  #<2>
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]  #<2>
 else:
     DEBUG = True  #<3>
-    SECRET_KEY = 'insecure-key-for-dev'
-    ALLOWED_HOSTS = []
+    SECRET_KEY = "insecure-key-for-dev"
 ----
 ====
 
@@ -178,39 +193,50 @@ else:
     to switch debug mode off, and in effect require production settings
     (it doesn't matter what we set it to, just that it's there).
 
-<2> And now we say that, if debug mode is off, we _require_ the
-    `SECRET_KEY` and `ALLOWED_HOSTS` to be set by two more environment
-    variables (one of which can be the `$SITENAME` variable we've been
-    using at the command-line so far).
+<2> And now we say that, if debug mode is off,
+    we _require_ the `SECRET_KEY` to be set by two more environment variables
 
 <3> Otherwise we fall-back to the insecure, debug mode settings that
     are useful for Dev.
 
-There are other ways you might set up the logic, making various variables
-optional, but I think this gives us a little bit of protection against
-accidentally forgetting to set one.  The end result is that you don't
-need to set any of them for dev, but production needs all three, and it
-will error if any are missing.
+There are other ways you might set up the logic, making various variables optional,
+but I think this gives us a little bit of protection
+against accidentally forgetting to set one.
+The end result is that you don't need to set any of them for dev,
+but production needs all three, and it will error if any are missing.
 
 TIP: Better to fail hard than allow a typo in an environment variable name to
     leave you running with insecure settings.
 
-Let's do our usual dance of committing locally, and pushing to GitHub:
+Now let's set that environment variable in our Dockerfile using then `ENV` directive:
 
-[role="small-code"]
+[role="sourcecode"]
+.Dockerfile (ch10l006)
+====
+[source,dockerfile]
+----
+RUN /venv/bin/python manage.py migrate
+
+ENV DJANGO_DEBUG_FALSE=1
+CMD ["/venv/bin/gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
+----
+====
+
+oops, forgot about the secret key:
+
+
+----
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+----
+
+Now, we've said we can't keep the secret key in our source code,
+where else can we put it?
+For now, we can set it at the command line
+
 [subs="specialcharacters,quotes"]
 ----
-$ *git commit -am "use env vars for prod settings DEBUG, ALLOWED_HOSTS, SECRET_KEY"*
-$ *git push*
-----
-
-Then pull it down on the server, export a couple of environment variables,
-and restart Gunicorn:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-ENV DJANGO_DEBUG_OFF=1
+$ *podman build -t superlists . && podman run -p 8888:8888 -e DJANGO_SECRET_KEY=sekrit -it superlists*
 ----
 
 
@@ -219,9 +245,9 @@ And use a test run to reassure ourselves that things still work...
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests --failfast*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./manage.py test functional_tests --failfast*]
 [...]
-AssertionError: 'To-Do' not found in ''
+AssertionError: 'To-Do' not found in 'Bad Request (400)'
 ----
 
 Oops.  Let's take a look manually: <<django-400-error>>.
@@ -229,94 +255,6 @@ Oops.  Let's take a look manually: <<django-400-error>>.
 [[django-400-error]]
 .An ugly 400 error
 image::images/twp2_1002.png["An unfriendly page showing 400 Bad Request"]
-
-////
-
-TODO find the right spot for this
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-======================================================================
-FAIL: test_can_start_a_list_for_one_user
-(functional_tests.tests.NewVisitorTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/tests.py", line 44, in
-test_can_start_a_list_for_one_user
-    self.assertIn('To-Do', self.browser.title)
-AssertionError: 'To-Do' not found in 'DisallowedHost at /'
- ---------------------------------------------------------------------
-Ran 1 test in 4.010s
-
-FAILED (failures=1)
-[...]
-----
-
-NOTE: At this point, if your FTs still can't talk to the server,
-    something else must be in the way.  Check your provider's firewall
-    settings, and make sure ports 80 and 8000 are open to the world. On AWS,
-    for example, you may need to configure the "security group" for your
-    server.
-
-Oops, spoke too soon!  Another error.
-
-
-* TODO: this next bit may not happen yet
-
-Hacking ALLOWED_HOSTS in settings.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Don't be disheartened!  We may have just fixed one problem only to run straight
-into another, but this problem is definitely a much easier one.  At least we
-can talk to the server!  And it's giving us a helpful pointer.  Try opening the
-site manually (<<django-disallowedhosts-error>>):
-
-[[django-disallowedhosts-error]]
-.Another hitch along the way
-image::images/twp2_0902a.png["the Django debug page explaining the DisallowedHost error"]
-
-
-`ALLOWED_HOSTS` is a security setting designed to reject requests that are
-likely to be forged, broken or malicious because they don't appear to be
-asking for your site (HTTP request contain the address they were intended for
-in a header called "Host").
-
-By default, when DEBUG=True, `ALLOWED_HOSTS` effectively allows _localhost_,
-our own machine, so that's why it was working OK in dev, and from the server
-itself (where we ask for 'localhost'), but not from our own machine (where we
-ask for 'superlists-staging.ottg.eu')
-
-There's more information in the http://bit.ly/2u0R2d6[Django docs].
-
-The upshot is that we need to adjust `ALLOWED_HOSTS` in 'settings.py'. Since
-we're just hacking for now, let's set it to the totally insecure allow-everyone
-"*" setting:
-
-[role="sourcecode"]
-.superlists/settings.py
-====
-[source,python]
-----
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ['*']
-[...]
-----
-====
-
-
-And pull it down on the server, and restart our `runserver` process:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *git pull*
-elspeth@server:$ *./.venv/bin/python manage.py runserver 0.0.0.0:8000*
-----
-
-////
 
 === allowed hosts
 
@@ -328,70 +266,57 @@ settings—which one might be at fault?
 Let's use the "Googling the error message" technique again.
 
 The very first link in my search results for
-https://www.google.co.uk/?q=django+400+bad+request[Django 400 Bad Request] suggests that a 400 error is usually to do with `ALLOWED_HOSTS`.  In the
-last chapter we had a nice Django Debug page saying "DisallowedHost error"
-(<<django-disallowedhosts-error>>), but now because we have `DEBUG=False`, we
-just get the minimal, unfriendly 400 page.
-
-But what's wrong with `ALLOWED_HOSTS`? After double-checking it for typos, we
-might do a little more Googling with some relevant keywords:
-https://www.google.co.uk/search?q=django+allowed+hosts+nginx[Django
-ALLOWED_HOSTS Nginx]. Once again, the
-https://www.digitalocean.com/community/questions/bad-request-400-django-nginx-gunicorn-on-debian-7[first result]
-gives us the clue we need.
+https://duckduckgo.com/?q=django+400+bad+request[Django 400 Bad Request]
+suggests that a 400 error is usually to do with `ALLOWED_HOSTS`.
+// old error with debug=true <<django-disallowedhosts-error>>
 
 
-Fixing ALLOWED_HOSTS with Nginx: passing on the Host header
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+`ALLOWED_HOSTS` is a security setting
+designed to reject requests that are likely to be forged, broken or malicious
+because they don't appear to be asking for your site
+(HTTP request contain the address they were intended for in a header called "Host").
 
-The problem turns out to be that, by default, Nginx strips out the Host
-headers from requests it forwards, and it makes it "look like" they came
-from _localhost_ after all.  We can tell it to forward on the original host
-header by adding the `proxy_set_header` directive:
+By default, when DEBUG=True, `ALLOWED_HOSTS` effectively allows _localhost_,
+our own machine, so that's why it was working OK until now.
+
+There's more information in the
+https://docs.djangoproject.com/en/4.2/ref/settings/#allowed-hosts[Django docs].
+
+The upshot is that we need to adjust `ALLOWED_HOSTS` in _settings.py_.
+Let's use another environment variable for that:
 
 
 [role="sourcecode"]
-.server: /etc/nginx/sites-available/superlists-staging.ottg.eu
+.superlists/settings.py (ch10l005)
 ====
-[source,nginx]
+[source,python]
 ----
-server {
-    listen 80;
-    server_name superlists-staging.ottg.eu;
-
-    location /static {
-        alias /home/elspeth/sites/superlists-staging.ottg.eu/static;
-    }
-
-    location / {
-        proxy_pass http://unix:/tmp/superlists-staging.ottg.eu.socket;
-        proxy_set_header Host $host;
-    }
-}
+if "DJANGO_DEBUG_FALSE" in os.environ:
+    DEBUG = False
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+    ALLOWED_HOSTS = [os.environ["DJANGO_ALLOWED_HOST"]]
+else:
+    DEBUG = True
+    SECRET_KEY = "insecure-key-for-dev"
+    ALLOWED_HOSTS = []
 ----
 ====
 
-Reload Nginx once more:
+This is a setting that we want to change,
+depending on whether our docker image is running locally,
+or on a server, so we'll use the `-e` flag again:
 
-[role="server-commands"]
+
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo systemctl reload nginx*
-----
-
-And then we try our FTs again:
-
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-OK
+$ *podman build -t superlists . && \
+    podman run -p 8888:8888 -e DJANGO_SECRET_KEY=sekrit -e DJANGO_ALLOWED_HOST=localhost -it superlists*
 ----
 
 
-Phew.  Back to working again.
+TODO: at this point, static files break again.  need to run _collectstatic_
+
+
 
 
 Using a .env File to Store Our Environment Variables
