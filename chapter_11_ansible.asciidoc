@@ -211,6 +211,443 @@ you can check its progress on a "propagation checking" service like this one: ht
 
 
 
+////
+
+TODO: move .env to next chapter??
+
+Using a .env File to Store Our Environment Variables
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Another little refactor.  Setting environment variables manually in various
+shells is a pain, and it'd be nice to have them all available in a single
+place.  The Python world (and other people out there too) seems to be
+standardising around using the convention of a file called _.env_ in the
+project root.
+
+First we add _.env_ to our __.gitignore__—this file is going to be used
+for secrets, and we don't ever want them ending up on GitHub:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *echo .env >> .gitignore*
+$ *git commit -am"gitignore .env file"*
+$ *git push*
+----
+
+
+Next let's save our environment on the server:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *pwd*
+/home/elspeth/sites/superlists-staging.ottg.eu
+elspeth@server:$ *echo DJANGO_DEBUG_FALSE=y >> .env*
+elspeth@server:$ *echo SITENAME=$SITENAME >>.env*
+----
+
+
+NOTE: The way I've used the environment files in _settings.py_ means
+    that the _.env_ file is not required on your own machine, only
+    in staging/production.
+
+
+Generating a secure SECRET_KEY
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+While we're at it we'll also generate a more secure secret key using a little
+Python one-liner.
+
+
+[role="server-commands"]
+[subs=""]
+----
+elspeth@server:$ <strong>echo DJANGO_SECRET_KEY=$(
+python3.7 -c"import random; print(''.join(random.SystemRandom().
+choices('abcdefghijklmnopqrstuvwxyz0123456789', k=50)))"
+) &gt;&gt; .env</strong>
+elspeth@server:$ <strong>cat .env</strong>
+DJANGO_DEBUG_FALSE=y
+SITENAME=superlists-staging.ottg.eu
+DJANGO_SECRET_KEY=[...]
+----
+
+Now let's check our env file works, and restart gunicorn:
+
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *unset DJANGO_SECRET_KEY DJANGO_DEBUG_FALSE SITENAME*
+elspeth@server:$ *echo $DJANGO_DEBUG_FALSE-none*
+-none
+elspeth@server:$ *set -a; source .env; set +a*
+elspeth@server:$ *echo $DJANGO_DEBUG_FALSE-none*
+y-none
+elspeth@server:$ *./.venv/bin/gunicorn --bind \
+    unix:/tmp/$SITENAME.socket superlists.wsgi:application*
+----
+
+
+And we rerun our FTs to check that they agree, everything still works:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+[...]
+OK
+----
+
+
+Excellent!  That went without a hitch :)
+
+
+TIP: I've shown the use of a _.env_ file and manually extracting environment
+    variables in _settings.py_, but there are some plugins that do this stuff
+    for you that are definitely worth investigating.  Look into
+    https://django-environ.readthedocs.io/en/latest/[django-environ],
+    https://github.com/jpadilla/django-dotenv[django-dotenv], and
+    https://docs.pipenv.org/[Pipenv].
+
+
+
+Using Systemd to Make Sure Gunicorn Starts on Boot
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+((("production-ready deployment", "using Systemd for automatic booting/reloading")))((("Systemd")))((("Gunicorn", "automatic booting/reloading of")))Our
+final step is to make sure that the server starts up Gunicorn automatically
+on boot, and reloads it automatically if it crashes. On Ubuntu, the way to do
+this is using Systemd.
+
+Here's what a Systemd config file looks like
+
+[role="sourcecode small-code"]
+.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
+====
+[source,bash]
+----
+[Unit]
+Description=Gunicorn server for superlists-staging.ottg.eu
+
+[Service]
+Restart=on-failure  <1>
+User=elspeth  <2>
+WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu  <3>
+EnvironmentFile=/home/elspeth/sites/superlists-staging.ottg.eu/.env  <4>
+
+ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/.venv/bin/gunicorn \
+    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
+    superlists.wsgi:application  <5>
+
+[Install]
+WantedBy=multi-user.target <6>
+----
+====
+
+Systemd is joyously simple to configure (especially if you've ever had the
+dubious pleasure of writing an `init.d` script), and is fairly
+self-explanatory.
+
+<1> `Restart=on-failure` will restart the process automatically if it crashes.
+
+<2> `User=elspeth` makes the process run as the "elspeth" user.
+
+<3> `WorkingDirectory` sets the current working directory.
+
+<4> `EnvironmentFile` points Systemd towards our _.env_ file and tells it
+    to load environment variables from there.
+
+<5> `ExecStart` is the actual process to execute.  I'm using the ++\++ line
+    continuation characters to split the full command over multiple lines,
+    for readability, but it could all go on one line.
+
+<6> `WantedBy` in the `[Install]` section is what tells Systemd we want this
+    service to start on boot.
+
+Systemd scripts live in '/etc/systemd/system', and their names must end in
+'.service'.
+
+Now we tell Systemd to start Gunicorn with the `systemctl` command:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+# this command is necessary to tell Systemd to load our new config file
+elspeth@server:$ *sudo systemctl daemon-reload*
+# this command tells Systemd to always load our service on boot
+elspeth@server:$ *sudo systemctl enable gunicorn-superlists-staging.ottg.eu*
+# this command actually starts our service
+elspeth@server:$ *sudo systemctl start gunicorn-superlists-staging.ottg.eu*
+----
+
+(You should find the `systemctl` command responds to tab completion, including
+of the service name, by the way.)
+
+Now we can rerun the FTs to see that everything still works. You can even test
+that the site comes back up if you reboot the server!
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+[...]
+OK
+----
+
+
+.More Debugging Tips and Commands
+*******************************************************************************
+
+A few more places to look and things to try, now that we've introduced
+Gunicorn and Systemd into the mix, should things not go according to plan:
+
+- ((("debugging", "Systemd")))You can check the Systemd logs using
+  `sudo journalctl -u gunicorn-superlists-staging.ottg.eu`.
+
+- You can ask Systemd to check the validity of your service configuration:
+  `systemd-analyze verify /path/to/my.service`.
+
+- Remember to restart both services whenever you make changes.
+
+- If you make changes to the Systemd config file, you need to
+  run `daemon-reload` before `systemctl restart` to see the effect
+  of your changes.
+
+*******************************************************************************
+
+
+
+Saving Our Changes: Adding Gunicorn to Our requirements.txt
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("requirements.txt")))((("Gunicorn", "adding to requirements.txt")))Back
+in the 'local' copy of your repo, we should add Gunicorn to the list
+of packages we need in our virtualenvs:
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip install gunicorn*
+$ *pip freeze | grep -i gunicorn >> requirements.txt*
+$ *git commit -am "Add gunicorn to virtualenv requirements"*
+$ *git push*
+----
+
+
+
+
+
+Thinking About Automating
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+((("production-ready deployment", "preparing for automation", id="PRDauto10")))
+((("automated deployment", "preparing for")))
+Let's recap our provisioning and deployment procedures:
+
+Provisioning::
+1. Assume we have a user account and home folder
+2. `add-apt-repository ppa:deadsnakes/ppa && apt update`
+3. `apt install nginx git python3.7 python3.7-venv`
+4. Add Nginx config for virtual host
+5. Add Systemd job for Gunicorn (including unique +SECRET_KEY+)
+
+Deployment::
+1. Create directory in '~/sites'
+2. Pull down source code
+3. Start virtualenv in 'virtualenv'
+4. `pip install -r requirements.txt`
+5. `manage.py migrate` for database
+6. `collectstatic` for static files
+7. Restart Gunicorn job
+8. Run FTs to check everything works
+
+
+Assuming we're not ready to entirely automate our provisioning process, how
+should we save the results of our investigation so far?  I would say that
+the Nginx and Systemd config files should probably be saved somewhere, in
+a way that makes it easy to reuse them later.  Let's save them in a new
+subfolder in our repo.
+
+
+Saving Templates for Our Provisioning Config Files
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+((("templates", "saving for provisioning config files", id="TMPprovision10")))First,
+ we create the subfolder:
+
+[subs="specialcharacters,quotes"]
+----
+$ *mkdir deploy_tools*
+----
+
+[role="pagebreak-before"]
+Here's a generic template for our Nginx config:
+
+[role="sourcecode"]
+.deploy_tools/nginx.template.conf
+====
+[source,nginx]
+----
+server {
+    listen 80;
+    server_name DOMAIN;
+
+    location /static {
+        alias /home/elspeth/sites/DOMAIN/static;
+    }
+
+    location / {
+        proxy_pass http://unix:/tmp/DOMAIN.socket;
+        proxy_set_header Host $host;
+    }
+}
+----
+====
+
+And here's one for the Gunicorn Sytemd service:
+
+[role="sourcecode"]
+.deploy_tools/gunicorn-systemd.template.service
+====
+[source,bash]
+----
+[Unit]
+Description=Gunicorn server for DOMAIN
+
+[Service]
+Restart=on-failure
+User=elspeth
+WorkingDirectory=/home/elspeth/sites/DOMAIN
+EnvironmentFile=/home/elspeth/sites/DOMAIN/.env
+
+ExecStart=/home/elspeth/sites/DOMAIN/.venv/bin/gunicorn \
+    --bind unix:/tmp/DOMAIN.socket \
+    superlists.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+----
+====
+
+Now it's easy for us to use those two files to generate
+a new site, by doing a find and replace on `DOMAIN`.
+
+For the rest, just keeping a few notes is OK. Why not keep
+them in a file in the repo too?
+
+[role="sourcecode"]
+.deploy_tools/provisioning_notes.md
+====
+[source,rst]
+----
+Provisioning a new site
+=======================
+
+## Required packages:
+
+* nginx
+* Python 3.6
+* virtualenv + pip
+* Git
+
+eg, on Ubuntu:
+
+    sudo add-apt-repository ppa:deadsnakes/ppa
+    sudo apt update
+    sudo apt install nginx git python3.7 python3.7-venv
+
+## Nginx Virtual Host config
+
+* see nginx.template.conf
+* replace DOMAIN with, e.g., staging.my-domain.com
+
+## Systemd service
+
+* see gunicorn-systemd.template.service
+* replace DOMAIN with, e.g., staging.my-domain.com
+
+## Folder structure:
+
+Assume we have a user account at /home/username
+
+/home/username
+└── sites
+    ├── DOMAIN1
+    │    ├── .env
+    │    ├── db.sqlite3
+    │    ├── manage.py etc
+    │    ├── static
+    │    └── virtualenv
+    └── DOMAIN2
+         ├── .env
+         ├── db.sqlite3
+         ├── etc
+----
+====
+
+We can do a commit for those:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add deploy_tools*
+$ *git status* # see three new files
+$ *git commit -m "Notes and template config files for provisioning"*
+----
+
+[role="pagebreak-before"]
+((("", startref="PRDauto10")))((("", startref="TMPprovision10")))Our
+source tree will now look something like this:
+
+[subs=""]
+----
+.
+├── deploy_tools
+│   ├── gunicorn-systemd.template.service
+│   ├── nginx.template.conf
+│   └── provisioning_notes.md
+├── functional_tests
+│   ├── [...]
+├── lists
+│   ├── __init__.py
+│   ├── models.py
+│   ├── [...]
+│   ├── static
+│   │   ├── base.css
+│   │   └── bootstrap
+│   │       ├── [...]
+│   ├── templates
+│   │   ├── base.html
+│   │   ├── [...]
+│   ├── tests.py
+│   ├── urls.py
+│   └── views.py
+├── manage.py
+├── requirements.txt
+├── static
+│   ├── [...]
+├── superlists
+│   ├── [...]
+└── virtualenv
+    ├── [...]
+
+----
+
+
+
+Saving Our Progress
+~~~~~~~~~~~~~~~~~~~
+
+
+Being able to run our FTs against a container can be very reassuring.
+But, in most cases, you don't want to run your FTs against your "real" server.
+In order to "save our work", and reassure ourselves that the production server
+will work just as well as the real server, we need to make our deployment
+process repeatable.
+
+Automation is the answer, and it's the topic of the next chapter.
+////
 === Old content from Provisioning with Ansible chapter
 
 
