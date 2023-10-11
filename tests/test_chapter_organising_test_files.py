@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 class Chapter11Test(ChapterTest):
     chapter_name = 'chapter_organising_test_files'
-    previous_chapter = 'chapter_10_ansible'
+    previous_chapter = 'chapter_11_ansible'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
