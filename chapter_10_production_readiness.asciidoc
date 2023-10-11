@@ -1,167 +1,78 @@
 [[chapter_10_production_readiness]]
 == Making our App Production-Ready
 
+Our container is working fine but it's not production-ready.
+Let's try to get it there, using the tests to guide us.
 
-
-////
-
-TODO find the right spot for this
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-======================================================================
-FAIL: test_can_start_a_list_for_one_user
-(functional_tests.tests.NewVisitorTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/tests.py", line 44, in
-test_can_start_a_list_for_one_user
-    self.assertIn('To-Do', self.browser.title)
-AssertionError: 'To-Do' not found in 'DisallowedHost at /'
- ---------------------------------------------------------------------
-Ran 1 test in 4.010s
-
-FAILED (failures=1)
-[...]
-----
-
-NOTE: At this point, if your FTs still can't talk to the server,
-    something else must be in the way.  Check your provider's firewall
-    settings, and make sure ports 80 and 8000 are open to the world. On AWS,
-    for example, you may need to configure the "security group" for your
-    server.
-
-Oops, spoke too soon!  Another error.
-
-
-* TODO: this next bit may not happen yet
-
-Hacking ALLOWED_HOSTS in settings.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Don't be disheartened!  We may have just fixed one problem only to run straight
-into another, but this problem is definitely a much easier one.  At least we
-can talk to the server!  And it's giving us a helpful pointer.  Try opening the
-site manually (<<django-disallowedhosts-error>>):
-
-[[django-disallowedhosts-error]]
-.Another hitch along the way
-image::images/twp2_0902a.png["the Django debug page explaining the DisallowedHost error"]
-
-
-`ALLOWED_HOSTS` is a security setting designed to reject requests that are
-likely to be forged, broken or malicious because they don't appear to be
-asking for your site (HTTP request contain the address they were intended for
-in a header called "Host").
-
-By default, when DEBUG=True, `ALLOWED_HOSTS` effectively allows _localhost_,
-our own machine, so that's why it was working OK in dev, and from the server
-itself (where we ask for 'localhost'), but not from our own machine (where we
-ask for 'superlists-staging.ottg.eu')
-
-There's more information in the http://bit.ly/2u0R2d6[Django docs].
-
-The upshot is that we need to adjust `ALLOWED_HOSTS` in 'settings.py'. Since
-we're just hacking for now, let's set it to the totally insecure allow-everyone
-"*" setting:
-
-[role="sourcecode"]
-.superlists/settings.py
-====
-[source,python]
-----
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ['*']
-[...]
-----
-====
-
-
-And pull it down on the server, and restart our `runserver` process:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *git pull*
-elspeth@server:$ *./.venv/bin/python manage.py runserver 0.0.0.0:8000*
-----
-
-////
+In a way we're applying the Red-Green-Refactor cycle to our productionisation process.
+Our hacky container config got us to Green, and now we're going to Refactor,
+working incrementally (just as we would while coding),
+trying to move from working state to working state,
+and using the FTs to detect any regressions.
 
 
 
+=== What We Need to Do
 
+What's wrong with our hacky container image?
+A few things: first, we need to host our app on the "normal" port 80
+so that people can access it using a regular URL.
 
-Our deployment is working fine but it's not production-ready.  Let's try
-to get it there, using the tests to guide us.
+Perhaps more importantly, we shouldn't use the Django dev server for production;
+it's not designed for real-life workloads.
+Instead, we'll use the popular Gunicorn Python/WSGI server.
 
-In a way we're applying the Red-Green-Refactor cycle to our server deployment.
-Our hacky deployment got us to Green, and now we're going to Refactor, working
-incrementally (just as we would while coding), trying to move from working
-state to working state, and using the FTs to detect any regressions.
+((("DEBUG settings")))
+Several settings in 'settings.py' are currently unacceptable too.
+`DEBUG=True`, is strongly recommended against for production,
+we'll want to set a unique `SECRET_KEY`, and as we'll see, other things will come up.
 
-
-
-
-What We Need to Do
-~~~~~~~~~~~~~~~~~~
-
-What's wrong with our hacky deployment?  A few things: first, we need to host
-our app on the "normal" port 80 so that people can access it using a regular
-URL.
-
-Perhaps more importantly, we shouldn't use the Django dev server for
-production; it's not designed for real-life workloads.  Instead, we'll use the
-popular combination of the Nginx web server and the Gunicorn Python/WSGI
-server.
-
-((("DEBUG settings")))Several settings in 'settings.py' are currently
-unacceptable too. `DEBUG=True`, is strongly recommended against for production,
-and we'll want to fix `ALLOWED_HOSTS`, and set a unique `SECRET_KEY` too.
-
-Finally, we don't want to have to SSH in to our server to actually start the site.
-Instead,  we'll write a Systemd config file so that it starts up automatically
-whenever the server (re)boots.
-
-Let's go through and see if we can fix each of these things one by one.
+Let's go through and see if we can fix things one by one.
 
 
 
-Switching to Gunicorn
-~~~~~~~~~~~~~~~~~~~~~
+=== Switching to Gunicorn
 
 ((("production-ready deployment", "using Gunicorn", secondary-sortas="Gunicorn")))
 ((("Gunicorn", "switching to")))
-Do you know why the Django mascot is a pony?  The story is that Django
-comes with so many things you want: an ORM, all sorts of middleware,
-the admin site... "What else do you want, a pony?" Well, Gunicorn stands
-for "Green Unicorn", which I guess is what you'd want next if you already
-had a pony...
+Do you know why the Django mascot is a pony?
+The story is that Django comes with so many things you want:
+an ORM, all sorts of middleware, the admin site...
+"What else do you want, a pony?" Well, Gunicorn stands for "Green Unicorn",
+which I guess is what you'd want next if you already had a pony...
 
 ----
 pip install gunicorn
-pip freeze | grep -i gunicorn >> requirements.txt
+pip freeze | grep -i gunicorn== >> requirements.txt
 ----
 
-Gunicorn will need to know a path to a WSGI server, which is usually
-a function called `application`.  Django provides one in 'superlists/wsgi.py':
+Gunicorn will need to know a path to a WSGI server,
+which is usually a function called `application`.
+Django provides one in 'superlists/wsgi.py':
 
 ----
-CMD ["/venv/bin/gunicorn", "--bind", ":80", "superlists.wsgi:application"]
+CMD ["/venv/bin/gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
+----
+
+// TODO mention new cmd syntax with ["list"]
+
+
+rebuild and rerun our container:
+
+----
+podman build -t superlists . && podman run -p 8888:8888 -it superlists
 ----
 
 
-But if we run the functional tests, once again you'll see that they are
-warning us of a problem. The test for adding list items passes happily, but the
-test for layout + styling fails.  Good job, tests!
+But if we run the functional tests, once again you'll see
+that they are warning us of a problem.
+The test for adding list items passes happily,
+but the test for layout + styling fails. Good job, tests!
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
 [...]
 AssertionError: 117.0 != 512 within 10 delta
 FAILED (failures=1)
@@ -174,7 +85,6 @@ The reason that the CSS is broken is that although the Django dev server will
 serve static files magically for you, Gunicorn doesn't.
 
 
-
 [[site-with-broken-css]]
 .Broken CSS
 image::images/twp2_1001.png["The site is up, but CSS is broken"]
@@ -183,13 +93,9 @@ image::images/twp2_1001.png["The site is up, but CSS is broken"]
 One step forward, one step backward, but once again we've identified the
 problem nice and early. Moving on!
 
-////
-TIP: At this point if you see a "502 - Bad Gateway", it's probably because you
-    forgot to restart Gunicorn.
-////
-
 
 === Static Files with Whitenoise
+
 
 
 And if you take another manual look at your site, things should look much
@@ -198,7 +104,7 @@ healthier. Let's rerun our FTs:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
 [...]
 
 ...
@@ -313,7 +219,7 @@ And use a test run to reassure ourselves that things still work...
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests --failfast*]
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu ./manage.py test functional_tests --failfast*]
 [...]
 AssertionError: 'To-Do' not found in ''
 ----
@@ -324,6 +230,93 @@ Oops.  Let's take a look manually: <<django-400-error>>.
 .An ugly 400 error
 image::images/twp2_1002.png["An unfriendly page showing 400 Bad Request"]
 
+////
+
+TODO find the right spot for this
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+======================================================================
+FAIL: test_can_start_a_list_for_one_user
+(functional_tests.tests.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/functional_tests/tests.py", line 44, in
+test_can_start_a_list_for_one_user
+    self.assertIn('To-Do', self.browser.title)
+AssertionError: 'To-Do' not found in 'DisallowedHost at /'
+ ---------------------------------------------------------------------
+Ran 1 test in 4.010s
+
+FAILED (failures=1)
+[...]
+----
+
+NOTE: At this point, if your FTs still can't talk to the server,
+    something else must be in the way.  Check your provider's firewall
+    settings, and make sure ports 80 and 8000 are open to the world. On AWS,
+    for example, you may need to configure the "security group" for your
+    server.
+
+Oops, spoke too soon!  Another error.
+
+
+* TODO: this next bit may not happen yet
+
+Hacking ALLOWED_HOSTS in settings.py
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Don't be disheartened!  We may have just fixed one problem only to run straight
+into another, but this problem is definitely a much easier one.  At least we
+can talk to the server!  And it's giving us a helpful pointer.  Try opening the
+site manually (<<django-disallowedhosts-error>>):
+
+[[django-disallowedhosts-error]]
+.Another hitch along the way
+image::images/twp2_0902a.png["the Django debug page explaining the DisallowedHost error"]
+
+
+`ALLOWED_HOSTS` is a security setting designed to reject requests that are
+likely to be forged, broken or malicious because they don't appear to be
+asking for your site (HTTP request contain the address they were intended for
+in a header called "Host").
+
+By default, when DEBUG=True, `ALLOWED_HOSTS` effectively allows _localhost_,
+our own machine, so that's why it was working OK in dev, and from the server
+itself (where we ask for 'localhost'), but not from our own machine (where we
+ask for 'superlists-staging.ottg.eu')
+
+There's more information in the http://bit.ly/2u0R2d6[Django docs].
+
+The upshot is that we need to adjust `ALLOWED_HOSTS` in 'settings.py'. Since
+we're just hacking for now, let's set it to the totally insecure allow-everyone
+"*" setting:
+
+[role="sourcecode"]
+.superlists/settings.py
+====
+[source,python]
+----
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True
+
+ALLOWED_HOSTS = ['*']
+[...]
+----
+====
+
+
+And pull it down on the server, and restart our `runserver` process:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:$ *git pull*
+elspeth@server:$ *./.venv/bin/python manage.py runserver 0.0.0.0:8000*
+----
+
+////
 
 === allowed hosts
 
@@ -392,7 +385,7 @@ And then we try our FTs again:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
 [...]
 OK
 ----
@@ -481,7 +474,7 @@ And we rerun our FTs to check that they agree, everything still works:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
 [...]
 OK
 ----
@@ -578,7 +571,7 @@ that the site comes back up if you reboot the server!
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
 [...]
 OK
 ----
