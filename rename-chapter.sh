@@ -15,7 +15,7 @@ git checkout "$OLD_CHAPTER"
 git checkout -b "$NEW_NAME"
 git push -u local
 git push -u origin
-cd ../..
+cd ../../..
 
 git grep -l "$OLD_CHAPTER" | xargs sed -i "s/$OLD_CHAPTER/$NEW_NAME/g"
 
