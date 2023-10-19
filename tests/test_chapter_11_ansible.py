@@ -8,7 +8,7 @@ from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 class Chapter9cTest(ChapterTest):
     chapter_name = 'chapter_11_ansible'
-    previous_chapter = 'chapter_10_ansible'
+    previous_chapter = 'chapter_10_production_readiness'
 
 
     def test_listings_and_commands_and_output(self):
