@@ -318,7 +318,11 @@ Let's see if that worked!
 === Using an env File to Store Our Environment Variables
 
 We don't want to save secrets like SECRET_KEY into our ansible
-config either,
+config either.
+
+* explain env files.
+
+* explain jinja2.
 
 [role="sourcecode"]
 .deploy/env.j2 (ch11l003)
@@ -336,6 +340,7 @@ DJANGO_ALLOWED_HOST="{{ host }}"
 .deploy/ansible-provision.yaml (ch11l004)
 ====
 [source,yaml]
+----
 
 
     - name: Ensure .env file exists
@@ -349,74 +354,25 @@ DJANGO_ALLOWED_HOST="{{ host }}"
 ----
 ====
 
+* explain idempotency
 
-==== Generating a secure SECRET_KEY
-
-While we're at it we'll also generate a more secure secret key using a little
-Python one-liner.
-
-
-[role="server-commands"]
-[subs=""]
-----
-elspeth@server:$ <strong>echo DJANGO_SECRET_KEY=$(
-python3.7 -c"import random; print(''.join(random.SystemRandom().
-choices('abcdefghijklmnopqrstuvwxyz0123456789', k=50)))"
-) &gt;&gt; .env</strong>
-elspeth@server:$ <strong>cat .env</strong>
-DJANGO_DEBUG_FALSE=y
-SITENAME=superlists-staging.ottg.eu
-DJANGO_SECRET_KEY=[...]
-----
-
-Now let's check our env file works, and restart gunicorn:
-
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *unset DJANGO_SECRET_KEY DJANGO_DEBUG_FALSE SITENAME*
-elspeth@server:$ *echo $DJANGO_DEBUG_FALSE-none*
--none
-elspeth@server:$ *set -a; source .env; set +a*
-elspeth@server:$ *echo $DJANGO_DEBUG_FALSE-none*
-y-none
-elspeth@server:$ *./.venv/bin/gunicorn --bind \
-    unix:/tmp/$SITENAME.socket superlists.wsgi:application*
-----
-
-
-And we rerun our FTs to check that they agree, everything still works:
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu python manage.py test functional_tests*]
-[...]
-OK
-----
-
-
-Excellent!  That went without a hitch :)
-
-
-TIP: I've shown the use of a _.env_ file and manually extracting environment
-    variables in _settings.py_, but there are some plugins that do this stuff
-    for you that are definitely worth investigating.  Look into
-    https://django-environ.readthedocs.io/en/latest/[django-environ],
-    https://github.com/jpadilla/django-dotenv[django-dotenv], and
-    https://docs.pipenv.org/[Pipenv].
+* mention other secret management tools. vault??
 
 
 
-Using Systemd to Make Sure Gunicorn Starts on Boot
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+==== Using Systemd to Make Sure Our Container Starts on Boot
 
 
-((("production-ready deployment", "using Systemd for automatic booting/reloading")))((("Systemd")))((("Gunicorn", "automatic booting/reloading of")))Our
-final step is to make sure that the server starts up Gunicorn automatically
-on boot, and reloads it automatically if it crashes. On Ubuntu, the way to do
-this is using Systemd.
+((("production-ready deployment", "using Systemd for automatic booting/reloading")))
+((("Systemd")))
+((("Container", "automatic booting/reloading of")))
+Our final step is to make sure
+that the server starts up our container automatically on boot,
+and reloads it automatically if it crashes.
+On Ubuntu, the way to do this is using Systemd.
+
+
+TODO: use the auto-generated systemd thing.
 
 Here's what a Systemd config file looks like
 
@@ -515,237 +471,8 @@ Gunicorn and Systemd into the mix, should things not go according to plan:
 *******************************************************************************
 
 
-
-Saving Our Changes: Adding Gunicorn to Our requirements.txt
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("requirements.txt")))((("Gunicorn", "adding to requirements.txt")))Back
-in the 'local' copy of your repo, we should add Gunicorn to the list
-of packages we need in our virtualenvs:
-
-[subs="specialcharacters,quotes"]
-----
-$ *pip install gunicorn*
-$ *pip freeze | grep -i gunicorn >> requirements.txt*
-$ *git commit -am "Add gunicorn to virtualenv requirements"*
-$ *git push*
-----
-
-
-
-
-
-Thinking About Automating
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("production-ready deployment", "preparing for automation", id="PRDauto10")))
-((("automated deployment", "preparing for")))
-Let's recap our provisioning and deployment procedures:
-
-Provisioning::
-1. Assume we have a user account and home folder
-2. `add-apt-repository ppa:deadsnakes/ppa && apt update`
-3. `apt install nginx git python3.7 python3.7-venv`
-4. Add Nginx config for virtual host
-5. Add Systemd job for Gunicorn (including unique +SECRET_KEY+)
-
-Deployment::
-1. Create directory in '~/sites'
-2. Pull down source code
-3. Start virtualenv in 'virtualenv'
-4. `pip install -r requirements.txt`
-5. `manage.py migrate` for database
-6. `collectstatic` for static files
-7. Restart Gunicorn job
-8. Run FTs to check everything works
-
-
-Assuming we're not ready to entirely automate our provisioning process, how
-should we save the results of our investigation so far?  I would say that
-the Nginx and Systemd config files should probably be saved somewhere, in
-a way that makes it easy to reuse them later.  Let's save them in a new
-subfolder in our repo.
-
-
-Saving Templates for Our Provisioning Config Files
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-((("templates", "saving for provisioning config files", id="TMPprovision10")))First,
- we create the subfolder:
-
-[subs="specialcharacters,quotes"]
-----
-$ *mkdir deploy_tools*
-----
-
-[role="pagebreak-before"]
-Here's a generic template for our Nginx config:
-
-[role="sourcecode"]
-.deploy_tools/nginx.template.conf
-====
-[source,nginx]
-----
-server {
-    listen 80;
-    server_name DOMAIN;
-
-    location /static {
-        alias /home/elspeth/sites/DOMAIN/static;
-    }
-
-    location / {
-        proxy_pass http://unix:/tmp/DOMAIN.socket;
-        proxy_set_header Host $host;
-    }
-}
-----
-====
-
-And here's one for the Gunicorn Sytemd service:
-
-[role="sourcecode"]
-.deploy_tools/gunicorn-systemd.template.service
-====
-[source,bash]
-----
-[Unit]
-Description=Gunicorn server for DOMAIN
-
-[Service]
-Restart=on-failure
-User=elspeth
-WorkingDirectory=/home/elspeth/sites/DOMAIN
-EnvironmentFile=/home/elspeth/sites/DOMAIN/.env
-
-ExecStart=/home/elspeth/sites/DOMAIN/.venv/bin/gunicorn \
-    --bind unix:/tmp/DOMAIN.socket \
-    superlists.wsgi:application
-
-[Install]
-WantedBy=multi-user.target
-----
-====
-
-Now it's easy for us to use those two files to generate
-a new site, by doing a find and replace on `DOMAIN`.
-
-For the rest, just keeping a few notes is OK. Why not keep
-them in a file in the repo too?
-
-[role="sourcecode"]
-.deploy_tools/provisioning_notes.md
-====
-[source,rst]
-----
-Provisioning a new site
-=======================
-
-## Required packages:
-
-* nginx
-* Python 3.6
-* virtualenv + pip
-* Git
-
-eg, on Ubuntu:
-
-    sudo add-apt-repository ppa:deadsnakes/ppa
-    sudo apt update
-    sudo apt install nginx git python3.7 python3.7-venv
-
-## Nginx Virtual Host config
-
-* see nginx.template.conf
-* replace DOMAIN with, e.g., staging.my-domain.com
-
-## Systemd service
-
-* see gunicorn-systemd.template.service
-* replace DOMAIN with, e.g., staging.my-domain.com
-
-## Folder structure:
-
-Assume we have a user account at /home/username
-
-/home/username
-└── sites
-    ├── DOMAIN1
-    │    ├── .env
-    │    ├── db.sqlite3
-    │    ├── manage.py etc
-    │    ├── static
-    │    └── virtualenv
-    └── DOMAIN2
-         ├── .env
-         ├── db.sqlite3
-         ├── etc
-----
-====
-
-We can do a commit for those:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git add deploy_tools*
-$ *git status* # see three new files
-$ *git commit -m "Notes and template config files for provisioning"*
-----
-
-[role="pagebreak-before"]
-((("", startref="PRDauto10")))((("", startref="TMPprovision10")))Our
-source tree will now look something like this:
-
-[subs=""]
-----
-.
-├── deploy_tools
-│   ├── gunicorn-systemd.template.service
-│   ├── nginx.template.conf
-│   └── provisioning_notes.md
-├── functional_tests
-│   ├── [...]
-├── lists
-│   ├── __init__.py
-│   ├── models.py
-│   ├── [...]
-│   ├── static
-│   │   ├── base.css
-│   │   └── bootstrap
-│   │       ├── [...]
-│   ├── templates
-│   │   ├── base.html
-│   │   ├── [...]
-│   ├── tests.py
-│   ├── urls.py
-│   └── views.py
-├── manage.py
-├── requirements.txt
-├── static
-│   ├── [...]
-├── superlists
-│   ├── [...]
-└── virtualenv
-    ├── [...]
-
-----
-
-
-
-Saving Our Progress
-~~~~~~~~~~~~~~~~~~~
-
-
-Being able to run our FTs against a container can be very reassuring.
-But, in most cases, you don't want to run your FTs against your "real" server.
-In order to "save our work", and reassure ourselves that the production server
-will work just as well as the real server, we need to make our deployment
-process repeatable.
-
-Automation is the answer, and it's the topic of the next chapter.
 ////
-=== Old content from Provisioning with Ansible chapter
-
+TODO: old ansible content follows"
 
 ((("Ansible", id="ansible29")))((("continuous deployment tools")))((("deployment", "continuous deployment tools")))We
 used Fabric to automate deploying new versions of the source code to our
@@ -865,69 +592,6 @@ server {
 ====
 
 
-Configuring Gunicorn, and Using Handlers to Restart Services
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-Here's the second half of our playbook:
-
-[role="sourcecode"]
-.deploy_tools/provision.ansible.yaml
-====
-[source,yaml]
-----
-    - name: write gunicorn service script
-      template:
-          src=./gunicorn.service.j2
-          dest=/etc/systemd/system/gunicorn-{{ host }}.service
-      notify:
-          - restart gunicorn
-
-  handlers:
-    - name: restart nginx
-      service:  name=nginx state=restarted
-
-    - name: restart gunicorn
-      systemd:
-          name=gunicorn-{{ host }}
-          daemon_reload=yes
-          enabled=yes
-          state=restarted
-
-----
-====
-
-
-Once again we use a template for our Gunicorn config:
-
-[role="sourcecode"]
-.deploy_tools/gunicorn.service.j2
-====
-[source,bash]
-----
-[Unit]
-Description=Gunicorn server for {{ host }}
-
-[Service]
-User={{ ansible_ssh_user }}
-WorkingDirectory=/home/{{ ansible_ssh_user }}/sites/{{ host }}
-EnvironmentFile=/home/{{ ansible_ssh_user }}/sites/{{ host }}/.env
-Restart=on-failure
-ExecStart=/home/{{ ansible_ssh_user }}/sites/{{ host }}/.venv/bin/gunicorn \
-    --bind unix:/tmp/{{ host }}.socket \
-    --access-logfile ../access.log \
-    --error-logfile ../error.log \
-    superlists.wsgi:application
-
-[Install]
-WantedBy=multi-user.target
-----
-====
-
-Then we have two "handlers" to restart Nginx and Gunicorn.  Ansible is
-clever, so if it sees multiple steps all call the same handlers, it
-waits until the last one before calling it.
-
 
 And that's it!  The command to kick all these off is:
 
@@ -941,20 +605,6 @@ Lots more info in the https://docs.ansible.com/[Ansible docs].
 
 What to Do Next
 ~~~~~~~~~~~~~~~
-
-I've just given a little taster of what's possible with Ansible.  But the more
-you automate about your deployments, the more confidence you will have in
-them.  Here are a few more things to look into.
-
-Move Deployment out of Fabric and into Ansible
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-((("Fabric", "moving deployment to Ansible")))We've
-seen that Ansible can help with some aspects of provisioning, but it can
-also do pretty much all of our deployment for us.  See if you can extend the
-playbook to do everything that we currently do in our Fabric deploy script,
-including notifying the restarts as required.
 
 
 
@@ -974,6 +624,7 @@ Rewire the FT runner to be able to test against the local VM.
 Having a Vagrant config file is particularly helpful when working
 in a team--it helps new developers to spin up servers that look exactly
 like yours.((("", startref="ansible29")))
+////
 
 
 
