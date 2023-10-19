@@ -201,51 +201,156 @@ by a setting called "TTL", Time To Live), so once you've set up your A-record,
 you can check its progress on a "propagation checking" service like this one: https://www.whatsmydns.net/#A/superlists-staging.ottg.eu[].
 
 
+=== A first cut of an ansible script
 
-////
-
-TODO: move .env to next chapter??
-
-Using a .env File to Store Our Environment Variables
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Another little refactor.  Setting environment variables manually in various
-shells is a pain, and it'd be nice to have them all available in a single
-place.  The Python world (and other people out there too) seems to be
-standardising around using the convention of a file called _.env_ in the
-project root.
-
-First we add _.env_ to our __.gitignore__—this file is going to be used
-for secrets, and we don't ever want them ending up on GitHub:
+bla bla infrastructure as code
 
 
-[subs="specialcharacters,quotes"]
+[role="sourcecode"]
+.deploy/ansible-provision.yaml (ch11l001)
+====
+[source,yaml]
 ----
-$ *echo .env >> .gitignore*
-$ *git commit -am"gitignore .env file"*
-$ *git push*
+---
+- hosts: all
+
+  tasks:
+    - name: Install podman
+      ansible.builtin.apt:
+        name: podman
+        update_cache: yes
+      become: true
+
+    - name: Run container
+      containers.podman.podman_container:
+        name: testcontainer
+        image: busybox
+        state: started
+        cmd: echo hello world
 ----
+====
 
 
-Next let's save our environment on the server:
+
+=== SSHing Into the Server and Viewing Container Logs
+
+Now ssh into the server, check it worked
+
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *pwd*
-/home/elspeth/sites/superlists-staging.ottg.eu
-elspeth@server:$ *echo DJANGO_DEBUG_FALSE=y >> .env*
-elspeth@server:$ *echo SITENAME=$SITENAME >>.env*
+elspeth@server:$ *podman ps -a*
+elspeth@server:$ *podman logs testcontainer*
+hello, world
 ----
 
+TIP: Look out for that `elspeth@server`
+    in the command-line listings in this chapter.
+    It indicates commands that must be run on the server,
+    as opposed to commands you run on your own PC.
 
-NOTE: The way I've used the environment files in _settings.py_ means
-    that the _.env_ file is not required on your own machine, only
-    in staging/production.
+
+=== Getting our image onto the server
+
+Typically, you can "push" and "pull" container images
+to a "container registry" -- Docker offers a public one called DockerHub,
+and organisations will often run private ones,
+hosted by cloud providers like AWS.
+
+So your process of getting an image onto a server is usually
+* push the image from your machine to the registry
+* pull the image form the registry onto the server
+    (usually this just involves specifying the image name
+    in the format registry-url/image-name:tag)
+
+But I don't want to ask you to create a DockerHub account,
+or implicitly endorse any particular provider,
+so we're going to "simulate" this process by doing it manually.
+
+It turns out you can "export" a container image to an archive format,
+manually copy that to the server, and then re-import it.
+In ansible config, it looks like this:
+
+[role="sourcecode"]
+.deploy/ansible-provision.yaml (ch11l002)
+====
+[source,yaml]
+----
+---
+- hosts: all
+
+  tasks:
+    - name: Install podman
+      ansible.builtin.apt:
+        name: podman
+        update_cache: yes
+      become: true
+
+    - name: Export container image locally
+      containers.podman.podman_save:
+        image: superlists
+        dest: /tmp/superlists-img.oci
+        format: oci-archive
+        force: true
+      delegate_to: 127.0.0.1
+
+    - name: Upload image to server
+      ansible.builtin.copy:
+        src: /tmp/superlists-img.oci
+        dest: /tmp/superlists-img.oci
+
+    - name: Import container image on server
+      containers.podman.podman_load:
+        input: /tmp/superlists-img.oci
+
+    - name: Run container
+      containers.podman.podman_container:
+        name: superlists
+        image: superlists
+        state: started
+----
+====
 
 
-Generating a secure SECRET_KEY
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Let's see if that worked!
+
+=== Using an env File to Store Our Environment Variables
+
+We don't want to save secrets like SECRET_KEY into our ansible
+config either,
+
+[role="sourcecode"]
+.deploy/env.j2 (ch11l003)
+====
+[source,python]
+----
+DJANGO_DEBUG_FALSE=1
+DJANGO_SECRET_KEY="{{ secret_key }}"
+DJANGO_ALLOWED_HOST="{{ host }}"
+----
+====
+
+
+[role="sourcecode"]
+.deploy/ansible-provision.yaml (ch11l004)
+====
+[source,yaml]
+
+
+    - name: Ensure .env file exists
+      ansible.builtin.copy:
+        src: deploy/env.j2
+        dest: ~/superlists.env
+      vars:
+        host: "{{ inventory_hostname }}"
+        secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+
+----
+====
+
+
+==== Generating a secure SECRET_KEY
 
 While we're at it we'll also generate a more secure secret key using a little
 Python one-liner.
