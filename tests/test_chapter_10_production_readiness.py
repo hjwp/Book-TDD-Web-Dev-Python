@@ -8,8 +8,8 @@ from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 
 class Chapter9bTest(ChapterTest):
-    chapter_name = 'chapter_making_deployment_production_ready'
-    previous_chapter = 'chapter_manual_deployment'
+    chapter_name = 'chapter_10_production_readiness'
+    previous_chapter = 'chapter_09_docker'
 
 
     def test_listings_and_commands_and_output(self):
@@ -36,8 +36,8 @@ class Chapter9bTest(ChapterTest):
             39,
             'git pull',
             'git fetch'
-            ' && git checkout chapter_making_deployment_production_ready'
-            ' && git reset --hard origin/chapter_making_deployment_production_ready',
+            ' && git checkout chapter_10_production_readiness'
+            ' && git reset --hard origin/chapter_10_production_readiness',
         )
 
         vm_restore = 'MANUAL_END'

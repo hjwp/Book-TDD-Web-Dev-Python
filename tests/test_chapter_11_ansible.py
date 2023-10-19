@@ -7,8 +7,8 @@ from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 
 class Chapter9cTest(ChapterTest):
-    chapter_name = 'chapter_automate_deployment_with_fabric'
-    previous_chapter = 'chapter_making_deployment_production_ready'
+    chapter_name = 'chapter_11_ansible'
+    previous_chapter = 'chapter_10_production_readiness'
 
 
     def test_listings_and_commands_and_output(self):
