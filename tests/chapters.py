@@ -11,7 +11,7 @@ CHAPTERS = [
     "chapter_08_prettification",
     "chapter_09_docker",
     "chapter_10_ansible",
-    "chapter_automate_deployment_with_fabric",
+    "chapter_11_ansible",
     "chapter_organising_test_files",
     "chapter_database_layer_validation",
     "chapter_simple_form",

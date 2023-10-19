@@ -7,7 +7,7 @@ from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 
 class Chapter9cTest(ChapterTest):
-    chapter_name = 'chapter_automate_deployment_with_fabric'
+    chapter_name = 'chapter_11_ansible'
     previous_chapter = 'chapter_10_ansible'
 
 
