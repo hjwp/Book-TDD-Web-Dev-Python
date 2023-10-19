@@ -10,7 +10,7 @@ CHAPTERS = [
     # part 2
     "chapter_08_prettification",
     "chapter_09_docker",
-    "chapter_making_deployment_production_ready",
+    "chapter_10_ansible",
     "chapter_automate_deployment_with_fabric",
     "chapter_organising_test_files",
     "chapter_database_layer_validation",

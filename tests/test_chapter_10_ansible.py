@@ -8,7 +8,7 @@ from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 
 class Chapter9bTest(ChapterTest):
-    chapter_name = 'chapter_making_deployment_production_ready'
+    chapter_name = 'chapter_10_ansible'
     previous_chapter = 'chapter_09_docker'
 
 
@@ -36,8 +36,8 @@ class Chapter9bTest(ChapterTest):
             39,
             'git pull',
             'git fetch'
-            ' && git checkout chapter_making_deployment_production_ready'
-            ' && git reset --hard origin/chapter_making_deployment_production_ready',
+            ' && git checkout chapter_10_ansible'
+            ' && git reset --hard origin/chapter_10_ansible',
         )
 
         vm_restore = 'MANUAL_END'
