@@ -311,6 +311,7 @@ In ansible config, it looks like this:
         name: superlists
         image: superlists
         state: started
+        recreate: true
 ----
 ====
 
@@ -377,10 +378,19 @@ show ssh, curl localhosts maybe.
 ====
 [source,yaml]
 ----
+    - name: Allow nonroot user to bind to port 80
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_unprivileged_port_start
+        value: 80
+        reload: true
+      become: true
+
+    - name: Run container
       containers.podman.podman_container:
         name: superlists
         image: superlists
         state: started
+        recreate: true
         env_file: /superlists.env
         ports: 80:8888
 ----
@@ -388,15 +398,43 @@ show ssh, curl localhosts maybe.
 
 ==== Using Systemd to Make Sure Our Container Starts on Boot
 
-TODO
-
-((("production-ready deployment", "using Systemd for automatic booting/reloading")))
 ((("Systemd")))
 ((("Container", "automatic booting/reloading of")))
 Our final step is to make sure
 that the server starts up our container automatically on boot,
 and reloads it automatically if it crashes.
-On Ubuntu, the way to do this is using Systemd.
+
+Ansible and the podman plugins have some modules for this:
+
+
+[role="sourcecode"]
+.infra/ansible-provision.yaml (ch11l006)
+====
+[source,yaml]
+----
+    - name: Create container
+      containers.podman.podman_container:
+        name: superlists
+        image: superlists
+        state: stopped
+        recreate: true
+        env_file: ~/superlists.env
+        ports: 80:8888
+
+    - name: Generate Systemd config file
+      containers.podman.podman_generate_systemd:
+        name: superlists
+        dest: ~/.config/systemd/user/
+    
+    - name: Container must be started and enabled on systemd
+      ansible.builtin.systemd:
+        name: container-superlists
+        daemon_reload: true
+        state: started
+        enabled: true
+----
+====
+
 
 
 TODO: use the auto-generated systemd thing.
