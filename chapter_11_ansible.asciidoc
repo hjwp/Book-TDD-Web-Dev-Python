@@ -7,14 +7,24 @@ ______________________________________________________________
 Automate, automate, automate.
 ______________________________________________________________
 
-((("deployment", "automating with Fabric", id="Dfarbric11")))
+((("deployment", "automating with Ansible", id="Dfarbric11")))
 ((("infrastructure as code")))
-Automating deployment is critical for our staging tests to mean anything.
-By making sure the deployment procedure is repeatable, we give ourselves
-assurances that everything will go well when we deploy to production. (These
-days people sometimes use the words "infrastructure as code" to describe
-automation of deployments, and provisioning.)
+In this chapter we're going to spin up an actual server,
+make it accessible on the Internet with a real domain name,
+and then we're going to install our app on it, using our container.
 
+We can do all these things manually,
+but a key insight of the modern infrastructure management
+is that automation really pays off in reducing maintenance burdens.
+
+It's also key to making sure our tests give us true confidence over our deployments.
+If we go to the trouble of builiding a staging server,
+we want to make sure that it's as similar as possible to the production environment.
+By automating the way we deploy, and using the same automation for staging and prod,
+we give ourselves much moer confidence.
+
+The buzzword for automating your deployments these days is
+"Infrastructure as Code".
 
 NOTE: Why not ping me a note once your site is live on the web,
     and send me the URL?
@@ -23,8 +33,6 @@ NOTE: Why not ping me a note once your site is live on the web,
 
 //TODO useful blog post https://linuxhandbook.com/autostart-podman-containers/
 
-
-// TODO make sure we put SECRET_KEY in somehow
 
 .🚧 Warning, this chapter is heavily under construction
 *******************************************************************************
@@ -46,16 +54,19 @@ It might be best to skip ahead to [[chapter_12_organising_test_files]]
 ((("domain names")))
 We're going to need a couple of domain names at this point in the book--they
 can both be subdomains of a single domain.  I'm going to use
-'superlists.ottg.eu' and 'superlists-staging.ottg.eu'.
-If you don't already own a domain, this is the time to register one! Again,
-this is something I really want you to 'actually' do.  If you've never
-registered a domain before, just pick any old registrar and buy a cheap one--it
+_superlists.ottg.eu_ and _superlists-staging.ottg.eu_.
+If you don't already own a domain, this is the time to register one!
+Again, this is something I really want you to _actually_ do.
+If you've never registered a domain before,
+just pick any old registrar and buy a cheap one--it
 should only cost you $5 or so, and you can even find free ones.
 I promise seeing your site on a "real" website will be a thrill.
 
 
 
 === Manually Provisioning a Server to Host Our Site
+
+TODO: revise this section
 
 ((("staging sites", "manual server provisioning", id="SSserver09")))
 ((("server provisioning", id="seerver09")))
@@ -144,15 +155,15 @@ NOTE: Some people get to this chapter, and are tempted to skip the domain bit,
 
 ==== User Accounts, SSH, and Privileges
 
-In these instructions, I'm assuming that you have a nonroot user account set
-up that has "sudo" privileges, so whenever we need to do something that
-requires root access, we use sudo, and I'm explicit about that in the various
-instructions that follow.
+In these instructions, I'm assuming that you have a nonroot user account set up,
+and that it has "sudo" privileges,
+so whenever we need to do something that requires root access, we use sudo,
+(or "become" in ansible terminology),
+and I'm explicit about that in the various instructions that follow.
 
-My user is called "elspeth", but you can call yours whatever you like!  Just
-remember to substitute it in all the places I've hardcoded it below.
+My user is called "elspeth", but you can call yours whatever you like!
+Just remember to substitute it in all the places I've hardcoded it below.
 See the guide linked above if you need tips on creating a sudo user.
-
 
 
 
@@ -162,10 +173,10 @@ See the guide linked above if you need tips on creating a sudo user.
 The most important lesson to remember from this chapter is to work
 incrementally, make one change at a time, and run your tests frequently.
 
-When things (inevitably) go wrong, resist the temptation to flail about and
-make other unrelated changes in the hope that things will start working again;
-instead, stop, go backward if necessary to get to a working state, and figure
-out what went wrong before moving forward again.
+When things (inevitably) go wrong, resist the temptation to flail about
+and make other unrelated changes in the hope that things will start working again;
+instead, stop, go backward if necessary to get to a working state,
+and figure out what went wrong before moving forward again.
 
 It's just as easy to fall into the Refactoring-Cat trap on the server!
 
@@ -179,9 +190,9 @@ It's just as easy to fall into the Refactoring-Cat trap on the server!
 Configuring Domains for Staging and Live
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-We don't want to be messing about with IP addresses all the time, so we should
-point our staging and live domains to the server. At my registrar, the control
-screens looked a bit like <<registrar-control-screens>>.
+We don't want to be messing about with IP addresses all the time,
+so we should point our staging and live domains to the server.
+At my registrar, the control screens looked a bit like <<registrar-control-screens>>.
 
 [[registrar-control-screens]]
 .Domain setup
@@ -189,21 +200,43 @@ image::images/twp2_0902.png["Registrar control screens for two domains"]
 
 //TODO: adjust illustration to show "superlists" not "book-example"
 
-((("A-Records")))In
-the DNS system, pointing a domain at a specific IP address is called an
-"A-Record".  All registrars are slightly different, but a bit of clicking
-around should get you to the right screen in yours.  You'll need two A-records:
-one for the staging address and one for the live one.  No need to worry about
-any other type of record.
+((("A-Records")))
+In the DNS system, pointing a domain at a specific IP address is called an "A-Record".
+All registrars are slightly different,
+but a bit of clicking around should get you to the right screen in yours.
+You'll need two A-records:
+one for the staging address and one for the live one.
+No need to worry about any other type of record.
 
-DNS records take some time to "propagate" around the world (it's controlled
-by a setting called "TTL", Time To Live), so once you've set up your A-record,
-you can check its progress on a "propagation checking" service like this one: https://www.whatsmydns.net/#A/superlists-staging.ottg.eu[].
+DNS records take some time to "propagate" around the world
+(it's controlled by a setting called "TTL", Time To Live),
+so once you've set up your A-record,
+you can check its progress on a "propagation checking" service like this one:
+https://www.whatsmydns.net/#A/superlists-staging.ottg.eu.
 
 
 === A first cut of an ansible script
 
-bla bla infrastructure as code
+Infrastructure-as-code tools, also called "configuration management" tools,
+come in lots of shapes and sizes.
+Chef and Puppet were two of the original ones,
+and you'll probably come across Terraform,
+which is particularly strong on managing cloud services like AWS.
+
+We're going to use Ansible, because it's relatively popular,
+because I'm biased that it happens to be written in Python,
+because it can do everything we need it to,
+and because it's probably the one I'm personally most familiar with.
+
+Another tool could probably have worked just as well!
+The main thing to remember is the _concept_, which is that, as much as possible
+we want to manage our server configuration _declaratively_,
+by expressing the desired state of the server in a particular config syntax,
+rather than specifying a procedural series of steps to be followed one by one.
+
+
+Let's dip our toes into ansible,
+and see if we can get it to run a simple "hello world" container on our server:
 
 
 [role="sourcecode"]
@@ -230,6 +263,12 @@ bla bla infrastructure as code
 ----
 ====
 
+[subs="specialcharacters,quotes"]
+----
+$ *ansible-playbook --user=elspeth -i 192.168.56.10, infra/ansible-provision.yaml -vv*
+----
+
+TODO show ansible output.
 
 
 === SSHing Into the Server and Viewing Container Logs
@@ -249,6 +288,10 @@ TIP: Look out for that `elspeth@server`
     in the command-line listings in this chapter.
     It indicates commands that must be run on the server,
     as opposed to commands you run on your own PC.
+
+SSHing in to check things worked is a key server debugging skill!
+It's something we want to practice on our staging server,
+because ideally we'll want to avoid doing it on production machines.
 
 
 === Getting our image onto the server
@@ -362,6 +405,9 @@ DJANGO_ALLOWED_HOST="{{ host }}"
 ----
 ====
 
+The `inventory_hostname` variable is the domain name of the server we're running against.
+I'm using the `vars` section to rename it to "host", just for convenience.
+
 * explain idempotency
 
 * mention other secret management tools. vault??
@@ -436,75 +482,37 @@ Ansible and the podman plugins have some modules for this:
 ====
 
 
-
-TODO: use the auto-generated systemd thing.
-
-Here's what a Systemd config file looks like
-
-[role="sourcecode small-code"]
-.server: /etc/systemd/system/gunicorn-superlists-staging.ottg.eu.service
-====
-[source,bash]
 ----
+vagrant@ubuntu-jammy:~$ cat ~/.config/systemd/user/container-superlists.service
+# container-superlists.service
+# autogenerated by Podman 3.4.4
+# Wed Oct 25 10:55:38 UTC 2023
+
 [Unit]
-Description=Gunicorn server for superlists-staging.ottg.eu
+Description=Podman container-superlists.service
+Documentation=man:podman-generate-systemd(1)
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/run/user/1000/containers
 
 [Service]
-Restart=on-failure  <1>
-User=elspeth  <2>
-WorkingDirectory=/home/elspeth/sites/superlists-staging.ottg.eu  <3>
-EnvironmentFile=/home/elspeth/sites/superlists-staging.ottg.eu/.env  <4>
-
-ExecStart=/home/elspeth/sites/superlists-staging.ottg.eu/.venv/bin/gunicorn \
-    --bind unix:/tmp/superlists-staging.ottg.eu.socket \
-    superlists.wsgi:application  <5>
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=on-failure
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start superlists
+ExecStop=/usr/bin/podman stop -t 10 superlists
+ExecStopPost=/usr/bin/podman stop -t 10 superlists
+PIDFile=/run/user/1000/containers/overlay-containers/c058e368b446388cf3b3faecdf1d8186d14d8b0a01fbf64bfca5714ae56d42fe/userdata/conmon.pid
+Type=forking
 
 [Install]
-WantedBy=multi-user.target <6>
+WantedBy=default.target
 ----
-====
 
 Systemd is joyously simple to configure (especially if you've ever had the
 dubious pleasure of writing an `init.d` script), and is fairly
 self-explanatory.
 
-<1> `Restart=on-failure` will restart the process automatically if it crashes.
-
-<2> `User=elspeth` makes the process run as the "elspeth" user.
-
-<3> `WorkingDirectory` sets the current working directory.
-
-<4> `EnvironmentFile` points Systemd towards our _.env_ file and tells it
-    to load environment variables from there.
-
-<5> `ExecStart` is the actual process to execute.  I'm using the ++\++ line
-    continuation characters to split the full command over multiple lines,
-    for readability, but it could all go on one line.
-
-<6> `WantedBy` in the `[Install]` section is what tells Systemd we want this
-    service to start on boot.
-
-Systemd scripts live in '/etc/systemd/system', and their names must end in
-'.service'.
-
-Now we tell Systemd to start Gunicorn with the `systemctl` command:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-# this command is necessary to tell Systemd to load our new config file
-elspeth@server:$ *sudo systemctl daemon-reload*
-# this command tells Systemd to always load our service on boot
-elspeth@server:$ *sudo systemctl enable gunicorn-superlists-staging.ottg.eu*
-# this command actually starts our service
-elspeth@server:$ *sudo systemctl start gunicorn-superlists-staging.ottg.eu*
-----
-
-(You should find the `systemctl` command responds to tab completion, including
-of the service name, by the way.)
-
-Now we can rerun the FTs to see that everything still works. You can even test
-that the site comes back up if you reboot the server!
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -519,163 +527,28 @@ OK
 *******************************************************************************
 
 A few more places to look and things to try, now that we've introduced
-Gunicorn and Systemd into the mix, should things not go according to plan:
+Podman and Systemd into the mix, should things not go according to plan:
 
-- ((("debugging", "Systemd")))You can check the Systemd logs using
-  `sudo journalctl -u gunicorn-superlists-staging.ottg.eu`.
+- You can check the Container logs using
+  `podman logs superlists`.
+  ((("debugging", "Podman")))
 
-- You can ask Systemd to check the validity of your service configuration:
-  `systemd-analyze verify /path/to/my.service`.
+- You can check the Systemd logs using
+  `journalctl --user -u container-superlists`.
+  ((("debugging", "Systemd")))
 
-- Remember to restart both services whenever you make changes.
-
-- If you make changes to the Systemd config file, you need to
-  run `daemon-reload` before `systemctl restart` to see the effect
-  of your changes.
 
 *******************************************************************************
 
 
+
+
 ////
-TODO: old ansible content follows"
-
-((("Ansible", id="ansible29")))((("continuous deployment tools")))((("deployment", "continuous deployment tools")))We
-used Fabric to automate deploying new versions of the source code to our
-servers.  But provisioning a fresh server, and updating the Nginx and Gunicorn
-config files, was all left as a manual process.
-
-This is the kind of job that's increasingly given to tools called
-"Configuration Management" or "Continuous Deployment" tools.  Chef and Puppet
-were the first popular ones, and in the Python world there's Salt and Ansible.
-
-Of all of these, Ansible is the easiest to get started with.  We
-can get it working with just two files:
-
-    pip2 install --user ansible  # Python 2 sadly
-
-
-An "inventory file" at _deploy_tools/inventory.ansible_ defines what servers we
-can run against:
-
-[role="sourcecode"]
-.deploy_tools/inventory.ansible
-====
-[source,ini]
-----
-[live]
-superlists.ottg.eu ansible_become=yes ansible_ssh_user=elspeth
-
-[staging]
-superlists-staging.ottg.eu ansible_become=yes ansible_ssh_user=elspeth
-
-[local]
-localhost ansible_ssh_user=root ansible_ssh_port=6666 ansible_host=127.0.0.1
-----
-====
-
-(The local entry is just an example, in my case a Virtualbox VM, with port
-forwarding for ports 22 and 80 set up.)
-
-
-Installing System Packages and Nginx
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Next the Ansible "playbook", which defines what to do on the server.  This
-uses a syntax called YAML:
-
-[role="sourcecode"]
-.deploy_tools/provision.ansible.yaml
-====
-[source,yaml]
-----
----
-
-- hosts: all
-
-  vars:
-      host: "{{ inventory_hostname }}"
-
-  tasks:
-
-    - name: Deadsnakes PPA to get Python 3.6
-      apt_repository:
-        repo='ppa:deadsnakes/ppa'
-    - name: make sure required packages are installed
-      apt: pkg=nginx,git,python3.7,python3.7-venv state=present
-
-    - name: allow long hostnames in nginx
-      lineinfile:
-        dest=/etc/nginx/nginx.conf
-        regexp='(\s+)#? ?server_names_hash_bucket_size'
-        backrefs=yes
-        line='\1server_names_hash_bucket_size 64;'
-
-    - name: add nginx config to sites-available
-      template: src=./nginx.conf.j2 dest=/etc/nginx/sites-available/{{ host }}
-      notify:
-          - restart nginx
-
-    - name: add symlink in nginx sites-enabled
-      file:
-          src=/etc/nginx/sites-available/{{ host }}
-          dest=/etc/nginx/sites-enabled/{{ host }}
-          state=link
-      notify:
-          - restart nginx
-----
-====
-
-
-The `inventory_hostname` variable is the domain name of the server we're running against.
-I'm using the `vars` section to rename it to "host", just for convenience.
-
-
-In this section, we install our required software using `apt`, tweak the Nginx
-config to allow long hostnames using a regular expression replacer, and then write the Nginx config file using a template.  This is a modified version
-of the template file we saved into 'deploy_tools/nginx.template.conf' in
-<<chapter_09_docker>>, but it now uses a specific templating syntax--Jinja2, which is
-actually a lot like the Django template syntax:
-
-[role="sourcecode"]
-.deploy_tools/nginx.conf.j2
-====
-----
-server {
-    listen 80;
-    server_name {{ host }};
-
-    location /static {
-        alias /home/{{ ansible_ssh_user }}/sites/{{ host }}/static;
-    }
-
-    location / {
-        proxy_set_header Host {{ host }};
-        proxy_pass http://unix:/tmp/{{ host }}.socket;
-    }
-}
-----
-====
-
-
-
-And that's it!  The command to kick all these off is:
-
-[role="small-code"]
-----
-ansible-playbook -i inventory.ansible provision.ansible.yaml --limit=staging --ask-become-pass
-----
-
-Lots more info in the https://docs.ansible.com/[Ansible docs].
-
-
-What to Do Next
-~~~~~~~~~~~~~~~
-
+old content follows
 
 
 Use Vagrant to Spin Up a Local VM
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 
 
 Running tests against the staging site gives us the ultimate confidence that
@@ -759,21 +632,22 @@ Further Reading
 ~~~~~~~~~~~~~~~
 
 
-((("Fabric", "additional resources")))((("automated deployment", "additional resources")))There's
-no such thing as the One True Way in deployment, and I'm no grizzled
-expert in any case.  I've tried to set you off on a reasonably sane path, but
-there's plenty of things you could do differently, and lots, lots more to learn
-besides.  Here are some resources I used for inspiration:
+((("automated deployment", "additional resources")))
+There's no such thing as the One True Way in deployment,
+and I'm no grizzled expert in any case.
+I've tried to set you off on a reasonably sane path,
+but there's plenty of things you could do differently,
+and lots, lots more to learn besides.q
+Here are some resources I used for inspiration:
 
+
+* http://12factor.net/[The 12-factor App] by the Heroku team
 
 * http://hynek.me/talks/python-deployments[Solid Python Deployments for Everybody] by Hynek Schlawack
-
-* http://bit.ly/U6tUo5[Git-based fabric deployments are awesome] by Dan Bravender
 
 * The deployment chapter of <<twoscoops,Two Scoops of Django>> by Dan
   Greenfeld and Audrey Roy
 
-* http://12factor.net/[The 12-factor App] by the Heroku team
 
 
 
@@ -805,11 +679,13 @@ Automating provisioning::
     This will involve interacting with the API of your hosting provider.
 
 Configuration management tools::
-    ((("configuration management tools")))((("Ansible")))((("Vagrant")))Fabric
-is very flexible, but its logic is still based on scripting. More
+    ((("configuration management tools")))
+    ((("Ansible")))
+    Fabric is very flexible, but its logic is still based on scripting. More
     advanced tools take a more "declarative" approach, and can make your life
     even easier.  Ansible and Vagrant are two worth checking out (see
-    <<appendix3>>), but there are many more (Chef, Puppet, Salt, Juju...).((("", startref="Dfarbric11")))
+    <<appendix3>>), but there are many more (Chef, Puppet, Salt, Juju...).
+    ((("", startref="Dfarbric11")))
 
 *******************************************************************************
 
