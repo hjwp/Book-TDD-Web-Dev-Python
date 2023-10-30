@@ -8,6 +8,8 @@ RUN_OREILLY_FLAVOURED_ASCIIDOCTOR = ./asciidoc/asciidoctor/bin/asciidoctor -v --
 export PYTHONHASHSEED = 0
 export PYTHONDONTWRITEBYTECODE = 1
 export MOZ_HEADLESS = 1
+# for warning introduce in selenium 4.10
+export PYTHONWARNINGS=ignore::ResourceWarning
 
 # required for firefox snap to work via geckodriver.
 export TMPDIR := $(HOME)/snap/firefox/common/tmp

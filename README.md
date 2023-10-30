@@ -45,3 +45,7 @@ $ make test_chapter_06_explicit_waits_1
 ```console
 $ ./run_test_tests.sh
 ```
+
+# Windows / WSL notes
+
+* `vagrant plugin install virtualbox_WSL2` is required

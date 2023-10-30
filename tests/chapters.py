@@ -9,9 +9,9 @@ CHAPTERS = [
     "chapter_07_working_incrementally",
     # part 2
     "chapter_08_prettification",
-    "chapter_manual_deployment",
-    "chapter_making_deployment_production_ready",
-    "chapter_automate_deployment_with_fabric",
+    "chapter_09_docker",
+    "chapter_10_production_readiness",
+    "chapter_11_ansible",
     "chapter_organising_test_files",
     "chapter_database_layer_validation",
     "chapter_simple_form",
