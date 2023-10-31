@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 
 def strip_comments(line):
@@ -74,7 +75,7 @@ class ApplyCommitException(Exception):
 
 class SourceTree(object):
     def __init__(self):
-        self.tempdir = tempfile.mkdtemp()
+        self.tempdir = Path(tempfile.mkdtemp())
         self.processes = []
         self.dev_server_running = False
 

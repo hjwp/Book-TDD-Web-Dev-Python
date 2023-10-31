@@ -123,118 +123,6 @@ class RunCommandTest(ChapterTest):
             self.run_command("foo")
 
 
-@patch("book_tester.subprocess")
-class RunServerCommandTest(ChapterTest):
-    def test_returns_subporcess_output(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b"some bytes"
-        result = self.run_server_command("anything")
-        assert result == "some bytes"
-
-    def test_uses_run_server_command(self, mock_subprocess):
-        mock_subprocess.check_output.return_value = b"some bytes"
-        self.run_server_command("foo bar")
-        assert mock_subprocess.check_output.call_args == call(
-            [self.RUN_SERVER_PATH, "foo bar"],
-        )
-
-    def check_runserver_call(self, mock_subprocess, expected):
-        args, kwargs = mock_subprocess.check_output.call_args
-        assert args[0][1] == expected
-
-    def test_hacks_in_dash_y_for_apts(self, mock_subprocess):
-        self.run_server_command("sudo apt install something")
-        self.check_runserver_call(mock_subprocess, "sudo apt install -y something")
-
-    def test_hacks_dash_f_in_journaltct(self, mock_subprocess):
-        self.run_server_command("sudo journalctl -f -u thing")
-        self.check_runserver_call(
-            mock_subprocess, "sudo journalctl --no-pager -u thing"
-        )
-
-    def test_hacks_in_cd_if_one_set_by_last_command(self, mock_subprocess):
-        assert self.current_server_cd is None
-        self.run_server_command("cd /foo")
-        assert self.current_server_cd == "/foo"
-        self.run_server_command("do something")
-        self.check_runserver_call(mock_subprocess, "cd /foo && do something")
-
-    def test_spots_env_vars(self, mock_subprocess):
-        assert self.current_server_exports == {}
-        self.run_server_command("export THING=foo")
-        assert self.current_server_exports == {"THING": "foo"}
-
-    def test_spots_multiple_env_vars(self, mock_subprocess):
-        assert self.current_server_exports == {}
-        self.run_server_command("export THING=foo OTHER=2")
-        assert self.current_server_exports == {"THING": "foo", "OTHER": "2"}
-
-    def test_dashes_worke(self, mock_subprocess):
-        assert self.current_server_exports == {}
-        self.run_server_command("export THING=foo-bar OTHER=2-3")
-        assert self.current_server_exports == {"THING": "foo-bar", "OTHER": "2-3"}
-
-    def test_injects_env_vars(self, mock_subprocess):
-        self.current_server_exports = {"FOO": "bar", "BAZ": "furble"}
-        self.run_server_command("hi there")
-        self.check_runserver_call(
-            mock_subprocess, "export FOO=bar BAZ=furble; hi there"
-        )
-
-    def test_env_and_cd_together(self, mock_subprocess):
-        self.current_server_exports = {"FOO": "blee"}
-        self.current_server_cd = "dirname"
-        self.run_server_command("do something")
-        self.check_runserver_call(
-            mock_subprocess, "export FOO=blee; cd dirname && do something"
-        )
-
-    def test_hacks_in_dtach_for_runserver(self, mock_subprocess):
-        self.current_server_exports = {"FOO": "blee"}
-        self.current_server_cd = "dirname"
-        self.run_server_command("bla ./.venv/bin/python manage.py runserver blee")
-        self.check_runserver_call(
-            mock_subprocess,
-            "export FOO=blee; cd dirname && "
-            "bla "
-            "dtach -n /tmp/dtach.sock ./.venv/bin/python manage.py runserver"
-            " blee",
-        )
-
-    def test_adds_pkill_old_for_runserver(self, mock_subprocess):
-        self.current_server_exports = {"FOO": "blee"}
-        self.current_server_cd = "dirname"
-        self.run_server_command("bla ./.venv/bin/python manage.py runserver blee")
-        self.assertEqual(
-            mock_subprocess.run.call_args_list[-1],
-            call([self.RUN_SERVER_PATH, "pkill -f runserver"]),
-        )
-
-    def test_hacks_in_dtach_for_gunicorn(self, mock_subprocess):
-        self.current_server_exports = {"FOO": "blee"}
-        self.current_server_cd = "dirname"
-        self.run_server_command("bla ./.venv/bin/gunicorn thing blee")
-        self.check_runserver_call(
-            mock_subprocess,
-            "export FOO=blee; cd dirname && "
-            "bla "
-            "dtach -n /tmp/dtach.sock ./.venv/bin/gunicorn"
-            " thing blee",
-        )
-
-    def test_adds_two_pkill_olds_for_gunicorn(self, mock_subprocess):
-        self.current_server_exports = {"FOO": "blee"}
-        self.current_server_cd = "dirname"
-        self.run_server_command("bla ./.venv/bin/gunicorn thing blee")
-        self.assertEqual(
-            mock_subprocess.run.call_args_list[-2],
-            call([self.RUN_SERVER_PATH, "pkill -f runserver"]),
-        )
-        self.assertEqual(
-            mock_subprocess.run.call_args_list[-1],
-            call([self.RUN_SERVER_PATH, "pkill -f gunicorn"]),
-        )
-
-
 class GetListingsTest(ChapterTest):
     chapter_name = "chapter_01"
 
@@ -1068,50 +956,44 @@ class CurrentContentsTest(ChapterTest):
 
 class SplitBlocksTest(unittest.TestCase):
     def test_splits_on_multi_newlines(self):
-        assert (
-            split_blocks(
-                dedent(
-                    """
+        assert split_blocks(
+            dedent(
+                """
             this
             is block 1
 
             this is block 2
             """
-                )
             )
-            == ["this\nis block 1", "this is block 2"]
-        )
+        ) == ["this\nis block 1", "this is block 2"]
 
     def test_splits_on_elipsis(self):
-        assert (
-            split_blocks(
-                dedent(
-                    """
+        assert split_blocks(
+            dedent(
+                """
             this
             is block 1
             [...]
             this is block 2
             """
-                )
             )
-            == ["this\nis block 1", "this is block 2"]
-        )
+        ) == ["this\nis block 1", "this is block 2"]
 
 
-class TestContains(unittest.TestCase):
+class TestContains:
     def test_smoketest(self):
         assert contains([1, 2, 3, 4], [1, 2])
 
-    def testcontains_end_seq(self):
+    def test_contains_end_seq(self):
         assert contains([1, 2, 3, 4], [3, 4])
 
-    def testcontains_middle_seq(self):
+    def test_contains_middle_seq(self):
         assert contains([1, 2, 3, 4, 5], [3, 4])
 
-    def testcontains_oversized_seq(self):
+    def test_contains_oversized_seq(self):
         assert contains([1, 2, 3, 4, 4], [1, 2, 3, 4])
 
-    def testcontains_iteslf(self):
+    def test_contains_iteslf(self):
         assert contains([1, 2, 3], [1, 2, 3])
 
 

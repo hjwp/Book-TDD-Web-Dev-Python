@@ -18,8 +18,7 @@ from sourcetree import (
 class GetFileTest(unittest.TestCase):
     def test_get_contents(self):
         sourcetree = SourceTree()
-        with open(sourcetree.tempdir + "/foo.txt", "w") as f:
-            f.write("bla bla")
+        (sourcetree.tempdir / "foo.txt").write_text("bla bla")
         assert sourcetree.get_contents("foo.txt") == "bla bla"
 
 
@@ -84,17 +83,13 @@ class ApplyFromGitRefTest(unittest.TestCase):
 
         self.sourcetree.apply_listing_from_commit(listing)
 
-        with open(self.sourcetree.tempdir + "/file1.txt") as f:
-            assert (
-                f.read()
-                == dedent(
-                    """
-                    file 1 line 1
-                    file 1 line 2 amended
-                    file 1 line 3
-                    """
-                ).lstrip()
-            )
+        assert (self.sourcetree.tempdir / "file1.txt").read_text() == dedent(
+            """
+            file 1 line 1
+            file 1 line 2 amended
+            file 1 line 3
+            """
+        ).lstrip()
 
         assert listing.was_written
 
