@@ -34,7 +34,7 @@ class Chapter11Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(ignore=[
-            "django==1.11"
+            # "django==1.11"
         ])
 
 
