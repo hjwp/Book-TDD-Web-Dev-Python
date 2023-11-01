@@ -16,7 +16,7 @@ git fetch $REPO
 git checkout $CHAP
 git reset --hard $REPO/$PREV
 
-git cherry-pick $PREV..$REPO/$CHAP
+git cherry-pick -Xrename-threshold=20%  $PREV..$REPO/$CHAP
 git diff -w $REPO/$CHAP
 
 cd ../..
