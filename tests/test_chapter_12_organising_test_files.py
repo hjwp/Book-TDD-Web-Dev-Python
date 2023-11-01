@@ -19,6 +19,7 @@ class Chapter11Test(ChapterTest):
         # other prep
         self.start_with_checkout()
         self.prep_database()
+        self.prep_virtualenv()
 
         # hack fast-forward
         skip = False
