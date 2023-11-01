@@ -21,11 +21,11 @@ class Chapter11Test(ChapterTest):
         self.prep_database()
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
-            self.pos = 44
+            self.pos = 4
             self.sourcetree.run_command('git checkout {}'.format(
-                self.sourcetree.get_commit_spec('ch11l033')
+                self.sourcetree.get_commit_spec('ch11l018')
             ))
 
         while self.pos < len(self.listings):
