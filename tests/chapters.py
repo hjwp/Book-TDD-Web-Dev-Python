@@ -13,7 +13,7 @@ CHAPTERS = [
     "chapter_10_production_readiness",
     "chapter_11_ansible",
     "chapter_12_organising_test_files",
-    "chapter_database_layer_validation",
+    "chapter_13_database_layer_validation",
     "chapter_simple_form",
     "chapter_advanced_forms",
     "chapter_javascript",
