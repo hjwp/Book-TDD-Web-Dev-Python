@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 class Chapter13Test(ChapterTest):
     chapter_name = 'chapter_advanced_forms'
-    previous_chapter = 'chapter_simple_form'
+    previous_chapter = 'chapter_14_simple_form'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
