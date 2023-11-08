@@ -737,28 +737,12 @@ class NewListTest(TestCase):
 ----
 ====
 
-
-Adapting the Unit Tests for the new_list View
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-For a start this test is testing too many things at once, so we've got 
-an opportunity to clarify things here.  We should split out two different
-assertions:
-
-* If there's a validation error, we should render the home template, with a 200.
-* If there's a validation error, the response should contain our error text.
-
-And we can add a new one too:
-
-* If there's a validation error, we should pass our form object to the
-  template.
-
-And while we're at it, we'll use our constant instead of the hardcoded string
-for that error message:
-
+Let's add a check that we send our form to the template.
+While we're at it, we'll use our constant
+instead of the hardcoded string for that error message:
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch11l023)
+.lists/tests/test_views.py (ch14l023)
 ====
 [source,python]
 ----
@@ -768,80 +752,58 @@ from lists.forms import ItemForm, EMPTY_ITEM_ERROR
 class NewListTest(TestCase):
     [...]
 
-    def test_for_invalid_input_renders_home_template(self):
-        response = self.client.post('/lists/new', data={'text': ''})
+    def test_validation_errors_are_sent_back_to_home_page_template(self):
+        response = self.client.post("/lists/new", data={"text": ""})
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'home.html')
-
-
-    def test_validation_errors_are_shown_on_home_page(self):
-        response = self.client.post('/lists/new', data={'text': ''})
+        self.assertTemplateUsed(response, "home.html")
+        self.assertIsInstance(response.context["form"], ItemForm)
         self.assertContains(response, escape(EMPTY_ITEM_ERROR))
-
-
-    def test_for_invalid_input_passes_form_to_template(self):
-        response = self.client.post('/lists/new', data={'text': ''})
-        self.assertIsInstance(response.context['form'], ItemForm)
 ----
 ====
 
-Much better.  Each test is now clearly testing one thing, and, with a
-bit of luck, just one will fail and tell us what to do:
+We get an expected failure:
+
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test lists*]
 [...]
-======================================================================
-ERROR: test_for_invalid_input_passes_form_to_template
-(lists.tests.test_views.NewListTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/lists/tests/test_views.py", line 49, in
-test_for_invalid_input_passes_form_to_template
-    self.assertIsInstance(response.context['form'], ItemForm)
+ERROR: test_validation_errors_end_up_on_lists_page
 [...]
 KeyError: 'form'
-
- ---------------------------------------------------------------------
-Ran 19 tests in 0.041s
-
-FAILED (errors=1)
 ----
 
 
-
-Using the Form in the View
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-And here's how we use the form in the view:  
+And here's how we use the form in the view:
 
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py  (ch14l024)
 ====
 [source,python]
 ----
 def new_list(request):
     form = ItemForm(data=request.POST)  #<1>
     if form.is_valid():  #<2>
-        list_ = List.objects.create()
-        Item.objects.create(text=request.POST['text'], list=list_)
-        return redirect(list_)
+        nulist = List.objects.create()
+        Item.objects.create(text=request.POST["text"], list=nulist)
+        return redirect(nulist)
     else:
-        return render(request, 'home.html', {"form": form})  #<3>
+        return render(request, "home.html", {"form": form})  #<3>
 ----
 ====
 
 <1> We pass the `request.POST` data into the form's constructor.
 
 <2> We use `form.is_valid()` to determine whether this is a good or a
-    bad [keep-together]#submission#.
+    bad submission.
 
 <3> In the invalid case, we pass the form down to the template, instead of
     our hardcoded error string.
 
-That view is now looking much nicer!  And all our tests pass, except one:
+That view is now looking much nicer!
+
+But, we have a regression:
 
 ----
     self.assertContains(response, escape(EMPTY_ITEM_ERROR))
@@ -858,7 +820,7 @@ We're failing because we're not yet using the form to display errors in the
 template:
 
 [role="sourcecode"]
-.lists/templates/base.html (ch11l026)
+.lists/templates/base.html (ch14l026)
 ====
 [source,html]
 ----
@@ -866,7 +828,7 @@ template:
     {{ form.text }}
     {% csrf_token %}
     {% if form.errors %}
-      <div class="invalid-feedback">{{ form.text.error }}</div>
+      <div class="invalid-feedback">{{ form.errors.text }}</div>
     {% endif %}
   </form>
 ----
@@ -874,7 +836,9 @@ template:
 
 <1> `form.errors` contains a list of all the errors for the form.
 
-<2> `form.text.errors` is a list of just the errors for the `text` field.
+<2> `form.errors.text` is magical django template syntax
+    for `form.errors["text"],
+    ie the list of errors for the text field in particular
 
 What does that do to our tests?
 
@@ -901,12 +865,12 @@ Using the Form in the Other View
 
 
 ((("form data validation", "processing POST and GET requests", id="FDVproget14")))
-This view handles both GET and POST requests.  Let's start with checking
-that the form is used in GET requests.  We can have a new test for that:
+This view handles both GET and POST requests.
+Let's start with checking that the form is used in GET requests.
+We can have a new test for that:
 
-//ch11l027
 [role="sourcecode"]
-.lists/tests/test_views.py
+.lists/tests/test_views.py (ch14l027)
 ====
 [source,python]
 ----
@@ -915,9 +879,9 @@ class ListViewTest(TestCase):
 
     def test_displays_item_form(self):
         list_ = List.objects.create()
-        response = self.client.get(f'/lists/{list_.id}/')
-        self.assertIsInstance(response.context['form'], ItemForm)
-        self.assertContains(response, 'name="text"')
+        response = self.client.get(f"/lists/{list_.id}/")
+        self.assertIsInstance(response.context["form"], ItemForm)
+        self.assertContains(response, "name="text"")
 ----
 ====
 
@@ -930,16 +894,18 @@ KeyError: 'form'
 Here's a minimal implementation:
 
 [role="sourcecode"]
-.lists/views.py (ch11l028)
+.lists/views.py (ch14l028)
 ====
 [source,python]
 ----
 def view_list(request, list_id):
     [...]
     form = ItemForm()
-    return render(request, 'list.html', {
-        'list': list_, "form": form, "error": error
-    })
+    return render(
+        request,
+        "list.html",
+        {"list": our_list, "form": form, "error": error},
+    )
 ----
 ====
 
@@ -948,14 +914,14 @@ A Helper Method for Several Short Tests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-((("helper methods")))Next
-we want to use the form errors in the second view.
-We'll split our current single test for the
-invalid case (`test_validation_errors_end_up_on_lists_page`) into several
-separate ones:
+((("helper methods")))
+Next we want to use the form errors in the second view.
+We'll split our current single test for the invalid case
+(`test_validation_errors_end_up_on_lists_page`)
+into several separate ones:
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch11l030)
+.lists/tests/test_views.py (ch14l030)
 ====
 [source,python]
 ----
@@ -963,10 +929,10 @@ class ListViewTest(TestCase):
     [...]
 
     def post_invalid_input(self):
-        list_ = List.objects.create()
+        mylist = List.objects.create()
         return self.client.post(
-            f'/lists/{list_.id}/',
-            data={'text': ''}
+            f"/lists/{mylist.id}/",
+            data={"text": ""},
         )
 
     def test_for_invalid_input_nothing_saved_to_db(self):
@@ -976,11 +942,11 @@ class ListViewTest(TestCase):
     def test_for_invalid_input_renders_list_template(self):
         response = self.post_invalid_input()
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'list.html')
+        self.assertTemplateUsed(response, "list.html")
 
     def test_for_invalid_input_passes_form_to_template(self):
         response = self.post_invalid_input()
-        self.assertIsInstance(response.context['form'], ItemForm)
+        self.assertIsInstance(response.context["form"], ItemForm)
 
     def test_for_invalid_input_shows_error_on_page(self):
         response = self.post_invalid_input()
@@ -988,23 +954,29 @@ class ListViewTest(TestCase):
 ----
 ====
 
-By making a little helper function, `post_invalid_input`, we can make four
-separate tests without duplicating lots of lines of code.
+By making a little helper function, `post_invalid_input()`,
+we can make four separate tests without duplicating lots of lines of code.
 
-We've seen this several times now. It often feels more natural to write view
-tests as a single, monolithic block of assertions--the view should do this
-and this and this, then return that with this.  But breaking things out into
-multiple tests is definitely worthwhile; as we saw in previous chapters, it
-helps you isolate the exact problem you may have, when you later come and
-change your code and accidentally introduce a bug. Helper methods are one of
-the tools that lower the psychological barrier.
+We've seen this several times now.
+It often feels more natural to write view tests as a single,
+monolithic block of assertions--the view should do this and this and this,
+then return that with this.
+But breaking things out into multiple tests is often worthwhile;
+as we saw in previous chapters,
+it helps you isolate the exact problem you have
+when you later accidentally introduce a bug.
+Helper methods are one of the tools that lower the psychological barrier,
+by reducing boilerplate and keeping the tests readable.
+
+// TODO - maybe a little aside saying i'm exaggerating here?
+// not sure i would do this IRL.
 
 For example, now we can see there's just one failure, and it's a clear one:
 
 
 ----
 FAIL: test_for_invalid_input_shows_error_on_page
-(lists.tests.test_views.ListViewTest)
+[...]
 AssertionError: False is not true : Couldn't find 'You can&#39;t have an empty
 list item' in response
 ----
@@ -1013,28 +985,28 @@ Now let's see if we can properly rewrite the view to use our form.  Here's a
 first cut:
 
 
-//ch11l031
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch14l031)
 ====
 [source,python]
 ----
 def view_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    form = ItemForm()
-    if request.method == 'POST':
+    our_list = List.objects.get(id=list_id)
+    if request.method == "POST":
         form = ItemForm(data=request.POST)
         if form.is_valid():
-            Item.objects.create(text=request.POST['text'], list=list_)
-            return redirect(list_)
-    return render(request, 'list.html', {'list': list_, "form": form})
+            Item.objects.create(text=request.POST["text"], list=our_list)
+            return redirect(our_list)
+    else:
+        form = ItemForm()
+    return render(request, "list.html", {"list": our_list, "form": form})
 ----
 ====
 
 That gets the unit tests passing:
 
 ----
-Ran 23 tests in 0.086s
+Ran 21 tests in 0.086s
 
 OK
 ----
@@ -1046,88 +1018,90 @@ How about the FTs?
 
 ----
 ERROR: test_cannot_add_empty_list_items
-(functional_tests.test_list_item_validation.ItemValidationTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-File "...goat-book/functional_tests/test_list_item_validation.py", line
-15, in test_cannot_add_empty_list_items
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: .has-error
+element: .invalid-feedback; [...]
 ----
 
 Nope.
 
 [role="pagebreak-before"]
-An Unexpected Benefit: Free Client-Side Validation from HTML5
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+=== An Unexpected Benefit: Free Client-Side Validation from HTML5
 
-((("HTML5")))What's
-going on here?  Let's add our usual `time.sleep` before the
-error, and take a look at what's happening (or spin up the site
-manually with `manage.py runserver` if you prefer (see <<fig1401>>).
+((("HTML5")))
+What's going on here?  Let's add our usual `time.sleep` before the error,
+and take a look at what's happening
+or spin up the site manually with `manage.py runserver` if you prefer
+(see <<html5_popup_screenshot>>).
 
-[[fig1401]]
+
+// todo: update screenshot
+
+[[html5_popup_screenshot]]
 .HTML5 validation says no
 image::images/twp2_1401.png["The input with a popup saying 'please fill out this field'"]
 
-It seems like the browser is preventing the user from even submitting
-the input when it's empty.
+It seems like the browser is preventing the user
+from even submitting the input when it's empty.
 
-It's because Django has added the `required` attribute to the HTML
-inputfootnote:[This is a new feature in Django 1.11.]
-(take another look at our `as_p()` printouts from earlier if you don't
-believe me).  This is a
-https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Input#attr-required[new feature of HTML5],
-and browsers nowadays will do some validation at the client side if they
-see it, preventing users from even submitting invalid input.
+It's because Django has added the `required` attribute to the HTML input
+(take another look at our `as_p()` printouts from earlier
+if you don't believe me).
+This is a
+https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Input#attr-required[feature of HTML5],
+and browsers nowadays will do some validation at the client side
+if they see it,
+preventing users from even submitting invalid input.
 
 Let's change our FT to reflect that:
 
-[role="sourcecode"]
+[role="sourcecode small-code"]
 .functional_tests/test_list_item_validation.py (ch11l032)
 ====
 [source,python]
 ----
+class ItemValidationTest(FunctionalTest):
     def test_cannot_add_empty_list_items(self):
         # Edith goes to the home page and accidentally tries to submit
         # an empty list item. She hits Enter on the empty input box
         self.browser.get(self.live_server_url)
         self.get_item_input_box().send_keys(Keys.ENTER)
 
-        # The browser intercepts the request, and does not load the
-        # list page
-        self.wait_for(lambda: self.browser.find_element_by_css_selector(
-            '#id_text:invalid'  #<1>
-        ))
+        # The browser intercepts the request, and does not load the list page
+        self.wait_for(
+            lambda: self.browser.find_element(By.CSS_SELECTOR, "#id_text:invalid")  #<1>
+        )
 
         # She starts typing some text for the new item and the error disappears
-        self.get_item_input_box().send_keys('Buy milk')
-        self.wait_for(lambda: self.browser.find_element_by_css_selector(
-            '#id_text:valid'  #<2>
-        ))
+        self.get_item_input_box().send_keys("Buy milk")
+        self.wait_for(
+            lambda: self.browser.find_element(By.CSS_SELECTOR, "#id_text:valid")  #<2>
+        )
 
         # And she can submit it successfully
         self.get_item_input_box().send_keys(Keys.ENTER)
-        self.wait_for_row_in_list_table('1: Buy milk')
+        self.wait_for_row_in_list_table("1: Buy milk")
 
         # Perversely, she now decides to submit a second blank list item
         self.get_item_input_box().send_keys(Keys.ENTER)
 
         # Again, the browser will not comply
-        self.wait_for_row_in_list_table('1: Buy milk')
-        self.wait_for(lambda: self.browser.find_element_by_css_selector(
-            '#id_text:invalid'
-        ))
+        self.wait_for_row_in_list_table("1: Buy milk")
+        self.wait_for(
+            lambda: self.browser.find_element(By.CSS_SELECTOR, "#id_text:invalid")
+        )
 
-        # And she can correct it by filling some text in
-        self.get_item_input_box().send_keys('Make tea')
-        self.wait_for(lambda: self.browser.find_element_by_css_selector(
-            '#id_text:valid'
-        ))
+        # And she can make it happy by filling some text in
+        self.get_item_input_box().send_keys("Make tea")
+        self.wait_for(
+            lambda: self.browser.find_element(
+                By.CSS_SELECTOR,
+                "#id_text:valid",
+            )
+        )
         self.get_item_input_box().send_keys(Keys.ENTER)
-        self.wait_for_row_in_list_table('1: Buy milk')
-        self.wait_for_row_in_list_table('2: Make tea')
+        self.wait_for_row_in_list_table("1: Buy milk")
+        self.wait_for_row_in_list_table("2: Make tea")
 ----
 ====
 
@@ -1137,14 +1111,13 @@ Let's change our FT to reflect that:
 
 <2> And its converse in the case of valid inputs.
 
-See how useful and flexible our `self.wait_for` function is turning out to
-be?
+See how useful and flexible our `self.wait_for` function is turning out to be?
+((("", startref="FDVproget14")))
 
-((("", startref="FDVproget14")))Our
-FT does look quite different from how it started though, doesn't it? I'm
-sure that's raising a lot of questions in your mind right now. Put a pin in
-them for a moment; I promise we'll talk. Let's first see if we're back to
-passing tests:
+Our FT does look quite different from how it started though, doesn't it?
+I'm sure that's raising a lot of questions in your mind right now.
+Put a pin in them for a moment;
+I promise we'll talk. Let's first see if we're back to passing tests:
 
 
 [subs="specialcharacters,macros"]
@@ -1163,17 +1136,21 @@ OK
 A Pat on the Back
 ~~~~~~~~~~~~~~~~~
 
-First let's give ourselves a massive pat on the back: we've just made a major
-change to our small app--that input field, with its name and ID, is absolutely
-critical to making everything work.  We've touched seven or eight different
-files, doing a refactor that's quite involved...this is the kind of thing that,
-without tests, would seriously worry me.  In fact, I might well have decided
-that it wasn't worth messing with code that works.  But, because we have a full
-tests suite, we can delve around, tidying things up, safe in the knowledge
-that the tests are there to spot any mistakes we make.  It just makes it that
-much likelier that you're going to keep refactoring, keep tidying up, keep
-gardening, keep tending your code, keep everything neat and tidy and clean and
-smooth and precise and concise and functional and good.
+First let's give ourselves a massive pat on the back:
+we've just made a major change to our small app--that input field,
+with its name and ID, is absolutely critical to making everything work.
+We've touched seven or eight different files,
+doing a refactor that's quite involved...this
+is the kind of thing that, without tests, would seriously worry me.
+In fact, I might well have decided
+that it wasn't worth messing with code that works.
+But, because we have a full tests suite, we can delve around,
+tidying things up, safe in the knowledge
+that the tests are there to spot any mistakes we make.
+It just makes it that much likelier that you're going to keep refactoring,
+keep tidying up, keep gardening, keep tending your code,
+keep everything neat and tidy and clean and smooth
+and precise and concise and functional and good.
 
 [role="scratchpad"]
 *****
@@ -1194,31 +1171,39 @@ But Have We Wasted a Lot of Time?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-((("form data validation", "benefits of")))But
-what about our custom error message?  What about all that effort
-rendering the form in our HTML template?  We're not even passing those
-errors from Django to the user if the browser is intercepting the requests
-before the user even makes them?  And our FT isn't even testing that stuff
-any more!
+((("form data validation", "benefits of")))
+But what about our custom error message?
+What about all that effort rendering the form in our HTML template?
+We're not even passing those errors from Django to the user
+if the browser is intercepting the requests before the user even makes them?
+And our FT isn't even testing that stuff any more!
 
-Well, you're quite right.  But there are two or three reasons all our time
-hasn't been wasted.  Firstly, client-side validation isn't enough to guarantee
-you're protected from bad inputs, so you always need the server side as well
-if you really care about data integrity; using a form is a nice way of
-encapsulating that logic.
+Well, you're quite right.
+But there are two or three reasons all our time hasn't been wasted.
+Firstly, client-side validation isn't enough
+to guarantee you're protected from bad inputs,
+so you always need the server side as well
+if you really care about data integrity;
+using a form is a nice way of encapsulating that logic.
 
-((("HTML5")))Also, not all browsers ('cough--Safari--cough') fully implement HTML5, so some
-users are still going to see our custom error message. And if or when we come
-to letting users access our data via an API (see <<appendix_rest_api>>), then
-our validation messages will come back into use.
 
-On top of that, we'll be able to reuse all our validation and forms code and
-the front-end `.has-error` classes in the next chapter, when we do some more
-advanced validation that can't be done by HTML5 magic.
+((("HTML5")))
+Also, not all browsers ('cough--Safari--cough')
+// TODO this is probably not true any more.
+fully implement HTML5,
+so some users are still going to see our custom error message.
+And if or when we come to letting users access our data via an API
+(see <<appendix_rest_api>>),
+then our validation messages will come back into use.
+
+On top of that, we'll be able to reuse all our validation and forms code
+and the front-end `.has-error` classes in the next chapter,
+when we do some more advanced validation that can't be done by HTML5 magic.
 
 But you know, even if all that wasn't true, you still can't beat yourself up
-for occasionally going down a blind alley while you're coding.  None of us
-can see the future, and we should concentrate on finding the right solution
+for occasionally going down a blind alley while you're coding.
+None of us can see the future,
+and we should concentrate on finding the right solution
 rather than the time "wasted" on the wrong solution.
 
 
@@ -1227,13 +1212,16 @@ Using the Form's Own Save Method
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-((("form data validation", "using form&#x2019;s own save method", id="FDVsave14")))There
-are a couple more things we can do to make our views even simpler.  I've
-mentioned that forms are supposed to be able to save data to the database for
-us.  Our case won't quite work out of the box, because the item needs to know
-what list to save to, but it's not hard to fix that.
+((("form data validation", "using form&#x2019;s own save method", id="FDVsave14")))
+There are a couple more things we can do to make our views even simpler.
+I've mentioned that forms are supposed to be able to save data
+to the database for us.
+Our case won't quite work out of the box,
+because the item needs to know what list to save to,
+but it's not hard to fix that.
 
-We start, as always, with a test.  Just to illustrate what the problem is,
+We start, as always, with a test.
+Just to illustrate what the problem is,
 let's see what happens if we just try to call `form.save()`:
 
 
@@ -1254,10 +1242,11 @@ Django isn't happy, because an item needs to belong to a list:
 django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id
 ----
 
-Our solution is to tell the form's save method what list it should save to:
+Our solution is to tell the form's save method what list it should save to.
+We'll imagine that the `.save()` method takes a `for_list=` argument:
 
 [role="sourcecode"]
-.lists/tests/test_forms.py
+.lists/tests/test_forms.py (ch14l034)
 ====
 [source,python]
 ----
@@ -1268,15 +1257,14 @@ from lists.models import Item, List
         list_ = List.objects.create()
         form = ItemForm(data={'text': 'do me'})
         new_item = form.save(for_list=list_)
-        self.assertEqual(new_item, Item.objects.first())
+        self.assertEqual(new_item, Item.objects.get())
         self.assertEqual(new_item.text, 'do me')
         self.assertEqual(new_item.list, list_)
 ----
 ====
-//34
 
-We then make sure that the item is correctly saved to the database, with
-the right attributes:
+We then make sure that the item is correctly saved to the database,
+with the right attributes:
 
 ----
 TypeError: save() got an unexpected keyword argument 'for_list'
@@ -1295,12 +1283,15 @@ And here's how we can implement our custom save method:
 ----
 ====
 
-The `.instance` attribute on a form represents the database object that is
-being modified or created.  And I only learned that as I was writing this
-chapter!  There are other ways of getting this to work, including manually
-creating the object yourself, or using the `commit=False` argument to save,
-but this is the neatest I think.  We'll explore a different way of making
-a form "know" what list it's for in the next [keep-together]#chapter#:
+The `.instance` attribute on a form represents the database object
+that is being modified or created.
+And I only learned that as I was writing this chapter!
+There are other ways of getting this to work,
+including manually creating the object yourself,
+or using the `commit=False` argument to save,
+but this way seemed neatest.
+We'll explore a different way of making a form "know" what list it's for
+in the next chapter.
 
 ----
 Ran 24 tests in 0.086s
@@ -1308,25 +1299,24 @@ OK
 ----
 
 
-Finally we can refactor our views. `new_list` first:
+Finally, we can refactor our views. `new_list` first:
 
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch14l036)
 ====
 [source,python]
 ----
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
-        list_ = List.objects.create()
-        form.save(for_list=list_)
-        return redirect(list_)
+        nulist = List.objects.create()
+        form.save(for_list=nulist)
+        return redirect(nulist)
     else:
-        return render(request, 'home.html', {"form": form})
+        return render(request, "home.html", {"form": form})
 ----
 ====
-//35
 
 Rerun the test to check that everything still passes:
 
@@ -1338,19 +1328,20 @@ OK
 And now `view_list`:
 
 [role="sourcecode"]
-.lists/views.py
+.lists/views.py (ch14l037)
 ====
 [source,python]
 ----
 def view_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    form = ItemForm()
-    if request.method == 'POST':
+    our_list = List.objects.get(id=list_id)
+    if request.method == "POST":
         form = ItemForm(data=request.POST)
         if form.is_valid():
-            form.save(for_list=list_)
-            return redirect(list_)
-    return render(request, 'list.html', {'list': list_, "form": form})
+            form.save(for_list=our_list)
+            return redirect(our_list)
+    else:
+        form = ItemForm()
+    return render(request, "list.html", {"list": our_list, "form": form})
 ----
 ====
 
@@ -1363,8 +1354,7 @@ OK
 
 and:
 
-//36 = remove unused imports
-[role="dofirst-ch11l037"]
+
 ----
 Ran 4 tests in 14.367s
 OK
@@ -1377,31 +1367,36 @@ and possible saving, and then redirect or render a template.
 
 
 
-Forms and validation are really important in Django, and in web programming in
-general, so let's try to make a slightly more complicated one in the
-next chapter.((("", startref="FDVsave14")))
+Forms and validation are really important in Django,
+and in web programming in general,
+so let's try to make a slightly more complicated one in the next chapter.
+((("", startref="FDVsave14")))
+
 
 
 [role="less_space pagebreak-before"]
 .Tips
 *******************************************************************************
 Thin views::
-    ((("form data validation", "best practices")))((("thin views vs. complex views")))((("complex views vs. thin views")))If
-    you find yourself looking at complex views, and having to write a lot of
+    If you find yourself looking at complex views, and having to write a lot of
     tests for them, it's time to start thinking about whether that logic could
     be moved elsewhere: possibly to a form, like we've done here.
-+
-Another possible place would be a custom method on the model class.
+    +
+    Another possible place would be a custom method on the model class.
     And--once the complexity of the app demands it--out of Django-specific
     files and into your own classes and functions, that capture your core
     business logic.
+    ((("form data validation", "best practices")))
+    ((("thin views vs. complex views")))
+    ((("complex views vs. thin views")))
 
 
 Each test should test one thing::
-    ((("unit tests", "testing only one thing")))((("testing best practices")))The
-    heuristic is to be suspicious if there's more than one assertion in a
+    The heuristic is to be suspicious if there's more than one assertion in a
     test. Sometimes two assertions are closely related, so they belong
     together. But often your first draft of a test ends up testing multiple
     behaviours, and it's worth rewriting it as several tests. Helper functions
     can keep them from getting too bloated.((("", startref="UIform14")))
+    ((("unit tests", "testing only one thing")))
+    ((("testing best practices")))
 *******************************************************************************
