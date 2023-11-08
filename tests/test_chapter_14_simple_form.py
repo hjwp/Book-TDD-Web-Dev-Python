@@ -5,7 +5,7 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter12Test(ChapterTest):
+class Chapter14Test(ChapterTest):
     chapter_name = "chapter_14_simple_form"
     previous_chapter = "chapter_13_database_layer_validation"
 
@@ -25,7 +25,7 @@ class Chapter12Test(ChapterTest):
         self.prep_database()
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 48  # 31
             self.sourcetree.run_command(
