@@ -634,7 +634,7 @@ class ChapterTest(unittest.TestCase):
             "list.html",
             "base.html",
             "fabfile.py",
-            "tests/test_",
+            "test_",
             "base.py",
             "test_my_lists.py",
         ]
