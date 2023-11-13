@@ -75,8 +75,9 @@ def main():
     update submodule folders for all chapters,
     making sure previous and current branches are locally checked out
     """
-    for chapter, previous_chapter in zip(CHAPTERS, [None, *CHAPTERS]):
-        update_sources_for_chapter(chapter, previous_chapter=previous_chapter)
+    if "SKIP_CHAPTER_SUBMODULES" not in os.environ:
+        for chapter, previous_chapter in zip(CHAPTERS, [None, *CHAPTERS]):
+            update_sources_for_chapter(chapter, previous_chapter=previous_chapter)
 
     checkout_testrepo_branches()
 
