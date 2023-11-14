@@ -62,6 +62,11 @@ test_%: %.html $(TMPDIR)
 silent_test_%: %.html $(TMPDIR)
 	pytest --tb=short ./tests/$(subst silent_,,$@).py
 
+.PHONY: unit-test
+unit-test: chapter_01.html
+	SKIP_CHAPTER_SUBMODULES=1 ./tests/update_source_repo.py
+	./run_test_tests.sh
+
 .PHONY: clean
 clean:
 	rm -rf $(TMPDIR)
