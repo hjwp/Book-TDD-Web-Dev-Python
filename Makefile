@@ -36,7 +36,7 @@ build: $(HTML_PAGES) $(TMPDIR)
 test: build
 	git submodule init
 	python tests/update_source_repo.py
-	./run_all_tests.sh
+	pytest --tb=short --color=yes tests/
 
 .PHONY: testall
 testall: build
