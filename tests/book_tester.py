@@ -458,13 +458,13 @@ class ChapterTest(unittest.TestCase):
             setattr(new_listing, attr, val)
         self.listings[pos] = new_listing
 
-    def _run_tree(self, target=""):
+    def _run_tree(self, target="", no_report=False):
         return self.sourcetree.run_command(
-            f"tree -v -I __pycache__ --noreport {target}"
+            f"tree -v -I __pycache__ {'--noreport' if no_report else ''} {target}"
         )
 
     def assert_directory_tree_correct(self, expected_tree):
-        actual_tree = self._run_tree()
+        actual_tree = self._run_tree(no_report=True)
         self.assert_console_output_correct(actual_tree, expected_tree)
 
     def assert_all_listings_checked(self, listings, exceptions=[]):
@@ -847,15 +847,14 @@ class ChapterTest(unittest.TestCase):
                 ls = listing.startswith("ls")
                 self.assert_console_output_correct(output, next_listing, ls=ls)
                 next_listing.was_checked = True
-                listing.was_checked = True
                 self.pos += 2
             elif "tree" in listing and next_listing.type == "tree":
                 assert listing.startswith("tree")
                 _, _, target = listing.partition("tree")
                 output = self._run_tree(target=target)
+                listing.was_run = True
                 self.assert_console_output_correct(output, next_listing)
                 next_listing.was_checked = True
-                listing.was_checked = True
                 self.pos += 2
             else:
                 self.run_command(listing, ignore_errors=listing.ignore_errors)
