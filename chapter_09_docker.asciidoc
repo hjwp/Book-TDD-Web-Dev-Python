@@ -385,20 +385,22 @@ TIP: I'm deliberately choosing a different port to run Dockerised Django on (888
     we're looking at Docker, when we're actually looking at a local `runserver`
     that I've left running in some terminal somewhere.
 
+I'll use the `--failfast` option to exit as soon as a single test fails:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
-
-EEE
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests \
+    --failfast*]
+[...]
+E
 ======================================================================
-ERROR: test_can_start_a_list_for_one_user
-(functional_tests.tests.NewVisitorTest)
+ERROR: test_can_start_a_todo_list
+(functional_tests.tests.NewVisitorTest.test_can_start_a_todo_list)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "...goat-book/functional_tests/tests.py", line 41, in
-test_can_start_a_list_for_one_user
+  File "...goat-book/functional_tests/tests.py", line 31, in
+test_can_start_a_todo_list
     self.browser.get(self.live_server_url)
 [...]
 selenium.common.exceptions.WebDriverException: Message: Reached error page: abo
@@ -407,31 +409,9 @@ f=regular&d=Firefox%20can%27t%20establish%20a%20connection%20to%20the%20server%
 20at%20locahost.
 
 
-======================================================================
-ERROR: test_layout_and_styling (functional_tests.tests.NewVisitorTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/tests.py", line 126, in
-test_layout_and_styling
-[...]
-selenium.common.exceptions.WebDriverException: Message: Reached error page: abo
-[...]
+Ran 1 tests in 5.518s
 
-
-======================================================================
-ERROR: test_multiple_users_can_start_lists_at_different_urls
-(functional_tests.tests.NewVisitorTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/tests.py", line 80, in
-test_multiple_users_can_start_lists_at_different_urls
-[...]
-selenium.common.exceptions.WebDriverException: Message: Reached error page: abo
-[...]
-
-Ran 3 tests in 10.518s
-
-FAILED (errors=3)
+FAILED (errors=1)
 ----
 
 NOTE: If, on Windows, you see an error saying something like
@@ -439,14 +419,13 @@ NOTE: If, on Windows, you see an error saying something like
   it's probably because you're not using Git-Bash.
   Take another look at the <<pre-requisites>> section.
 
-You can see that all the tests are failing, as expected,
-since we're not running Docker yet.
-Selenium reports that Firefox is seeing an error
-and "cannot establish connection to the server".
+You can see that our tests are failing, as expected, since we're not running Docker yet.
+Selenium reports that Firefox is seeing an error and "cannot establish connection to the server",
+and you can see _localhost:8888_ in there too.
 ((("", startref="SSadapt09")))
 
 
-The FT seems to be testing the right things though, so let's commit:
+The FT seems to be testing the right things, so let's commit:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -566,7 +545,7 @@ What do we need to do?  Something like this, right?
 4. Run `python manage.py runserver`
 
 
-.Dockerfile
+.Dockerfile (ch09l003)
 ====
 [source,dockerfile]
 ----
@@ -725,6 +704,7 @@ and then add it as a single item to our requirements.txt,
 with its exact version specified:
 
 
+//004
 [subs="specialcharacters,quotes"]
 ----
 $ *pip freeze | grep -i django*
@@ -763,7 +743,7 @@ just like we did on our own machine with `python -m venv`,
 and then we can use the special `-r` flag for `pip install`,
 to point it at our requirements file:
 
-.Dockerfile
+.Dockerfile (ch09l005)
 ====
 [source,dockerfile]
 ----
@@ -784,13 +764,14 @@ CMD python manage.py runserver
 ====
 
 <1> Here's where we create our virtualenv
+
 <3> You can't really "activate" a virtualenv inside a Dockerfile,
     so instead we change the system PATH so that the venv versions
-    of `pip` and `python` become the default ones.
+    of `pip` and `python` become the default ones
+    (this is actually one of the things that `activate` does, under the hood).
 
 <2> We copy our requirements file in, just like the src folder.
 
-    
 <4> Now we install our dependencies with `pip`,
     pointing it at our _requirements.txt_.
     Notice the `-r`.
@@ -798,165 +779,76 @@ CMD python manage.py runserver
 TIP: Forgetting the `-r` and running `pip install requirements.txt`
     is such a common error, that I recommend you do it _right now_
     and get familiar with the error message,
-    because (at the time of writing), it's not that helpful.
-    And it's a mistake I still make, all the time..
+    because (at the time of writing), it's not very self-explanatory.
+    And it's a mistake I still make, _all the time_.
+
 
 ==== Successful run
 
-TODO: Note for windows users on the fact that you can't ctrl-c the process.
-    explain docker -it.
-
-==== database migration
-
-when we run it we spot a warning about migrations
+Let's do the `build` and `run` in a single line.
+This is a pattern I used quite often when developing a Dockerfile,
+to be able to quickly rebuild and see the effect of a change:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *docker run -it superlists*
-You have 19 unapplied migration(s). Your project may not work properly until
-you apply the migrations for app(s): auth, contenttypes, lists, sessions.
-Run 'python manage.py migrate' to apply them.
-----
-
-// TODO; need to introduce mounts at some point, db can't be in the container image.
-// or switch to postgres but that's a big hassle.
-
-so we add that to our dockerfile
-
-
-[role="sourcecode"]
-.Dockerfile
-====
-[source,dockerfile]
-----
-RUN /venv/bin/python manage.py migrate
-
-CMD /venv/bin/python manage.py runserver
-----
-====
-
-and try again
-
-////
-old content follows.  consider "failing to notice" the migrations warning
-and letting this happen naturally instead.
-
-A quick visual inspection confirms--the site is up (<<staging-is-up>>)!
-
-[[staging-is-up]]
-.The staging site is up!
-image::images/twp2_0903.png["The front page of the site, at least, is up"]
-
-Let's see what our functional tests say:
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
-    --failfast*]
+$ *docker build -t superlists . && docker run -it superlists*
+[+] Building 0.2s (11/11) FINISHED                                  docker:default
 [...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: [id="id_list_table"]
-----
+ => [internal] load .dockerignore                                   0.1s
+ => => transferring context: 2B                                     0.0s
+ => [internal] load build definition from Dockerfile                0.0s
+ => => transferring dockerfile: 246B                                0.0s
+ => [internal] load metadata for docker.io/library/python:slim      0.0s
+ => CACHED [1/6] FROM docker.io/library/python:slim                 0.0s
+ => [internal] load build context                                   0.0s
+ => => transferring context: 4.75kB                                 0.0s
+ => [2/6] RUN python -m venv /venv                                  0.0s
+ => [3/6] COPY requirements.txt requirements.txt                    0.0s
+ => [4/6] RUN pip install -r requirements.txt                       0.0s
+ => [5/6] COPY src /src                                             0.0s
+ => [6/6] WORKDIR /src                                              0.0s
+ => exporting to image                                              0.0s
+ => => exporting layers                                             0.0s
+ => => writing image sha256:[...]                                   0.0s
+ => => naming to docker.io/library/superlists                       0.0s
+Watching for file changes with StatReloader
+Performing system checks...
 
+System check identified no issues (0 silenced).
 
-The tests are failing as soon as they try to submit a new item, because we
-haven't set up the database. You'll probably have spotted the yellow Django
-debug page (<<django-debug-screen>>) telling us as much as the tests went
-through, or if you tried it manually.
-
-
-NOTE: The tests saved us from potential embarrassment there.  The site 'looked'
-    fine when we loaded its front page.  If we'd been a little hasty and only
-    testing manually, we might have thought we were done, and it would have
-    been the first users that discovered that nasty Django DEBUG page.  Okay,
-    slight exaggeration for effect, maybe we 'would' have checked, but what
-    happens as the site gets bigger and more complex? You can't check
-    everything. The tests can.
-
-[[django-debug-screen]]
-.But the database isn't
-image::images/twp2_0904.png["Django DEBUG page showing database error"]
-
-
-
-Creating the Database with migrate
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("database migrations")))We
-run `migrate` using the `--noinput` argument to suppress the two little "are
-you sure" prompts:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *./.venv/bin/python manage.py migrate --noinput*
-Operations to perform:
-  Apply all migrations: auth, contenttypes, lists, sessions
-Running migrations:
-  Applying contenttypes.0001_initial... OK
-  [...]
-  Applying lists.0004_item_list... OK
-  Applying sessions.0001_initial... OK
-----
-
-That looks good.  We restart the server:
-
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *./.venv/bin/python manage.py runserver 0.0.0.0:8000*
-----
-
-And try the FTs again:
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests*]
+You have 19 unapplied migration(s). Your project may not [...]
 [...]
-
-...
- ---------------------------------------------------------------------
-Ran 3 tests in 10.718s
-
-OK
-----
-////
-
-
-
-==== ports
-
-doesnt work, show screenshot, and/or ft run.
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=localhost:8888 ./manage.py test functional_tests \
-
-selenium.common.exceptions.WebDriverException: Message: Reached error page: about:neterror[...]
+Django version 4.2.7, using settings 'superlists.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
 ----
 
-----
-CMD /venv/bin/python manage.py runserver  <4>
-----
+
+OK, scanning through that, it looks like the server is running!
+
+
+WARNING: Make sure you use the `-it` flags to the Docker `run`
+    command when running `runserver`, or any other tool that expects
+    to be run in an interactive terminal session,
+    otherwise you'll get strange behaviours, including not being able
+    to interrupt the docker process with _Ctrl-C_.
+
 
 
 
 === Using the FT to Check That Our Container Works
 
 Let's see what our FTs think about this Docker version of our site.
-I'll use the `--failfast` option to exit as soon as a single test fails:
 
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 ./manage.py test functional_tests \
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests \
     --failfast*]
 [...]
-selenium.common.exceptions.WebDriverException: Message: Reached error page: [...]
+selenium.common.exceptions.WebDriverException: Message: Reached error page:
+about:neterror?e=connectionFailure&u=http%3A//localhost%3A8888/[...]
 ----
 
 Nope!  What's going on here?  Time for a little debugging.
@@ -972,74 +864,113 @@ First let's try and take a look ourselves, in our browser:
 image::images/firefox-unable-to-connect.png["Firefox showing the 'Unable to connect' error"]
 
 
-Now let's take another look at the output from our `docker run`
+Now let's take another look at the output from our `docker run`.  Here's what appeared right at the end:
 
 
+[role="skipme"]
 ----
 Starting development server at http://127.0.0.1:8000/
 Quit the server with CONTROL-C.
 ----
 
-Aha, wrong port.  Let's change that:
+Aha!  We notice that we're using the wrong port, `8000` instead of the `8888`
+that we specified in the `TEST_SERVER` env var.
 
-.Dockerfile
+Let's fix that by amending the `CMD` instruction in the Dockerfile:
+
+
+.Dockerfile (ch09l006)
 ====
 [source,dockerfile]
 ----
-CMD /venv/bin/python manage.py runserver 8888
+[...]
+WORKDIR /src
+
+CMD python manage.py runserver 8888
 ----
 
-Still won't work.
+Ctrl+C the current dockerized container process if it's still running in your terminal,
+give it another `build && run`:
 
-////
-
-OLD CONTENT FOLLOWS
-
-Nope, that didn't work earlier.  Let's try an even lower-level smoke test, the
-traditional Unix utility "curl" -- it's a command-line tool for making web
-requests.  Try it on your own computer first:
-
-[role='ignore-errors']
 [subs="specialcharacters,quotes"]
 ----
-$ *curl localhost:8888*
-curl: (7) Failed to connect to localhost:8888: Connection
-refused
+$ *docker build -t superlists . && docker run -it superlists*
+[...]
+Starting development server at http://127.0.0.1:8888/
 ----
 
-And maybe just to be sure, we could even open up our web browser and type in
-'http://localhost:8888', and confirm using a familiar tool
-that things aren't working. Nope.
-////
+
+==== Debugging web server connectivity with "curl"
+
+Nope, that won't work either.
+Let's try an even lower-level smoke test, the traditional Unix utility `curl`.
+It's a command-line tool for making HTTP requests.  Try it on your own computer first:
+
+[role='ignore-errors']
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*curl -iv localhost:8888*]
+*   Trying 127.0.0.1:8888...
+* connect to 127.0.0.1 port 8888 failed: Connection refused
+*   Trying [::1]:8888...
+* connect to ::1 port 8888 failed: Connection refused
+* Failed to connect to localhost port 8888 after 0 ms: Couldn't connect to server
+* Closing connection 0
+curl: (7) Failed to connect to localhost port 8888 after 0 ms: Couldn't connect to server
+----
+
+TIP: The `-iv` flag to curl is useful for debugging.
+    It prints verbose output, as well as full HTTP headers.
 
 
 === Running code "inside" the container with docker exec
 
+So, we can't see Django running on port 8888 when we're _outside_ the container.
+What do we see if we run things from _inside_ the container?
+
+We can use `docker exec` to run commands inside a running container.
+First we need to get the name or ID of the container:
+
 // TODO use --name arg to docker run??
 
+[role="skipme small-code"]
 [subs="specialcharacters,quotes"]
 ----
-$ *docker ps*  # make not of container name
-$ *docker exec -it <container-name> bash*
-$ *apt-get update*
+$ *docker ps*
+CONTAINER ID   IMAGE        COMMAND                  CREATED          STATUS          PORTS     NAMES
+5ed84681fdf8   superlists   "/bin/sh -c 'python …"   12 minutes ago   Up 12 minutes             trusting_wu
+----
+
+Your values for `CONTAINER_ID` and `NAMES` will be different from mine,
+because they're randomly generated.
+But, make a note of one or the other, and then run `docker exec -it <containerid> bash`.
+On most platforms, you can use tab-completion for the container id or name.
+
+Let's try it now.  Notice that the shell prompt will change from your default Bash prompt
+to `root@container-id`.  Watch out for those in future listings,
+so that you can be sure of what's being run inside vs outside containers.
+
+// I'll use a little hackery:
+// $ pass:quotes[*docker exec -it $(docker ps --filter "ancestor=superlists" -q) bash*]
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*docker exec -it <container-id-or-name> bash*]
+root@5ed84681fdf8:/src# pass:quotes[*apt-get update && apt-get install -y curl*]
 Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [52.1 kB]
-Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [48.0 kB]
 [...]
-$ *apt-get install curl*
 Reading package lists... Done
 Building dependency tree... Done
 Reading state information... Done
 The following additional packages will be installed:
   libbrotli1 libcurl4 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5
-librtmp1 libsasl2-2 libsasl2-modules
-  libsasl2-modules-db libssh2-1 publicsuffix
 [...]
-$ *curl -iv http://localhost:8000*
-*   Trying 127.0.0.1:8000...
-* Connected to localhost (127.0.0.1) port 8000 (#0)
+root@5ed84681fdf8:/src# pass:quotes[*curl -iv http://localhost:8888*]
+*   Trying 127.0.0.1:8888...
+* Connected to localhost (127.0.0.1) port 8888 (#0)
 > GET / HTTP/1.1
-> Host: localhost:8000
+> Host: localhost:8888
 > User-Agent: curl/7.88.1
 > Accept: */*
 >
@@ -1057,31 +988,76 @@ HTTP/1.1 200 OK
   </head>
 
   <body>
-[...]
+    [...]
+  </body>
+
+</html>
 ----
 
-OK so we can see django is serving our site _inside_ the container,
+That's definitely some HTML! And the `<title>To-Do lists</title>` looks like it's our html, too.
+
+So, we can see Django is serving our site _inside_ the container,
 why can't we see it _outside_??
 
-Basically we need to do two things:
+==== Exposing Docker Ports
 
-==== exposing docker ports
+The pythonspeed guide to Docker's very first section is called
+https://pythonspeed.com/articles/docker-connection-refused/[Connection Refused],
+so I'll refer you there once again for an _excellent_, detailed explanation.
 
-docker runs in its own little world,
-need to expose ports.  explain A:B syntax.
+But in short, Docker runs in its own little world,
+specifically it has its own little network,
+so the ports _inside_ the container are different
+from the ports _outside_ the container, the ones we can see on our host machine.
+
+So we need to tell Docker to connect the internal ports to the outside ones,
+or "expose" them, in Docker terminology.
+
+`docker run` takes a `-p` argument, with the syntax `OUTSIDE:INSIDE`.
+So you can actually map a different port number on the inside and outside.
+But we're just mapping 8888 to 8888, and that will look like this:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *podman run -p 8888:8888 -it superlists*
+$ *docker build -t superlists . && docker run -p 8888:8888 -it superlists*
+----
+
+Now that will _change_ the error we see, but only quite subtly (see <<firefox-connection-reset>>).
+Things clearly aren't working yet.
+
+[[firefox-connection-reset]]
+.Cannot connect on that port
+image::images/firefox-connection-reset.png["Firefox showing the 'Connection reset' error"]
+
+Similarly, if you try our `curl -iv` (outside the container) once again,
+you'll see the error has changed from "Failed to connect",
+to "Empty reply":
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*curl -iv localhost:8888*]
+*   Trying 127.0.0.1:8888...
+* Connected to localhost (127.0.0.1) port 8888 (#0)
+> GET / HTTP/1.1
+> Host: localhost:8888
+> User-Agent: curl/7.88.1
+> Accept: */*
+>
+* Empty reply from server
+* Closing connection 0
+curl: (52) Empty reply from server
 ----
 
 ==== Essential Googling the Error Message
 
-the `-p` argument to `docker run` is something you just learn,
-fairly on in learning docker.
-But the next debugging step is a fair bit more obscure.
-We'll have to resort to the tried and tested
-"Googling the error message" technique instead
+The need to expose ports and the `-p` argument to `docker run` are something you just learn,
+fairly on in learning Docker.  But the next debugging step is quite a bit more obscure
+(although admittedly Itamar does address it in his
+https://pythonspeed.com/articles/docker-connection-refused/[docker networking article],
+did I already mention how excellent it is?).
+
+
+But if we haven't read that, we can always resort to resort to the tried and tested "Googling the error message" technique instead
 (<<googling-the-error>>).
 
 
@@ -1091,7 +1067,7 @@ image::images/orly-essential-googling-the-error-message.png["Cover of a fake O'R
 
 
 Everyone's search results are a little different,
-and mine are perhaps shaped by years of working with docker and django,
+and mine are perhaps shaped by years of working with Docker and Django,
 but I found the answer in my very first result
 (see <<google-results-screenshot>>),
 which was a https://stackoverflow.com/questions/49476217/docker-cant-access-django-server[stackoverflow post].
@@ -1102,16 +1078,47 @@ which was a https://stackoverflow.com/questions/49476217/docker-cant-access-djan
 image::images/google-results-with-stackoverflow.png["Google results with a useful stackoverflow post in first position",400]
 
 
-So we need to tell django to bind to any IP address,
+So we need to tell Django to bind to _any_ IP address,
 because container networking doesn't always have 127.0.0.1
 as the address of _localhost_:
 
-.Dockerfile
+.Dockerfile (ch09l007)
 ====
 [source,dockerfile]
 ----
-CMD /venv/bin/python manage.py runserver 0.0.0.0:8888
+[...]
+WORKDIR /src
+
+CMD python manage.py runserver 0.0.0.0:8888
 ----
+
+Rebuild and re-run your server, and if you have eagle eyes,
+you'll spot it's binding to `0.0.0.0` instead of `127.0.0.1`:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run -p 8888:8888 -it superlists*
+[...]
+Starting development server at http://0.0.0.0:8888/
+----
+
+We can verify it's working with `curl:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*curl -iv localhost:8888*]
+*   Trying 127.0.0.1:8888...
+* Connected to localhost (127.0.0.1) port 8888 (#0)
+[...]
+
+  </body>
+
+</html>
+* Connection #0 to host localhost left intact
+----
+
+Looking good!
+
 
 .On Debugging
 *******************************************************************************
@@ -1138,8 +1145,103 @@ It always seems hopeless at first!  But eventually you get there.
 *******************************************************************************
 
 
+=== Database migrations
 
-Let's try our FTs again:
+// TODO:  these errors won't happen if the user has run "migrate" on their own machine.
+
+((("database migrations")))
+A quick visual inspection confirms--the site is up (<<staging-is-up>>)!
+
+[[staging-is-up]]
+.The staging site is up!
+image::images/twp2_0903.png["The front page of the site, at least, is up"]
+
+
+Let's see what our functional tests say:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
+    --failfast*]
+[...]
+E
+======================================================================
+ERROR: test_can_start_a_todo_list
+(functional_tests.tests.NewVisitorTest.test_can_start_a_todo_list)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/tests.py", line 56, in
+test_can_start_a_todo_list
+    self.wait_for_row_in_list_table("1: Buy peacock feathers")
+  File "...goat-book/src/functional_tests/tests.py", line 26, in
+wait_for_row_in_list_table
+    table = self.browser.find_element(By.ID, "id_list_table")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]; For documentation [...]
+----
+
+Although the FTs can connect happily and interact with our site,
+they are failing as soon as they try to submit a new item.
+
+It's because we haven't set up the database (which, as you may remember,
+we highlighted as one of the "danger areas" of deployment).
+You might have spotted the yellow Django debug page (<<django-debug-screen>>)
+telling us as much, or if you tried it manually.
+
+NOTE: The tests saved us from potential embarrassment there.
+    The site _looked_ fine when we loaded its front page.
+    If we'd been a little hasty and only testing manually,
+    we might have thought we were done,
+    and it would have been the first users that discovered that nasty Django DEBUG page.
+    Okay, slight exaggeration for effect, maybe we _would_ have checked,
+    but what happens as the site gets bigger and more complex?
+    You can't check everything. The tests can.
+
+
+[[django-debug-screen]]
+.But the database isn't
+image::images/twp2_0904.png["Django DEBUG page showing database error"]
+
+
+To be fair, if you look back through the `runserver` command output
+each time we've been starting our container,
+you'll see it's been warning us about this issue:
+
+[role="skipme"]
+----
+You have 19 unapplied migration(s). Your project may not work properly until
+you apply the migrations for app(s): auth, contenttypes, lists, sessions.
+Run 'python manage.py migrate' to apply them.
+----
+
+
+==== Should we run "migrate" inside the Dockerfile? No.
+
+So, should we include `manage.py migrate` in our Dockerfile?
+
+If you try it, you'll find it certainly fixes the problem:
+
+[role="sourcecode"]
+.Dockerfile (ch09l008)
+====
+[source,dockerfile]
+----
+[...]
+WORKDIR /src
+
+RUN python manage.py migrate --noinput  <1>
+CMD /venv/bin/python manage.py runserver
+----
+====
+
+<1> We run `migrate` using the `--noinput` argument to suppress any little "are you sure" prompts.
+
+
+
+And if we try our FTs again, they all pass!
 
 
 [role="small-code"]
@@ -1157,6 +1259,8 @@ Ran 3 tests in 26.965s
 OK
 ----
 
+
+=== Mounting files inside the container.
 
 
 AMAZING IT ACTUALLY WORKS
