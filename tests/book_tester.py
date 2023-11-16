@@ -1,24 +1,24 @@
-from lxml import html
-from getpass import getuser
 import io
 import os
-import stat
 import re
+import stat
 import subprocess
-import time
 import tempfile
-from textwrap import wrap
+import time
 import unittest
+from getpass import getuser
+from textwrap import wrap
 
-from write_to_file import write_to_file
 from book_parser import (
     CodeListing,
     Command,
     Output,
     parse_listing,
 )
+from lxml import html
 from sourcetree import Commit, SourceTree
 from update_source_repo import update_sources_for_chapter
+from write_to_file import write_to_file
 
 PHANTOMJS_RUNNER = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "my-phantomjs-qunit-runner.js"
@@ -256,9 +256,7 @@ class ChapterTest(unittest.TestCase):
 
     def check_final_diff(self, ignore=None, diff=None):
         if diff is None:
-            diff = self.run_command(
-                Command("git diff -w repo/{}".format(self.chapter_name))
-            )
+            diff = self.run_command(Command(f"git diff -w repo/{self.chapter_name}"))
         try:
             print("checking final diff", diff)
         except io.BlockingIOError:
@@ -269,11 +267,9 @@ class ChapterTest(unittest.TestCase):
 
         if ignore is None:
             if commit.lines_to_add:
-                self.fail("Found lines to add in diff:\n{}".format(commit.lines_to_add))
+                self.fail(f"Found lines to add in diff:\n{commit.lines_to_add}")
             if commit.lines_to_remove:
-                self.fail(
-                    "Found lines to remove in diff:\n{}".format(commit.lines_to_remove)
-                )
+                self.fail(f"Found lines to remove in diff:\n{commit.lines_to_remove}")
             return
 
         if "moves" in ignore:
@@ -285,7 +281,7 @@ class ChapterTest(unittest.TestCase):
         for line in difference_lines:
             if any(ignorable in line for ignorable in ignore):
                 continue
-            self.fail("Found divergent line in diff:\n{}".format(line))
+            self.fail(f"Found divergent line in diff:\n{line}")
 
     def start_with_checkout(self):
         update_sources_for_chapter(self.chapter_name, self.previous_chapter)
@@ -305,7 +301,7 @@ class ChapterTest(unittest.TestCase):
     def apply_patch(self, codelisting):
         tf = tempfile.NamedTemporaryFile(delete=False)
         tf.write(codelisting.contents.encode("utf8"))
-        tf.write("\n".encode("utf8"))
+        tf.write(b"\n")
         tf.close()
         print("patch:\n", codelisting.contents)
         patch_output = self.run_command(
@@ -445,9 +441,8 @@ class ChapterTest(unittest.TestCase):
         if hasattr(listing, "contents"):
             if expected_content not in listing.contents:
                 raise Exception(error)
-        else:
-            if expected_content not in listing:
-                raise Exception(error)
+        elif expected_content not in listing:
+            raise Exception(error)
         listing.skip = True
 
     def replace_command_with_check(self, pos, old, new):
@@ -465,7 +460,7 @@ class ChapterTest(unittest.TestCase):
 
     def _run_tree(self, target=""):
         return self.sourcetree.run_command(
-            f"tree -v -I __pycache__ --noreport {target}", cwd,
+            f"tree -v -I __pycache__ --noreport {target}"
         )
 
     def assert_directory_tree_correct(self, expected_tree):
@@ -855,7 +850,7 @@ class ChapterTest(unittest.TestCase):
                 listing.was_checked = True
                 self.pos += 2
             elif "tree" in listing and next_listing.type == "tree":
-                assert listing.startswith('tree')
+                assert listing.startswith("tree")
                 _, _, target = listing.partition("tree")
                 output = self._run_tree(target=target)
                 self.assert_console_output_correct(output, next_listing)

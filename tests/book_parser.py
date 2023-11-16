@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import re
-
 
 COMMIT_REF_FINDER = r"ch\d\dl\d\d\d-?\d?"
 
 
-class CodeListing(object):
+class CodeListing:
     COMMIT_REF_FINDER = r"^(.+) \((" + COMMIT_REF_FINDER + r")\)$"
 
     def __init__(self, filename, contents):
@@ -80,8 +78,7 @@ class Command(str):
             return "interactive manage.py"
         if self.startswith("STAGING_SERVER="):
             return "against staging"
-        else:
-            return "other command"
+        return "other command"
 
     def __repr__(self):
         return "<Command %s>" % (str.__repr__(self),)
@@ -120,11 +117,7 @@ def parse_output(listing):
         return [Output(text)]
 
     outputs = []
-    output_before = listing.text
-    if output_before:
-        output_before = fix_newlines(output_before.strip())
-    else:
-        output_before = ""
+    output_before = fix_newlines(listing.text.strip()) if listing.text else ""
 
     for command in commands:
         if "$" in output_before and "\n" in output_before:
@@ -157,7 +150,7 @@ def _strip_callouts(content):
     return content
 
 
-def parse_listing(listing):
+def parse_listing(listing):  # noqa: PLR0912
     classes = listing.get("class").split()
     skip = "skipme" in classes
     dofirst_classes = [c for c in classes if c.startswith("dofirst")]
@@ -171,7 +164,7 @@ def parse_listing(listing):
             filename = listing.cssselect(".title")[0].text_content().strip()
         except IndexError:
             raise Exception(
-                "could not find title for listing {}".format(listing.text_content())
+                f"could not find title for listing {listing.text_content()}"
             )
         contents = (
             listing.cssselect(".content")[0]
