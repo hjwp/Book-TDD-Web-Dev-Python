@@ -1218,6 +1218,15 @@ Run 'python manage.py migrate' to apply them.
 ----
 
 
+
+NOTE: If you don't see this error,
+    it's because your source repo already had the database file in it, unlike mine.
+    For the sake of argument, run `rm src/db.sqlite` and re-run the build & run commands,
+    and you should be able to repro the error.  I promise it's instructive!
+
+// TODO this ^ is hacky. figure out a way to make it more likely that the user sees the error.
+
+
 ==== Should we run "migrate" inside the Dockerfile? No.
 
 So, should we include `manage.py migrate` in our Dockerfile?
@@ -1240,8 +1249,7 @@ CMD /venv/bin/python manage.py runserver
 <1> We run `migrate` using the `--noinput` argument to suppress any little "are you sure" prompts.
 
 
-
-And if we try our FTs again, they all pass!
+If we try our FTs again, they all pass!
 
 
 [role="small-code"]
@@ -1262,10 +1270,82 @@ OK
 
 === Mounting files inside the container.
 
+But we don't actually want to package up our database _inside_ the image, do we?
+We want the database on the server to have totally separate data from the one on our machine.
+
+In most deployments, you'd probably be talking to a separate database server, like postgres.
+
+For the purposes of this book, the easiest analogy to a server that's "outside" our container,
+is to access the database from the filesystem outside the container.
+
+That also gives us a convenient excuse to talk about mounting files in Docker,
+which is a very useful thing to be able to do (TM).
+
+
+First let's revert our change: 
+
+[role="sourcecode"]
+.Dockerfile (ch09l009)
+====
+[source,dockerfile]
+----
+[...]
+WORKDIR /src
+
+CMD /venv/bin/python manage.py runserver
+----
+====
+
+The extra flag to add is `-v`, and it takes a similar `outside:inside` argument as `-p` did for ports.
+We specify a folder or file _outside_ the container, and the path we want it to appear at _inside_ the container.
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*./src/manage.py migrate --noinput*]
+Operations to perform:
+  Apply all migrations: auth, contenttypes, lists, sessions
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+[...]
+  Applying sessions.0001_initial... OK
+[...]
+$ pass:quotes[*docker build -t superlists . && docker run -p 8888:8888 -v ./src/db.sqlite3:/src/db.sqlite3 -it superlists*]
+----
+
+TIP: if you see an error saying: `django.db.utils.OperationalError`: "unable to open database file",
+    try stopping the container, `rm -rf src/db.sqlite3`, then re-run the migrate command
+    _outside_ the container, and the rebuild and run your image.
+
+
+And we check the FTs again.
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=superlists-staging.ottg.eu:8000 ./manage.py test functional_tests \
+    --failfast*]
+Found 3 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 26.965s
+
+OK
+----
 
 AMAZING IT ACTUALLY WORKS
 
-commit commit commit.
+That's definitely good enough for now!  Let's commit.
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add Dockerfile*
+$ *git commit -m"First cut of a Dockerfile"*
+----
+
 
 Time for a well-earned tea break I think, and perhaps a
 https://en.wikipedia.org/wiki/Digestive_biscuit[chocolate biscuit].
@@ -1274,17 +1354,21 @@ https://en.wikipedia.org/wiki/Digestive_biscuit[chocolate biscuit].
 Success!  Our Hack Deployment Works
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Phew.  Well, it took a bit of hacking about, but now we can be reassured that
-the basic piping works. Notice that the FT was able to guide us incrementally
-towards a working site.
+Phew.  Well, it took a bit of hacking about,
+but now we can be reassured that the basic Docker plumbing works.
+Notice that the FT was able to guide us incrementally towards a working config.
 
-But we really can't be using the Django dev server in production, or running on
-port 8888 forever. In the next chapter, we'll make our hacky deployment more
-production-ready.
+But we really can't be using the Django dev server in production,
+or running on port 8888 forever.
+In the next chapter, we'll make our hacky image more production-ready.
 
 
 .Test-Driving Server Configuration and Deployment
 *******************************************************************************
+
+
+TODO update this recap.
+
 
 Tests and small steps some of the uncertainty out of deployment::
     For developers, ops and infra work is always "fun",
