@@ -2,7 +2,7 @@
 == Making our App Production-Ready
 
 Our container is working fine but it's not production-ready.
-Let's try to get it there, using the tests to guide us.
+Let's try to get it there, using the tests to keep us safe.
 
 In a way we're applying the Red-Green-Refactor cycle to our productionisation process.
 Our hacky container config got us to Green, and now we're going to Refactor,
@@ -36,9 +36,10 @@ it's not designed for real-life workloads.
 Instead, we'll use the popular Gunicorn Python/WSGI server.
 
 ((("DEBUG settings")))
-Several settings in 'settings.py' are currently unacceptable too.
+In addition, several options in 'settings.py' are currently unacceptable.
 `DEBUG=True`, is strongly recommended against for production,
-we'll want to set a unique `SECRET_KEY`, and as we'll see, other things will come up.
+we'll want to set a unique `SECRET_KEY`,
+and as we'll see, other things will come up.
 
 Let's go through and see if we can fix things one by one.
 
@@ -70,16 +71,16 @@ CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 // TODO mention new cmd syntax with ["list"]
 
 
-
-rebuild and rerun our container:
+As in the previous chapter, we can use the `docker build && docker run`
+in a single line to try out our changes by rebuilding and rerunning our container:
 
 ----
 docker build -t superlists . && docker run -p 8888:8888 -v ./src/db.sqlite3:/src/db.sqlite3 -it superlists
 ----
 
+==== The FTs catch a problem with static files
 
-But if we run the functional tests, once again you'll see
-that they are warning us of a problem.
+As we run the functional tests, you'll see them warning us of a problem, once again.
 The test for adding list items passes happily,
 but the test for layout + styling fails. Good job, tests!
 
@@ -104,14 +105,36 @@ serve static files magically for you, Gunicorn doesn't.
 image::images/twp2_1001.png["The site is up, but CSS is broken"]
 
 
-One step forward, one step backward, but once again we've identified the
-problem nice and early. Moving on!
+One step forward, one step backward,
+but once again we've identified the problem nice and early.
+Moving on!
 
 
-=== Static Files with Whitenoise
+=== Serving Static Files with Whitenoise
+
+Serving static files is very different from serving
+dynamically rendered content from Python and Django.
+There are many ways to serve them in production:
+you can use a web server like Nginx, or a CDN like Amazon S3,
+but in our case, the most straightforward thing to do
+is to use https://whitenoise.readthedocs.io/[Whitenoise],
+a Python library for expressly designed serving staticfootnote:[
+Believe it or not, this pun didn't actually hit me until I was rewriting this chapter.
+For 10 years it was right under my nose. I think that makes it funnier actually.]
+files from Python.
+
+Let's install it first:
+
+
+----
+pip install whitenoise
+pip freeze | grep -i whitenoise== >> requirements.txt
+----
+
+Then we tell Django to enable it:
 
 [role="sourcecode"]
-.lists/tests.py (ch00l000)
+.src/superlists/settings.py (ch10l003)
 ====
 [source,python]
 ----
@@ -124,9 +147,8 @@ MIDDLEWARE = [
 ----
 ====
 
-
-And if you take another manual look at your site, things should look much
-healthier. Let's rerun our FTs:
+And if you take another manual look at your site, things should look much healthier.
+Let's rerun our FTs to confirm:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -141,8 +163,11 @@ Ran 3 tests in 10.718s
 OK
 ----
 
-Phew.
+Phew.  Let's commit that
 
+----
+*git commit -am"Switch to Gunicorn and Whitenoise"*
+----
 
 
 === Using Environment Variables to Adjust Settings for Production
@@ -158,9 +183,9 @@ _settings.py_ that we want to change for production:
   (_localhost_ for now, but someday soon, a real domain).
 ////
 
-* +DEBUG+ mode is all very well for hacking about on your own server, but
-  leaving those pages full of tracebacks available to the world
-  https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
+* +DEBUG+ mode is all very well for hacking about on your own server,
+  but it https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
+  For example, exposing raw tracebacks to the world is a bad idea.
 
 * `SECRET_KEY` is used by Django for some of its crypto--things
     like cookies and CSRF protection.
@@ -183,9 +208,12 @@ Environment variables also have the advantage of working for non-Django stuff to
 ]
 
 
-==== Setting DEBUG=True
+==== Setting DEBUG=True and SECRET_KEY
 
-Here's one way to make it work:
+There's lots of ways you might do this.
+Here's what I propose; it may seem a little fiddly,
+but I'll provide a little justification for each choice.
+Let them be an inspiration (but not a template) for your own choices!
 
 
 [role="sourcecode"]
@@ -210,16 +238,15 @@ else:
     (it doesn't matter what we set it to, just that it's there).
 
 <2> And now we say that, if debug mode is off,
-    we _require_ the `SECRET_KEY` to be set by two more environment variables
+    we _require_ the `SECRET_KEY` to be set by a second environment variable.
 
 <3> Otherwise we fall-back to the insecure, debug mode settings that
     are useful for Dev.
 
-There are other ways you might set up the logic, making various variables optional,
-but I think this gives us a little bit of protection
+The end result is that you don't need to set any env vars for dev,
+but production needs both , and it will error if any are missing.
+I think this gives us a little bit of protection
 against accidentally forgetting to set one.
-The end result is that you don't need to set any of them for dev,
-but production needs all three, and it will error if any are missing.
 
 TIP: Better to fail hard than allow a typo in an environment variable name to
     leave you running with insecure settings.
@@ -241,7 +268,8 @@ CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 
 ==== Setting environment variables at the docker command-line
 
-oops, forgot about the secret key:
+Ooops, and I forgot to set that secret key env var,
+mere moments after having dreamt it up.
 
 
 ----
@@ -249,9 +277,10 @@ oops, forgot about the secret key:
                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
 ----
 
+
 Now, we've said we can't keep the secret key in our source code,
 where else can we put it?
-For now, we can set it at the command line
+For now, we can set it at the command line using the `-e` flag for `docker run`:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -269,6 +298,7 @@ $ pass:quotes[*TEST_SERVER=localhost:8888 ./manage.py test functional_tests --fa
 [...]
 AssertionError: 'To-Do' not found in 'Bad Request (400)'
 ----
+
 
 ==== ALLOWED_HOSTS is Required When Debug Mode is Turned Off
 
@@ -288,7 +318,6 @@ Let's use the "Googling the error message" technique again.
 The very first link in my search results for
 https://duckduckgo.com/?q=django+400+bad+request[Django 400 Bad Request]
 suggests that a 400 error is usually to do with `ALLOWED_HOSTS`.
-// old error with debug=true <<django-disallowedhosts-error>>
 
 
 `ALLOWED_HOSTS` is a security setting
@@ -371,9 +400,20 @@ CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 ----
 ====
 
-that'll get you passing tests.  we have a container that we're ready to ship to production!
+Well, it was fiddly, but that should get us to passing tests!
 
-find out how in the next exciting installment.
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
+[...]
+OK
+----
+
+We have a container that we're ready to ship to production!
+
+Find out how in the next exciting installment.
 
 
 === TODO: log files
@@ -385,29 +425,32 @@ provoke a 500 error somehow and make sure we see tracebacks for it
 .Production-Readiness Config
 *******************************************************************************
 
-((("production-ready deployment", "best practices for")))A
-few things to think about when trying to build a production-ready server
-[keep-together]#environment#:
+((("production-ready deployment", "best practices for")))
+A few things to think about when trying to prepare a production-ready configuration:
 
 Don't use the Django dev server in production::
-    ((("Gunicorn", "benefits of")))Something
-    like Gunicorn or uWSGI is a better tool for running Django; it
-    will let you run multiple workers, for example.
+    Something like Gunicorn or uWSGI is a better tool for running Django;
+    it will let you run multiple workers, for example.
+    ((("Gunicorn", "benefits of")))
 
-Don't use Django to serve your static files::
-    ((("static files", "serving with Nginx")))
-    There's no point in using a Python process to do the simple job of serving
-    static files. 
-    TODO more here
+Decide how to serve your static files::
+  Static files aren't the same kind of things as the dynamic content
+  that comes from Django and your webapp, so they need to be treated differently.
+  WhiteNoise is just one example of how you might do that.
 
 Check your settings.py for dev-only settings::
     `DEBUG=True`, `ALLOWED_HOSTS` and `SECRET_KEY` are the ones we came across,
     but you will probably have others (we'll see more when we start to send
     emails from the server).
 
+Change things one at a time and rerun your tests frequently::
+    Whenever we make a change to our server configuration,
+    we can rerun the test suite,
+    and either be confident that everything works as well as it did before,
+    or find out immediately if we did something wrong.
+
 Security::
-    ((("security issues and settings", "server security")))((("Platform-As-A-Service (PaaS)")))A
-    serious discussion of server security is beyond the scope of this book,
+    A serious discussion of server security is beyond the scope of this book,
     and I'd warn against running your own servers
     without learning a good bit more about it.
     (One reason people choose to use a PaaS to host their code
@@ -418,6 +461,9 @@ Security::
     fail2ban and watching its logfiles to see just how quickly it picks up on
     random drive-by attempts to brute force your SSH login.  The internet is a
     wild place!
-    TODO: this probably belongs in the next chapter too.
+    ((("security issues and settings", "server security")))
+    ((("Platform-As-A-Service (PaaS)")))
+
+TODO: that last one probably belongs in the next chapter.
 
 *******************************************************************************
