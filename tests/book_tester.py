@@ -195,8 +195,8 @@ def fix_sqlite_messages(actual_text):
 
 def standardize_layout_test_pixelsize(actual_text):
     return re.sub(
-        r"103.333\d+ != 512 within 10 delta \(408.666\d+",
-        r"103.333... != 512 within 10 delta (408.666...",
+        r"10\d.\d+ != 512 within 10 delta \(40\d.\d+",
+        r"102.5 != 512 within 10 delta (409.5",
         actual_text,
     )
 
