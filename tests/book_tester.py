@@ -375,7 +375,7 @@ class ChapterTest(unittest.TestCase):
 
         actual_fixed = standardise_library_paths(actual)
         actual_fixed = standardise_geckodriver_tracebacks(actual_fixed)
-        actual_fixed = wrap_long_lines(actual_fixed)
+        actual_fixed = standardize_layout_test_pixelsize(actual_fixed)
         actual_fixed = strip_test_speed(actual_fixed)
         actual_fixed = strip_js_test_speed(actual_fixed)
         actual_fixed = strip_bdd_test_speed(actual_fixed)
@@ -387,10 +387,10 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
-        actual_fixed = standardize_layout_test_pixelsize(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
         actual_fixed = standardise_assertionerror_none(actual_fixed)
+        actual_fixed = wrap_long_lines(actual_fixed)
 
         expected_fixed = standardise_library_paths(expected)
         expected_fixed = standardise_geckodriver_tracebacks(expected_fixed)
