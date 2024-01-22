@@ -57,31 +57,43 @@ an ORM, all sorts of middleware, the admin site...
 "What else do you want, a pony?" Well, Gunicorn stands for "Green Unicorn",
 which I guess is what you'd want next if you already had a pony...
 
+//001
+cmdg
+
+
+[subs="specialcharacters,quotes"]
 ----
-pip install gunicorn
-pip freeze | grep -i gunicorn== >> requirements.txt
+$ *pip install gunicorn*
+Collecting gunicorn
+[...]
+Successfully installed gunicorn-21.2.0
+$ *pip freeze | grep -i gunicorn== >> requirements.txt*
 ----
 
 Gunicorn will need to know a path to a WSGI server,
 which is usually a function called `application`.
 Django provides one in 'superlists/wsgi.py':
 
+[role="sourcecode"]
+.Dockerfile (ch10l002)
+====
+[source,Dockerfile]
 ----
-CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
+CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
-
-// TODO mention new cmd syntax with ["list"]
-
+====
 
 As in the previous chapter, we can use the `docker build && docker run`
 pattern to try out our changes by rebuilding and rerunning our container:
 
+[subs="specialcharacters,quotes"]
 ----
 $ *docker build -t superlists . && docker run \
   -p 8888:8888 \
   -v ./src/db.sqlite3:/src/db.sqlite3 \
   -it superlists*
 ----
+
 
 ==== The FTs catch a problem with static files
 
@@ -101,7 +113,7 @@ FAILED (failures=1)
 And indeed, if you take a look at the site, you'll find the CSS is all broken,
 as in <<site-with-broken-css>>.
 
-The reason that the CSS is broken is that although the Django dev server will
+The reason that we have no CSS is that although the Django dev server will
 serve static files magically for you, Gunicorn doesn't.
 
 
@@ -170,8 +182,9 @@ OK
 
 Phew.  Let's commit that
 
+[subs="specialcharacters,quotes"]
 ----
-*git commit -am"Switch to Gunicorn and Whitenoise"*
+$ *git commit -am"Switch to Gunicorn and Whitenoise"*
 ----
 
 
@@ -181,12 +194,6 @@ Phew.  Let's commit that
 We know there are several things in
 _settings.py_ that we want to change for production:
 
-
-////
-* +ALLOWED_HOSTS+ is currently set to "*" which isn't secure.  We want it
-  to be set to only match the site we're supposed to be serving
-  (_localhost_ for now, but someday soon, a real domain).
-////
 
 * `DEBUG` mode is all very well for hacking about on your own server,
   but it https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
@@ -205,7 +212,7 @@ Development, staging and production sites always have some differences
 in their configuration.
 Environment variables are a good place to store those different settings.
 See http://www.clearlytech.com/2014/01/04/12-factor-apps-plain-english/[
-"the 12-factor app"].footnote:[
+"The 12-Factor App"].footnote:[
 Another common way of handling this
 is to have different versions of _settings.py_ for dev and prod.
 That can work fine too, but it can get confusing to manage.
@@ -269,7 +276,7 @@ Now let's set that environment variable in our Dockerfile using then `ENV` direc
 WORKDIR /src
 
 ENV DJANGO_DEBUG_FALSE=1
-CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
+CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
 ====
 
@@ -277,23 +284,26 @@ And try it out...
 
 
 
+[subs="specialcharacters,macros"]
 ----
-$ *docker build -t superlists . && docker run \
+$ pass:quotes[*docker build -t superlists . && docker run \
   -p 8888:8888 \
   -v ./src/db.sqlite3:/src/db.sqlite3 \
-  -it superlists*
+  -it superlists*]
 
 [...]
+  File "/src/superlists/settings.py", line 22, in <module>
     SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
-# TODO: show more of traceback
+  File "<frozen os>", line 685, in __getitem__
+KeyError: 'DJANGO_SECRET_KEY'
 ----
 
 Ooops, and I forgot to set said secret key env var,
 mere seconds after having dreamt it up!
 
 
-==== Setting environment variables at the docker command-line
+==== Setting Environment Variables at the Docker Command Line
 
 We've said we can't keep the secret key in our source code,
 so the Dockerfile isn't an option; where else can we put it?
@@ -427,7 +437,7 @@ WORKDIR /src
 RUN python manage.py collectstatic
 
 ENV DJANGO_DEBUG_FALSE=1
-CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
+CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
 ====
 
@@ -444,12 +454,17 @@ OK
 
 We have a container that we're ready to ship to production!
 
-Find out how in the next exciting installment.
+Find out how in the next exciting installment...
 
 
+////
 === TODO: log files
 
-provoke a 500 error somehow and make sure we see tracebacks for it
+provoke a 500 error somehow and make sure we see tracebacks for it?
+
+docker logs might be enough.
+alternatively, mount logfiles from host.
+////
 
 
 [role="pagebreak-before less_space"]
@@ -469,7 +484,7 @@ Decide how to serve your static files::
   that comes from Django and your webapp, so they need to be treated differently.
   WhiteNoise is just one example of how you might do that.
 
-Check your settings.py for dev-only settings::
+Check your settings.py for dev-only config::
   `DEBUG=True`, `ALLOWED_HOSTS` and `SECRET_KEY` are the ones we came across,
   but you will probably have others
   (we'll see more when we start to send emails from the server).
@@ -480,21 +495,5 @@ Change things one at a time and rerun your tests frequently::
   and either be confident that everything works as well as it did before,
   or find out immediately if we did something wrong.
 
-Security::
-  A serious discussion of server security is beyond the scope of this book,
-  and I'd warn against running your own servers
-  without learning a good bit more about it.
-  (One reason people choose to use a PaaS to host their code
-  is that it means a slightly fewer security issues to worry about.)
-  If you'd like a place to start, here's as good a place as any:
-  https://plusbryan.com/my-first-5-minutes-on-a-server-or-essential-security-for-linux-servers[My first 5 minutes on a server].
-  I can definitely recommend the eye-opening experience of installing
-  fail2ban and watching its logfiles to see just how quickly it picks up on
-  random drive-by attempts to brute force your SSH login.  The internet is a
-  wild place!
-  ((("security issues and settings", "server security")))
-  ((("Platform-As-A-Service (PaaS)")))
-
-TODO: that last one probably belongs in the next chapter.
 
 *******************************************************************************
