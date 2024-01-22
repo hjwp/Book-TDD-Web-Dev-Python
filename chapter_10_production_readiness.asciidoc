@@ -11,17 +11,19 @@ trying to move from working state to working state,
 and using the FTs to detect any regressions.
 
 
-.🚧 Warning, this chapter is heavily under construction
+.🚧 Warning, chapter under construction 🚧
 *******************************************************************************
 As part of my work on the third edition of the book,
-I'm rewriting the deployment chapters,
-but this chapter is far from ready I'm afraid.
-Sorry!
+I'm making big changes to the deployment chapters,
+and this is a very new draft.
 
-Following along with this chapter is going to be pretty
-much impossible while I'm still half-done.
+This chapter still has a couple of TODOS in,
+but its content is mostly there, so you should be able to follow along.
 
-It might be best to skip ahead to <<chapter_12_organising_test_files>>
+But as always I really, really need fedback.
+So please hit me up at obeythetestinggoat@gmail.com, or via
+https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues[GitHub Issues]
+and Pull Requests.
 
 *******************************************************************************
 
@@ -72,10 +74,13 @@ CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 
 
 As in the previous chapter, we can use the `docker build && docker run`
-in a single line to try out our changes by rebuilding and rerunning our container:
+pattern to try out our changes by rebuilding and rerunning our container:
 
 ----
-docker build -t superlists . && docker run -p 8888:8888 -v ./src/db.sqlite3:/src/db.sqlite3 -it superlists
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  -v ./src/db.sqlite3:/src/db.sqlite3 \
+  -it superlists*
 ----
 
 ==== The FTs catch a problem with static files
@@ -183,18 +188,18 @@ _settings.py_ that we want to change for production:
   (_localhost_ for now, but someday soon, a real domain).
 ////
 
-* +DEBUG+ mode is all very well for hacking about on your own server,
+* `DEBUG` mode is all very well for hacking about on your own server,
   but it https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
   For example, exposing raw tracebacks to the world is a bad idea.
 
 * `SECRET_KEY` is used by Django for some of its crypto--things
-    like cookies and CSRF protection.
-    It's good practice to make sure the secret key in production is different
-    from the one in your source code repo,
-    because that code might be visible to strangers.
-    We'll want to generate a new, random one
-    but then keep it the same for the foreseeable future
-    (find out more in the https://docs.djangoproject.com/en/4.2/topics/signing/[Django docs]).
+  like cookies and CSRF protection.
+  It's good practice to make sure the secret key in production is different
+  from the one in your source code repo,
+  because that code might be visible to strangers.
+  We'll want to generate a new, random one
+  but then keep it the same for the foreseeable future
+  (find out more in the https://docs.djangoproject.com/en/4.2/topics/signing/[Django docs]).
 
 Development, staging and production sites always have some differences
 in their configuration.
@@ -244,12 +249,15 @@ else:
     are useful for Dev.
 
 The end result is that you don't need to set any env vars for dev,
-but production needs both , and it will error if any are missing.
+but production needs both to be set explicitly,
+and it will error if any are missing.
 I think this gives us a little bit of protection
 against accidentally forgetting to set one.
 
 TIP: Better to fail hard than allow a typo in an environment variable name to
     leave you running with insecure settings.
+
+==== Setting environment variables inside the Dockerfile
 
 Now let's set that environment variable in our Dockerfile using then `ENV` directive:
 
@@ -265,31 +273,43 @@ CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 ----
 ====
 
+And try it out...
+
+
+
+----
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  -v ./src/db.sqlite3:/src/db.sqlite3 \
+  -it superlists*
+
+[...]
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+# TODO: show more of traceback
+----
+
+Ooops, and I forgot to set said secret key env var,
+mere seconds after having dreamt it up!
+
 
 ==== Setting environment variables at the docker command-line
 
-Ooops, and I forgot to set that secret key env var,
-mere moments after having dreamt it up.
+We've said we can't keep the secret key in our source code,
+so the Dockerfile isn't an option; where else can we put it?
 
-
-----
-    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
-                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
-----
-
-
-Now, we've said we can't keep the secret key in our source code,
-where else can we put it?
 For now, we can set it at the command line using the `-e` flag for `docker run`:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *docker build -t superlists . && \
-    docker run -p 8888:8888 -v ./src/db.sqlite3:/src/db.sqlite3 -e DJANGO_SECRET_KEY=sekrit -it superlists*
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  -v ./src/db.sqlite3:/src/db.sqlite3 \
+  -e DJANGO_SECRET_KEY=sekrit \
+  -it superlists*
 ----
 
-
-And use a test run to reassure ourselves that things still work...
+With that running, we can use our FT again to see if we're back to a working state.
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -300,24 +320,33 @@ AssertionError: 'To-Do' not found in 'Bad Request (400)'
 ----
 
 
+
 ==== ALLOWED_HOSTS is Required When Debug Mode is Turned Off
 
-Oops.  Let's take a look manually: <<django-400-error>>.
+Not quite!  Let's take a look manually: <<django-400-error>>.
 
 [[django-400-error]]
 .An ugly 400 error
 image::images/twp2_1002.png["An unfriendly page showing 400 Bad Request"]
 
-Something's gone wrong.  But once again, by running our FTs frequently,
-we're able to identify the problem early, before we've changed too many things.
-In this case the only thing we've changed is _settings.py_. We've changed three
-settings—which one might be at fault?
+We've set our two environment variables but doing so seems to have broken things.
+But once again, by running our FTs frequently,
+we're able to identify the problem early,
+before we've changed too many things at the same time.
+We've only changed two settings—which one might be at fault?
 
-Let's use the "Googling the error message" technique again.
+Let's use the "Googling the error message" technique again,
+with the search terms "django debug false" and "400 bad request".
 
-The very first link in my search results for
-https://duckduckgo.com/?q=django+400+bad+request[Django 400 Bad Request]
-suggests that a 400 error is usually to do with `ALLOWED_HOSTS`.
+Well, the very first link in my https://duckduckgo.com/?q=django+400+bad+request[search results]
+was Stackoverflow suggesting that a 400 error is usually to do with `ALLOWED_HOSTS`,
+and the second was the official Django docs,
+which takes a bit more scrolling, but confirms it
+(see <<search-results-400-bad-request>>).
+
+[[search-results-400-bad-request]]
+.Search results for "django debug false 400 bad request"
+image::images/search-results-400-bad-request.png["Duckduckgo search results with stackoverflow and django docs"]
 
 
 `ALLOWED_HOSTS` is a security setting
@@ -360,12 +389,13 @@ or on a server, so we'll use the `-e` flag again:
 ----
 $ *docker build -t superlists . && \
     docker run -p 8888:8888 -v ./src/db.sqlite3:/src/db.sqlite3 \
-        -e DJANGO_SECRET_KEY=sekrit -e DJANGO_ALLOWED_HOST=localhost \
+        -e DJANGO_SECRET_KEY=sekrit \
+        -e DJANGO_ALLOWED_HOST=localhost \
         -it superlists*
 ----
 
 
-==== Collectstatic is required when Debug is Turned off
+==== Collectstatic is Required when Debug is Turned Off
 
 An FT run (or just looking at the site) reveals that we've had a regression
 in our static files.
@@ -381,7 +411,8 @@ FAILED (failures=1)
 
 
 We saw this before when switching from the Django dev server to Gunicorn,
-so we introduced Whitenoise. Similarly, when we switch DEBUG off,
+so we introduced Whitenoise.
+Similarly, when we switch DEBUG off,
 Whitenoise stops automagically finding static files in our code,
 and instead we need to run `collectstatic`:
 
@@ -429,9 +460,9 @@ provoke a 500 error somehow and make sure we see tracebacks for it
 A few things to think about when trying to prepare a production-ready configuration:
 
 Don't use the Django dev server in production::
-    Something like Gunicorn or uWSGI is a better tool for running Django;
-    it will let you run multiple workers, for example.
-    ((("Gunicorn", "benefits of")))
+  Something like Gunicorn or uWSGI is a better tool for running Django;
+  it will let you run multiple workers, for example.
+  ((("Gunicorn", "benefits of")))
 
 Decide how to serve your static files::
   Static files aren't the same kind of things as the dynamic content
@@ -439,30 +470,30 @@ Decide how to serve your static files::
   WhiteNoise is just one example of how you might do that.
 
 Check your settings.py for dev-only settings::
-    `DEBUG=True`, `ALLOWED_HOSTS` and `SECRET_KEY` are the ones we came across,
-    but you will probably have others (we'll see more when we start to send
-    emails from the server).
+  `DEBUG=True`, `ALLOWED_HOSTS` and `SECRET_KEY` are the ones we came across,
+  but you will probably have others
+  (we'll see more when we start to send emails from the server).
 
 Change things one at a time and rerun your tests frequently::
-    Whenever we make a change to our server configuration,
-    we can rerun the test suite,
-    and either be confident that everything works as well as it did before,
-    or find out immediately if we did something wrong.
+  Whenever we make a change to our server configuration,
+  we can rerun the test suite,
+  and either be confident that everything works as well as it did before,
+  or find out immediately if we did something wrong.
 
 Security::
-    A serious discussion of server security is beyond the scope of this book,
-    and I'd warn against running your own servers
-    without learning a good bit more about it.
-    (One reason people choose to use a PaaS to host their code
-    is that it means a slightly fewer security issues to worry about.)
-    If you'd like a place to start, here's as good a place as any:
-    https://plusbryan.com/my-first-5-minutes-on-a-server-or-essential-security-for-linux-servers[My first 5 minutes on a server].
-    I can definitely recommend the eye-opening experience of installing
-    fail2ban and watching its logfiles to see just how quickly it picks up on
-    random drive-by attempts to brute force your SSH login.  The internet is a
-    wild place!
-    ((("security issues and settings", "server security")))
-    ((("Platform-As-A-Service (PaaS)")))
+  A serious discussion of server security is beyond the scope of this book,
+  and I'd warn against running your own servers
+  without learning a good bit more about it.
+  (One reason people choose to use a PaaS to host their code
+  is that it means a slightly fewer security issues to worry about.)
+  If you'd like a place to start, here's as good a place as any:
+  https://plusbryan.com/my-first-5-minutes-on-a-server-or-essential-security-for-linux-servers[My first 5 minutes on a server].
+  I can definitely recommend the eye-opening experience of installing
+  fail2ban and watching its logfiles to see just how quickly it picks up on
+  random drive-by attempts to brute force your SSH login.  The internet is a
+  wild place!
+  ((("security issues and settings", "server security")))
+  ((("Platform-As-A-Service (PaaS)")))
 
 TODO: that last one probably belongs in the next chapter.
 
