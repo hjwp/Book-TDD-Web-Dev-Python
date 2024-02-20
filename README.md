@@ -12,13 +12,14 @@ and under CC license.  And you'll also be able to buy an ebook or print version
 if you feel like it.*
 
 These sources are being made available for the purposes of curiosity 
-(others writing books may be interested in the test suite for example)
-and collaboration (typo-fixes by pull request are very much encouraged).
+(although if you're curious about the way the listings are tested,
+i would definitely recommend https://github.com/cosmicpython/book instead)
+and collaboration (typo-fixes by pull request are very much encouraged!).
 
 
 # Building the book as HTML
 
-- install [asciidoctor](http://asciidoctor.org/), and the *coderay* gem.
+- install [asciidoctor](http://asciidoctor.org/), and the *pygments/pygmentize* gem.
 - `make build` will build each chapter as its own html file
 - `make book.html` will create a single file
 - `make chapter_05_post_and_database.html`, eg, will build chapter 5
