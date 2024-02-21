@@ -12,7 +12,9 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "ubuntu/jammy64"
+  # config.vm.box = "ubuntu/jammy64"   # virtualbox only
+  # config.vm.box = "generic/ubuntu2204"  # amd64
+  config.vm.box = "bento/ubuntu-22.04"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -40,9 +42,9 @@ Vagrant.configure("2") do |config|
   # config.vm.network "public_network"
 
   # prevent socket thingie to stop wsl /dev/null issue
-  config.vm.provider "virtualbox" do |vb|
-    vb.customize [ "modifyvm", :id, "--uartmode1", "disconnected" ]
-  end
+  # config.vm.provider "virtualbox" do |vb|
+  #   vb.customize [ "modifyvm", :id, "--uartmode1", "disconnected" ]
+  # end
 
   # Share an additional folder to the guest VM. The first argument is
   # the path on the host to the actual folder. The second argument is
@@ -84,19 +86,19 @@ Vagrant.configure("2") do |config|
   # documentation for more information about their specific syntax and use.
   ssh_pub_key = File.readlines("#{Dir.home}/.ssh/id_rsa.pub").first.strip#
 
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   apt update
-  #   apt upgrade -y
-  #   apt install -y dtach tree
+  config.vm.provision "shell", inline: <<-SHELL
+    apt update
+    apt upgrade -y
+    apt install -y dtach tree
 
-  #   useradd -m -s /bin/bash elspeth
-  #   usermod -a -G sudo elspeth
-  #   echo 'elspeth:elspieelspie' | chpasswd
-  #   mkdir -p /home/elspeth/.ssh
-  #   cp /home/ubuntu/.ssh/authorized_keys /home/elspeth/.ssh
-  #   chown elspeth /home/elspeth/.ssh/authorized_keys
-  #   echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
-  #   echo 'export DJANGO_COLORS=nocolor' >> /home/elspeth/.profile
-  #   echo '#{ssh_pub_key}' >> /home/elspeth/.ssh/authorized_keys
-  # SHELL
+    useradd -m -s /bin/bash elspeth
+    usermod -a -G sudo elspeth
+    echo 'elspeth:elspieelspie' | chpasswd
+    mkdir -p /home/elspeth/.ssh
+    cp ~/.ssh/authorized_keys /home/elspeth/.ssh
+    chown elspeth /home/elspeth/.ssh/authorized_keys
+    echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
+    echo 'export DJANGO_COLORS=nocolor' >> /home/elspeth/.profile
+    echo '#{ssh_pub_key}' >> /home/elspeth/.ssh/authorized_keys
+  SHELL
 end
