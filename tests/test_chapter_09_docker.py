@@ -26,9 +26,9 @@ class Chapter9Test(ChapterTest):
         self.skip_with_check(44, 'Starting development server')
 
         if not DO_SERVER_COMMANDS:
-            self.skip_with_check(38, 'curl superlists-staging.ottg.eu')
-            self.skip_with_check(39, 'Failed to connect to superlists-staging.ottg.eu')
-            self.skip_with_check(47, 'curl superlists-staging.ottg.eu:8000')
+            self.skip_with_check(38, 'curl staging.ottg.co.uk')
+            self.skip_with_check(39, 'Failed to connect to staging.ottg.co.uk')
+            self.skip_with_check(47, 'curl staging.ottg.co.uk:8000')
             self.skip_with_check(48, '<!DOCTYPE html>')
 
         vm_restore = None # 'MANUAL_1'

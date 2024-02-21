@@ -623,12 +623,12 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         mock_subprocess.Popen.return_value.returncode = 0
         mock_subprocess.Popen.return_value.communicate.return_value = "a", "b"
         sourcetree = SourceTree()
-        sourcetree.run_command("fab deploy:host=elspeth@superlists-staging.ottg.eu")
+        sourcetree.run_command("fab deploy:host=elspeth@staging.ottg.co.uk")
         expected = (
             "cd deploy_tools &&"
             " fab -D -i"
             " ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key"
-            " deploy:host=elspeth@superlists-staging.ottg.eu"
+            " deploy:host=elspeth@staging.ottg.co.uk"
         )
         assert mock_subprocess.Popen.call_args[0][0] == expected
 

@@ -123,7 +123,7 @@ all over your domain until you configure it.
 
 Once you have a domain, you need to set up a couple of **A-records** in
 its DNS configuration, one for your "staging" subdomain and one for your
-"live" subdomain.  Mine are *superlists.ottg.eu* and *superlists-staging.ottg.eu*
+"live" subdomain.  Mine are *superlists.ottg.co.uk* and *staging.ottg.co.uk*
 for example.
 
 *(tip: DNS changes take time to propagate, so if your domain doesn't
