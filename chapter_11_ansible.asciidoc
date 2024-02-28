@@ -523,9 +523,18 @@ false, "AttachStdout": true, "Cmd": ["gunicorn", "--bind", ":8888",
 ----
 
 
-TODO: sort out macos M1/arch issues, `docker build --platform linux/amd64` etc.
+For completeness, let's also add a step to explicitly build the image locally.
+This means we don't have a dependency on having run `docker build` locally.
 
+
+[role="sourcecode"]
+.infra/ansible-provision.yaml (ch11l003)
+====
+[source,yaml]
 ----
+    - name: Install docker
+      [...]
+
     - name: Build container image locally
       community.docker.docker_image:
         name: superlists
@@ -533,12 +542,21 @@ TODO: sort out macos M1/arch issues, `docker build --platform linux/amd64` etc.
         state: present
         build:
           path: ../Dockerfile
-          platform: linux/amd64
+          platform: linux/amd64  # <1>
       delegate_to: 127.0.0.1
+
+    - name: Export container image locally
 ----
+====
+
+<1> Having this step also allows us to work around an issue
+  with compatility between Apple's new ARM-based chips and
+  our server's x86/amd64 architecture.
+  You could also use this `platform:` to cross-build docker images
+  for a rasbperry pi from a regular PC, or vice-versa.
 
 
-Looks ok! Let's see if that worked?
+In any case, let's see if it works!
 
 [subs="specialcharacters,quotes"]
 ----
@@ -573,12 +591,28 @@ Ah woops, we need to set those environment variables on the server too.
 
 === Using an env File to Store Our Environment Variables
 
-We don't want to save secrets like SECRET_KEY into our ansible
-config either.
+When we run our container manually locally, we can pass in environment variables with the `-e` flag.
+But we don't want to hard-code secrets like SECRET_KEY into our ansible files
+and commit them to our repo!
 
-* explain env files.
+Instead, we can use ansible to automate the creation of a secret key,
+and then save it to a file on the server, where it will be relatively secure
+(better than saving it to version contorl and pushing it to GitHub in any case!)
 
-* explain jinja2.
+We can use a so-called "env file" to store environment variables,
+which are essentially a list of key-value pairs using shell syntax,
+a bit like you'd use with `export`.
+
+One extra subtlety is that we want to vary the actual contents of the env file,
+depending on where we're deploying to.
+Each server should get its own unique secret key,
+adn we want different config for staging and prod, for example.
+
+So, just as we inject variables into our html templates in Django,
+we can use a templating language called "jinja2" to have variables in our env file.
+It's a common tool in ansible scripts, and the syntax is very similar to Django's.
+
+Here's what our template for the env file will looks like:
 
 [role="sourcecode"]
 .infra/env.j2 (ch11l003)
@@ -588,9 +622,10 @@ config either.
 DJANGO_DEBUG_FALSE=1
 DJANGO_SECRET_KEY="{{ secret_key }}"
 DJANGO_ALLOWED_HOST="{{ host }}"
-
 ----
 ====
+
+And here's how we use it in the provisioning script:
 
 
 [role="sourcecode"]
@@ -602,13 +637,13 @@ DJANGO_ALLOWED_HOST="{{ host }}"
       [...]
 
     - name: Ensure .env file exists
-      ansible.builtin.template:
+      ansible.builtin.template:  #<1>
         src: env.j2
         dest: ~/superlists.env
-      vars:
-        host: "{{ inventory_hostname }}"
+        force: false  # do not recreate file if it already exists. <2>
+      vars:  # <3>
+        host: "{{ inventory_hostname }}"  # <4>
         secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
-        force: false  # do not recreate file if it already exists.
 
     - name: Run container
       community.docker.docker_container:
@@ -620,17 +655,34 @@ DJANGO_ALLOWED_HOST="{{ host }}"
 ----
 ====
 
-The `inventory_hostname` variable is the domain name of the server we're running against.
-I'm using the `vars` section to rename it to "host", just for convenience.
+<1> We use `ansible.builtin.template` to specify the local template file to use (`src`),
+   and the destination (`dst`) on the server
 
-* explain idempotency
+<2> `force: false` means we will only write the file once.
+    So after the first time we generate our secret key, it won't change.
 
-* mention other secret management tools. vault??
+<3> The `vars` section defines the variables we'll inject into our template.
+
+<4> We actually use a built-in ansible variable called `inventory_hostname`.
+    This variable woul actually be available in the template already,
+    but I'm renaming it for clarity.
+
+
+.Idempotency
+*******************************************************************************
+* TODO: explain idempotency
+
+*******************************************************************************
+
+NOTE: Using an env file to store secrets is definitely better than committing
+    it to version control, but it's maybe not the state of the art either.
+    TODO: mention other secret management tools. vault
+
 
 
 ==== More debugging
 
-forgot ports
+forgot ports!
 
 show ssh, curl localhosts maybe.
 
