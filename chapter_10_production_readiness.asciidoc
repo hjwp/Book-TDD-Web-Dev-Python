@@ -399,11 +399,12 @@ or on a server, so we'll use the `-e` flag again:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *docker build -t superlists . && \
-    docker run -p 8888:8888 -v ./src/db.sqlite3:/src/db.sqlite3 \
-        -e DJANGO_SECRET_KEY=sekrit \
-        -e DJANGO_ALLOWED_HOST=localhost \
-        -it superlists*
+$ *docker build -t superlists . && docker run \
+      -p 8888:8888 \
+      -v ./src/db.sqlite3:/src/db.sqlite3 \
+      -e DJANGO_SECRET_KEY=sekrit \
+      -e DJANGO_ALLOWED_HOST=localhost \
+      -it superlists*
 ----
 
 
@@ -460,19 +461,85 @@ Find out how in the next exciting installment...
 
 
 
-=== TODO: log files
+=== Configuring logging
+
+One last thing we'll want to do is make sure that we can get logs out of our server.
+If things go wrong, we want to be able to get to the tracebacks, and as we'll soon see,
+switching DEBUG off means that Django's default logging configuration changes.
 
 
-provoke a 500 error somehow and make sure we see tracebacks for it.
+==== Provoking a deliberate error
+
+To test this, we'll provoke a deliberate error by deleting the database file.
 
 
-eg delete db.sqlite3
 
-Will show no logs, because by default when DEBUG=True logs are emailed to admins
+[subs="specialcharacters,quotes"]
+----
+$ *rm src/db.sqlite3 && touch src/db.sqlite3*
+----
 
-https://docs.djangoproject.com/en/5.0/ref/logging/#default-logging-configuration
+TIP: If you use the `-v` option for docker run to mount a nonexistent path,
+    Docker will create a new folder at that path.
+    This is why we do the `touch db.sqlite3`
+    so that we have a placeholder empty file where the datbase should be.
+    Otherwise we get a folder instead of an empty file and django gets even more confused;
+    if you ever see an error saying `chown: permission denied`, that's probably it.
+    Do a `rm -rf src/db.sqlite3 && touch src/db.sqlite3` to fix it.
 
-simple logging config, send everything to stdout:
+
+
+Now if you run the tests, you'll see they fail;
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests --failfast*]
+[...]
+
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]; [...]
+----
+
+And you might spot in the browser that we just see a minimal error page,
+with no debug info (try it manually if you like):
+
+[[minimal-error-page]]
+.Minimal default server error 500
+image::images/server_error_500.png["A minimal error page saying just Server error (500)"]
+
+
+But if you look in your docker terminal, you'll see there is no traceback:
+
+----
+[2024-02-28 10:41:53 +0000] [7] [INFO] Starting gunicorn 21.2.0
+[2024-02-28 10:41:53 +0000] [7] [INFO] Listening at: http://0.0.0.0:8888 (7)
+[2024-02-28 10:41:53 +0000] [7] [INFO] Using worker: sync
+[2024-02-28 10:41:53 +0000] [8] [INFO] Booting worker with pid: 8
+----
+
+
+Where have the tracebacks gone?
+You might have been expecting that the django debug page and its tracebacks
+would disappear from our web browser,
+but it's more of shock to see that they are no longer appearing in the terminal either!
+If you're like me you might find yourself wondering if we really _did_ see them earlier
+and starting to doubt your own sanity.
+But the explanation is that Django's
+https://docs.djangoproject.com/en/5.0/ref/logging/#default-logging-configuration[default logging configuration]
+changes when DEBUG is turned off:
+
+This means we need to interact with the standard library's `logging` module,
+unfortunately one of the most fiddly parts of the Python standard libraryfootnote:[
+It's not necessarily for bad reasons, but it is all very Java-ey and enterprisey.
+I mean, yes, separating the concepts of handlers and loggers and filters,
+and making it all configurable in a nested hierarchy is all well and good
+and covers every possible use case,
+but sometimes you just wanna say "just print stuff to stdout pls",
+and you wish that configuring the simplest thing was a little easier].
+
+Here's pretty much the simplest possible logging config
+which just prints everything to the console (ie standard out).
 
 
 [role="sourcecode"]
@@ -493,8 +560,34 @@ LOGGING = {
 ----
 ====
 
+Rebuild and restart our container,
+try the FT again (or submitting a new list item manually)
+and we now should see a clear error message:
 
-docker logs might be enough.
+
+----
+Internal Server Error: /lists/new
+Traceback (most recent call last):
+[...]
+  File "/src/lists/views.py", line 10, in new_list
+    nulist = List.objects.create()
+             ^^^^^^^^^^^^^^^^^^^^^
+[...]
+  File "/venv/lib/python3.12/site-packages/django/db/backends/sqlite3/base.py",
+  line 328, in execute
+    return super().execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.OperationalError: no such table: lists_list
+----
+
+Re-create the datase with `./src/manage.py migrate` and we'll be back to a working state.
+
+Don't forget to commit our changes to _settings.py_,
+and I think we can call it job done!
+We've at least touched on many or most of the things you might need to think about
+when considering production-readiness,
+we've worked in small steps and used our tests all the way along,
+and we're now ready to deploy our container to a real server!
 
 
 [role="pagebreak-before less_space"]
@@ -525,5 +618,10 @@ Change things one at a time and rerun your tests frequently::
   and either be confident that everything works as well as it did before,
   or find out immediately if we did something wrong.
 
+Think about logging and observability::
+  When things go wrong, you need to be able to find out what happened.
+  At a minimum you need a way of getting logs and tracebacks out of your server,
+  and in more advanced environments you'll want to think about metrics and tracing too.
+  But we can't cover all that in this book!
 
 *******************************************************************************
