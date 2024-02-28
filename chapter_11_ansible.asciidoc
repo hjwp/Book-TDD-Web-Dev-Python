@@ -344,21 +344,11 @@ staging.ottg.co.uk         : ok=3    changed=2    unreachable=0    failed=0
 skipped=0    rescued=0    ignored=0
 ----
 
+I don't know about you, but whenever I make a terminal spew out a stream
+of output, I like to make little _brrp brrp brrp_ noises, a bit like the
+computer Mother, in _Alien_.
+Ansible scripts are particularly satisfying in this regard.
 
-
-////
-old error message when trying to use elspeth user to run docker.
-this goes wrong because groups don't work immediately:
-
-TASK [Run test container] *****************************************************
-fatal: [192.168.56.10]: FAILED! => {"changed": false, "msg": "Error connecting:
-Error while fetching server API version: ('Connection aborted.',
-PermissionError(13, 'Permission denied'))"}
-
-waiting a few minutes fixes it
-
-for now i'll just put become:true
-////
 
 
 === SSHing Into the Server and Viewing Container Logs
@@ -701,11 +691,117 @@ but I wanted to keep this (already long) chapter as simple as possible.
 *******************************************************************************
 
 
+
+Let's run the latest version of our playbook and see how our tests get on:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*
+[...]
+PLAYBOOK: ansible-provision.yaml **********************************************
+1 plays in infra/ansible-provision.yaml
+
+PLAY [all] ********************************************************************
+
+TASK [Gathering Facts] ********************************************************
+ok: [staging.ottg.co.uk]
+
+TASK [Install docker] *********************************************************
+ok: [staging.ottg.co.uk] => {"cache_update_time": 1709136057, "cache_updated":
+false, "changed": false}
+
+TASK [Build container image locally] ******************************************
+changed: [staging.ottg.co.uk -> 127.0.0.1] => {"actions": ["Built image [...]
+
+TASK [Export container image locally] *****************************************
+changed: [staging.ottg.co.uk -> 127.0.0.1] => {"actions": ["Archived image [...]
+
+TASK [Upload image to server] *************************************************
+changed: [staging.ottg.co.uk] => {"changed": true, [...]
+
+TASK [Import container image on server] ***************************************
+changed: [staging.ottg.co.uk] => {"actions": ["Loaded image [...]
+
+TASK [Ensure .env file exists] ************************************************
+changed: [staging.ottg.co.uk] => {"changed": true, [...]
+
+TASK [Run container] **********************************************************
+changed: [staging.ottg.co.uk] => {"changed": true, "container": [...]
+
+PLAY RECAP ********************************************************************
+staging.ottg.co.uk         : ok=8    changed=6    unreachable=0    failed=0
+skipped=0    rescued=0    ignored=0
+----
+
+Looks good!  What do our tests think?
+
 ==== More debugging
 
-forgot ports!
+We run our tests as usual and run into a new problem:
 
-show ssh, curl localhosts maybe.
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+[...]
+selenium.common.exceptions.WebDriverException: Message: Reached error page:
+about:neterror?e=connectionFailure&u=http%3A//staging.ottg.co.uk/[...]
+----
+
+That `neterror` makes me think it's another networking problem.
+Let's try `curl` locally:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*curl -iv staging.ottg.co.uk*]
+[...]
+curl: (7) Failed to connect to staging.ottg.co.uk port 80 after 25 ms: Couldn't
+connect to server
+----
+
+Now let's ssh in and try `curl` from the server itself:
+
+[subs="specialcharacters,quotes"]
+----
+elspeth@server$ *docker logs superlists*
+[2024-02-28 22:14:43 +0000] [7] [INFO] Starting gunicorn 21.2.0
+[2024-02-28 22:14:43 +0000] [7] [INFO] Listening at: http://0.0.0.0:8888 (7)
+[2024-02-28 22:14:43 +0000] [7] [INFO] Using worker: sync
+[2024-02-28 22:14:43 +0000] [8] [INFO] Booting worker with pid: 8
+----
+
+No errors in the logs...
+
+[subs="specialcharacters,quotes"]
+----
+elspeth@server$ *curl -iv localhost*
+*   Trying 127.0.0.1:80...
+* connect to 127.0.0.1 port 80 failed: Connection refused
+*   Trying ::1:80...
+* connect to ::1 port 80 failed: Connection refused
+* Failed to connect to localhost port 80 after 0 ms: Connection refused
+* Closing connection 0
+curl: (7) Failed to connect to localhost port 80 after 0 ms: Connection refused
+----
+
+Hmm, `curl` fails on the server too.
+But all this talk of `port 80`, both locally and on the server, might be giving us a clue.
+Let's check `docker ps`:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker ps*
+CONTAINER ID   IMAGE        COMMAND                  CREATED         STATUS
+PORTS     NAMES
+1dd87cbfa874   superlists   "/bin/sh -c 'gunicor…"   9 minutes ago   Up 9
+minutes             superlists
+----
+
+This might be ringing a bell now--we forgot the ports.
+
+We want to expose port 8888 inside the container as port 80 (the default web/http port)
+on the server:
 
 [role="sourcecode"]
 .infra/ansible-provision.yaml (ch11l005)
@@ -723,6 +819,107 @@ show ssh, curl localhosts maybe.
 ----
 ====
 
+That gets us to
+
+----
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]; [...]
+----
+
+
+=== Mounting the database on the server and running migrations
+
+Taking a look at the logs from the server,
+we can see that the database is not initialised.
+
+[subs="specialcharacters,quotes"]
+----
+$ *ssh elspeth@server docker logs superlists*
+[...]
+django.db.utils.OperationalError: no such table: lists_list
+----
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*
+[...]
+TASK [Run migration inside container] *****************************************
+changed: [staging.ottg.co.uk] => {"changed": true, "rc": 0, "stderr": "",
+"stderr_lines": [], "stdout": "Operations to perform:\n  Apply all migrations:
+auth, contenttypes, lists, sessions\nRunning migrations:\n  Applying
+contenttypes.0001_initial... OK\n  Applying
+contenttypes.0002_remove_content_type_name... OK\n  Applying
+auth.0001_initial... OK\n  Applying
+auth.0002_alter_permission_name_max_length... OK\n  Applying
+[...]
+PLAY RECAP ********************************************************************
+staging.ottg.co.uk         : ok=9    changed=2    unreachable=0    failed=0
+skipped=0    rescued=0    ignored=0
+----
+
+
+Here's how 
+
+[role="sourcecode"]
+.infra/ansible-provision.yaml (ch11l006)
+====
+[source,python]
+----
+    - name: Ensure db.sqlite3 file exists outside container
+      ansible.builtin.file:
+        path: /home/elspeth/db.sqlite3
+        state: touch  # <1>
+
+    - name: Run container
+      community.docker.docker_container:
+        name: superlists
+        image: superlists
+        state: started
+        recreate: true
+        env_file: ~/superlists.env
+        mounts:  # <2>
+          - type: bind
+            source: /home/elspeth/db.sqlite3
+            target: /src/db.sqlite3
+        ports: 80:8888
+
+    - name: Run migration inside container
+      community.docker.docker_container_exec:  # <4>
+        container: superlists
+        command: ./manage.py migrate
+----
+====
+
+<1> We use `file` with `state=touch` to make sure a placeholder file exists
+    before we try and mount it in
+
+<2> Here is the `mounts` config, which works a lot like the `--mount` flag to `docker run`.
+
+<3> We use the `expanduser` filter to get the absolute path,
+    otherwise docker will complain about the `~`.
+
+<2> And we use the API for `docker exec` to run the migration command inside
+    the container.
+
+
+
+=== It workssss
+
+Hooray
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+Found 3 test(s).
+[...]
+
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 13.537s
+OK
+----
 
 ////
 ==== Making Sure Our Container Starts on Boot
@@ -734,33 +931,6 @@ and reloads it automatically if it crashes.
 
 (used to need systemd, now you can just set restart_policy.
 ////
-
-
-=== Mounting the database on the server and running migrations
-
-todo show test output and/or error page
-
-[subs="specialcharacters,quotes"]
-----
-*ssh elspeth@staging.ottg.co.uk docker logs superlists*
-[...]
-django.db.utils.OperationalError: no such table: lists_list
-----
-
-todo add db.sqlite mount and migrate
-
-
-=== It workssss
-
-hooray
-
-[role="small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
-[...]
-OK
-----
 
 
 .More Debugging Tips and Commands
@@ -812,6 +982,7 @@ like yours.((("", startref="ansible29")))
 Deploying to Live
 ^^^^^^^^^^^^^^^^^
 
+TODO update this
 
 So, let's try using it for our live site!
 
@@ -897,16 +1068,28 @@ Here are some resources I used for inspiration:
 .Automated Deployments
 *******************************************************************************
 
+TODO Maybe recap the key steps of any deployment:
+
+- installing docker (assuming that's the only system dep)
+- getting our image onto the server (normally just with docker push/pull)
+- setting env vars & secrets
+- attaching a database (a mounted file in our case)
+- configuring port
+- running migrations
+- and running or re-running the container
+
+old content follows:
+
 Idempotency::
-  If your deployment script is deploying to existing servers, you need to
-  design them so that they work against a fresh installation 'and' against
+  If your deployment script is deploying to existing servers,
+  you need to design them so that they work against a fresh installation 'and' against
   a server that's already configured.
   ((("idempotency")))
 
 Automating provisioning::
-    Ultimately, _everything_ should be automated, and that includes spinning up
-    brand new servers and ensuring they have all the right software installed.
-    This will involve interacting with the API of your hosting provider.
+  Ultimately, _everything_ should be automated, and that includes spinning up
+  brand new servers.
+  This will involve interacting with the API of your hosting provider.
 
 Security::
   A serious discussion of server security is beyond the scope of this book,
