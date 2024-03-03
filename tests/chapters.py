@@ -15,7 +15,7 @@ CHAPTERS = [
     "chapter_12_organising_test_files",
     "chapter_13_database_layer_validation",
     "chapter_14_simple_form",
-    "chapter_advanced_forms",
+    "chapter_15_advanced_forms",
     "chapter_javascript",
     "chapter_deploying_validation",
     # part 3
