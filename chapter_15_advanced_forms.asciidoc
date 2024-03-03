@@ -135,8 +135,8 @@ If we want to get it deliberately wrong, we can do this:
 [source,python]
 ----
 class Item(models.Model):
-    text = models.TextField(default='', unique=True)
-    list = models.ForeignKey(List, default=None)
+    text = models.TextField(default="", unique=True)
+    list = models.ForeignKey(List, default=None, on_delete=models.CASCADE)
 ----
 ====
 
@@ -412,6 +412,8 @@ works; we get a fully passing test suite:
 OK
 ----
 
+// TODO: in theory we should do a migration now.
+
 [[rewrite-model-test]]
 Rewriting the Old Model Test 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -429,18 +431,17 @@ Delete `test_saving_and_retrieving_items` and replace with this:
 [source,python]
 ----
 class ListAndItemModelsTest(TestCase):
-
     def test_default_text(self):
         item = Item()
-        self.assertEqual(item.text, '')
+        self.assertEqual(item.text, "")
 
-        
     def test_item_is_related_to_list(self):
-        list_ = List.objects.create()
+        mylist = List.objects.create()
         item = Item()
-        item.list = list_
+        item.list = mylist
         item.save()
-        self.assertIn(item, list_.item_set.all())
+        self.assertIn(item, mylist.item_set.all())
+
 
     [...]
 ----
@@ -461,14 +462,11 @@ for `List` (there's only one of the latter, `test_get_absolute_url`):
 [source,python]
 ----
 class ItemModelTest(TestCase):
-
     def test_default_text(self):
         [...]
 
 
-
 class ListModelTest(TestCase):
-
     def test_get_absolute_url(self):
         [...]
 ----
@@ -505,7 +503,7 @@ it as an application-layer constraint:
 ----
 $ pass:quotes[*python manage.py makemigrations*]
 Migrations for 'lists':
-  lists/migrations/0005_auto_20140414_2038.py
+  src/lists/migrations/0005_alter_item_options_alter_item_unique_together.py
     - Change Meta options on item
     - Alter unique_together for item (1 constraint(s))
 ----
@@ -563,7 +561,6 @@ now it's time to commit our model-layer changes:
 ----
 $ pass:[<strong>git status</strong>] # should show changes to tests + models and new migration
 # let's give our new migration a better name
-$ pass:[<strong>mv lists/migrations/0005_auto* lists/migrations/0005_list_item_unique_together.py</strong>]
 $ pass:[<strong>git add lists</strong>]
 $ pass:[<strong>git diff --staged</strong>]
 $ pass:[<strong>git commit -am "Implement duplicate item validation at model layer"</strong>]
@@ -659,32 +656,31 @@ We duplicate our tests for the previous form, tweaking them slightly:
 [source,python]
 ----
 from lists.forms import (
-    DUPLICATE_ITEM_ERROR, EMPTY_ITEM_ERROR,
-    ExistingListItemForm, ItemForm
+    DUPLICATE_ITEM_ERROR,
+    EMPTY_ITEM_ERROR,
+    ExistingListItemForm,
+    ItemForm,
 )
 [...]
 
 class ExistingListItemFormTest(TestCase):
-
     def test_form_renders_item_text_input(self):
         list_ = List.objects.create()
         form = ExistingListItemForm(for_list=list_)
         self.assertIn('placeholder="Enter a to-do item"', form.as_p())
 
-
     def test_form_validation_for_blank_items(self):
         list_ = List.objects.create()
-        form = ExistingListItemForm(for_list=list_, data={'text': ''})
+        form = ExistingListItemForm(for_list=list_, data={"text": ""})
         self.assertFalse(form.is_valid())
-        self.assertEqual(form.errors['text'], [EMPTY_ITEM_ERROR])
-
+        self.assertEqual(form.errors["text"], [EMPTY_ITEM_ERROR])
 
     def test_form_validation_for_duplicate_items(self):
         list_ = List.objects.create()
-        Item.objects.create(list=list_, text='no twins!')
-        form = ExistingListItemForm(for_list=list_, data={'text': 'no twins!'})
+        Item.objects.create(list=list_, text="no twins!")
+        form = ExistingListItemForm(for_list=list_, data={"text": "no twins!"})
         self.assertFalse(form.is_valid())
-        self.assertEqual(form.errors['text'], [DUPLICATE_ITEM_ERROR])
+        self.assertEqual(form.errors["text"], [DUPLICATE_ITEM_ERROR])
 ----
 ====
 
@@ -826,16 +822,16 @@ class ListViewTest(TestCase):
 [...]
 
     def test_displays_item_form(self):
-        list_ = List.objects.create()
-        response = self.client.get(f'/lists/{list_.id}/')
-        self.assertIsInstance(response.context['form'], ExistingListItemForm)
+        mylist = List.objects.create()
+        response = self.client.get(f"/lists/{mylist.id}/")
+        self.assertIsInstance(response.context["form"], ExistingListItemForm)
         self.assertContains(response, 'name="text"')
 
     [...]
 
     def test_for_invalid_input_passes_form_to_template(self):
         response = self.post_invalid_input()
-        self.assertIsInstance(response.context['form'], ExistingListItemForm)
+        self.assertIsInstance(response.context["form"], ExistingListItemForm)
 ----
 ====
 
@@ -856,10 +852,10 @@ So we can adjust the view:
 from lists.forms import ExistingListItemForm, ItemForm
 [...]
 def view_list(request, list_id):
-    list_ = List.objects.get(id=list_id)
-    form = ExistingListItemForm(for_list=list_)
-    if request.method == 'POST':
-        form = ExistingListItemForm(for_list=list_, data=request.POST)
+    our_list = List.objects.get(id=list_id)
+    form = ExistingListItemForm(for_list=our_list)
+    if request.method == "POST":
+        form = ExistingListItemForm(for_list=our_list, data=request.POST)
         if form.is_valid():
             form.save()
             [...]
