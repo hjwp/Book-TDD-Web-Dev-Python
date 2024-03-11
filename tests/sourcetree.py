@@ -73,7 +73,7 @@ class ApplyCommitException(Exception):
     pass
 
 
-class SourceTree(object):
+class SourceTree:
     def __init__(self):
         self.tempdir = Path(tempfile.mkdtemp())
         self.processes = []
@@ -89,7 +89,7 @@ class SourceTree(object):
                 os.killpg(process.pid, signal.SIGTERM)
             except OSError:
                 pass
-        if getpass.getuser() != "harry":
+        if os.environ.get("TMPDIR_CLEANUP") not in  ("0", "false"):
             shutil.rmtree(self.tempdir)
 
     def run_command(

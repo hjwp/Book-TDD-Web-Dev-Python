@@ -16,6 +16,8 @@ export TMPDIR := $(HOME)/snap/firefox/common/tmp
 $(TMPDIR):
 	mkdir -p $(TMPDIR)
 
+export TMPDIR_CLEANUP = false
+
 part%.forbook.asciidoc: part%.asciidoc
 	cat $(subst .forbook.,.,$@)  \
 		| sed 's/^== /= /' \
