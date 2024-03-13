@@ -1,3 +1,5 @@
+SHELL := /bin/bash
+
 SOURCES := $(wildcard *.asciidoc)
 HTML_PAGES := $(patsubst %.asciidoc, %.html, ${SOURCES})
 TESTS := $(patsubst %.asciidoc, test_%, ${SOURCES})
