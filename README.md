@@ -42,7 +42,15 @@ $ make test
 $ make test_chapter_06_explicit_waits_1
 ```
 
+If you see a problem that seems to be related to submodules, try:
+
+```console
+make update-submodules
+```
+
+
 * Unit tests (tests for the tests for the tests in the testing book)
+
 ```console
 $ ./run_test_tests.sh
 ```

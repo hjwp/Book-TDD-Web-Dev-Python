@@ -1,5 +1,5 @@
 #!/bin/bash
-PYTHONHASHSEED=0 py.test \
+PYTHONHASHSEED=0 pytest \
     --failed-first \
     --tb=short \
     -k 'not test_listings_and_commands_and_output' \
