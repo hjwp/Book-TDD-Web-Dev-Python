@@ -549,6 +549,7 @@ What do we need to do?  Something like this, right?
 We create a new file called _Dockerfile_ in the base folder of our repo,
 next to the `src/` directory we made earlier:
 
+
 .Dockerfile (ch09l003)
 ====
 [source,dockerfile]
@@ -586,8 +587,30 @@ CMD python manage.py runserver  <4>
 <4> Finally the `CMD` instruction tells docker which command you want it to run
     by default, when you start a container based on that image.
 
-// deliberately wont work, django not installed
 
+It's probably worth just showing a directory tree,
+to make sure everything is in the right place?
+All our source code is in a folder called `src`,
+next to our `Dockerfile`:
+
+[[tree-with-src-and-dockerfile]]
+[subs="specialcharacters,macros"]
+----
+.
+├── Dockerfile
+├── db.sqlite3
+└── src
+    ├── functional_tests
+    │   ├── [...]
+    ├── lists
+    │   ├── [...]
+    ├── manage.py
+    └── superlists
+        ├── [...]
+----
+====
+
+// TODO: figure out what to do with the /static folder
 
 
 ==== Docker Build
@@ -631,6 +654,13 @@ REPOSITORY    TAG       IMAGE ID       CREATED          SIZE
 [...]
 superlists    latest    7b8e1c9fa68e   13 minutes ago   155MB
 ----
+
+
+
+NOTE: If you see an error about `failed to solve / compute cache key` and `src: not found`
+  it may be because you saved the Dockerfile into the wrong place.
+  Have another look at the directory tree from earlier <<tree-with-src-and-dockerfile>>.
+
 
 
 
@@ -945,7 +975,7 @@ Starting development server at http://127.0.0.1:8888/
 
 ==== Debugging Web Server Connectivity With "curl"
 
-A quick check in our browser will show us that nope, that doesn't work either.
+A quick run of the FT or check in our browser will show us that nope, that doesn't work either.
 Let's try an even lower-level smoke test, the traditional Unix utility `curl`.
 It's a command-line tool for making HTTP requests.  Try it on your own computer first:
 
@@ -1044,7 +1074,7 @@ That's definitely some HTML! And the `<title>To-Do lists</title>` looks like it'
 So, we can see Django is serving our site _inside_ the container,
 why can't we see it _outside_??
 
-==== Docker Ports Mapping
+==== Docker Port Mapping
 
 The pythonspeed guide to Docker's very first section is called
 https://pythonspeed.com/articles/docker-connection-refused/[Connection Refused],
@@ -1073,6 +1103,9 @@ Things clearly aren't working yet.
 [[firefox-connection-reset]]
 .Cannot connect on that port
 image::images/firefox-connection-reset.png["Firefox showing the 'Connection reset' error"]
+
+// FT would show this
+// selenium.common.exceptions.WebDriverException: Message: Reached error page: about:neterror?e=netReset&u=http%3A//localhost%3A8888/&c=UTF-8&d=The%20connection%20to%20the%20server%20was%20reset%20while%20the%20page%20was%20loading.
 
 Similarly, if you try our `curl -iv` (outside the container) once again,
 you'll see the error has changed from "Failed to connect",
@@ -1121,7 +1154,9 @@ Everyone's search results are a little different,
 and mine are perhaps shaped by years of working with Docker and Django,
 but I found the answer in my very first result
 (see <<google-results-screenshot>>),
-which was a https://stackoverflow.com/questions/49476217/docker-cant-access-django-server[stackoverflow post].
+when I searched for "cannot access django runserver inside docker",
+and the result was was a https://stackoverflow.com/questions/49476217/docker-cant-access-django-server[stackoverflow post],
+saying something about needing to specify `0.0.0.0` as the IP address.
 
 
 [[google-results-screenshot]]
@@ -1129,9 +1164,15 @@ which was a https://stackoverflow.com/questions/49476217/docker-cant-access-djan
 image::images/google-results-with-stackoverflow.png["Google results with a useful stackoverflow post in first position",1000]
 
 
-So we need to tell Django to bind to _any_ IP address,
-because container networking doesn't always have 127.0.0.1
-as the address of _localhost_:
+We're nearing the edges of my understanding of Docker now,
+but as I understand it, `runserver` binds to `127.0.0.1` by default,
+but that IP address doesn't correspond to the network adapter _inside_
+the container that's actually connected to the outside world,
+via the port mapping we defined earlier.
+
+The long and short of it is that
+we need use the long-form `ipaddr:port` version of the `runserver` command,
+using the magic "wilcard" IP address `0.0.0.0`:
 
 .Dockerfile (ch09l007)
 ====
@@ -1360,9 +1401,11 @@ Running migrations:
   Applying sessions.0001_initial... OK
 $ *docker build -t superlists . && docker run \
   -p 8888:8888 \
-  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \ 
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
   -it superlists*
 ----
+
+// TODO: db.sqlite3 will actually be missing at this point because we did *not* mv it earlier
 
 TIP: The old syntax for mounts was `-v`.
     One of the advantages of the new `--mount` syntax is that it will fail hard
@@ -1419,7 +1462,7 @@ https://en.wikipedia.org/wiki/Digestive_biscuit[chocolate biscuit].
 
 Tests and small steps some of the uncertainty out of deployment::
     For developers, ops and infra work is always "fun",
-    by which I mean a process full of uncertainty and surprises.
+    by which I mean a process full of fear, uncertainty and surprises.
     My aim during this chapter was to show that a step-by-step approach
     helps to minimise risk, especially when allied to a functional test suite
     that can help us to catch errors early.
