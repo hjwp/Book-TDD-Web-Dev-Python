@@ -46,15 +46,13 @@ book.html: $(SOURCES)
 build: $(HTML_PAGES) $(TMPDIR)
 
 
-MKVENV := $(shell which uv && "uv venv" || "python3 -m venv")
-MKVENV := $(shell which uv && "uv venv" || "python3 -m venv")
-
 .venv/bin:
 	which uv && uv venv .venv || python -m venv .venv
 	which uv && uv pip install -e . || .venv/bin/pip install -e .
 
 .PHONY: install
 install: .venv/bin
+	which brew && brew install asciidoctor || apt install -y asciidoctor
 
 .PHONY: update-submodules
 update-submodules:
