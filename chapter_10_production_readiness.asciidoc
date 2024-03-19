@@ -35,11 +35,14 @@ so that people can access it using a regular URL.
 
 Perhaps more importantly, we shouldn't use the Django dev server for production;
 it's not designed for real-life workloads.
-Instead, we'll use the popular Gunicorn Python/WSGI server.
+Instead, we'll use the popular Gunicorn Python WSGI HTTP server.
 
 ((("DEBUG settings")))
 In addition, several options in _settings.py_ are currently unacceptable.
-`DEBUG=True`, is strongly recommended against for production,
+`DEBUG=True`, is strongly discouraged for production,
+// CSANAD: I think this statement is clearer like this - but I would consider
+//         using an even stronger expression, such as "strictly forbidden for
+// production"
 we'll want to set a unique `SECRET_KEY`,
 and as we'll see, other things will come up.
 
@@ -57,6 +60,38 @@ an ORM, all sorts of middleware, the admin site...
 "What else do you want, a pony?" Well, Gunicorn stands for "Green Unicorn",
 which I guess is what you'd want next if you already had a pony...
 
+
+Gunicorn is a WSGI (usually pronounced as whizgee) HTTP server. Let's go
+through what this means:
+
+* An HTTP server handles incoming HTTP requests and sends back responses to the
+  clients.
+
+* WSGI, the Web Server Gateway Interface, is a set of rules defining how an HTTP
+  server (which can be Gunicorn itself, or Nginx, Apache, etc) and a Python
+  program should communicate.
+
+So, Gunicorn is an HTTP server that knows and uses the WSGI to "talk" to Python
+programs. And these Python programs are likewise expected to work in a specific
+way. You can check out a simple example https://gunicorn.org/[on Gunicorn's
+website] under "Installation".
+https://peps.python.org/pep-3333[If you are interested, you can read the entire
+specification here].
+
+What Django's `runserver` does is it launches a simple HTTP server which is
+designed for development: it handles automatic reloading upon saving of the
+source code and displays verbose information about errors and the entire
+callstack, while serving one user. All of which is amazing for debugging.
+
+And, none of which is ideal for serving real users in a production environment
+and for minimising the chance of leaking sensitive data.
+
+We should use an HTTP server that's designed for the job.
+Let's install Gunicorn!
+
+// CSANAD:  I felt like some explanation regarding what Gunicorn and WSGI are,
+//          was missing.
+
 //001
 
 [subs="specialcharacters,quotes"]
@@ -68,9 +103,12 @@ Successfully installed gunicorn-21.2.0
 $ *pip freeze | grep -i gunicorn== >> requirements.txt*
 ----
 
-Gunicorn will need to know a path to a WSGI server,
-which is usually a function called `application`.
-Django provides one in 'superlists/wsgi.py':
+We mentioned above that these Python programs should also implement the WSGI
+in order to be able to talk to a WSGI server.
+Gunicorn will need to know a path to a WSGI application to talk to.
+Luckily, Django provides this in 'superlists/wsgi.py'.
+
+Let's change the command our image runs:
 
 [role="sourcecode"]
 .Dockerfile (ch10l002)
@@ -80,6 +118,9 @@ Django provides one in 'superlists/wsgi.py':
 CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
 ====
+// CSANAD:  shouldn't we try it out before adding this to the Dockerfile?
+//          `cd src` and then
+// `gunicorn --bind :8888 superlists.wsgi:application`
 
 As in the previous chapter, we can use the `docker build && docker run`
 pattern to try out our changes by rebuilding and rerunning our container:
@@ -105,7 +146,7 @@ but the test for layout + styling fails. Good job, tests!
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test src/functional_tests*]
 [...]
 AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
 FAILED (failures=1)
@@ -165,14 +206,18 @@ MIDDLEWARE = [
 
 ----
 ====
+// CSANAD:  I would add a few thoughts on the significance of the order of
+//          middlewares.
 
-And if you take another manual look at your site, things should look much healthier.
+And if you take another manual look at your site after rebuilding the
+container, things should look much healthier.
+
 Let's rerun our FTs to confirm:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests --failfast*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test src/functional_tests --failfast*]
 [...]
 
 ...
@@ -224,7 +269,7 @@ Environment variables also have the advantage of working for non-Django stuff to
 
 ==== Setting DEBUG=True and SECRET_KEY
 
-There's lots of ways you might do this.
+There are lots of ways you might do this.
 Here's what I propose; it may seem a little fiddly,
 but I'll provide a little justification for each choice.
 Let them be an inspiration (but not a template) for your own choices!
@@ -246,6 +291,9 @@ else:
     SECRET_KEY = "insecure-key-for-dev"
 ----
 ====
+// CSANAD: I think variable names like "something_false" are confusing, since
+//         we need to set something to true so that they mean false.
+// How about `DJANGO_ENV_PRODUCTION` or something similar?
 
 <1> We say we'll use an environment variable called `DJANGO_DEBUG_FALSE`
     to switch debug mode off, and in effect require production settings
@@ -266,9 +314,17 @@ against accidentally forgetting to set one.
 TIP: Better to fail hard than allow a typo in an environment variable name to
     leave you running with insecure settings.
 
+// CSANAD: I think it would worth pointing out the development environment
+//         does not use Docker, launching the dev server should be done from
+// the reader's host system. I think this isn't immediately obvious, e.g. I
+// thought all along that from now on we would only run the server from Docker.
+// If we end up making a TIP or similar about it, I think we should also mention
+// in a development environment relying on containerization, programmers usually
+// mount the whole /src minimizing the time-consuming rebuilding of their images.
+
 ==== Setting environment variables inside the Dockerfile
 
-Now let's set that environment variable in our Dockerfile using then `ENV` directive:
+Now let's set that environment variable in our Dockerfile using the `ENV` directive:
 
 [role="sourcecode"]
 .Dockerfile (ch10l006)
@@ -326,7 +382,7 @@ With that running, we can use our FT again to see if we're back to a working sta
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 ./manage.py test functional_tests --failfast*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test src/functional_tests --failfast*]
 [...]
 AssertionError: 'To-Do' not found in 'Bad Request (400)'
 ----
@@ -364,7 +420,7 @@ image::images/search-results-400-bad-request.png["Duckduckgo search results with
 `ALLOWED_HOSTS` is a security setting
 designed to reject requests that are likely to be forged, broken or malicious
 because they don't appear to be asking for your site
-(HTTP request contain the address they were intended for in a header called "Host").
+(HTTP requests contain the address they were intended for in a header called "Host").
 
 By default, when DEBUG=True, `ALLOWED_HOSTS` effectively allows _localhost_,
 our own machine, so that's why it was working OK until now.
@@ -413,10 +469,14 @@ $ *docker build -t superlists . && docker run \
 An FT run (or just looking at the site) reveals that we've had a regression
 in our static files.
 
+// CSANAD: worth mentioning there was another clue. in the logs, once Gunicorn
+//         starts running you can see:
+// `UserWarning: No directory at: /src/static/`
+
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test src/functional_tests*]
 [...]
 AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
 FAILED (failures=1)
@@ -443,6 +503,7 @@ ENV DJANGO_DEBUG_FALSE=1
 CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
 ====
+// CSANAD: I think it would be important to use a non-privileged user in Docker
 
 Well, it was fiddly, but that should get us to passing tests!
 
@@ -450,7 +511,7 @@ Well, it was fiddly, but that should get us to passing tests!
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test src/functional_tests*]
 [...]
 OK
 ----
@@ -458,7 +519,11 @@ OK
 We have a container that we're ready to ship to production!
 
 Find out how in the next exciting installment...
-
+// CSANAD: now would be a good time to check our changes and notice git marked
+//         src/static as unstaged, so we should update .gitignore accordingly:
+// from `static` to `src/static`.
+// Or we could add this step to Chapter 09 at "Move all our code into a src
+// folder"
 
 
 === Configuring logging
@@ -494,7 +559,7 @@ Now if you run the tests, you'll see they fail;
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests --failfast*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test src/functional_tests --failfast*]
 [...]
 
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
@@ -526,7 +591,7 @@ but it's more of shock to see that they are no longer appearing in the terminal 
 If you're like me you might find yourself wondering if we really _did_ see them earlier
 and starting to doubt your own sanity.
 But the explanation is that Django's
-https://docs.djangoproject.com/en/5.0/ref/logging/#default-logging-configuration[default logging configuration]
+https://docs.djangoproject.com/en/4.2/ref/logging/#default-logging-configuration[default logging configuration]
 changes when DEBUG is turned off:
 
 This means we need to interact with the standard library's `logging` module,
@@ -539,7 +604,7 @@ but sometimes you just wanna say "just print stuff to stdout pls",
 and you wish that configuring the simplest thing was a little easier].
 
 Here's pretty much the simplest possible logging config
-which just prints everything to the console (ie standard out).
+which just prints everything to the console (i.e. standard out).
 
 
 [role="sourcecode"]
@@ -582,7 +647,7 @@ django.db.utils.OperationalError: no such table: lists_list
 
 Re-create the datase with `./src/manage.py migrate` and we'll be back to a working state.
 
-Don't forget to commit our changes to _settings.py_,
+Don't forget to commit our changes to _settings.py_ and _Dockerfile_,
 and I think we can call it job done!
 We've at least touched on many or most of the things you might need to think about
 when considering production-readiness,
