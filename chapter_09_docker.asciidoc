@@ -703,94 +703,18 @@ environment?
 Ah, we forgot that we need to install Django.
 
 
-=== Virtualenv and requirements.txt
-
-// TODO: move to next chapter
+=== Installing Django into our Virtualenv
 
 Just like on our own machine,
 a virtualenv is useful in a deployed environment to make
 sure we have full control over the packages installed for a particular
 project.
 
-To reproduce our local virtualenv,
-rather than just manually pip installing things
-one by one, and having to remember to sync things
-between local dev and docker,
-we can "save" the list of packages we're using
-by creating a 'requirements.txt' file.footnote:[
-There are many other dependency management tools these days
-so requirements.txt is not the only way to do it,
-although it is one of the oldest and best established.
-As you continue your Python adventures
-I'm sure you'll come across many others.]
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *pip freeze*
-asgiref==3.7.2
-attrs==23.1.0
-certifi==2023.7.22
-Django==4.2.7
-h11==0.14.0
-idna==3.4
-outcome==1.3.0.post0
-PySocks==1.7.1
-selenium==4.15.2
-sniffio==1.3.0
-sortedcontainers==2.4.0
-sqlparse==0.4.4
-trio==0.23.1
-trio-websocket==0.11.1
-urllib3==2.1.0
-wsproto==1.2.0
-----
-
-That shows _all_ the packages in our virtualenv. Let's find Django,
-and then add it as a single item to our requirements.txt,
-with its exact version specified:
-
-
-//004
-[subs="specialcharacters,quotes"]
-----
-$ *pip freeze | grep -i django*
-Django==4.2.7
-$ *pip freeze | grep -i django== >> requirements.txt*
-# that's a good first cut, let's commit it:
-$ *git add requirements.txt*
-$ *git commit -m "Add requirements.txt for virtualenv"*
-----
-
-You may be wondering why we didn't add our other dependency,
-Selenium, to our requirements,
-or why we didn't just add _all_ the dependencies,
-including the "transitive" ones (eg, Django has its own dependencies of `asgiref` and `sqlparse`).
-
-As always, I have to gloss over some nuance and tradeoffs,
-but the short answer is first, Selenium is only a dependency for the tests,
-not the application code;
-we're never going to run the tests directly on our production servers.
-As to transitive dependencies, they're fiddly to manage without bringing
-in more tools, and I didn't want to do that for this book.footnote:[
-When you have a moment, you might want to do some further reading
-on "lockfiles", pyproject.toml, hard pinning vs soft pining,
-and immediate vs transitive dependencies.  If I absolutely _had_
-to recommend a python dependency management tool,
-it would be https://github.com/jazzband/pip-tools[pip-tools],
-which is a fairly minimal one.]
-
-
-TIP: Itamar Turner-Traurig has a great guide to
-    https://pythonspeed.com/docker/[Docker Packaging for Python Developers],
-    which I cannot recommend highly enough.  Read that before you're too much older.
-
-In any case, back in our Dockerfile, we can create a virtualenv
+We can create a virtualenv in our Dockerfile
 just like we did on our own machine with `python -m venv`,
-and then we can use the special `-r` flag for `pip install`,
-to point it at our requirements file:
+and then we can use `pip install` to get Django:
 
-.Dockerfile (ch09l005)
+.Dockerfile (ch09l004)
 ====
 [source,dockerfile]
 ----
@@ -799,8 +723,7 @@ FROM python:slim
 RUN python -m venv /venv  <1>
 ENV PATH="/venv/bin:$PATH"  <2>
 
-COPY requirements.txt requirements.txt  <3>
-RUN pip install -r requirements.txt  <4>
+RUN pip install "django<5" <3>
 
 COPY src /src
 
@@ -817,17 +740,8 @@ CMD python manage.py runserver
     of `pip` and `python` become the default ones
     (this is actually one of the things that `activate` does, under the hood).
 
-<3> We copy our requirements file in, just like the src folder.
+<3> We install Django with `pip install`, just like we do locally.
 
-<4> Now we install our dependencies with `pip`,
-    pointing it at our _requirements.txt_.
-    Notice the `-r`.
-
-TIP: Forgetting the `-r` and running `pip install requirements.txt`
-    is such a common error, that I recommend you do it _right now_
-    and get familiar with the error message
-    (which is thankfully much more helpful than it used to be).
-    It's a mistake I still make, _all the time_.
 
 
 ==== Successful Run
@@ -846,14 +760,13 @@ $ *docker build -t superlists . && docker run -it superlists*
  => [internal] load build definition from Dockerfile                0.0s
  => => transferring dockerfile: 246B                                0.0s
  => [internal] load metadata for docker.io/library/python:slim      0.0s
- => CACHED [1/6] FROM docker.io/library/python:slim                 0.0s
+ => CACHED [1/5] FROM docker.io/library/python:slim                 0.0s
  => [internal] load build context                                   0.0s
  => => transferring context: 4.75kB                                 0.0s
- => [2/6] RUN python -m venv /venv                                  0.0s
- => [3/6] COPY requirements.txt requirements.txt                    0.0s
- => [4/6] RUN pip install -r requirements.txt                       0.0s
- => [5/6] COPY src /src                                             0.0s
- => [6/6] WORKDIR /src                                              0.0s
+ => [2/5] RUN python -m venv /venv                                  0.0s
+ => [3/5] pip install "django<5"                                    0.0s
+ => [4/5] COPY src /src                                             0.0s
+ => [5/5] WORKDIR /src                                              0.0s
  => exporting to image                                              0.0s
  => => exporting layers                                             0.0s
  => => writing image sha256:[...]                                   0.0s
@@ -959,7 +872,7 @@ that we specified in the `TEST_SERVER` env var.
 Let's fix that by amending the `CMD` instruction in the Dockerfile:
 
 
-.Dockerfile (ch09l006)
+.Dockerfile (ch09l005)
 ====
 [source,dockerfile]
 ----
@@ -1393,11 +1306,9 @@ CMD python manage.py runserver
 ----
 ====
 
-The extra flag to add is `--mount`,
-where we specify `type=bind`, the `source` path on our machine,
-and the `target` path _inside_ the container:
+Let's start by re-creating the database with `migrate`
+(when we moved everything into `./src`, we left the database file behind):
 
-[role="small-code"]
 [subs="specialcharacters,quotes"]
 ----
 $ *./src/manage.py migrate --noinput*
@@ -1407,20 +1318,33 @@ Running migrations:
   Applying contenttypes.0001_initial... OK
 [...]
   Applying sessions.0001_initial... OK
+----
+
+Let's make sure to .gitignore the new location of the DB file:
+
+[subs="specialcharacters,quotes"]
+----
+$ *echo src/db.sqlite3 >> .gitignore*
+----
+
+Now let's try mounting our database file.
+The extra flag to add to the Docker run command is `--mount`,
+where we specify `type=bind`, the `source` path on our machine,
+and the `target` path _inside_ the container:
+
+[subs="specialcharacters,quotes"]
+----
 $ *docker build -t superlists . && docker run \
   -p 8888:8888 \
   --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
   -it superlists*
 ----
 
-// TODO: db.sqlite3 will actually be missing at this point because we did *not* mv it earlier
-
 TIP: The old syntax for mounts was `-v`.
     One of the advantages of the new `--mount` syntax is that it will fail hard
     if the path you're trying to mount into the container does not exist
     (it says something like `bind source path does not exist`)
-    This avoids a lot of pain, ask me how I now this.
-
+    This avoids a lot of pain, ask me how I know this.
 
 
 And we check the FTs again.
