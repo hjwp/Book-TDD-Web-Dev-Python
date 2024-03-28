@@ -32,6 +32,9 @@ Later on, you'll want to re-create a key with a passphrase for extra security,
 but that means you have to figure out how to save that passphrase in such a way
 that Fabric won't ask for it later, and I don't have time to write instructions
 for that now!
+<!--
+CSANAD: We are no longer using Fabric
+-->
 
 Make a note of your "public key"
 
@@ -120,11 +123,18 @@ no 2FA) 123-reg.
 If you want a free one there's [dot.tk](http://www.dot.tk).  Be aware
 that their business model is based on ads, so there will be ads
 all over your domain until you configure it.
+<!-- CSANAD: first I thought this website was down, but then I realized my
+browser blocked it. Unless there are no better alternatives, I don't think
+recommending a services that don't use TLS is good. -->
 
-Once you have a domain, you need to set up a couple of **A-records** in
+Once you have a domain, you need to set up a couple of **A-records**, short
+for Address Records, in
 its DNS configuration, one for your "staging" subdomain and one for your
 "live" subdomain.  Mine are *superlists.ottg.co.uk* and *staging.ottg.co.uk*
 for example.
+<!-- CSANAD: maybe I would mention associating IPv6 addresses are done in
+AAAA records. I think it's a good practice to configure it too, and I
+came across a few providers whose cheapest VPS packages were IPv6 only -->
 
 *(tip: DNS changes take time to propagate, so if your domain doesn't
 take you to the server straight away, you may need to wait.  Some registrars
