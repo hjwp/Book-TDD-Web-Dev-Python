@@ -1,7 +1,7 @@
 # Ultra-brief instructions for how to get a Linux server
 
 These instructions are meant as companion to the 
-[deployment chapter of my book](http://www.obeythetestinggoat.com/book/chapter_09_docker.html).
+[deployment chapter of my book](https://www.obeythetestinggoat.com/book/chapter_11_ansible.html).
 They're almost telegraphic in style, but I hope they're better than nothing!
 
 
@@ -23,7 +23,7 @@ ssh-keygen
 
 **NOTE** *If you're on Windows, you need to be using Git-Bash for `ssh-keygen`
 and `ssh` to work. There's more info in the
-[installation instructions chapter](http://www.obeythetestinggoat.com/book/pre-requisite-installations.html)*
+[installation instructions chapter](https://www.obeythetestinggoat.com/book/pre-requisite-installations.html)*
 
 Just accept all the defaults if you really want to just get started in a hurry,
 and no passphrase.
@@ -39,8 +39,8 @@ Make a note of your "public key"
 cat ~/.ssh/id_rsa.pub
 ```
 
-More info on public key authentication [here](https://www.linode.com/docs/networking/ssh/use-public-key-authentication-with-ssh/)
-and [here](https://www.digitalocean.com/community/tutorials/how-to-use-ssh-keys-with-digitalocean-droplets)
+More info on public key authentication [here](https://www.linode.com/docs/guides/use-public-key-authentication-with-ssh/)
+and [here](https://docs.digitalocean.com/products/droplets/how-to/add-ssh-keys/)
 
 
 ## Start a Droplet
