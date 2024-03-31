@@ -232,6 +232,9 @@ At my registrar, the control screens looked a bit like <<registrar-control-scree
 .Domain setup
 image::images/gandi_add_dns_a_record.png["Registrar control screen for adding a DNS record"]
 
+// CSANAD: due to technical reasons, I cannot check on Digital Ocean whether this
+//         screenshot needs to be update. Please, someone else have a look!
+
 
 ((("A-Records")))
 In the DNS system, pointing a domain at a specific IP address is called an "A-Record".
@@ -304,6 +307,8 @@ The "hate" part is that the actual syntax is surprisingly fiddly to get right:
 the difference between lists and key/value maps is subtle and I can never quite remember it honestly.]
 for.
 
+// CSANAD: I would make it more obvious we created another directory for the
+//         ansible file.
 
 [role="sourcecode"]
 .infra/ansible-provision.yaml (ch11l001)
@@ -514,6 +519,8 @@ In Ansible config, it looks like this:
         recreate: true
 ----
 ====
+// CSANAD: I would add `update_cache: true` to the `Install docker` task back,
+//         it's a good practice to update the apt cache before installing.
 
 <1> We export the docker image to a `.tar` file by using the `docker_image` module
   with the `archive_path` set to temp file, and setting the `delegate_to` attribute
@@ -572,6 +579,7 @@ false, "AttachStdout": true, "Cmd": ["gunicorn", "--bind", ":8888",
 "superlists.wsgi:application"], "Domainname": "", "Entrypoint": null, "Env":
 [...]
 ----
+// CSANAD: earlier we also added the `PLAY RECAP` line.
 
 
 For completeness, let's also add a step to explicitly build the image locally.
@@ -675,9 +683,13 @@ Here's what our template for the env file will looks like:
 ----
 DJANGO_DEBUG_FALSE=1
 DJANGO_SECRET_KEY="{{ secret_key }}"
-DJANGO_ALLOWED_HOST="{{ host }}"
+DJANGO_ALLOWED_HOSTS="{{ host }}"
 ----
 ====
+// CSANAD: we named the allowed hosts' env variable in plural form, as it's
+//         named in settings.py but we pass one value, so it feels weird.
+//
+// I'd suggest DJANGO_ALLOWED_HOSTS="{{ hostname }}"
 
 And here's how we use it in the provisioning script:
 
@@ -742,10 +754,17 @@ rather than specifying a series of steps to get there.
 This concept goes along with the idea of "idempotency",
 which is wanting to get the same result when you run something for the first time,
 vs running it again on later occations.
+// CSANAD: I would rephrase it a little:
+//         "which means doing something multiple times brings the same results as
+//          doing it for the first time."
 
 An example is the `apt` module that we used to install docker.
 It doesn't crash if docker is already installed, and in fact,
 Ansible is smart enough to check first before trying to install anything.
+
+// CSANAD: I think adding a counter-example, something that isn't idempotent
+//         would be helpful. E.g. adding a list item to our superlist, because
+// it results in the list getting longer.
 
 There is some subtlety here, for example, our templated env file
 will only be writen once, so the step is idempotent in the sense
@@ -811,7 +830,7 @@ We run our tests as usual and run into a new problem:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 [...]
 selenium.common.exceptions.WebDriverException: Message: Reached error page:
 about:neterror?e=connectionFailure&u=http%3A//staging.ottg.co.uk/[...]
@@ -828,6 +847,15 @@ $ pass:quotes[*curl -iv staging.ottg.co.uk*]
 curl: (7) Failed to connect to staging.ottg.co.uk port 80 after 25 ms: Couldn't
 connect to server
 ----
+// CSANAD: my curl output looks a little different, saying "Connection refused"
+//
+// $ curl -iv 192.168.122.23
+// *   Trying 192.168.122.23:80...
+// * connect to 192.168.122.23 port 80 failed: Connection refused
+// * Failed to connect to 192.168.122.23 port 80 after 2 ms: Connection refused
+// * Closing connection 0
+// curl: (7) Failed to connect to 192.168.122.23 port 80 after 2 ms: Connection refused
+
 
 Now let's ssh in and try `curl` from the server itself:
 
@@ -855,6 +883,10 @@ curl: (7) Failed to connect to localhost port 80 after 0 ms: Connection refused
 ----
 
 Hmm, `curl` fails on the server too.
+// CSANAD: Ackchually I'm not sure if it's supposed to work, since we set
+//         `inventory_hostname` for DJANGO_ALLOWED_HOSTS, so `localhost`
+// would not get through.
+
 But all this talk of `port 80`, both locally and on the server, might be giving us a clue.
 Let's check `docker ps`:
 
@@ -869,7 +901,7 @@ minutes             superlists
 
 This might be ringing a bell now--we forgot the ports.
 
-We want to expose port 8888 inside the container as port 80 (the default web/http port)
+We want to map port 8888 inside the container as port 80 (the default web/http port)
 on the server:
 
 [role="sourcecode"]
@@ -888,12 +920,24 @@ on the server:
 ----
 ====
 
+// CSANAD: I would remind the reader we need to run ansible-playbook again.
+
 That gets us to
 
 ----
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: [id="id_list_table"]; [...]
 ----
+// CSANAD: I have a different error:
+//         AssertionError: 'To-Do' not found in 'Bad Request(400)'
+//
+// >>> from django.conf import settings
+// >>>
+// >>>
+// >>> settings.ALLOWED_HOSTS
+// ['"192.168.122.23"']
+// >>>
+//
 
 
 === Mounting the database on the server and running migrations
@@ -909,6 +953,8 @@ django.db.utils.OperationalError: no such table: lists_list
 ----
 
 
+// CSANAD: I think this `ansible-playbook` output was supposed to be shown after
+//         the changes in the `ansible-provision.yaml`
 [subs="specialcharacters,quotes"]
 ----
 $ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*
@@ -929,6 +975,9 @@ skipped=0    rescued=0    ignored=0
 
 
 Here's how 
+// CSANAD: I think a little more explanation is missing from here. Maybe just
+//         a sentence, but just showing the changes and the output feels a
+// little incomplete.
 
 [role="sourcecode"]
 .infra/ansible-provision.yaml (ch11l006)
@@ -981,7 +1030,7 @@ Hooray
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 Found 3 test(s).
 [...]
 
@@ -1008,9 +1057,11 @@ and reloads it automatically if it crashes.
 
 A few more places to look and things to try, now that we've introduced
 Podman and Systemd into the mix, should things not go according to plan:
+// CSANAD: we did not mention Podman or Systemd in this chapter
 
 - You can check the Container logs using
   `docker logs superlists`.
+// CSANAD: we already used this a lot, so this isn't "more debugging tip"
 
 - You can get detailed info on the Container using
   `docker inspect superlists`.
@@ -1155,10 +1206,13 @@ which are a fairly typical set of steps for deployment in general
 2. Installing *system dependencies* - in our case, it was mainly Docker,
   but inside the Docker image, we also had some system dependencies too,
   like Python itself.
+// CSANAD: this is not true in the current edition as we are just using the
+//         superlists image which is built upon the python:slim
 
 3. Getting our *application code* (or "artifacts") onto the server.
   In our case, since we're using Docker, the thing we needed to transfer was a Docker image.
   We used a manual process, but typically you'd push and pull to an image repository.
+// CSANAD: we actually automated this step in this edition
 
 4. Setting *environment variables and secrets*.
   Depending on how you need to vary them,
@@ -1181,8 +1235,10 @@ which are a fairly typical set of steps for deployment in general
   In our case, we stop the old container and start a new one.
   In more advanced setups, you might be trying to achieve zero-downtime deploys,
   and looking into techniques like red-green deployments.
+// CSANAD: we haven't mentioned the downtime so far
 
 // TODO is there a better word than "switching across"?
+// CSANAD: I can only think of "releasing" or "deploying"
 
 Every single aspect of deployment can and probably should be automated.
 Here are a couple of general principles to think about
