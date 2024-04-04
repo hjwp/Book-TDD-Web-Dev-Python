@@ -28,11 +28,9 @@ SLIMERJS_BINARY = os.path.join(
 )
 
 
-DO_SERVER_COMMANDS = True
-if getuser() == "jenkins":
-    DO_SERVER_COMMANDS = False
-if "NO_SERVER_COMMANDS" in os.environ:
-    DO_SERVER_COMMANDS = False
+# DO_SERVER_COMMANDS = True
+# if os.environ.get("CI") or os.environ.get("NO_SERVER_COMMANDS"):
+DO_SERVER_COMMANDS = False
 
 
 def contains(inseq, subseq):
