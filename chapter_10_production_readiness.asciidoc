@@ -1,5 +1,14 @@
 [[chapter_10_production_readiness]]
-== Making our App Production-Ready
+== Making Our App Production-Ready
+
+.A Note for Early Release Readers
+****
+With Early Release ebooks, you get books in their earliest form—the author's raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.
+
+This will be the 10th chapter of the final book. The GitHub repo is available at https://github.com/hjwp/book-example.
+
+If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the author at obeythetestinggoat@gmail.com.
+****
 
 Our container is working fine but it's not production-ready.
 Let's try to get it there, using the tests to keep us safe.
@@ -11,21 +20,18 @@ trying to move from working state to working state,
 and using the FTs to detect any regressions.
 
 
-.🚧 Warning, chapter under construction 🚧
-*******************************************************************************
+.Warning, chapter under construction
+****
 As part of my work on the third edition of the book,
 I'm making big changes to the deployment chapters.
 This chapter is still very fresh, but the content is all there,
 so you should be able to follow along.
 
-But as always I really, really need fedback.
+But as always I really, really need feedback.
 So please hit me up at obeythetestinggoat@gmail.com, or via
 https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues[GitHub Issues]
 and Pull Requests.
-
-I hope you enjoy the new version!
-
-*******************************************************************************
+****
 
 === What We Need to Do
 
@@ -45,7 +51,9 @@ and as we'll see, other things will come up.
 
 Let's go through and see if we can fix things one by one.
 
-
+// SEBASTIAN: How about linking to Django's documentation
+//      https://docs.djangoproject.com/en/5.0/howto/deployment/
+//      somewhere later in the chapter for curious readers?
 
 === Switching to Gunicorn
 
@@ -57,29 +65,33 @@ an ORM, all sorts of middleware, the admin site...
 "What else do you want, a pony?" Well, Gunicorn stands for "Green Unicorn",
 which I guess is what you'd want next if you already had a pony...
 
-//001
-
-[subs="specialcharacters,quotes"]
-----
-$ *pip install gunicorn*
-Collecting gunicorn
-[...]
-Successfully installed gunicorn-21.2.0
-$ *pip freeze | grep -i gunicorn== >> requirements.txt*
-----
-
-Gunicorn will need to know a path to a WSGI server,
-which is usually a function called `application`.
-Django provides one in 'superlists/wsgi.py':
+We'll need to first install Gunicorn into our container,
+and then use it instead of `runserver`:
 
 [role="sourcecode"]
-.Dockerfile (ch10l002)
+.Dockerfile (ch10l001)
 ====
-[source,Dockerfile]
+[source,dockerfile]
 ----
-CMD gunicorn --bind :8888 superlists.wsgi:application
+[...]
+RUN pip install "django<5" gunicorn  <1>
+
+COPY src /src
+
+WORKDIR /src
+
+CMD gunicorn --bind :8888 superlists.wsgi:application  <2>
 ----
 ====
+
+<1> Installation is a standard pip install.
+
+<2> Gunicorn has its own command line, `gunicorn`.
+  It needs to know a path to a WSGI server,
+  which is usually a function called `application`.
+  Django provides one in _superlists/wsgi.py_.
+
+// TODO; this is a good place to switch to using array syntax for CMD maybe?
 
 As in the previous chapter, we can use the `docker build && docker run`
 pattern to try out our changes by rebuilding and rerunning our container:
@@ -88,7 +100,7 @@ pattern to try out our changes by rebuilding and rerunning our container:
 ----
 $ *docker build -t superlists . && docker run \
   -p 8888:8888 \
-  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \ 
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
   -it superlists*
 ----
 
@@ -102,7 +114,8 @@ but the test for layout + styling fails. Good job, tests!
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
 [...]
 AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
 FAILED (failures=1)
@@ -138,19 +151,10 @@ Believe it or not, this pun didn't actually hit me until I was rewriting this ch
 For 10 years it was right under my nose. I think that makes it funnier actually.]
 files from Python.
 
-Let's install it first:
-
-
-[subs="specialcharacters,quotes"]
-----
-$ *pip install whitenoise*
-$ *pip freeze | grep -i whitenoise== >> requirements.txt*
-----
-
-Then we tell Django to enable it:
+This is how we tell Django to enable it, in _settings.py_:
 
 [role="sourcecode"]
-.src/superlists/settings.py (ch10l003)
+.src/superlists/settings.py (ch10l002)
 ====
 [source,python]
 ----
@@ -163,13 +167,38 @@ MIDDLEWARE = [
 ----
 ====
 
+And then we need to add it to our pip installs in the Dockerfile:
+
+.Dockerfile (ch10l003)
+====
+[source,dockerfile]
+----
+RUN pip install "django<5" gunicorn whitenoise
+----
+====
+
+This manual list of pip installs is getting a little fiddly!
+We'll come back to that in a moment.
+First let's rebuild and try re-running our FTs:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+  -it superlists*
+----
+
 And if you take another manual look at your site, things should look much healthier.
 Let's rerun our FTs to confirm:
+
+// JAN: That doesn't work until you install whitenoise to venv on local machine
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests --failfast*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
 [...]
 
 ...
@@ -179,13 +208,172 @@ Ran 3 tests in 10.718s
 OK
 ----
 
-Phew.  Let's commit that
+Phew.  Let's commit that:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git commit -am"Switch to Gunicorn and Whitenoise"*
 ----
 
+
+
+=== Using requirements.txt
+
+Let's deal with that fiddly list of pip installs.
+
+To reproduce our local virtualenv,
+rather than just manually pip installing things
+one by one, and having to remember to sync things
+between local dev and docker,
+we can "save" the list of packages we're using
+by creating a _requirements.txt_ file.footnote:[
+There are many other dependency management tools these days
+so requirements.txt is not the only way to do it,
+although it is one of the oldest and best established.
+As you continue your Python adventures
+I'm sure you'll come across many others.]
+
+
+The `pip freeze` command will show us everything that's installed in our virtualenv at the moment:
+
+// JAN: This is true only if one installs the libraries locally. So far when following the book we installed them only inside Docker image
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip freeze*
+asgiref==3.8.1
+attrs==23.2.0
+certifi==2024.2.2
+django==4.2.11
+gunicorn==21.2.0
+h11==0.14.0
+idna==3.6
+outcome==1.3.0.post0
+packaging==24.0
+pysocks==1.7.1
+selenium==4.18.1
+sniffio==1.3.1
+sortedcontainers==2.4.0
+sqlparse==0.4.4
+trio==0.25.0
+trio-websocket==0.11.1
+typing-extensions==4.10.0
+urllib3==2.2.1
+whitenoise==6.6.0
+wsproto==1.2.0
+----
+
+That shows _all_ the packages in our virtualenv,
+along with their version numbers.
+Let's pull out just the "top-level" dependencies,
+Django, Gunicorn and Whitenoise:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip freeze | grep -i django*
+Django==4.2.7
+
+$ *pip freeze | grep -i django >> requirements.txt*
+$ *pip freeze | grep -i gunicorn >> requirements.txt*
+$ *pip freeze | grep -i whitenoise >> requirements.txt*
+----
+
+That should give us a requirements.txt file that looks like this:
+
+
+[role="sourcecode"]
+.requirements.txt (ch10l004)
+====
+[source,python]
+----
+django==4.2.11
+gunicorn==21.2.0
+whitenoise==6.6.0
+----
+====
+
+
+That's a good first cut, let's commit it:
+
+// SEBASTIAN I am not very fond of freezing just "top-level" dependencies of the project,
+// . This is not guaranteeing the reproducible builds and I failed to build & deploy because of that more than once.
+// But I understand it's a trade-off so the reader does get bogged down.
+// TODO: add a note about this and a link to some more reading
+
+----
+$ *git add requirements.txt*
+$ *git commit -m "Add a requirements.txt with Django, gunicorn and whitenoise"*
+----
+
+You may be wondering why we didn't add our other dependency,
+Selenium, to our requirements,
+or why we didn't just add _all_ the dependencies,
+including the "transitive" ones
+(eg, Django has its own dependencies like `asgiref` and `sqlparse` etc).
+
+As always, I have to gloss over some nuance and tradeoffs,
+but the short answer is first, Selenium is only a dependency for the tests,
+not the application code;
+we're never going to run the tests directly on our production servers.
+As to transitive dependencies, they're fiddly to manage without bringing
+in more tools, and I didn't want to do that for this book.footnote:[
+When you have a moment, you might want to do some further reading
+on "lockfiles", pyproject.toml, hard pinning vs soft pining,
+and immediate vs transitive dependencies.  If I absolutely _had_
+to recommend a python dependency management tool,
+it would be https://github.com/jazzband/pip-tools[pip-tools],
+which is a fairly minimal one.]
+
+
+TIP: Itamar Turner-Traurig has a great guide to
+    https://pythonspeed.com/docker/[Docker Packaging for Python Developers],
+    which I cannot recommend highly enough.  Read that before you're too much older.
+
+
+Now let's see how we use that requirements file in our Dockerfile:
+
+.Dockerfile (ch09l005)
+====
+[source,dockerfile]
+----
+FROM python:slim
+
+RUN python -m venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+COPY requirements.txt requirements.txt  <1>
+RUN pip install -r requirements.txt  <2>
+
+COPY src /src
+
+WORKDIR /src
+
+CMD python manage.py runserver
+----
+====
+
+<3> We COPY our requirements file in, just like the src folder.
+
+<4> Now instead of just installing Django, we install all our dependencies
+  by pointing pip at the _requirements.txt_ using the `-r` flag.
+  Notice the `-r`.
+
+TIP: Forgetting the `-r` and running `pip install requirements.txt`
+    is such a common error, that I recommend you do it _right now_
+    and get familiar with the error message
+    (which is thankfully much more helpful than it used to be).
+    It's a mistake I still make, _all the time_.
+
+Let's do a build & run & test to check everything still works:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+  -it superlists*
+----
 
 === Using Environment Variables to Adjust Settings for Production
 
@@ -215,12 +403,13 @@ See http://www.clearlytech.com/2014/01/04/12-factor-apps-plain-english/[
 Another common way of handling this
 is to have different versions of _settings.py_ for dev and prod.
 That can work fine too, but it can get confusing to manage.
-Environment variables also have the advantage of working for non-Django stuff too...
+Environment variables also have the advantage of working for non-Django stuff too.
 ]
 
 
 ==== Setting DEBUG=True and SECRET_KEY
 
+//RITA: What do you mean by "this"? Please add a word or two for context.
 There's lots of ways you might do this.
 Here's what I propose; it may seem a little fiddly,
 but I'll provide a little justification for each choice.
@@ -228,7 +417,7 @@ Let them be an inspiration (but not a template) for your own choices!
 
 
 [role="sourcecode"]
-.superlists/settings.py (ch10l005)
+.superlists/settings.py (ch10l006)
 ====
 [source,python]
 ----
@@ -268,7 +457,7 @@ TIP: Better to fail hard than allow a typo in an environment variable name to
 Now let's set that environment variable in our Dockerfile using then `ENV` directive:
 
 [role="sourcecode"]
-.Dockerfile (ch10l006)
+.Dockerfile (ch10l007)
 ====
 [source,dockerfile]
 ----
@@ -287,7 +476,7 @@ And try it out...
 ----
 $ pass:specialcharacters,quotes[*docker build -t superlists . && docker run \
   -p 8888:8888 \
-  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \ 
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
   -it superlists*]
 
 [...]
@@ -298,7 +487,7 @@ $ pass:specialcharacters,quotes[*docker build -t superlists . && docker run \
 KeyError: 'DJANGO_SECRET_KEY'
 ----
 
-Ooops, and I forgot to set said secret key env var,
+Oops. I forgot to set said secret key env var,
 mere seconds after having dreamt it up!
 
 
@@ -313,7 +502,7 @@ For now, we can set it at the command line using the `-e` flag for `docker run`:
 ----
 $ *docker build -t superlists . && docker run \
   -p 8888:8888 \
-  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \ 
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
   -e DJANGO_SECRET_KEY=sekrit \
   -it superlists*
 ----
@@ -323,7 +512,8 @@ With that running, we can use our FT again to see if we're back to a working sta
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 ./manage.py test functional_tests --failfast*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
 [...]
 AssertionError: 'To-Do' not found in 'Bad Request (400)'
 ----
@@ -332,7 +522,7 @@ AssertionError: 'To-Do' not found in 'Bad Request (400)'
 
 ==== ALLOWED_HOSTS is Required When Debug Mode is Turned Off
 
-Not quite!  Let's take a look manually: <<django-400-error>>.
+It's not quite working yet!  Let's take a look manually: <<django-400-error>>.
 
 [[django-400-error]]
 .An ugly 400 error
@@ -374,7 +564,7 @@ Let's use another environment variable for that:
 
 
 [role="sourcecode"]
-.superlists/settings.py (ch10l007)
+.superlists/settings.py (ch10l008)
 ====
 [source,python]
 ----
@@ -390,7 +580,7 @@ else:
 ====
 
 This is a setting that we want to change,
-depending on whether our docker image is running locally,
+depending on whether our Docker image is running locally,
 or on a server, so we'll use the `-e` flag again:
 
 
@@ -398,7 +588,7 @@ or on a server, so we'll use the `-e` flag again:
 ----
 $ *docker build -t superlists . && docker run \
     -p 8888:8888 \
-    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \ 
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
     -e DJANGO_SECRET_KEY=sekrit \
     -e DJANGO_ALLOWED_HOST=localhost \
     -it superlists*
@@ -408,12 +598,13 @@ $ *docker build -t superlists . && docker run \
 ==== Collectstatic is Required when Debug is Turned Off
 
 An FT run (or just looking at the site) reveals that we've had a regression
-in our static files.
+in our static files:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
 [...]
 AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
 FAILED (failures=1)
@@ -428,7 +619,7 @@ and instead we need to run `collectstatic`:
 
 
 [role="sourcecode"]
-.Dockerfile (ch10l008)
+.Dockerfile (ch10l009)
 ====
 [source,dockerfile]
 ----
@@ -441,20 +632,50 @@ CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
 ====
 
+// TODO: gitignore src/static
+
 Well, it was fiddly, but that should get us to passing tests!
 
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
 [...]
 OK
 ----
 
-We have a container that we're ready to ship to production!
+We're nearly ready to ship to production!
 
-Find out how in the next exciting installment...
+Let's quickly adjust our gitignore, since the static folder is in a new place:
+
+//0010
+[subs="specialcharacters,quotes"]
+----
+$ *git status*
+# should show dockerfile and untracked src/static folder
+$ *echo src/static >> .gitignore*
+$ *git status*
+# should now be clean
+$ *git commit -am "Add collectstatic to dockerfile, and new location to gitignore"*
+----
+
+
+=== Switching to a nonroot user
+
+TODO: this is definitely a good idea for security, needs writing up.
+
+Dockerfile should gain some lines a bit like this:
+
+.Dockerfile (ch10l0XX)
+====
+[source,dockerfile]
+----
+RUN addgroup --system nonroot && adduser --system --group nonroot
+
+USER nonroot
+----
 
 
 
@@ -473,17 +694,9 @@ To test this, we'll provoke a deliberate error by deleting the database file.
 
 [subs="specialcharacters,quotes"]
 ----
-$ *rm src/db.sqlite3 && touch src/db.sqlite3*
+$ *rm src/db.sqlite3*
+$ *touch src/db.sqlite3*  # otherwise the --mount type=bind will complain
 ----
-
-TIP: If you use the `-v` option for docker run to mount a nonexistent path,
-    Docker will create a new folder at that path.
-    This is why we do the `touch db.sqlite3`
-    so that we have a placeholder empty file where the datbase should be.
-    Otherwise we get a folder instead of an empty file and django gets even more confused;
-    if you ever see an error saying `chown: permission denied`, that's probably it.
-    Do a `rm -rf src/db.sqlite3 && touch src/db.sqlite3` to fix it.
-
 
 
 Now if you run the tests, you'll see they fail;
@@ -491,7 +704,8 @@ Now if you run the tests, you'll see they fail;
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests --failfast*]
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
 [...]
 
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
@@ -540,7 +754,7 @@ which just prints everything to the console (ie standard out).
 
 
 [role="sourcecode"]
-.src/superlists/settings.py (ch10l009)
+.src/superlists/settings.py (ch10l011)
 ====
 [source,python]
 ----
@@ -577,7 +791,7 @@ Traceback (most recent call last):
 django.db.utils.OperationalError: no such table: lists_list
 ----
 
-Re-create the datase with `./src/manage.py migrate` and we'll be back to a working state.
+Re-create the database with `./src/manage.py migrate` and we'll be back to a working state.
 
 Don't forget to commit our changes to _settings.py_,
 and I think we can call it job done!
@@ -585,6 +799,8 @@ We've at least touched on many or most of the things you might need to think abo
 when considering production-readiness,
 we've worked in small steps and used our tests all the way along,
 and we're now ready to deploy our container to a real server!
+
+Find out how, in our next exciting installment...
 
 
 [role="pagebreak-before less_space"]
