@@ -16,23 +16,24 @@ class Chapter9Test(ChapterTest):
         self.assertEqual(self.listings[0].type, "code listing with git ref")
         self.assertEqual(self.listings[1].type, "test")
 
+        # skips
+        self.skip_with_check(20, "naming to docker.io/library/superlists")
+
         self.start_with_checkout()
+        # simulate having a db.sqlite3 and a static folder from previous chaps
+        self.sourcetree.run_command("./manage.py migrate --noinput")
+        self.sourcetree.run_command("./manage.py collectstatic --noinput")
 
         vm_restore = None  # 'MANUAL_1'
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
-            # self.pos = 8
-            # self.sourcetree.run_command('git checkout {0}'.format(
-            #     self.sourcetree.get_commit_spec('ch08l001')
-            # ))
-            self.pos = 43
-            self.current_server_cd = "~/sites/$SITENAME"
+            self.pos = 8
             self.sourcetree.run_command(
-                "git checkout {0}".format(self.sourcetree.get_commit_spec("ch08l004"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l001"))
             )
-            vm_restore = "MANUAL_2"
+            # vm_restore = "MANUAL_2"
 
         if DO_SERVER_COMMANDS:
             if vm_restore:
