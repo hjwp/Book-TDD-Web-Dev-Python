@@ -30,7 +30,7 @@ and no passphrase.
 
 Later on, you'll want to re-create a key with a passphrase for extra security,
 but that means you have to figure out how to save that passphrase in such a way
-that Fabric won't ask for it later, and I don't have time to write instructions
+that Ansible won't ask for it later, and I don't have time to write instructions
 for that now!
 
 Make a note of your "public key"
