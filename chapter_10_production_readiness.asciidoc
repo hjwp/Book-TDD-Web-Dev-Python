@@ -41,13 +41,24 @@ so that people can access it using a regular URL.
 
 Perhaps more importantly, we shouldn't use the Django dev server for production;
 it's not designed for real-life workloads.
-Instead, we'll use the popular Gunicorn Python/WSGI server.
+Instead, we'll use the popular Gunicorn Python WSGI HTTP server.
+
+NOTE: Django's `runserver` is built and optimised for local development and debugging.
+  It's designed to handle one user at a time,
+  it handles automatic reloading upon saving of the source code,
+  but it isn't optimised for performance,
+  nor has it been hardened against security vulnerabilities.
 
 ((("DEBUG settings")))
 In addition, several options in _settings.py_ are currently unacceptable.
-`DEBUG=True`, is strongly recommended against for production,
+`DEBUG=True`, is strongly discouraged for production,
 we'll want to set a unique `SECRET_KEY`,
 and, as we'll see, other things will come up.
+
+NOTE: DEBUG=True is considered a security risk,
+  because the django debug page will display sensitive information like
+  the values of variables, and most of the settings in settings.py.
+
 
 Let's go through and see if we can fix things one by one.
 
@@ -68,6 +79,47 @@ which I guess is what you'd want next if you already had a pony...
 We'll need to first install Gunicorn into our container,
 and then use it instead of `runserver`:
 
+//001
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip install gunicorn*
+Collecting gunicorn
+[...]
+Successfully installed gunicorn-21.2.0
+----
+
+[[what-is-wsgi]]
+.What is WSGI?
+*******************************************************************************
+Gunicorn is a WSGI (usually pronounced as whizgee) HTTP server.
+Let's go through what this means:
+
+* An HTTP server handles incoming HTTP requests and sends back responses to the
+  clients.
+
+* WSGI, the Web Server Gateway Interface, is a set of rules defining how an HTTP
+  server (which can be Gunicorn itself, or Nginx, Apache, etc) and a Python
+  program should communicate.
+
+So, Gunicorn is an HTTP server that knows and uses the WSGI to "talk" to Python programs.
+And these Python programs are likewise expected to work in a specific way.
+You can check out a simple example https://gunicorn.org/[on Gunicorn's website] under "Installation".
+
+https://peps.python.org/pep-3333[If you are interested, you can read the entire
+specification here].
+
+// CSANAD:  I felt like some explanation regarding what Gunicorn and WSGI are,
+//          was missing.
+
+*******************************************************************************
+
+
+Gunicorn will need to know a path to a "WSGI server" (see <<what-is-wsgi>>),
+which is usually a function called `application`.
+Django provides one in 'superlists/wsgi.py'.
+Let's change the command our image runs:
+
 [role="sourcecode"]
 .Dockerfile (ch10l001)
 ====
@@ -83,6 +135,9 @@ WORKDIR /src
 CMD gunicorn --bind :8888 superlists.wsgi:application  <2>
 ----
 ====
+// CSANAD:  shouldn't we try it out before adding this to the Dockerfile?
+//          `cd src` and then
+// `gunicorn --bind :8888 superlists.wsgi:application`
 
 <1> Installation is a standard pip install.
 
@@ -172,6 +227,11 @@ MIDDLEWARE = [
 
 ----
 ====
+// CSANAD:  I would add a few thoughts on the significance of the order of
+//          middlewares.
+
+And if you take another manual look at your site after rebuilding the
+container, things should look much healthier.
 
 And then we need to add it to our pip installs in the Dockerfile:
 
@@ -290,7 +350,7 @@ Django, Gunicorn and Whitenoise:
 [subs="specialcharacters,quotes"]
 ----
 $ *pip freeze | grep -i django*
-Django==4.2.7
+Django==4.2.11
 
 $ *pip freeze | grep -i django >> requirements.txt*
 $ *pip freeze | grep -i gunicorn >> requirements.txt*
@@ -351,7 +411,7 @@ TIP: Itamar Turner-Traurig has a great guide to
 
 Now let's see how we use that requirements file in our Dockerfile:
 
-.Dockerfile (ch09l005)
+.Dockerfile (ch10l005)
 ====
 [source,dockerfile]
 ----
@@ -371,9 +431,9 @@ CMD python manage.py runserver
 ----
 ====
 
-<3> We COPY our requirements file in, just like the src folder.
+<1> We COPY our requirements file in, just like the src folder.
 
-<4> Now instead of just installing Django, we install all our dependencies
+<2> Now instead of just installing Django, we install all our dependencies
   by pointing pip at the _requirements.txt_ using the `-r` flag.
   Notice the `-r`.
 
@@ -437,7 +497,8 @@ Environment variables also have the advantage of working for non-Django stuff to
 ==== Setting DEBUG=True and SECRET_KEY
 
 //RITA: What do you mean by "this"? Please add a word or two for context.
-There's lots of ways you might do this.
+There are lots of ways you might do this.
+
 Here's what I propose; it may seem a little fiddly,
 but I'll provide a little justification for each choice.
 Let them be an inspiration (but not a template) for your own choices!
@@ -459,6 +520,10 @@ else:
     SECRET_KEY = "insecure-key-for-dev"
 ----
 ====
+// CSANAD: I think variable names like "something_false" are confusing, since
+//         we need to set something to true so that they mean false.
+// How about `DJANGO_ENV_PRODUCTION` or something similar?
+// TODO yes i like this
 
 <1> We say we'll use an environment variable called `DJANGO_DEBUG_FALSE`
     to switch debug mode off, and in effect require production settings
@@ -478,6 +543,14 @@ against accidentally forgetting to set one.
 
 TIP: Better to fail hard than allow a typo in an environment variable name to
     leave you running with insecure settings.
+
+// CSANAD: I think it would worth pointing out the development environment
+//         does not use Docker, launching the dev server should be done from
+// the reader's host system. I think this isn't immediately obvious, e.g. I
+// thought all along that from now on we would only run the server from Docker.
+// If we end up making a TIP or similar about it, I think we should also mention
+// in a development environment relying on containerization, programmers usually
+// mount the whole /src minimizing the time-consuming rebuilding of their images.
 
 ==== Setting environment variables inside the Dockerfile
 
@@ -555,6 +628,9 @@ It's not quite working yet!  Let's take a look manually: <<django-400-error>>.
 .An ugly 400 error
 image::images/twp2_1002.png["An unfriendly page showing 400 Bad Request"]
 
+// DAVID: noticed in passing that the screenshots in this chapter are from the hosted version
+// which isn't covered until next chapter.
+
 We've set our two environment variables but doing so seems to have broken things.
 But once again, by running our FTs frequently,
 we're able to identify the problem early,
@@ -627,6 +703,10 @@ $ *docker build -t superlists . && docker run \
 An FT run (or just looking at the site) reveals that we've had a regression
 in our static files:
 
+// CSANAD: worth mentioning there was another clue. in the logs, once Gunicorn
+//         starts running you can see:
+// `UserWarning: No directory at: /src/static/`
+
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
@@ -658,6 +738,7 @@ ENV DJANGO_DEBUG_FALSE=1
 CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
 ====
+// CSANAD: I think it would be important to use a non-privileged user in Docker
 
 // DAVID: It would be nice to explain the difference between RUN and CMD.
 
@@ -698,6 +779,12 @@ $ *git status*
 $ *git commit -am "Add collectstatic to dockerfile, and new location to gitignore"*
 ----
 
+// CSANAD: now would be a good time to check our changes and notice git marked
+//         src/static as unstaged, so we should update .gitignore accordingly:
+// from `static` to `src/static`.
+// Or we could add this step to Chapter 09 at "Move all our code into a src
+// folder"
+
 
 === Switching to a nonroot user
 
@@ -713,7 +800,6 @@ RUN addgroup --system nonroot && adduser --system --group nonroot
 
 USER nonroot
 ----
-
 
 
 === Configuring logging
@@ -777,7 +863,7 @@ but it's more of shock to see that they are no longer appearing in the terminal 
 If you're like me you might find yourself wondering if we really _did_ see them earlier
 and starting to doubt your own sanity.
 But the explanation is that Django's
-https://docs.djangoproject.com/en/5.0/ref/logging/#default-logging-configuration[default logging configuration]
+https://docs.djangoproject.com/en/4.2/ref/logging/#default-logging-configuration[default logging configuration]
 changes when DEBUG is turned off:
 
 This means we need to interact with the standard library's `logging` module,
@@ -790,7 +876,7 @@ but sometimes you just wanna say "just print stuff to stdout pls",
 and you wish that configuring the simplest thing was a little easier.].
 
 Here's pretty much the simplest possible logging config
-which just prints everything to the console (ie standard out).
+which just prints everything to the console (i.e. standard out).
 
 
 [role="sourcecode"]
@@ -832,7 +918,7 @@ django.db.utils.OperationalError: no such table: lists_list
 
 Re-create the database with `./src/manage.py migrate` and we'll be back to a working state.
 
-Don't forget to commit our changes to _settings.py_,
+Don't forget to commit our changes to _settings.py_ and _Dockerfile_,
 and I think we can call it job done!
 We've at least touched on many or most of the things you might need to think about
 when considering production-readiness,
