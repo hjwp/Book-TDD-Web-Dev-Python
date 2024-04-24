@@ -72,7 +72,10 @@ need for a password.
 useradd -m -s /bin/bash elspeth # add user named elspeth 
 # -m creates a home folder, -s sets elspeth to use bash by default
 usermod -a -G sudo elspeth # add elspeth to the sudoers group
-passwd elspeth # set password for elspeth
+# allow elspeth to sudo without retyping password
+echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
+ # set password for elspeth (you'll need to type one in)
+passwd elspeth
 su - elspeth # switch-user to being elspeth!
 ```
 

@@ -37,6 +37,35 @@ NOTE: Why not ping me a note once your site is live on the web,
     It always gives me a warm and fuzzy feeling...
     Email me at obeythetestinggoat@gmail.com.
 
+////
+DAVID overall notes
+
+The main challenge is that I found that when I ran into problems I lacked the
+mental model to troubleshoot - it's possible that others who don't have access
+to Harry(TM) will give up. I think talking through what Ansible is doing, maybe
+even a diagram at the beginning of the chapter to show what we're aiming for?
+In particular, it's difficult to understand where the Ansible error logs are
+coming from (i.e. local, server, container...)
+
+I also think we're missing some stuff at the end about how all this might look
+as a development workflow. Maybe talk about setting up scripts (so we don't
+have to remember the ansible command?) And what about releasing to production?
+It doesn't need much, it just feels unfinished to me.
+
+A few small things:
+
+*  I think you should make more of the fact that our functional tests can be
+  run against a real website hosted elsewhere. The fact that we can do that
+  was not obvious to me when we wrote those tests. Worth talking about a bit
+  more?
+
+* Shouldn't we commit our changes to Git at some point, as per the
+  other chapters?
+
+* Will we be returning to this again in the book? I'd like to
+  know whether I can destroy my Digital Ocean droplet yet, don't want to get
+  billed needlessly.
+////
 
 
 .🚧 Warning, chapter under construction 🚧
@@ -680,6 +709,16 @@ KeyError: 'DJANGO_SECRET_KEY'
 Whoops, we need to set those environment variables on the server too.
 
 
+NOTE: If you see an error saying "Error connecting: Error while fetching server API version",
+    it may be because the Python Docker SDK can't find your docker daemon.
+    Try restarting Docker Desktop if you're on Windows or a Mac.
+    If you're not using the standard docker engine, with Colima for example,
+    you may need to set the `DOCKER_HOST` environment variable
+    or use a symlink to point to the right place.
+    See the
+    https://github.com/abiosoft/colima/blob/main/docs/FAQ.md#cannot-connect-to-the-docker-daemon-at-unixvarrundockersock-is-the-docker-daemon-running[Colima FAQ].
+
+
 === Using an env File to Store Our Environment Variables
 
 When we run our container manually locally, we can pass in environment variables with the `-e` flag.
@@ -745,7 +784,7 @@ And here's how we use it in the provisioning script:
         image: superlists
         state: started
         recreate: true
-        env_file: ~/superlists.env
+        env_file: ~/superlists.env  # <6>
 ----
 ====
 
@@ -763,7 +802,9 @@ And here's how we use it in the provisioning script:
 
 <5> This `lookup('password')` thing I copy-pasted from Stackoverflow.
     Come on there's no shame in that.
-    
+
+<6> Here's where Ansible tells Docker to use our env file when it runs our container.
+
 
 NOTE: Using an env file to store secrets is definitely better than committing
     it to version control, but it's maybe not the state of the art either.
@@ -862,12 +903,17 @@ selenium.common.exceptions.WebDriverException: Message: Reached error page:
 about:neterror?e=connectionFailure&u=http%3A//staging.ottg.co.uk/[...]
 ----
 
-// DAVID: I got selenium.common.exceptions.NoSuchElementException
-// On the server, I get 'Host not found'.
 
 That `neterror` makes me think it's another networking problem.
-Let's try `curl` locally:
 
+NOTE: If your domain provider puts up a temporary holding page,
+    you may get a 404 rather than a connection error at this point,
+    and the traceback might have NoSuchElementException instead.
+
+
+Let's try our standard debugging technique, of using `curl`
+both locally and then from inside the container on the server.
+First, on our own machine:
 
 [subs="specialcharacters,macros"]
 ----
@@ -877,9 +923,11 @@ curl: (7) Failed to connect to staging.ottg.co.uk port 80 after 25 ms: Couldn't
 connect to server
 ----
 
-// DAVID: I was able to connect, and got Host not found.
+NOTE: Similarly, depending on your domain/hosting provider,
+    you may see "Host not found" here instead.
 
-Now let's ssh in and try `curl` from the server itself:
+
+Now let's ssh in to our server and take a look at the docker logs:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -890,7 +938,7 @@ elspeth@server$ *docker logs superlists*
 [2024-02-28 22:14:43 +0000] [8] [INFO] Booting worker with pid: 8
 ----
 
-No errors in the logs...
+No errors there.  Let's try our `curl`:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -905,7 +953,7 @@ curl: (7) Failed to connect to localhost port 80 after 0 ms: Connection refused
 ----
 
 Hmm, `curl` fails on the server too.
-But all this talk of `port 80`, both locally and on the server, might be giving us a clue.
+But all this talk of `port 80`, both locally and on the server, might be giving us a clue!
 Let's check `docker ps`:
 
 [subs="specialcharacters,quotes"]
@@ -947,6 +995,7 @@ element: [id="id_list_table"]; [...]
 
 // DAVID: tests pass for me now! And I can create lists on the server...
 // Strange, I'm pretty sure I didn't run migrations.
+// TODO:  let's add an rm db.slqite3 inside the dockerfile maybe, to make sure this doesn't happen.
 
 === Mounting the database on the server and running migrations
 
@@ -981,7 +1030,7 @@ skipped=0    rescued=0    ignored=0
 ----
 
 // RITA: Please expand this intro sentence. Here's how to do what?
-Here's how 
+Here's how
 
 [role="sourcecode"]
 .infra/ansible-provision.yaml (ch11l007)
