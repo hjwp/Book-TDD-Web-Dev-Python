@@ -176,7 +176,7 @@ something else, but I won't be able to help you as much if you get stuck.
 ((("Linux servers")))
 If you've never started a Linux server before and you have absolutely no idea
 where to start, I wrote a
-https://github.com/hjwp/Book-TDD-Web-Dev-Python/blob/master/server-quickstart.md[very brief guide on GitHub].
+https://github.com/hjwp/Book-TDD-Web-Dev-Python/blob/main/server-quickstart.md[very brief guide on GitHub].
 
 
 NOTE: Some people get to this chapter, and are tempted to skip the domain bit,
@@ -209,7 +209,15 @@ without learning a good bit more about it.
 (One reason people choose to use a PaaS to host their code
 is that it means a slightly fewer security issues to worry about.)
 If you'd like a place to start, here's as good a place as any:
-https://plusbryan.com/my-first-5-minutes-on-a-server-or-essential-security-for-linux-servers[My first 5 minutes on a server].
+https://www.jamesonricks.com/re-post-my-first-5-minutes-on-a-server-or-essential-security-for-linux-servers/
+
+// CSANAD: I tried digging up something similar and this one seems to be based on
+// the "First Five Minutes on a Server":
+// https://blog.codelitt.com/my-first-10-minutes-on-a-server-primer-for-securing-ubuntu/
+//
+// I wanted to find something more community-maintained or more of a "standard"
+// knowledge-base, but both OWASP and the Cloud Security Alliance provide more
+// general and/or less hands-on writings.
 I can definitely recommend the eye-opening experience of installing
 fail2ban and watching its logfiles to see just how quickly it picks up on
 random drive-by attempts to brute force your SSH login.  The internet is a
@@ -252,6 +260,9 @@ At my registrar, the control screens looked a bit like <<registrar-control-scree
 [[registrar-control-screens]]
 .Domain setup
 image::images/gandi_add_dns_a_record.png["Registrar control screen for adding a DNS record"]
+
+// CSANAD: due to technical reasons, I cannot check on Digital Ocean whether this
+//         screenshot needs to be update. Please, someone else have a look!
 
 
 ((("A-Records")))
@@ -328,6 +339,9 @@ for.
 // DAVID: I didn't know if this was an example or a file to create.
 // I think it's the latter, it would be good to make that clear.
 
+// CSANAD: I would make it more obvious we created another directory for the
+//         ansible file.
+
 [role="sourcecode"]
     .infra/ansible-provision.yaml (ch11l001)
 ====
@@ -360,7 +374,7 @@ for.
   but the individual tasks themselves are quite declarative.
   Each one usually has a human-readable `name` attribute.
 
-<2> Each tasks uses an Ansible "module" to do its work.
+<2> Each task uses an Ansible "module" to do its work.
   This one uses the `builtin.apt` module which provides a wrapper
   around the `apt` Debian & Ubuntu package management tool.
 
@@ -384,6 +398,7 @@ ansible-playbook [core 2.16.3]
   config file = None
   [...]
 No config file found; using defaults
+BECOME password:
 Skipping callback 'default', as we already have a stdout callback.
 Skipping callback 'minimal', as we already have a stdout callback.
 Skipping callback 'oneline', as we already have a stdout callback.
@@ -422,6 +437,7 @@ PLAY RECAP ********************************************************************
 staging.ottg.co.uk         : ok=3    changed=2    unreachable=0    failed=0
 skipped=0    rescued=0    ignored=0
 ----
+
 // DAVID: rather than having to edit the username and domains each time,
 // what about getting the reader to set them as environment variables at the beginning of the chapter?
 
@@ -438,9 +454,18 @@ skipped=0    rescued=0    ignored=0
 // So not that clear how to troubleshoot.
 // (I did set up a sudo user on the server as per your github guide.)
 // Maybe giving a bit more explanation on what this command is doing would help.
+
 // UPDATE: got this working with `--ask-become-pass` - we discussed this in person.
 // But, as discussed, it is annoying to have to keep typing your password in when we could
 // authenticate with the ssh key. Could we change this?
+
+// CSANAD: without rootless docker or adding the server's user to the docker
+//         group, this requires a password for `sudo` on the server. I would add
+// a TIP or something similar to inform the reader it can be done with the `-K` flag:
+// ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -K -vv
+//
+// Even with the server's user added to `docker`, if there is a task where
+// `become: true` is set, we need to provide the password with the `-K`
 
 I don't know about you, but whenever I make a terminal spew out a stream
 of output, I like to make little _brrp brrp brrp_ noises, a bit like the
@@ -477,6 +502,8 @@ minutes ago             testcontainer
 elspeth@server:$ *docker logs testcontainer*
 hello world
 ----
+// CSANAD: we haven't set up rootless docker and haven't added the user to the
+//         `docker` group either, so `docker ps` would only run with sudo.
 
 // DAVID: Got
 // permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock
@@ -512,6 +539,7 @@ hosted by cloud providers like AWS.
 So your process of getting an image onto a server is usually
 
 * Push the image from your machine to the registry
+
 * Pull the image from the registry onto the server.
   Usually this step is implicit,
   in that you just specify the image name in the format registry-url/image-name:tag,
@@ -568,6 +596,20 @@ In Ansible config, it looks like this:
         recreate: true
 ----
 ====
+
+// CSANAD: I would add `update_cache: true` to the `Install docker` task back,
+//         it's a good practice to update the apt cache before installing.
+//
+// Also because of the `delegate_to` the reader may face permission errors if they
+// have not set up rootless docker or haven't added their user to the docker group
+// on their local (developer) system.
+// TASK [Export container image locally] ****[...]
+// task path: /path/to/goat-book/infra/ansible-provision.yaml:12
+// fatal: [192.168.122.23 -> 127.0.0.1]: FAILED! => {"changed": false, "msg": "Error connecting: Error while fetching server API version: ('Connection aborted.', PermissionError(13, 'Permission denied'))"}
+//
+// They may get away with just using `sudo docker` but `sudo ansible-playbook`
+// will not work.
+//
 
 <1> We export the docker image to a `.tar` file by using the `docker_image` module
   with the `archive_path` set to temp file, and setting the `delegate_to` attribute
@@ -627,6 +669,7 @@ false, "AttachStdout": true, "Cmd": ["gunicorn", "--bind", ":8888",
 "superlists.wsgi:application"], "Domainname": "", "Entrypoint": null, "Env":
 [...]
 ----
+// CSANAD: earlier we also added the `PLAY RECAP` line.
 
 // DAVID: I got error during the 'Export container image locally' step.
 // FAILED! => {"changed": false, "msg": "Error connecting: Error while fetching server API version:
@@ -685,12 +728,9 @@ CONTAINER ID   IMAGE     COMMAND              CREATED      STATUS
 PORTS     NAMES
 3a2e600fbe77   busybox   "echo hello world"   2 days ago   Exited (0) 10
 minutes ago             testcontainer
+129e36a42190   superlists   "/bin/sh -c \'gunicor…"   About a minute ago   Exited (3) About a minute ago             superlists
 
-// DAVID: I can also see superlists listed (though exited).
-// In any event, feels like needs a bit more explanation of
-// your thought process?
-
-elspeth@server:$ *docker logs testcontainer*
+elspeth@server:$ *docker logs superlists*
 [2024-02-26 22:19:15 +0000] [1] [INFO] Starting gunicorn 21.2.0
 [2024-02-26 22:19:15 +0000] [1] [INFO] Listening at: http://0.0.0.0:8888 (1)
 [2024-02-26 22:19:15 +0000] [1] [INFO] Using worker: sync
@@ -705,6 +745,10 @@ KeyError: 'DJANGO_SECRET_KEY'
 [2024-02-26 22:19:15 +0000] [1] [ERROR] Shutting down: Master
 [2024-02-26 22:19:15 +0000] [1] [ERROR] Reason: Worker failed to boot.
 ----
+
+// DAVID: (re docker ps) I can also see superlists listed (though exited).
+// In any event, feels like needs a bit more explanation of
+// your thought process?
 
 Whoops, we need to set those environment variables on the server too.
 
@@ -726,8 +770,8 @@ But we don't want to hard-code secrets like SECRET_KEY into our Ansible files
 and commit them to our repo!
 
 Instead, we can use Ansible to automate the creation of a secret key,
-and then save it to a file on the server, where it _will_ be _relatively_ secure
-(which is better than saving it to version control and pushing it to GitHub in any case!).
+and then save it to a file on the server, where it _ill be _relatively_ secure
+(better than saving it to version control and pushing it to GitHub in any case!)
 
 We can use a so-called "env file" to store environment variables.
 Env files are essentially a list of key-value pairs using shell syntax,
@@ -754,7 +798,7 @@ Here's what our template for the env file will look like:
 ----
 DJANGO_DEBUG_FALSE=1
 DJANGO_SECRET_KEY={{ secret_key }}
-DJANGO_ALLOWED_HOST={{ host }}
+DJANGO_ALLOWED_HOSTS={{ host }}
 ----
 ====
 
@@ -789,10 +833,16 @@ And here's how we use it in the provisioning script:
 ====
 
 <1> We use `ansible.builtin.template` to specify the local template file to use (`src`),
-   and the destination (`dst`) on the server
+   and the destination (`dest`) on the server
 
 <2> `force: false` means we will only write the file once.
     So after the first time we generate our secret key, it won't change.
+// CSANAD: but it also means any change we make in the .env would not take
+//         effect until we manually delete the old superlists.env file from
+// the server.
+// We should mention this, because if the reader makes a mistake
+// in the env file, but then they find it, they won't be able to fix it unless
+// they realize this is why the values don't change. Guess how I learned that :)
 
 <3> The `vars` section defines the variables we'll inject into our template.
 
@@ -800,8 +850,11 @@ And here's how we use it in the provisioning script:
     This variable would actually be available in the template already,
     but I'm renaming it for clarity.
 
-<5> This `lookup('password')` thing I copy-pasted from Stackoverflow.
+<5> This `lookup('password')` thing I copy-pasted from StackOverflow.
     Come on there's no shame in that.
+// CSANAD: the source code may be a little too long. The (5) mark renders on
+//         the next line and it should be at the end of the line of the
+// `secret_key`.
 
 <6> Here's where Ansible tells Docker to use our env file when it runs our container.
 
@@ -809,24 +862,28 @@ And here's how we use it in the provisioning script:
 NOTE: Using an env file to store secrets is definitely better than committing
     it to version control, but it's maybe not the state of the art either.
     You'll probably come across more advanced alternatives from various cloud providers,
-    or Hashicorp's "vault" tool.
+    or Hashicorp's Vault tool.
 
 
 
-.Idempotency and Declarative Configuration
+.Idempotence and Declarative Configuration
 *******************************************************************************
 
 Infrastructure-as-code tools like Ansible aim to be "declarative",
 meaning that, as much as possible, you specify the desired state that you want,
 rather than specifying a series of steps to get there.
 
-This concept goes along with the idea of "idempotency",
-which is wanting to get the same result when you run something for the first time,
-vs running it again on later occasions.
+This concept goes along with the idea of "idempotence",
+which is is when you want a thing that has the same effect,
+whether it is run just once, or multiple times.
 
 An example is the `apt` module that we used to install docker.
 It doesn't crash if docker is already installed, and in fact,
 Ansible is smart enough to check first before trying to install anything.
+
+// CSANAD: I think adding a counter-example, something that isn't idempotent
+//         would be helpful. E.g. adding a list item to our superlist, because
+// it results in the list getting longer.
 
 There is some subtlety here, for example, our templated env file
 will only be written once, so the step is idempotent in the sense
@@ -897,7 +954,7 @@ We run our tests as usual and run into a new problem:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 [...]
 selenium.common.exceptions.WebDriverException: Message: Reached error page:
 about:neterror?e=connectionFailure&u=http%3A//staging.ottg.co.uk/[...]
@@ -922,6 +979,15 @@ $ pass:quotes[*curl -iv staging.ottg.co.uk*]
 curl: (7) Failed to connect to staging.ottg.co.uk port 80 after 25 ms: Couldn't
 connect to server
 ----
+// CSANAD: my curl output looks a little different, saying "Connection refused"
+//
+// $ curl -iv 192.168.122.23
+// *   Trying 192.168.122.23:80...
+// * connect to 192.168.122.23 port 80 failed: Connection refused
+// * Failed to connect to 192.168.122.23 port 80 after 2 ms: Connection refused
+// * Closing connection 0
+// curl: (7) Failed to connect to 192.168.122.23 port 80 after 2 ms: Connection refused
+
 
 NOTE: Similarly, depending on your domain/hosting provider,
     you may see "Host not found" here instead.
@@ -953,8 +1019,13 @@ curl: (7) Failed to connect to localhost port 80 after 0 ms: Connection refused
 ----
 
 Hmm, `curl` fails on the server too.
-But all this talk of `port 80`, both locally and on the server, might be giving us a clue!
+But all this talk of `port 80`, both locally and on the server, might be giving us a clue.
 Let's check `docker ps`:
+
+// CSANAD: Ackchually I'm not sure if it's supposed to work, since we set
+//         `inventory_hostname` for DJANGO_ALLOWED_HOSTS, so `localhost`
+// would not get through.
+
 
 [subs="specialcharacters,quotes"]
 ----
@@ -967,7 +1038,7 @@ minutes             superlists
 
 This might be ringing a bell now--we forgot the ports.
 
-We want to expose port 8888 inside the container as port 80 (the default web/http port)
+We want to map port 8888 inside the container as port 80 (the default web/http port)
 on the server:
 
 [role="sourcecode"]
@@ -986,6 +1057,8 @@ on the server:
 ----
 ====
 
+// CSANAD: I would remind the reader we need to run ansible-playbook again.
+
 That gets us to:
 
 ----
@@ -1002,6 +1075,17 @@ element: [id="id_list_table"]; [...]
 Taking a look at the logs from the server,
 we can see that the database is not initialised:
 
+// CSANAD: this is not the case for me. I had to ssh into the server, run bash
+//         in the container and remove the `db.sqlite3` manually to achieve this state.
+//
+// After checking the work again from Chapter 09 I think the reader would also find the db
+// there before the next step.
+//
+// We should put the db into a .dockerignore file so that it doesn't end up COPY -ed.
+//
+// I'm adding a comment to Chapter 09, "Mounting files inside the container" section.
+
+
 [subs="specialcharacters,quotes"]
 ----
 $ *ssh elspeth@server docker logs superlists*
@@ -1010,6 +1094,9 @@ django.db.utils.OperationalError: no such table: lists_list
 ----
 
 // DAVID: confused by this next para.
+
+// CSANAD: I think this `ansible-playbook` output was supposed to be shown after
+//         the changes in the `ansible-provision.yaml`
 
 [subs="specialcharacters,quotes"]
 ----
@@ -1030,7 +1117,12 @@ skipped=0    rescued=0    ignored=0
 ----
 
 // RITA: Please expand this intro sentence. Here's how to do what?
+
 Here's how
+
+// CSANAD: I think a little more explanation is missing from here. Maybe just
+//         a sentence, but just showing the changes and the output feels a
+// little incomplete.
 
 [role="sourcecode"]
 .infra/ansible-provision.yaml (ch11l007)
@@ -1042,6 +1134,11 @@ Here's how
         path: /home/elspeth/db.sqlite3
         state: touch  # <1>
 
+    - name: Run migration inside container
+      community.docker.docker_container_exec:  # <2>
+        container: superlists
+        command: ./manage.py migrate
+
     - name: Run container
       community.docker.docker_container:
         name: superlists
@@ -1049,30 +1146,23 @@ Here's how
         state: started
         recreate: true
         env_file: ~/superlists.env
-        mounts:  # <2>
+        mounts:  # <3>
           - type: bind
             source: /home/elspeth/db.sqlite3
             target: /src/db.sqlite3
         ports: 80:8888
-
-    - name: Run migration inside container
-      community.docker.docker_container_exec:  # <3>
-        container: superlists
-        command: ./manage.py migrate
-
-    - name: Run container
-      [...]
 ----
 ====
 
 <1> We use `file` with `state=touch` to make sure a placeholder file exists
     before we try and mount it in
 
-<2> Here is the `mounts` config, which works a lot like the `--mount` flag to
+<2> And we use the API for `docker exec` to run the migration command inside
+    the container.
+
+<3> Here is the `mounts` config, which works a lot like the `--mount` flag to
     `docker run`.
 
-<3> And we use the API for `docker exec` to run the migration command inside
-    the container.
 
 
 
@@ -1085,7 +1175,7 @@ Hooray
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 Found 3 test(s).
 [...]
 
@@ -1117,6 +1207,7 @@ should be run on the server, inside an SSH session:
 
 - You can check the Container logs using
   `docker logs superlists`.
+// CSANAD: we already used this a lot, so this isn't "more debugging tip"
 
 - You can get detailed info on the Container using
   `docker inspect superlists`.
@@ -1235,13 +1326,18 @@ and lots, lots more to learn besides.
 Here are some resources I used for inspiration:
 
 
-* http://12factor.net/[The 12-factor App] by the Heroku team
+* https://12factor.net/[The 12-factor App] by the Heroku team
 
 * http://hynek.me/talks/python-deployments[Solid Python Deployments for Everybody] by Hynek Schlawack
+// CSANAD: the author suggests another, slightly more up-to date (from 2018)
+//         talk now: https://hynek.me/talks/deploy-friendly/
 
 * The deployment chapter of
   https://www.feldroy.com/books/two-scoops-of-django-3-x[Two Scoops of Django]
   by Dan Greenfeld and Audrey Roy
+// CSANAD: this is 404 now. The book no longer seems to have a separate page
+//         instead, they list all their books at
+// https://www.feldroy.com/two-scoops-press
 
 
 
@@ -1259,10 +1355,13 @@ which are a fairly typical set of steps for deployment in general
 2. Installing *system dependencies* - in our case, it was mainly Docker,
   but inside the Docker image, we also had some system dependencies too,
   like Python itself.
+// CSANAD: this is not true in the current edition as we are just using the
+//         superlists image which is built upon the python:slim
 
 3. Getting our *application code* (or "artifacts") onto the server.
   In our case, since we're using Docker, the thing we needed to transfer was a Docker image.
   We used a manual process, but typically you'd push and pull to an image repository.
+// CSANAD: we actually automated this step in this edition
 
 4. Setting *environment variables and secrets*.
   Depending on how you need to vary them,
@@ -1285,23 +1384,25 @@ which are a fairly typical set of steps for deployment in general
   In our case, we stop the old container and start a new one.
   In more advanced setups, you might be trying to achieve zero-downtime deploys,
   and looking into techniques like red-green deployments.
+// CSANAD: we haven't mentioned the downtime so far
 
 // TODO is there a better word than "switching across"?
+// CSANAD: I can only think of "releasing" or "deploying"
 
 Every single aspect of deployment can and probably should be automated.
 Here are a couple of general principles to think about
 when implementing infrastructure-as-code:
 
-Idempotency::
+Idempotence::
   If your deployment script is deploying to existing servers,
   you need to design them so that they work against a fresh installation _and_ against
   a server that's already configured.
-  ((("idempotency")))
+  ((("idempotence")))
 
 Declarative::
   As much as possible, we want to try and specify _what_ we want the state to be on the server,
   rather than _how_ we should get there.
-  This goes hand-in-hand with the idea of idempotency above.
+  This goes hand-in-hand with the idea of idempotence above.
 
 
 *******************************************************************************
