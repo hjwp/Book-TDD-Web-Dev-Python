@@ -18,6 +18,7 @@ class Chapter9Test(ChapterTest):
 
         # skips
         self.skip_with_check(20, "naming to docker.io/library/superlists")
+        self.skip_with_check(27, "naming to docker.io/library/superlists")
 
         self.start_with_checkout()
         # simulate having a db.sqlite3 and a static folder from previous chaps
@@ -43,6 +44,12 @@ class Chapter9Test(ChapterTest):
                 subprocess.check_call(["vagrant", "up"])
 
         while self.pos < len(self.listings):
+            if self.pos == 47:
+                assert "curl -iv" in self.listings[self.pos]
+                print('sleeping')
+                # breakpoint()
+                import time; time.sleep(1)
+
             listing = self.listings[self.pos]
             print(self.pos, listing.type, repr(listing))
             self.recognise_listing_and_process_it()
