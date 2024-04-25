@@ -598,6 +598,15 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             self.assert_console_output_correct(actual + "1", expected + "a")
             self.assert_console_output_correct(" " + actual, " " + expected)
 
+    def test_ignores_docker_image_ids_and_creation_time(self):
+        actual = "superlists   latest    522824a399de   2 weeks ago     164MB"
+        expected = Output("superlists   latest    522824a399de   2 minutes ago   164MB")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+        with self.assertRaises(AssertionError):
+            bad_actual = "geoff   latest    522824a399de   2 weeks ago     164MB"
+            self.assert_console_output_correct(bad_actual, expected)
+
     def test_ignores_screenshot_times(self):
         actual = (
             "screenshotting to ...goat-book/functional_tests/screendumps/MyListsTes\n"
