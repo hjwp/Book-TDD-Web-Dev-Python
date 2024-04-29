@@ -362,8 +362,8 @@ class ChapterTest(unittest.TestCase):
             )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
-        print("checking expected output", expected)
-        print("against actual", actual)
+        print("checking expected output\n", expected)
+        print("against actual\n", actual)
         self.assertEqual(
             type(expected),
             Output,

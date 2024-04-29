@@ -31,8 +31,10 @@ class Chapter9Test(ChapterTest):
         skip = True
         if skip:
             self.pos = 8
+            # self.pos = 18
             self.sourcetree.run_command(
                 "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l001"))
+                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l003"))
             )
             # vm_restore = "MANUAL_2"
 
