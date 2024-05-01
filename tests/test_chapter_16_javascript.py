@@ -4,7 +4,7 @@ import unittest
 from book_tester import ChapterTest
 
 class Chapter14Test(ChapterTest):
-    chapter_name = 'chapter_javascript'
+    chapter_name = 'chapter_16_javascript'
     previous_chapter = 'chapter_15_advanced_forms'
 
     def test_listings_and_commands_and_output(self):
