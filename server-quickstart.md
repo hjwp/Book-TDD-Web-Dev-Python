@@ -113,7 +113,7 @@ is to map a domain name to your server's IP address.
 
 If you don't already own a domain name you can use (you don't
 have to use the *www.* subdomain, you could use *superlists.yourdomain.com*),
-then you'll need to get on from a "domain registrar".  There are loads
+then you'll need to get one from a "domain registrar".  There are loads
 out there, I quite like Gandi or the slightly-more-friendly (but
 no 2FA) 123-reg.
 
@@ -132,7 +132,7 @@ will let you control this using a setting called "TTL")*.
 
 
 And now you should be all set to follow the rest of the instructions in 
-the manual deployment chapter
+the manual deployment chapter.
 
 
 # Pull requests and suggestions accepted!
