@@ -1,0 +1,1172 @@
+[[chapter_08_prettification]]
+== Prettification: Layout and Styling, and What to Test About It
+
+.A Note for Early Release Readers
+****
+With Early Release ebooks, you get books in their earliest form—the author's raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.
+
+This will be the 8th chapter of the final book. The GitHub repo is available at https://github.com/hjwp/book-example.
+
+If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the author at obeythetestinggoat@gmail.com.
+****
+
+//RITA: You used the word "ugly" 3x on one page, which caught my attention and made me wonder if it sounds too judgy. Consider swapping "ugly" in the intro paragraph for "boring" or "plain." I'd go as far to suggest "meh" or "blah" to keep with your writing tone.
+
+((("layout", see="CSS; design and layout testing")))
+((("style", see="CSS; design and layout testing")))
+We're starting to think about releasing the first version of our site,
+but we're a bit embarrassed by how ugly it looks at the moment.
+In this chapter, we'll cover some of the basics of styling,
+including integrating an HTML/CSS framework called Bootstrap.
+We'll learn how static files work in Django,
+and what we need to do about testing them.
+
+
+
+=== Testing Layout and Style
+
+((("design and layout testing", "selecting test targets", id="DLTtargets08")))
+Our site is undeniably a bit unattractive at the moment
+(<<homepage-looking-ugly>>).
+
+//RITA: I recommend not using the word "crazy" as it can sometimes be interpreted as abelist. Consider rewording the footnote so that it comments on the silliness of the suggestion rather than on a person. "What? Delete the database? That's absurd. The local dev..."
+NOTE: If you spin up your dev server with `manage.py runserver`,
+    you may run into a database error, something like this:
+    "table lists_item has no column named list_id".
+    You need to update your local database
+    to reflect the changes we made in 'models.py'.
+    Use `manage.py migrate`.
+    If it gives you any grief about `IntegrityErrors`,
+    just delete the database filefootnote:[
+    What? Delete the database?  Are you crazy?  Not completely.
+    The local dev database often gets out of sync with its migrations as we
+    go back and forth in our development, and it doesn't have any important
+    data in it, so it's OK to blow it away now and again.  We'll be much more
+    careful once we have a "production" database on the server.  More on this
+    in <<data-migrations-appendix>>.]
+    and try again.
+
+// CSANAD:  I think this note is outdated. It isn't the column that is missing.
+// We do get a warning about two unap-
+// plied migrations. If we disregard it, and add an item to the list manually,
+// the following error shows up:
+//
+// django.db.utils.OperationalError: no such table: lists_list
+// [19/Oct/2023 20:11:12] "GET /lists/new HTTP1.1" 500 152912
+//
+//
+// However, attempting to run the manage.py migrate script results in an integ-
+// rity error, indeed.
+//
+//   Operations to perform:
+//     Apply all migrations: admin, auth, contenttypes, lists, sessions
+//   Running migrations:
+//     Applying lists.0003_list... OK
+//     Applying lists.0004_item_list...Traceback (most recent call last):
+//     File "/home/[...]/django/db/backends/utils.py", line 89, in _execute
+//       return self.cursor.execute(sql, params)
+//              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//   [...]
+//   sqlite3.IntegrityError: NOT NULL constraint failed: new__lists_item.list_id
+//
+//   [...]
+//   django.db.utils.IntegrityError: NOT NULL constraint failed: new__lists_item.list_id
+//
+//
+// ...so mentioning the removal of the database to fix it in a dev environment
+// is still a good idea.
+
+
+We can't be adding to
+http://grokcode.com/746/dear-python-why-are-you-so-ugly/[Python's reputation for being ugly],
+so let's do a tiny bit of polishing.
+Here are a few things we might want:
+
+// SEBASTIAN: Is this remark about Python being ugly still relevant?
+//      Linked article is from 2012, that's like 11 years from now.
+//      Also, the article shows screenshots from multiple pages,
+//      including Django documentation or learnpython.org
+//      Both look completely different today - not so ugly anymore
+
+* A nice large input field for adding new and existing lists
+* A large, attention-grabbing, centered box to put it in
+
+((("aesthetics, testing", seealso="design and layout testing")))
+How do we apply TDD to these things?
+Most people will tell you you shouldn't test aesthetics, and they're right.
+It's a bit like testing a constant, in that tests usually wouldn't add any value.
+
+//RITA: Again, I suggest swapping out the word "ugly" for an alternative like "boring" or "plain."
+
+[[homepage-looking-ugly]]
+.Our home page, looking a little ugly...
+image::images/ugly-homepage.png["Our home page, looking a little ugly."]
+
+
+((("static files", "challenges of")))
+((("CSS (Cascading Style Sheets)", "challenges of static files")))
+But we can test the essential _behaviour_ of our aesthetics,
+i.e., that we have any at all.
+All we want to do is reassure ourselves that things are working.
+For example, we're going to use Cascading Style Sheets (CSS) for our styling,
+and they are loaded as static files.
+Static files can be a bit tricky to configure
+(especially, as we'll see later, when you move off your own computer and onto a hosting site),
+so we'll want some kind of simple "smoke test" that the CSS has loaded.
+We don't have to test fonts and colours and every single pixel,
+but we can do a quick check that the main input box is aligned the way we want it on each page,
+and that will give us confidence that the rest of the styling for that page is probably loaded too.
+
+// DAVID: IMO this is not how code is likely to be tested in real life. I would expect something
+// more along the lines of using the test client to make sure there are no 404s when loading the
+// stylesheet... just my opinion.
+
+Let's add a new test method inside our functional test:
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch08l001)
+====
+[source,python]
+----
+class NewVisitorTest(LiveServerTestCase):
+    [...]
+
+
+    def test_layout_and_styling(self):
+        # Edith goes to the home page,
+        self.browser.get(self.live_server_url)
+
+        # Her browser window is set to a very specific size
+        self.browser.set_window_size(1024, 768)
+
+        # She notices the input box is nicely centered
+        inputbox = self.browser.find_element(By.ID, "id_new_item")
+        self.assertAlmostEqual(
+            inputbox.location["x"] + inputbox.size["width"] / 2,
+            512,
+            delta=10,
+        )
+----
+====
+
+A few new things here.
+We start by setting the window size to a fixed size.
+We then find the input element,
+look at its size and location,
+and do a little maths
+to check whether it seems to be positioned in the middle of the page.
+`assertAlmostEqual` helps us to deal with rounding errors
+and the occasional weirdness due to scrollbars and the like,
+by letting us specify that we want our arithmetic to work
+to within plus or minus 10 pixels.
+
+If we run the functional tests, we get:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests*]
+[...]
+.F.
+======================================================================
+FAIL: test_layout_and_styling
+(functional_tests.tests.NewVisitorTest.test_layout_and_styling)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/functional_tests/tests.py", line 120, in
+test_layout_and_styling
+    self.assertAlmostEqual(
+AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
+
+ ---------------------------------------------------------------------
+Ran 3 tests in 9.188s
+
+FAILED (failures=1)
+----
+
+That's the expected failure.
+Still, this kind of FT is easy to get wrong,
+so let's use a quick-and-dirty "cheat" solution,
+to check that the FT definitely passes when the input box is centered.
+We'll delete this code again almost as soon as we've used it
+to check the FT:
+
+[role="sourcecode small-code"]
+.lists/templates/home.html (ch08l002)
+====
+[source,html]
+----
+<form method="POST" action="/lists/new">
+  <p style="text-align: center;">
+    <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
+  </p>
+  {% csrf_token %}
+</form>
+----
+====
+
+That passes, which means the FT works.
+Let's extend it to make sure that the input box is also
+center-aligned on the page for a new list:
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch08l003)
+====
+[source,python]
+----
+    # She starts a new list and sees the input is nicely
+    # centered there too
+    inputbox.send_keys("testing")
+    inputbox.send_keys(Keys.ENTER)
+    self.wait_for_row_in_list_table("1: testing")
+    inputbox = self.browser.find_element(By.ID, "id_new_item")
+    self.assertAlmostEqual(
+        inputbox.location["x"] + inputbox.size["width"] / 2,
+        512,
+        delta=10,
+    )
+----
+====
+
+That gives us another test failure:
+
+----
+  File "...goat-book/functional_tests/tests.py", line 132, in
+test_layout_and_styling
+    self.assertAlmostEqual(
+AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
+----
+
+Let's commit just the FT:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add functional_tests/tests.py*
+$ *git commit -m "first steps of FT for layout + styling"*
+----
+
+Now it feels like we're justified in finding a "proper" solution
+to our need for some better styling for our site.
+We can back out our hacky `text-align: center`:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git reset --hard*
+----
+
+((("Git", "reset --hard")))
+WARNING: `git reset --hard`
+    is the "take off and nuke the site from orbit"
+    Git command, so be careful with it--it
+    blows away all your un-committed changes.
+    Unlike almost everything else you can do with Git,
+    there's no way of going back after this one.
+((("", startref="DLTtargets08")))
+
+
+
+[role="pagebreak-before less_space"]
+=== Prettification: Using a CSS Framework
+
+((("design and layout testing", "CSS frameworks", id="DLTcssframe08")))
+((("CSS (Cascading Style Sheets)", "CSS frameworks", id="CSSframe08")))
+((("Bootstrap", "downloading")))
+UI design is hard,
+and doubly so now that we have to deal with mobile, tablets, and so forth.
+That's why many programmers, particularly lazy ones like me,
+turn to CSS frameworks to solve some of those problems for them.
+There are lots of frameworks out there,
+but one of the earliest and most popular still, is Bootstrap.
+Let's use that.
+
+You can find bootstrap at https://getbootstrap.com/[getbootstrap.com].
+
+// DAVID: You could just use the CDN. If you want them to engage
+// with statics, could just have a custom style.css for changing the
+// font or something.
+
+We'll download it and put it in a new folder called _static_ inside the `lists`
+app:footnote:[On Windows, you may not have `wget` and `unzip`,
+but I'm sure you can figure out how to download Bootstrap,
+unzip it, and put the contents of the _dist_ folder
+into the _lists/static/bootstrap_ folder.]
+
+[subs="specialcharacters,quotes"]
+----
+$ *wget -O bootstrap.zip https://github.com/twbs/bootstrap/releases/download/\
+v5.3.0/bootstrap-5.3.0-dist.zip*
+$ *unzip bootstrap.zip*
+$ *mkdir lists/static*
+$ *mv bootstrap-5.3.0-dist lists/static/bootstrap*
+$ *rm bootstrap.zip*
+----
+
+Bootstrap comes with a plain, uncustomised installation in the 'dist' folder.
+We're going to use that for now,
+but you should really never do this for a real site--vanilla
+Bootstrap is instantly recognisable,
+and a big signal to anyone in the know
+that you couldn't be bothered to style your site.
+Learn how to use Sass and change the font, if nothing else!
+There is info in Bootstrap's docs, or read an
+https://www.freecodecamp.org/news/how-to-customize-bootstrap-with-sass/[introductory guide].
+
+
+Our 'lists' folder will end up looking like this:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:[<strong>tree lists</strong>]
+lists
+├── __init__.py
+├── admin.py
+├── apps.py
+├── migrations
+│   ├── [...]
+├── models.py
+├── static
+│   └── bootstrap
+│       ├── css
+│       │   ├── bootstrap-grid.css
+│       │   ├── bootstrap-grid.css.map
+│       │   ├── [...]
+│       │   └── bootstrap.rtl.min.css.map
+│       └── js
+│           ├── bootstrap.bundle.js
+│           ├── bootstrap.bundle.js.map
+│           ├── [...]
+│           └── bootstrap.min.js.map
+├── templates
+│   ├── home.html
+│   └── list.html
+├── [...]
+----
+
+// DAVID: readers may not have tree installed.
+
+// DAVID: I have quite a few .pyc files in here which makes it look pretty different to what's shown. Maybe better just
+// show tree/lists? (Not sure whether or not, as a user, you're expecting me to look at all the other files.)
+
+((("Bootstrap", "documentation")))
+Look at the "Getting Started" section of the
+https://getbootstrap.com/docs/5.3/getting-started/introduction/[Bootstrap documentation];
+you'll see it wants our HTML template to include something like this:
+
+
+[role="skipme"]
+[source,html]
+----
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bootstrap demo</title>
+  </head>
+  <body>
+    <h1>Hello, world!</h1>
+  </body>
+</html>
+
+----
+
+We already have two HTML templates.
+We don't want to be adding a whole load of boilerplate code to each,
+so now feels like the right time to apply
+the "Don't repeat yourself" rule,
+and bring all the common parts together.
+Thankfully, the Django template language makes that easy using something
+called template inheritance.
+((("", startref="DLTcssframe08")))
+((("", startref="CSSframe08")))
+
+
+
+
+
+=== Django Template Inheritance
+
+((("design and layout testing", "Django template inheritance")))
+((("templates", "Django template inheritance")))
+((("Django framework", "template inheritance")))
+Let's have a little review of what the differences are between 'home.html' and
+'list.html':
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*diff lists/templates/home.html lists/templates/list.html*]
+<     <h1>Start a new To-Do list</h1>
+<     <form method="POST" action="/lists/new">
+---
+>     <h1>Your To-Do list</h1>
+>     <form method="POST" action="/lists/{{ list.id }}/add_item">
+[...]
+>     <table id="id_list_table">
+>       {% for item in list.item_set.all %}
+>         <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+>       {% endfor %}
+>     </table>
+----
+
+They have different header texts, and their forms use different URLs. On top
+of that, 'list.html' has the additional `<table>` element.
+
+//IDEA add a note re downsides of inheritance?
+Now that we're clear on what's in common and what's not, we can make the two
+templates inherit from a common "superclass" template.  We'll start by
+making a copy of 'list.html':
+
+[subs="specialcharacters,quotes"]
+----
+$ *cp lists/templates/list.html lists/templates/base.html*
+----
+//006
+
+We make this into a base template which just contains the common boilerplate,
+and mark out the "blocks", places where child templates can customise it:
+
+[role="sourcecode small-code"]
+.lists/templates/base.html (ch08l007)
+====
+[source,html]
+----
+<html>
+  <head>
+    <title>To-Do lists</title>
+  </head>
+
+  <body>
+    <h1>{% block header_text %}{% endblock %}</h1>
+
+    <form method="POST" action="{% block form_action %}{% endblock %}">
+      <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />
+      {% csrf_token %}
+    </form>
+
+    {% block table %}
+    {% endblock %}
+  </body>
+
+</html>
+----
+====
+
+The base template defines a series of areas called "blocks",
+which will be places that other templates can hook in and add their own content.
+Let's see how that works in practice,
+by changing 'home.html' so that it "inherits from" 'base.html':
+
+[role="sourcecode"]
+.lists/templates/home.html (ch08l008)
+====
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block header_text %}Start a new To-Do list{% endblock %}
+
+{% block form_action %}/lists/new{% endblock %}
+----
+====
+
+You can see that lots of the boilerplate HTML disappears,
+and we just concentrate on the bits we want to customise.
+We do the same for 'list.html':
+
+[role="sourcecode"]
+.lists/templates/list.html (ch08l009)
+====
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block header_text %}Your To-Do list{% endblock %}
+
+{% block form_action %}/lists/{{ list.id }}/add_item{% endblock %}
+
+{% block table %}
+  <table id="id_list_table">
+    {% for item in list.item_set.all %}
+      <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+    {% endfor %}
+  </table>
+{% endblock %}
+----
+====
+
+
+That's a refactor of the way our templates work.
+We rerun the FTs to make sure we haven't broken anything:
+
+----
+AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
+----
+
+Sure enough, they're still getting to exactly where they were before.
+
+// SEBASTIAN: huh, is this consistent with TDD cycle you are teaching in previous
+//  chapters? I'd assume refactoring is made AFTER we get to green test 
+//  Perhaps one could move the refactoring to happen BEFORE quick'n'dirty hack with text-align: center was reversed?
+
+That's worthy of a commit:
+((("Git", "diff -w")))
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff -w*
+# the -w means ignore whitespace, useful since we've changed some html indenting
+$ *git status*
+$ *git add lists/templates* # leave static, for now
+$ *git commit -m "refactor templates to use a base template"*
+----
+
+
+
+=== Integrating Bootstrap
+
+((("design and layout testing", "Bootstrap integration")))
+((("Bootstrap", "integrating")))
+Now it's much easier to integrate the boilerplate code that Bootstrap wants--we
+won't add the JavaScript yet, just the CSS:
+
+[role="sourcecode"]
+.lists/templates/base.html (ch08l010)
+====
+[source,html]
+----
+<!doctype html>
+<html lang="en">
+
+  <head>
+    <title>To-Do lists</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+  </head>
+[...]
+----
+====
+
+
+==== Rows and Columns
+
+Finally, let's actually use some of the Bootstrap magic!
+You'll have to read the documentation yourself,
+but we should be able to use a combination
+of the grid system and the `justify-content-center` class to get what we want:
+
+[role="sourcecode"]
+.lists/templates/base.html (ch08l011)
+====
+[source,html]
+----
+  <body>
+    <div class="container">
+
+      <div class="row justify-content-center">
+        <div class="col-lg-6 text-center">
+          <h1>{% block header_text %}{% endblock %}</h1>
+
+          <form method="POST" action="{% block form_action %}{% endblock %}" >
+            <input
+              name="item_text"
+              id="id_new_item"
+              placeholder="Enter a to-do item"
+            />
+            {% csrf_token %}
+          </form>
+        </div>
+      </div>
+
+      <div class="row justify-content-center">
+        <div class="col-lg-6">
+          {% block table %}
+          {% endblock %}
+        </div>
+      </div>
+
+    </div>
+  </body>
+----
+====
+
+(If you've never seen an HTML tag broken up over several lines,
+that `<input>` may be a little shocking.
+It is definitely valid,
+but you don't have to use it if you find it offensive. ;)
+
+TIP: Take the time to browse through the
+    https://getbootstrap.com/docs/5.3/getting-started/introduction/[Bootstrap documentation],
+    if you've never seen it before.
+    It's a shopping trolley brimming full of useful tools
+    to use in your site.
+
+// SEBASTIAN: WDYT about linking directly do Docs page instead to index page of Bootstrap?
+//  I expected to see them instead of the same welcome page 
+
+Does that work?
+
+----
+AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
+----
+
+Hmm. No.  Why isn't our CSS loading?
+
+// SEBASTIAN: I am not sure if this is in scope, but perhaps opening a browser,
+//  navigating to the application and showing in the console that loading
+//  of CSS failed (so the reader knows how to tackle such issues on their own)
+//  would be less of a magic? I imagine a newbie might be confused how the heck
+//  they were meant to guess it is CSS loading problem?
+
+
+=== Static Files in Django
+
+((("Django framework", "static files in", id="DJFstatic08")))
+Django, and indeed any web server,
+needs to know two things to deal with static files:
+
+1. How to tell when a URL request is for a static file,
+   as opposed to for some HTML
+   that's going to be served via a view function
+
+2. Where to find the static file the user wants
+
+In other words, static files are a mapping from URLs to files on disk.
+
+((("static files", "URL requests for")))
+For item 1, Django lets us define a URL "prefix"
+to say that any URLs which start with that prefix
+should be treated as requests for static files.
+By default, the prefix is [keep-together]#'/static/'#.
+It's defined in _settings.py_:
+
+[role="sourcecode currentcontents"]
+.superlists/settings.py
+====
+[source,python]
+----
+[...]
+
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/4.2/howto/static-files/
+
+STATIC_URL = "static/"
+----
+====
+
+// DAVID: Maybe say 'already defined' to avoid the reader going over
+// to there to add it?
+
+((("static files", "finding")))
+The rest of the settings we will add to this section
+all have to do with item 2:
+finding the actual static files on disk.
+
+While we're using the Django development server (`manage.py runserver`),
+we can rely on Django to magically find static files for us--it'll
+just look in any subfolder of one of our apps called _static_.
+
+You now see why we put all the Bootstrap static files into _lists/static_.
+So why are they not working at the moment?
+It's because we're not using the `/static/` URL prefix.
+Have another look at the link to the CSS in _base.html_:
+
+[role="sourcecode currentcontents"]
+.lists/templates/base.html
+[source,html]
+----
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+----
+
+That `href` is just what happened to be in the bootstrap docs.
+To get it to work, we need to change it to:
+
+// DAVID: You could consider getting the reader to visit that URL
+// and see that it's a 404 from Django, and they're trying to route
+// it to a view.
+
+[role="sourcecode small-code"]
+.lists/templates/base.html (ch08l012)
+====
+[source,html]
+----
+    <link href="/static/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+----
+====
+
+// DAVID: Django best practice would be to use the static tag instead.
+// https://docs.djangoproject.com/en/4.2/howto/static-files/#configuring-static-files
+
+Now when `runserver` sees the request,
+it knows that it's for a static file because it begins with `/static/`.
+It then tries to find a file called _bootstrap/css/bootstrap.min.css_,
+looking in each of our app folders for subfolders called _static_,
+and it should find it at _lists/static/bootstrap/css/bootstrap.min.css_.
+
+So if you take a look manually, you should see it works,
+as in <<list-page-centered>>.
+
+
+[[list-page-centered]]
+.Our site starts to look a little better...
+image::images/prettified-1.png["The list page with centered header."]
+
+
+
+==== Switching to StaticLiveServerTestCase
+
+
+((("StaticLiveServerTestCase")))
+If you run the FT though, annoyingly, it still won't pass:
+
+----
+AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
+----
+
+That's because, although `runserver` automagically finds static files,
+`LiveServerTestCase` doesn't.
+Never fear, though:
+the Django developers have made an even more magical test class
+called `StaticLiveServerTestCase`
+(see https://docs.djangoproject.com/en/4.2/ref/contrib/staticfiles/#django.contrib.staticfiles.testing.StaticLiveServerTestCase[the docs]).
+
+// JAN: Maybe you could mention that StaticLiveServerTestCase inherits from LiveServerTestCase - so all previous should work + static files. After reading the name, I imagined StaticLiveServerTestCase as some special test class for testing only static-related stuff
+
+Let's switch to that:
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch08l013)
+====
+[source,diff]
+----
+@@ -1,14 +1,14 @@
+-from django.test import LiveServerTestCase
++from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+ from selenium import webdriver
+ from selenium.common.exceptions import WebDriverException
+ from selenium.webdriver.common.keys import Keys
+ import time
+
+ MAX_WAIT = 10
+
+
+-class NewVisitorTest(LiveServerTestCase):
++class NewVisitorTest(StaticLiveServerTestCase):
+
+     def setUp(self):
+----
+====
+//008
+
+And now it will find the new CSS, which will get our test to pass:
+((("", startref="DJFstatic08")))
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests*]
+Creating test database for alias 'default'...
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 9.764s
+----
+
+// DAVID: Incidentally, when I ran this the first time I got this error
+// on the second test case. selenium.common.exceptions.NoSuchElementException:
+// Message: Unable to locate element: [id="id_new_item"];
+// I ran it again and it worked.
+
+Hooray!
+
+
+=== Using Bootstrap Components to Improve the Look of the Site
+
+((("design and layout testing", "Bootstrap tools")))Let's
+see if we can do even better, using some of the other tools in
+Bootstrap's panoply.
+
+
+==== Jumbotron!
+
+The first version of Bootstrap used to ship with a class called `jumbotron`
+for things that are meant to be particularly prominent on the page.
+It doesn't exist any more, but old-timers like me still pine for it,
+so they have a specific page in the docs that tells you how to recreate it.
+
+Essentially, we massively embiggen the main page header and the input form,
+putting it into a grey box with nice rounded corners:
+
+[role="sourcecode"]
+.lists/templates/base.html (ch08l014)
+====
+[source,html]
+----
+  <body>
+    <div class="container">
+
+      <div class="row justify-content-center p-5 bg-body-tertiary rounded-3">
+        <div class="col-lg-6 text-center">
+          <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
+          [...]
+----
+====
+
+That ends up looking something like <<jumbotron-header>>:
+
+[[jumbotron-header]]
+.A big grey box at the top of the page
+image::images/prettified-2.png["The homepage with a big grey box surrounding the title and input"]
+
+
+TIP: When hacking about with design and layout,
+    it's best to have a window open that we can hit refresh on, frequently.
+    Use `python manage.py runserver` to spin up the dev server,
+    and then browse to __http://localhost:8000__
+    to see your work as we go.
+
+// JAN: You could mention force refresh here (Cmd + Shift + R; Ctrl + F5, ...). It comes handy many times when working with CSS etc.
+
+
+==== Large Inputs
+
+
+((("Bootstrap", "large inputs")))
+((("form control classes (Bootstrap)")))
+The jumbotron is a good start,
+but now the input box has tiny text compared to everything else.
+Thankfully, Bootstrap's form control classes offer an option
+to set an input to be "large":
+
+
+[role="sourcecode"]
+.lists/templates/base.html (ch08l015)
+====
+[source,html]
+----
+    <input
+      class="form-control form-control-lg"
+      name="item_text"
+      id="id_new_item"
+      placeholder="Enter a to-do item"
+    />
+----
+====
+
+
+==== Table Styling
+
+
+((("Bootstrap", "table styling")))
+((("table styling (Bootstrap)")))
+The table text also looks too small compared to the rest of the page now.
+Adding the Bootstrap `table` class improves things, over in _list.html_:
+
+
+[role="sourcecode"]
+.lists/templates/list.html (ch08l016)
+====
+[source,html]
+----
+  <table class="table" id="id_list_table">
+----
+====
+
+//RITA: For the sake of searchability, I suggest changing this heading to simply "Dark Mode."
+==== Dark Modeeeeeee
+
+In contrast to my greybeard nostalgia for the Jumbotron,
+here's something relatively new to Bootstrap, Dark Mode!
+
+// SEBASTIAN: Awesome! Dark mode is something many people want :D
+
+[role="sourcecode"]
+.lists/templates/base.html (ch08l017)
+====
+[source,html]
+----
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+----
+====
+
+Take a look at <<dark-modeee>>.
+I think that looks great!
+
+[[dark-modeee]]
+.The lists page goes dark
+image::images/prettified-dark.png["Screenshot of lists page in dark mode. Cool."]
+
+// CSANAD: I believe the table looks almost the same width as the Jumbotron be-
+//         cause your browser window size isn't maximized. It might be confu-
+// sing to some readers if they don't realize this and the website renders dif-
+// ferently.
+
+
+But it's very much a matter of personal preference,
+and my editor will kill me
+if I make all the rest of my screenshots use so much ink,
+so I'm going to revert it for now.
+You're free to keep dark mode on if you like!
+
+//RITA: Whew. I was more concerned about the legibility of dark mode figures when printed, but thanks all the same.
+//RITA: On second thought, would you consider changing this to "my editor will be mad at me" or even some other silly description (freak out, self-combust, explode, etc)? I'd rather not imply that we'll cause you harm.
+
+
+==== A semi-decent page
+
+//RITA: Please revise the first sentence to be more clear. For example: "It took a bit of time to add some stylish features to my page, but I'm reasonably happy with it now."
+All that took me a few goes, but I'm reasonably happy with it now
+(<<homepage-looking-better>>).
+
+[[homepage-looking-better]]
+.The lists page, looking good enough for now.
+image::images/prettified-final.png["Screenshot of lists page in light mode with decent styling."]
+// CSANAD:  This image seemed to be broken, so I uploaded a new one.
+
+// DAVID: Looks like this has the wrong image? I'm seeing a blank page.
+
+If you want to go further with customising Bootstrap,
+you need to get into compiling Sass.
+I've said it already, but I _definitely_ recommend
+taking the time to do that some day.
+Sass/SCSS is a great improvement on plain old CSS,
+and a useful tool even if you don't use Bootstrap.
+
+
+A last run of the functional tests, to see if everything still works OK:
+
+[role="dofirst-ch08l018"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests*]
+[...]
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 10.084s
+
+OK
+----
+
+
+That's it! Definitely time for a commit:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status* # changes tests.py, base.html, list.html, settings.py, + untracked lists/static
+$ *git add .*
+$ *git status* # will now show all the bootstrap additions
+$ *git commit -m "Use Bootstrap to improve layout"*
+----
+
+
+=== What We Glossed Over: collectstatic and Other Static Directories
+
+((("design and layout testing", "collecting static files for deployment", id="DLTcollect08")))
+((("static files", "collecting for deployment", id="SFcollect08")))
+((("collectstatic command", id="collect08")))
+We saw earlier that the Django dev server will magically find all your static files
+inside app folders, and serve them for you.
+That's fine during development,
+but when you're running on a real web server,
+you don't want Django serving your static content--using Python
+to serve raw files is slow and inefficient,
+and a web server like Apache or Nginx can do this all for you.
+You might even decide to upload all your static files to a CDN,
+instead of hosting them yourself.
+
+// DAVID: Many readers won't understand what a CDN is. Maybe explain or skip?
+
+For these reasons, you want to be able to gather up all your static files
+from inside their various app folders,
+and copy them into a single location, ready for deployment.
+This is what the `collectstatic` command is for.
+
+The destination, the place where the collected static files go,
+needs to be defined in _settings.py_ as `STATIC_ROOT`.
+In the next chapter we'll be doing some deployment,
+so let's actually experiment with that now.
+A common and straightforward place to put it
+is in a folder called "static" in the root of our repo:
+
+[role="skipme"]
+----
+.
+├── db.sqlite3
+├── functional_tests/
+├── lists/
+├── manage.py
+├── static/
+└── superlists/
+----
+
+Here's a neat way of specifying that folder,
+making it relative to the location of the project base directory:
+
+[role="sourcecode"]
+.superlists/settings.py (ch08l019)
+====
+[source,python]
+----
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/4.2/howto/static-files/
+
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "static"
+----
+====
+
+
+Take a look at the top of the settings file,
+and you'll see how that `BASE_DIR` variable is helpfully defined for us,
+using `pathlib.Path` and `__file__`
+(both really nice Python builtins)footnote:[
+Notice in the `Pathlib` wrangling of `__file__`
+that the `.resolve()` happens before anything else.
+Always follow this pattern when working with `__file__`,
+otherwise you can see unpredictable behaviours
+depending on how the file is imported.
+Thanks to https://github.com/CleanCut/green[Green Nathan]
+for that tip!].
+
+
+Anyway, let's try running `collectstatic`:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py collectstatic*]
+
+169 static files copied to '...goat-book/static'.
+----
+
+And if we look in './static', we'll find all our CSS files:
+
+[subs="specialcharacters,quotes"]
+----
+$ *tree static/*
+static/
+├── admin
+│   ├── css
+│   │   ├── autocomplete.css
+│   │   ├── [...]
+[...]
+│               └── xregexp.min.js
+└── bootstrap
+    ├── css
+    │   ├── bootstrap-grid.css
+    │   ├── [...]
+    │   └── bootstrap.rtl.min.css.map
+    └── js
+        ├── bootstrap.bundle.js
+        ├── [...]
+        └── bootstrap.min.js.map
+
+16 directories, 169 files
+----
+
+`collectstatic` has also picked up all the CSS for the admin site.
+The admin site is one of Django's powerful features,
+but we don't need it for our simple site, so let's disable it for now:
+
+[role="sourcecode"]
+.superlists/settings.py
+====
+[source,python]
+----
+INSTALLED_APPS = [
+    # "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "lists",
+]
+----
+====
+
+[role="pagebreak-before"]
+And we try again:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*rm -rf static/*]
+$ pass:quotes[*python manage.py collectstatic*]
+
+44 static files copied to '...goat-book/static'.
+----
+
+// DAVID: suggest changing this to rm -r static/.
+
+Much better.
+
+
+Now we know how to collect all the static files into a single folder,
+where it's easy for a web server to find them.
+We'll find out all about that, including how to test it, in the next chapter!
+
+((("", startref="DLTcollect08")))
+((("", startref="SFcollect08")))
+((("", startref="collect08")))
+For now let's save our changes to _settings.py_.
+We'll also add the top-level static folder to our gitignore,
+since it will only contain copies of files
+we actually keep in individual apps' static folders.
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* # should show changes in settings.py
+$ *echo /static >> .gitignore*
+$ *git commit -am "set STATIC_ROOT in settings and disable admin"*
+----
+// CSANAD: the new directory shouldn't show up as it has not been tracked by git.
+//         `git status` would list it as untracked.
+// Also, there was an extra asterisk at the end of that line.
+
+
+=== A Few Things That Didn't Make It
+
+Inevitably this was only a whirlwind tour of styling and CSS,
+and there were several topics that I'd considered covering that didn't make it.
+Here are a few candidates for further study:
+
+* The `{% static %}` template tag, for more DRY and fewer hardcoded URLs
+* Client-side packaging tools, like `npm` and `bower`
+* Customising bootstrap with SASS
+
+//RITA: Would you want to point readers to any resources, such as a website or another book for example? You don't have to.
+
+[role="pagebreak-before less_space"]
+.Recap: On Testing Design and Layout
+*******************************************************************************
+
+//RITA: The short answer to what? Please clarify.
+((("design and layout testing", "best practices for")))
+The short answer is: you shouldn't write tests for design and layout _per se_.
+It's too much like testing a constant,
+and the tests you write are often brittle.
+
+With that said,
+the _implementation_ of design and layout involves something quite tricky:
+CSS and static files.
+As a result, it is valuable to have some kind of minimal "smoke test"
+which checks that your static files and CSS are working.
+As we'll see in the next chapter, it can help pick up problems
+when you deploy your code to [keep-together]#production#.
+
+Similarly, if a particular piece of styling required a lot of client-side JavaScript code
+to get it to work
+(dynamic resizing is one I've spent a bit of time on),
+you'll definitely want some tests for that.
+
+Try to write the minimal tests that will give you confidence
+that your design and layout is working,
+without testing _what_ it actually is.
+Aim to leave yourself in a position
+where you can freely make changes to the design and layout,
+without having to go back and adjust tests all the time.
+
+*******************************************************************************

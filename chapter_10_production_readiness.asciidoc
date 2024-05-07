@@ -1,0 +1,965 @@
+[[chapter_10_production_readiness]]
+== Making Our App Production-Ready
+
+.A Note for Early Release Readers
+****
+With Early Release ebooks, you get books in their earliest form—the author's raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.
+
+This will be the 10th chapter of the final book. The GitHub repo is available at https://github.com/hjwp/book-example.
+
+If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the author at obeythetestinggoat@gmail.com.
+****
+
+Our container is working fine but it's not production-ready.
+Let's try to get it there, using the tests to keep us safe.
+
+In a way we're applying the Red-Green-Refactor cycle to our productionisation process.
+Our hacky container config got us to Green, and now we're going to Refactor,
+working incrementally (just as we would while coding),
+trying to move from working state to working state,
+and using the FTs to detect any regressions.
+
+
+.Warning, chapter under construction
+****
+As part of my work on the third edition of the book,
+I'm making big changes to the deployment chapters.
+This chapter is still very fresh, but the content is all there,
+so you should be able to follow along.
+
+But as always I really, really need feedback.
+So please hit me up at obeythetestinggoat@gmail.com, or via
+https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues[GitHub Issues]
+and Pull Requests.
+****
+
+=== What We Need to Do
+
+What's wrong with our hacky container image?
+A few things: first, we need to host our app on the "normal" port 80
+so that people can access it using a regular URL.
+
+Perhaps more importantly, we shouldn't use the Django dev server for production;
+it's not designed for real-life workloads.
+Instead, we'll use the popular Gunicorn Python WSGI HTTP server.
+
+NOTE: Django's `runserver` is built and optimised for local development and debugging.
+  It's designed to handle one user at a time,
+  it handles automatic reloading upon saving of the source code,
+  but it isn't optimised for performance,
+  nor has it been hardened against security vulnerabilities.
+
+((("DEBUG settings")))
+In addition, several options in _settings.py_ are currently unacceptable.
+`DEBUG=True`, is strongly discouraged for production,
+we'll want to set a unique `SECRET_KEY`,
+and, as we'll see, other things will come up.
+
+NOTE: DEBUG=True is considered a security risk,
+  because the django debug page will display sensitive information like
+  the values of variables, and most of the settings in settings.py.
+
+
+Let's go through and see if we can fix things one by one.
+
+// SEBASTIAN: How about linking to Django's documentation
+//      https://docs.djangoproject.com/en/5.0/howto/deployment/
+//      somewhere later in the chapter for curious readers?
+
+=== Switching to Gunicorn
+
+((("production-ready deployment", "using Gunicorn", secondary-sortas="Gunicorn")))
+((("Gunicorn", "switching to")))
+Do you know why the Django mascot is a pony?
+The story is that Django comes with so many things you want:
+an ORM, all sorts of middleware, the admin site...
+"What else do you want, a pony?" Well, Gunicorn stands for "Green Unicorn",
+which I guess is what you'd want next if you already had a pony...
+
+We'll need to first install Gunicorn into our container,
+and then use it instead of `runserver`:
+
+//001
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip install gunicorn*
+Collecting gunicorn
+[...]
+Successfully installed gunicorn-21.2.0
+----
+
+[[what-is-wsgi]]
+.What is WSGI?
+*******************************************************************************
+Gunicorn is a WSGI (usually pronounced as whizgee) HTTP server.
+Let's go through what this means:
+
+* An HTTP server handles incoming HTTP requests and sends back responses to the
+  clients.
+
+* WSGI, the Web Server Gateway Interface, is a set of rules defining how an HTTP
+  server (which can be Gunicorn itself, or Nginx, Apache, etc) and a Python
+  program should communicate.
+
+So, Gunicorn is an HTTP server that knows and uses the WSGI to "talk" to Python programs.
+And these Python programs are likewise expected to work in a specific way.
+You can check out a simple example https://gunicorn.org/[on Gunicorn's website] under "Installation".
+
+https://peps.python.org/pep-3333[If you are interested, you can read the entire
+specification here].
+
+// CSANAD:  I felt like some explanation regarding what Gunicorn and WSGI are,
+//          was missing.
+
+*******************************************************************************
+
+
+Gunicorn will need to know a path to a "WSGI server" (see <<what-is-wsgi>>),
+which is usually a function called `application`.
+Django provides one in 'superlists/wsgi.py'.
+Let's change the command our image runs:
+
+[role="sourcecode"]
+.Dockerfile (ch10l001)
+====
+[source,dockerfile]
+----
+[...]
+RUN pip install "django<5" gunicorn  <1>
+
+COPY src /src
+
+WORKDIR /src
+
+CMD gunicorn --bind :8888 superlists.wsgi:application  <2>
+----
+====
+// CSANAD:  shouldn't we try it out before adding this to the Dockerfile?
+//          `cd src` and then
+// `gunicorn --bind :8888 superlists.wsgi:application`
+
+<1> Installation is a standard pip install.
+
+<2> Gunicorn has its own command line, `gunicorn`.
+  It needs to know a path to a WSGI server,
+  which is usually a function called `application`.
+  Django provides one in _superlists/wsgi.py_.
+
+// TODO; this is a good place to switch to using array syntax for CMD maybe?
+
+As in the previous chapter, we can use the `docker build && docker run`
+pattern to try out our changes by rebuilding and rerunning our container:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+  -it superlists*
+----
+
+// DAVID: Incidentally I got the following error:
+// Bind for 0.0.0.0:8888 failed: port is already allocated.
+// Turned out the previous container was still running,
+// I just used the docker kill process you taught me about earlier.
+// Not sure if it's worth including that here, possibly clutter?
+
+
+==== The FTs catch a problem with static files
+
+As we run the functional tests, you'll see them warning us of a problem, once again.
+The test for adding list items passes happily,
+but the test for layout + styling fails. Good job, tests!
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
+[...]
+AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
+FAILED (failures=1)
+----
+
+And indeed, if you take a look at the site, you'll find the CSS is all broken,
+as in <<site-with-broken-css>>.
+
+The reason that we have no CSS is that although the Django dev server will
+serve static files magically for you, Gunicorn doesn't.
+
+
+[[site-with-broken-css]]
+.Broken CSS
+image::images/twp2_1001.png["The site is up, but CSS is broken"]
+
+
+One step forward, one step backward,
+but once again we've identified the problem nice and early.
+Moving on!
+
+
+=== Serving Static Files with Whitenoise
+
+Serving static files is very different from serving
+dynamically rendered content from Python and Django.
+There are many ways to serve them in production:
+you can use a web server like Nginx, or a CDN like Amazon S3,
+but in our case, the most straightforward thing to do
+is to use https://whitenoise.readthedocs.io/[Whitenoise],
+a Python library expressly designed for serving staticfootnote:[
+Believe it or not, this pun didn't actually hit me until I was rewriting this chapter.
+For 10 years it was right under my nose. I think that makes it funnier actually.]
+files from Python.
+
+This is how we tell Django to enable it, in _settings.py_:
+
+[role="sourcecode"]
+.src/superlists/settings.py (ch10l002)
+====
+[source,python]
+----
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    [...]
+
+----
+====
+// CSANAD:  I would add a few thoughts on the significance of the order of
+//          middlewares.
+
+And if you take another manual look at your site after rebuilding the
+container, things should look much healthier.
+
+And then we need to add it to our pip installs in the Dockerfile:
+
+.Dockerfile (ch10l003)
+====
+[source,dockerfile]
+----
+RUN pip install "django<5" gunicorn whitenoise
+----
+====
+
+This manual list of pip installs is getting a little fiddly!
+We'll come back to that in a moment.
+First let's rebuild and try re-running our FTs:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+  -it superlists*
+----
+
+And if you take another manual look at your site, things should look much healthier.
+Let's rerun our FTs to confirm:
+
+// DAVID: Incidentally as per your suggestion Harry I have just been skipping
+// the requirements.txt and instead just amending the pip install in the Dockerfile.
+// If we do that, however, we'll need to make sure readers rebuild the image each time
+// we add a requirement - such as at this point.
+
+
+// JAN: That doesn't work until you install whitenoise to venv on local machine
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
+[...]
+
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 10.718s
+
+OK
+----
+
+// DAVID: I got
+// UserWarning: No directory at: /Users/david.seddon/Documents/reviewing/goat-book/src/static/
+//  mw_instance = middleware(adapted_handler)
+// I think we need to move the static folder into src too, in the previous chapter.
+
+
+Phew.  Let's commit that:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am"Switch to Gunicorn and Whitenoise"*
+----
+
+
+
+=== Using requirements.txt
+
+Let's deal with that fiddly list of pip installs.
+
+To reproduce our local virtualenv,
+rather than just manually pip installing things
+one by one, and having to remember to sync things
+between local dev and docker,
+we can "save" the list of packages we're using
+by creating a _requirements.txt_ file.footnote:[
+There are many other dependency management tools these days
+so requirements.txt is not the only way to do it,
+although it is one of the oldest and best established.
+As you continue your Python adventures
+I'm sure you'll come across many others.]
+
+
+The `pip freeze` command will show us everything that's installed in our virtualenv at the moment:
+
+// JAN: This is true only if one installs the libraries locally. So far when following the book we installed them only inside Docker image
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip freeze*
+asgiref==3.8.1
+attrs==23.2.0
+certifi==2024.2.2
+django==4.2.11
+gunicorn==21.2.0
+h11==0.14.0
+idna==3.6
+outcome==1.3.0.post0
+packaging==24.0
+pysocks==1.7.1
+selenium==4.18.1
+sniffio==1.3.1
+sortedcontainers==2.4.0
+sqlparse==0.4.4
+trio==0.25.0
+trio-websocket==0.11.1
+typing-extensions==4.10.0
+urllib3==2.2.1
+whitenoise==6.6.0
+wsproto==1.2.0
+----
+
+That shows _all_ the packages in our virtualenv,
+along with their version numbers.
+Let's pull out just the "top-level" dependencies,
+Django, Gunicorn and Whitenoise:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip freeze | grep -i django*
+Django==4.2.11
+
+$ *pip freeze | grep -i django >> requirements.txt*
+$ *pip freeze | grep -i gunicorn >> requirements.txt*
+$ *pip freeze | grep -i whitenoise >> requirements.txt*
+----
+
+That should give us a requirements.txt file that looks like this:
+
+
+[role="sourcecode"]
+.requirements.txt (ch10l004)
+====
+[source,python]
+----
+django==4.2.11
+gunicorn==21.2.0
+whitenoise==6.6.0
+----
+====
+
+
+That's a good first cut, let's commit it:
+
+// SEBASTIAN I am not very fond of freezing just "top-level" dependencies of the project,
+// . This is not guaranteeing the reproducible builds and I failed to build & deploy because of that more than once.
+// But I understand it's a trade-off so the reader does get bogged down.
+// TODO: add a note about this and a link to some more reading
+
+----
+$ *git add requirements.txt*
+$ *git commit -m "Add a requirements.txt with Django, gunicorn and whitenoise"*
+----
+
+You may be wondering why we didn't add our other dependency,
+Selenium, to our requirements,
+or why we didn't just add _all_ the dependencies,
+including the "transitive" ones
+(eg, Django has its own dependencies like `asgiref` and `sqlparse` etc).
+
+As always, I have to gloss over some nuance and tradeoffs,
+but the short answer is first, Selenium is only a dependency for the tests,
+not the application code;
+we're never going to run the tests directly on our production servers.
+As to transitive dependencies, they're fiddly to manage without bringing
+in more tools, and I didn't want to do that for this book.footnote:[
+When you have a moment, you might want to do some further reading
+on "lockfiles", pyproject.toml, hard pinning vs soft pining,
+and immediate vs transitive dependencies.  If I absolutely _had_
+to recommend a python dependency management tool,
+it would be https://github.com/jazzband/pip-tools[pip-tools],
+which is a fairly minimal one.]
+
+
+TIP: Itamar Turner-Traurig has a great guide to
+    https://pythonspeed.com/docker/[Docker Packaging for Python Developers],
+    which I cannot recommend highly enough.  Read that before you're too much older.
+
+
+Now let's see how we use that requirements file in our Dockerfile:
+
+.Dockerfile (ch10l005)
+====
+[source,dockerfile]
+----
+FROM python:slim
+
+RUN python -m venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+COPY requirements.txt requirements.txt  <1>
+RUN pip install -r requirements.txt  <2>
+
+COPY src /src
+
+WORKDIR /src
+
+CMD python manage.py runserver
+----
+====
+
+<1> We COPY our requirements file in, just like the src folder.
+
+<2> Now instead of just installing Django, we install all our dependencies
+  by pointing pip at the _requirements.txt_ using the `-r` flag.
+  Notice the `-r`.
+
+TIP: Forgetting the `-r` and running `pip install requirements.txt`
+    is such a common error, that I recommend you do it _right now_
+    and get familiar with the error message
+    (which is thankfully much more helpful than it used to be).
+    It's a mistake I still make, _all the time_.
+
+
+// CSANAD:  It's fine for now, but I would definitely put the requirements under
+//          /tmp and then `rm` it after `pip install`. Also, using a non-privileged
+// user is important, something like:
+//     `adduser --no-create-home --disabled-password todoapp`
+// and then setting the user in the Dockerfile with `USER todoapp`.
+// But we can cover this in a later chapter (the next one looks like a good fit,
+// since it's related to the app being production ready).
+
+Let's do a build & run & test to check everything still works:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+  -it superlists*
+----
+
+=== Using Environment Variables to Adjust Settings for Production
+
+((("DEBUG settings")))
+We know there are several things in
+_settings.py_ that we want to change for production:
+
+
+* `DEBUG` mode is all very well for hacking about on your own server,
+  but it https://docs.djangoproject.com/en/1.11/ref/settings/#debug[isn't secure].
+  For example, exposing raw tracebacks to the world is a bad idea.
+
+* `SECRET_KEY` is used by Django for some of its crypto--things
+  like cookies and CSRF protection.
+  It's good practice to make sure the secret key in production is different
+  from the one in your source code repo,
+  because that code might be visible to strangers.
+  We'll want to generate a new, random one
+  but then keep it the same for the foreseeable future
+  (find out more in the https://docs.djangoproject.com/en/4.2/topics/signing/[Django docs]).
+
+Development, staging and production sites always have some differences
+in their configuration.
+Environment variables are a good place to store those different settings.
+See http://www.clearlytech.com/2014/01/04/12-factor-apps-plain-english/[
+"The 12-Factor App"].footnote:[
+Another common way of handling this
+is to have different versions of _settings.py_ for dev and prod.
+That can work fine too, but it can get confusing to manage.
+Environment variables also have the advantage of working for non-Django stuff too.
+]
+
+
+==== Setting DEBUG=True and SECRET_KEY
+
+//RITA: What do you mean by "this"? Please add a word or two for context.
+There are lots of ways you might do this.
+
+Here's what I propose; it may seem a little fiddly,
+but I'll provide a little justification for each choice.
+Let them be an inspiration (but not a template) for your own choices!
+
+
+[role="sourcecode"]
+.superlists/settings.py (ch10l006)
+====
+[source,python]
+----
+import os
+[...]
+
+if "DJANGO_DEBUG_FALSE" in os.environ:  #<1>
+    DEBUG = False
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]  #<2>
+else:
+    DEBUG = True  #<3>
+    SECRET_KEY = "insecure-key-for-dev"
+----
+====
+// CSANAD: I think variable names like "something_false" are confusing, since
+//         we need to set something to true so that they mean false.
+// How about `DJANGO_ENV_PRODUCTION` or something similar?
+// TODO yes i like this
+
+<1> We say we'll use an environment variable called `DJANGO_DEBUG_FALSE`
+    to switch debug mode off, and in effect require production settings
+    (it doesn't matter what we set it to, just that it's there).
+
+<2> And now we say that, if debug mode is off,
+    we _require_ the `SECRET_KEY` to be set by a second environment variable.
+
+<3> Otherwise we fall-back to the insecure, debug mode settings that
+    are useful for Dev.
+
+The end result is that you don't need to set any env vars for dev,
+but production needs both to be set explicitly,
+and it will error if any are missing.
+I think this gives us a little bit of protection
+against accidentally forgetting to set one.
+
+TIP: Better to fail hard than allow a typo in an environment variable name to
+    leave you running with insecure settings.
+
+// CSANAD: I think it would worth pointing out the development environment
+//         does not use Docker, launching the dev server should be done from
+// the reader's host system. I think this isn't immediately obvious, e.g. I
+// thought all along that from now on we would only run the server from Docker.
+// If we end up making a TIP or similar about it, I think we should also mention
+// in a development environment relying on containerization, programmers usually
+// mount the whole /src minimizing the time-consuming rebuilding of their images.
+
+==== Setting environment variables inside the Dockerfile
+
+Now let's set that environment variable in our Dockerfile using the `ENV` directive:
+
+[role="sourcecode"]
+.Dockerfile (ch10l007)
+====
+[source,dockerfile]
+----
+WORKDIR /src
+
+ENV DJANGO_DEBUG_FALSE=1
+CMD gunicorn --bind :8888 superlists.wsgi:application
+----
+====
+
+And try it out...
+
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:specialcharacters,quotes[*docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+  -it superlists*]
+
+[...]
+  File "/src/superlists/settings.py", line 22, in <module>
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen os>", line 685, in __getitem__
+KeyError: 'DJANGO_SECRET_KEY'
+----
+
+Oops. I forgot to set said secret key env var,
+mere seconds after having dreamt it up!
+
+
+==== Setting Environment Variables at the Docker Command Line
+
+We've said we can't keep the secret key in our source code,
+so the Dockerfile isn't an option; where else can we put it?
+
+For now, we can set it at the command line using the `-e` flag for `docker run`:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+  -e DJANGO_SECRET_KEY=sekrit \
+  -it superlists*
+----
+
+With that running, we can use our FT again to see if we're back to a working state.
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
+[...]
+AssertionError: 'To-Do' not found in 'Bad Request (400)'
+----
+
+
+
+==== ALLOWED_HOSTS is Required When Debug Mode is Turned Off
+
+It's not quite working yet!  Let's take a look manually: <<django-400-error>>.
+
+[[django-400-error]]
+.An ugly 400 error
+image::images/twp2_1002.png["An unfriendly page showing 400 Bad Request"]
+
+// DAVID: noticed in passing that the screenshots in this chapter are from the hosted version
+// which isn't covered until next chapter.
+
+We've set our two environment variables but doing so seems to have broken things.
+But once again, by running our FTs frequently,
+we're able to identify the problem early,
+before we've changed too many things at the same time.
+We've only changed two settings—which one might be at fault?
+
+Let's use the "Googling the error message" technique again,
+with the search terms "django debug false" and "400 bad request".
+
+Well, the very first link in my https://duckduckgo.com/?q=django+400+bad+request[search results]
+was Stackoverflow suggesting that a 400 error is usually to do with `ALLOWED_HOSTS`,
+and the second was the official Django docs,
+which takes a bit more scrolling, but confirms it
+(see <<search-results-400-bad-request>>).
+
+[[search-results-400-bad-request]]
+.Search results for "django debug false 400 bad request"
+image::images/search-results-400-bad-request.png["Duckduckgo search results with stackoverflow and django docs"]
+
+
+`ALLOWED_HOSTS` is a security setting
+designed to reject requests that are likely to be forged, broken or malicious
+because they don't appear to be asking for your site
+(HTTP requests contain the address they were intended for in a header called "Host").
+
+By default, when DEBUG=True, `ALLOWED_HOSTS` effectively allows _localhost_,
+our own machine, so that's why it was working OK until now.
+
+There's more information in the
+https://docs.djangoproject.com/en/4.2/ref/settings/#allowed-hosts[Django docs].
+
+The upshot is that we need to adjust `ALLOWED_HOSTS` in _settings.py_.
+Let's use another environment variable for that:
+
+
+[role="sourcecode"]
+.superlists/settings.py (ch10l008)
+====
+[source,python]
+----
+if "DJANGO_DEBUG_FALSE" in os.environ:
+    DEBUG = False
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+    ALLOWED_HOSTS = [os.environ["DJANGO_ALLOWED_HOST"]]
+else:
+    DEBUG = True
+    SECRET_KEY = "insecure-key-for-dev"
+    ALLOWED_HOSTS = []
+----
+====
+
+This is a setting that we want to change,
+depending on whether our Docker image is running locally,
+or on a server, so we'll use the `-e` flag again:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -it superlists*
+----
+
+
+==== Collectstatic is Required when Debug is Turned Off
+
+An FT run (or just looking at the site) reveals that we've had a regression
+in our static files:
+
+// CSANAD: worth mentioning there was another clue. in the logs, once Gunicorn
+//         starts running you can see:
+// `UserWarning: No directory at: /src/static/`
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
+[...]
+AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
+FAILED (failures=1)
+----
+
+
+We saw this before when switching from the Django dev server to Gunicorn,
+so we introduced Whitenoise.
+Similarly, when we switch DEBUG off,
+Whitenoise stops automagically finding static files in our code,
+and instead we need to run `collectstatic`:
+
+
+[role="sourcecode"]
+.Dockerfile (ch10l009)
+====
+[source,dockerfile]
+----
+WORKDIR /src
+
+RUN python manage.py collectstatic
+
+ENV DJANGO_DEBUG_FALSE=1
+CMD gunicorn --bind :8888 superlists.wsgi:application
+----
+====
+// CSANAD: I think it would be important to use a non-privileged user in Docker
+
+// DAVID: It would be nice to explain the difference between RUN and CMD.
+
+// DAVID: Interestingly when I did this I put the RUN directive after the ENV
+// directive, which led to a KeyError: 'DJANGO_SECRET_KEY' which foxed me for a bit.
+// Might be worth calling out that we're running collectstatic in debug mode.
+
+
+// TODO: gitignore src/static
+
+Well, it was fiddly, but that should get us to passing tests!
+
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
+[...]
+OK
+----
+
+We're nearly ready to ship to production!
+
+// DAVID: It might be worth pointing out what Whitenoise is actually doing.
+// From what I understand, we're still using Django to serve static files.
+
+Let's quickly adjust our gitignore, since the static folder is in a new place:
+
+//0010
+[subs="specialcharacters,quotes"]
+----
+$ *git status*
+# should show dockerfile and untracked src/static folder
+$ *echo src/static >> .gitignore*
+$ *git status*
+# should now be clean
+$ *git commit -am "Add collectstatic to dockerfile, and new location to gitignore"*
+----
+
+// CSANAD: now would be a good time to check our changes and notice git marked
+//         src/static as unstaged, so we should update .gitignore accordingly:
+// from `static` to `src/static`.
+// Or we could add this step to Chapter 09 at "Move all our code into a src
+// folder"
+
+
+=== Switching to a nonroot user
+
+TODO: WIP, this is definitely a good idea for security, needs writing up.
+
+Dockerfile should gain some lines a bit like this:
+
+.Dockerfile (ch10l0XX)
+====
+[source,dockerfile]
+----
+RUN addgroup --system nonroot && adduser --system --group nonroot
+
+USER nonroot
+----
+
+
+=== Configuring logging
+
+One last thing we'll want to do is make sure that we can get logs out of our server.
+If things go wrong, we want to be able to get to the tracebacks, and as we'll soon see,
+switching DEBUG off means that Django's default logging configuration changes.
+
+
+==== Provoking a deliberate error
+
+To test this, we'll provoke a deliberate error by deleting the database file.
+
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *rm src/db.sqlite3*
+$ *touch src/db.sqlite3*  # otherwise the --mount type=bind will complain
+----
+
+Now if you run the tests, you'll see they fail;
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
+[...]
+
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]; [...]
+----
+
+// DAVID: Got me thinking, I'm not always clear when I need to rebuild the image.
+// I would have thought I might need to do it here, but I didn't. Might be worth
+// explaining in the previous chapter when we do.
+
+And you might spot in the browser that we just see a minimal error page,
+with no debug info (try it manually if you like):
+
+[[minimal-error-page]]
+.Minimal default server error 500
+image::images/server_error_500.png["A minimal error page saying just Server error (500)"]
+
+
+But if you look in your docker terminal, you'll see there is no traceback:
+
+----
+[2024-02-28 10:41:53 +0000] [7] [INFO] Starting gunicorn 21.2.0
+[2024-02-28 10:41:53 +0000] [7] [INFO] Listening at: http://0.0.0.0:8888 (7)
+[2024-02-28 10:41:53 +0000] [7] [INFO] Using worker: sync
+[2024-02-28 10:41:53 +0000] [8] [INFO] Booting worker with pid: 8
+----
+
+
+Where have the tracebacks gone?
+You might have been expecting that the django debug page and its tracebacks
+would disappear from our web browser,
+but it's more of shock to see that they are no longer appearing in the terminal either!
+If you're like me you might find yourself wondering if we really _did_ see them earlier
+and starting to doubt your own sanity.
+But the explanation is that Django's
+https://docs.djangoproject.com/en/4.2/ref/logging/#default-logging-configuration[default logging configuration]
+changes when DEBUG is turned off:
+
+This means we need to interact with the standard library's `logging` module,
+unfortunately one of the most fiddly parts of the Python standard libraryfootnote:[
+It's not necessarily for bad reasons, but it is all very Java-ey and enterprisey.
+I mean, yes, separating the concepts of handlers and loggers and filters,
+and making it all configurable in a nested hierarchy is all well and good
+and covers every possible use case,
+but sometimes you just wanna say "just print stuff to stdout pls",
+and you wish that configuring the simplest thing was a little easier.].
+
+Here's pretty much the simplest possible logging config
+which just prints everything to the console (i.e. standard out).
+
+
+[role="sourcecode"]
+.src/superlists/settings.py (ch10l011)
+====
+[source,python]
+----
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "root": {"handlers": ["console"], "level": "INFO"},
+    },
+}
+----
+====
+
+Rebuild and restart our container,
+try the FT again (or submitting a new list item manually)
+and we now should see a clear error message:
+
+----
+Internal Server Error: /lists/new
+Traceback (most recent call last):
+[...]
+  File "/src/lists/views.py", line 10, in new_list
+    nulist = List.objects.create()
+             ^^^^^^^^^^^^^^^^^^^^^
+[...]
+  File "/venv/lib/python3.12/site-packages/django/db/backends/sqlite3/base.py",
+  line 328, in execute
+    return super().execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.OperationalError: no such table: lists_list
+----
+
+Re-create the database with `./src/manage.py migrate` and we'll be back to a working state.
+
+Don't forget to commit our changes to _settings.py_ and _Dockerfile_,
+and I think we can call it job done!
+We've at least touched on many or most of the things you might need to think about
+when considering production-readiness,
+we've worked in small steps and used our tests all the way along,
+and we're now ready to deploy our container to a real server!
+
+Find out how, in our next exciting installment...
+
+
+[role="pagebreak-before less_space"]
+.Production-Readiness Config
+*******************************************************************************
+
+((("production-ready deployment", "best practices for")))
+A few things to think about when trying to prepare a production-ready configuration:
+
+Don't use the Django dev server in production::
+  Something like Gunicorn or uWSGI is a better tool for running Django;
+  it will let you run multiple workers, for example.
+  ((("Gunicorn", "benefits of")))
+
+Decide how to serve your static files::
+  Static files aren't the same kind of things as the dynamic content
+  that comes from Django and your webapp, so they need to be treated differently.
+  WhiteNoise is just one example of how you might do that.
+
+Check your settings.py for dev-only config::
+  `DEBUG=True`, `ALLOWED_HOSTS` and `SECRET_KEY` are the ones we came across,
+  but you will probably have others
+  (we'll see more when we start to send emails from the server).
+
+Change things one at a time and rerun your tests frequently::
+  Whenever we make a change to our server configuration,
+  we can rerun the test suite,
+  and either be confident that everything works as well as it did before,
+  or find out immediately if we did something wrong.
+
+Think about logging and observability::
+  When things go wrong, you need to be able to find out what happened.
+  At a minimum you need a way of getting logs and tracebacks out of your server,
+  and in more advanced environments you'll want to think about metrics and tracing too.
+  But we can't cover all that in this book!
+
+*******************************************************************************

@@ -1,0 +1,1419 @@
+[[chapter_11_ansible]]
+== Infrastructure As Code: Automated Deployments With Ansible
+
+[quote, 'Cay Horstman']
+______________________________________________________________
+Automate, automate, automate.
+______________________________________________________________
+
+// RITA: In this intro, please mention that you'll be using Ansible. Not only will it prep the reader, but it'll set you up to say "(or "become" in Ansible terminology)" in the User Accounts, SSH, and Privileges section before we actually get to the Ansible section.
+((("deployment", "automating with Ansible", id="Dfarbric11")))
+((("infrastructure as code")))
+In this chapter we're going to spin up an actual server,
+make it accessible on the Internet with a real domain name,
+and then we're going to install our app on it, using our container.
+
+We _could_ do all these things manually,
+but a key insight of the modern infrastructure management
+is that automation really pays off in reducing maintenance burdens.
+
+It's also key to making sure our tests give us true confidence over our deployments.
+If we go to the trouble of building a staging server,footnote:[
+What I'm calling a "staging" server, some people would
+call a "development" server, and some others would also like to distinguish
+"preproduction" servers.  Whatever we call it, the point is to have
+somewhere we can try our code out in an environment that's as similar as
+possible to the real production server.]
+we want to make sure that it's as similar as possible to the production environment.
+By automating the way we deploy, and using the same automation for staging and prod,
+we give ourselves much more confidence.
+
+The buzzword for automating your deployments these days is "Infrastructure as Code" (IaC).
+// RITA: OK to add the acronym IaC? It's common enough.
+
+// RITA: Perhaps move this to the It Worksss section so the reader sees it when their site actually goes live?
+NOTE: Why not ping me a note once your site is live on the web,
+    and send me the URL?
+    It always gives me a warm and fuzzy feeling...
+    Email me at obeythetestinggoat@gmail.com.
+
+////
+DAVID overall notes
+
+The main challenge is that I found that when I ran into problems I lacked the
+mental model to troubleshoot - it's possible that others who don't have access
+to Harry(TM) will give up. I think talking through what Ansible is doing, maybe
+even a diagram at the beginning of the chapter to show what we're aiming for?
+In particular, it's difficult to understand where the Ansible error logs are
+coming from (i.e. local, server, container...)
+
+I also think we're missing some stuff at the end about how all this might look
+as a development workflow. Maybe talk about setting up scripts (so we don't
+have to remember the ansible command?) And what about releasing to production?
+It doesn't need much, it just feels unfinished to me.
+
+A few small things:
+
+*  I think you should make more of the fact that our functional tests can be
+  run against a real website hosted elsewhere. The fact that we can do that
+  was not obvious to me when we wrote those tests. Worth talking about a bit
+  more?
+
+* Shouldn't we commit our changes to Git at some point, as per the
+  other chapters?
+
+* Will we be returning to this again in the book? I'd like to
+  know whether I can destroy my Digital Ocean droplet yet, don't want to get
+  billed needlessly.
+////
+
+
+.🚧 Warning, chapter under construction 🚧
+*******************************************************************************
+As part of my work on the third edition of the book,
+I'm making big changes to the deployment chapters.
+This chapter is still very fresh, but the content is all there,
+so you should be able to follow along.
+
+But as always I really, really need feedback.
+So please hit me up at obeythetestinggoat@gmail.com, or via
+https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues[GitHub Issues]
+and Pull Requests.
+
+I hope you enjoy the new version!
+
+*******************************************************************************
+
+
+=== Getting a Domain Name
+
+((("domain names")))
+We're going to need a couple of domain names at this point in the book--they
+can both be subdomains of a single domain.  I'm going to use
+_superlists.ottg.co.uk_ and _staging.ottg.co.uk_.
+If you don't already own a domain, this is the time to register one!
+Again, this is something I really want you to _actually_ do.
+If you've never registered a domain before,
+just pick any old registrar and buy a cheap one--it
+should only cost you $5 or so, and you can even find free ones.
+I promise seeing your site on a "real" website will be a thrill.
+
+// DAVID: just wondering if it's worth giving them the option to cheat and
+// specify a domain name in a hosts file?
+
+
+=== Manually Provisioning a Server to Host Our Site
+
+// TODO: revise this section?  I used to assume provisioning included installing dependencies,
+// but now we have docker, so at least some of that job is part of deployment after all.
+
+
+((("staging sites", "manual server provisioning", id="SSserver09")))
+((("server provisioning", id="seerver09")))
+We can separate out "deployment" into two tasks:
+
+- _Provisioning_ a new server to be able to host the code
+- _Deploying_ a new version of the code to an existing server
+
+Infrastructure-as-code tools can let you automate both of these,
+but the provisioning parts tend to be quite vendor-specific,
+so for the purposes of this book, we can live with manual provisioning.
+
+NOTE: I should probably stress once more that deployment is something that varies a lot,
+  and that as a result there are few universal best practices for how to do it.
+  So, rather than trying to remember the specifics of what I'm doing here,
+  you should be trying to understand the rationale,
+  so that you can apply the same kind of thinking in the specific future circumstances you encounter.
+
+
+==== Choosing Where to Host Our Site
+
+((("hosting services")))
+There are loads of different solutions out there these days,
+but they broadly fall into two camps:
+
+- Running your own (probably virtual) server
+- Using a ((("Platform-As-A-Service (PaaS)")))Platform-As-A-Service (PaaS)
+  offering like Heroku or my old employers, PythonAnywhere.
+
+((("PythonAnywhere")))
+Particularly for small sites, a PaaS offers a lot of advantages,
+and I would definitely recommend looking into them.
+We're not going to use a PaaS in this book however, for several reasons.
+The main reason is that I want to avoid endorsing specific commercial providers.
+Secondly, all the PaaS offerings are quite different,
+and the procedures to deploy to each vary a lot--learning about one
+doesn't necessarily tell you about the others.
+Any one of them might radically change their process or business model by the time you get to read this book.
+
+Instead, we'll learn just a tiny bit of good old-fashioned server admin,
+including SSH and manual server config.
+They're unlikely to ever go away,
+and knowing a bit about them will get you some respect
+from all the grizzled dinosaurs out there.
+
+
+
+==== Spinning Up a Server
+
+I'm not going to dictate how you spin up a server--whether
+you choose Amazon AWS, Rackspace, Digital Ocean, your own server in a data centre,
+or a Raspberry Pi in a cupboard under the stairs,
+any solution should be fine, as long as:
+
+* Your server is running Ubuntu 22.04 (aka "Jammy/LTS").
+
+* You have root access to it.
+
+* It's on the public internet.
+
+* You can SSH into it.
+
+I'm recommending Ubuntu as a distro because it's popular and I'm used to it.
+If you know what you're doing, you can probably get away with using
+something else, but I won't be able to help you as much if you get stuck.
+
+((("Linux servers")))
+If you've never started a Linux server before and you have absolutely no idea
+where to start, I wrote a
+https://github.com/hjwp/Book-TDD-Web-Dev-Python/blob/main/server-quickstart.md[very brief guide on GitHub].
+
+
+NOTE: Some people get to this chapter, and are tempted to skip the domain bit,
+    and the "getting a real server" bit, and just use a VM on their own PC.
+    Don't do this.
+    It's _not_ the same, and you'll have more difficulty following the instructions,
+    which are complicated enough as it is.
+    If you're worried about cost, have a look at the guide I wrote for free options.
+    ((("getting help")))
+// RITA: In general, please avoid saying above/below, as the final layout of the book will be determined later during Production. So, what's above now may end up on the previous page. It's better to reword it.
+
+==== User Accounts, SSH, and Privileges
+
+In the following instructions, I'm assuming that you have a nonroot user account set up,
+and that it has "sudo" privileges,
+so whenever we need to do something that requires root access, we use sudo,
+(or "become" in Ansible terminology),
+and I'm explicit about that in the various instructions that follow.
+
+My user is called "elspeth", but you can call yours whatever you like!
+Just remember to substitute it in all the places I've hardcoded it.
+See the guide I wrote if you need tips on creating a sudo user.
+
+
+.Security
+*******************************************************************************
+A serious discussion of server security is beyond the scope of this book,
+and I'd warn against running your own servers
+without learning a good bit more about it.
+(One reason people choose to use a PaaS to host their code
+is that it means a slightly fewer security issues to worry about.)
+If you'd like a place to start, here's as good a place as any:
+https://www.jamesonricks.com/re-post-my-first-5-minutes-on-a-server-or-essential-security-for-linux-servers/
+
+// CSANAD: I tried digging up something similar and this one seems to be based on
+// the "First Five Minutes on a Server":
+// https://blog.codelitt.com/my-first-10-minutes-on-a-server-primer-for-securing-ubuntu/
+//
+// I wanted to find something more community-maintained or more of a "standard"
+// knowledge-base, but both OWASP and the Cloud Security Alliance provide more
+// general and/or less hands-on writings.
+I can definitely recommend the eye-opening experience of installing
+fail2ban and watching its logfiles to see just how quickly it picks up on
+random drive-by attempts to brute force your SSH login.  The internet is a
+wild place!
+((("security issues and settings", "server security")))
+((("Platform-As-A-Service (PaaS)")))
+*******************************************************************************
+
+// DAVID: looks like plusbryan.com has changed hands.
+////
+
+TODO: good advice but not quite sure it's phrased quite right for the new version of the chapter.
+
+.General Server Debugging Tips
+*******************************************************************************
+
+The most important lesson to remember from this chapter is,
+as always but more than ever, to work incrementally,
+make one change at a time, and run your tests frequently.
+
+When things (inevitably) go wrong, resist the temptation to flail about
+and make other unrelated changes in the hope that things will start working again;
+instead, stop, go backward if necessary to get to a working state,
+and figure out what went wrong before moving forward again.
+
+It's just as easy to fall into the Refactoring-Cat trap on the server!
+
+*******************************************************************************
+
+////
+
+// JAN: It feels a bit like something is missing here. You're talking about servers and DNS records. Yet, there's no real call to action for a reader.
+// I ended up executing the initial Ansible command when I realized I should've already spun up the server and set DNS records.
+// I'd suggest being more specific about what should I do as a reader. No need to go step by step. Just to clearly state: "Spin up your publicly accessible server", "Now set DNS A records that point to your server"
+// JAN: It would also make sense to tell the reader to point both domains to the same server
+
+// JAN: It would also be beneficial to state at least some range of server size (e.g., 2GB of memory). e.g., the smallest EC2 instances can have quite some troubles when running Django in Docker
+
+=== Configuring Domains for Staging and Live
+
+We don't want to be messing about with IP addresses all the time,
+so we should point our staging and live domains to the server.
+At my registrar, the control screens looked a bit like <<registrar-control-screens>>.
+
+[[registrar-control-screens]]
+.Domain setup
+image::images/gandi_add_dns_a_record.png["Registrar control screen for adding a DNS record"]
+
+// CSANAD: due to technical reasons, I cannot check on Digital Ocean whether this
+//         screenshot needs to be update. Please, someone else have a look!
+
+
+((("A-Records")))
+In the DNS system, pointing a domain at a specific IP address is called an "A-Record".
+All registrars are slightly different,
+but a bit of clicking around should get you to the right screen in yours.
+You'll need two A-records:
+one for the staging address and one for the live one.
+No need to worry about any other type of record.
+
+DNS records take some time to "propagate" around the world
+(it's controlled by a setting called "TTL", Time To Live),
+so once you've set up your A-record,
+you can check its progress on a "propagation checking" service like this one:
+https://www.whatsmydns.net/#A/staging.ottg.co.uk.
+
+I'm planning to host my staging server at _staging.ottg.co.uk_
+
+
+=== Ansible
+
+Infrastructure-as-code tools, also called "configuration management" tools,
+come in lots of shapes and sizes.
+Chef and Puppet were two of the original ones,
+and you'll probably come across Terraform,
+which is particularly strong on managing cloud services like AWS.
+
+We're going to use Ansible, because it's relatively popular,
+because it can do everything we need it to,
+because I'm biased that it happens to be written in Python,
+and because it's probably the one I'm personally most familiar with.
+
+Another tool could probably have worked just as well!
+The main thing to remember is the _concept_, which is that, as much as possible
+we want to manage our server configuration _declaratively_,
+by expressing the desired state of the server in a particular config syntax,
+rather than specifying a procedural series of steps to be followed one by one.
+
+
+==== Installing Ansible
+
+Take a look at the  https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html [documentation] for instructions on how to install Ansible.
+// RITA: Please anchor all URLs to descriptive text.
+
+The simplest thing to do is to install Ansible into the virtualenv
+on our local machine:
+
+[subs="specialcharacters,quotes"]
+----
+$ *pip install ansible*
+# we also need the Docker SDK for the ansible/docker integration to work:
+$ *pip install docker*
+----
+
+// TODO: consider introducing an explicit requirements.dev.txt here,
+// with -r requirements.txt and put ansible, docker, and selenium in there.
+// or, maybe get that in place in the previous chapter, keep this one shorter.
+
+
+==== A First Cut of an Ansible Playbook
+
+Let's dip our toes into Ansible,
+and see if we can get it to run a simple "hello world" container on our server.
+
+Here's what's called a "playbook" in Ansible terminology.
+It's in a format called YAML (Yet Another Markup Language),
+which, if you've never come across before,
+you will soon develop a love-hate relationshipfootnote:[
+The "love" part is that yaml is very easy to _read_ and scan through at a glance.
+The "hate" part is that the actual syntax is surprisingly fiddly to get right:
+the difference between lists and key/value maps is subtle and I can never quite remember it honestly.]
+for.
+
+// JAN: It would be worth mentioning what to do to be able to execute this ansible command. I haven't noticed anything about adding a record to authorized_keys
+
+// DAVID: I didn't know if this was an example or a file to create.
+// I think it's the latter, it would be good to make that clear.
+
+// CSANAD: I would make it more obvious we created another directory for the
+//         ansible file.
+
+[role="sourcecode"]
+    .infra/ansible-provision.yaml (ch11l001)
+====
+[source,yaml]
+----
+---
+- hosts: all
+
+  tasks:
+
+    - name: Install docker  #<1>
+      ansible.builtin.apt:  #<2>
+        name: docker.io  #<3>
+        state: latest
+        update_cache: true
+      become: true
+
+    - name: Run test container
+      community.docker.docker_container:
+        name: testcontainer
+        state: started
+        image: busybox
+        command: echo hello world
+      become: true
+----
+====
+
+// JAN: I'm stuck here. Docker is not installed on EC2 instance with Ubuntu. Googling it, it seems like this is some outdated Docker installation process
+The one described here is much closer to Docker's installation guide: https://www.digitalocean.com/community/tutorials/how-to-use-ansible-to-install-and-set-up-docker-on-ubuntu-22-04
+
+
+<1> An Ansible playbook is a series of "tasks"
+  (so in that sense it's still quite sequential and procedural),
+  but the individual tasks themselves are quite declarative.
+  Each one usually has a human-readable `name` attribute.
+
+<2> Each task uses an Ansible "module" to do its work.
+  This one uses the `builtin.apt` module which provides a wrapper
+  around the `apt` Debian & Ubuntu package management tool.
+
+<3> Each module then provides a bunch of parameters which control how it works.
+    Here we specify the `name` of the package we want to install ("docker.io"footnote:[
+    In the official docker installation instructions, you'll see a recommendation to install docker via a private package repository.
+    I wanted to avoid that complexity for the book, but you should probably follow those instructions in a real-world scenario.])
+    and tell it to update its cache first, which is required on a fresh server.
+
+Most Ansible modules have pretty good documentation,
+check out the `builtin.apt` one for example.
+I often skip to the
+https://docs.ansible.com/ansible/latest/collections/ansible/builtin/apt_module.html#examples[Examples section].
+
+// RITA: Please add a sentence or two to introduce the following code block.
+// DAVID: +1, this wrong footed me.
+[subs="specialcharacters,quotes"]
+----
+$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*
+ansible-playbook [core 2.16.3]
+  config file = None
+  [...]
+No config file found; using defaults
+BECOME password:
+Skipping callback 'default', as we already have a stdout callback.
+Skipping callback 'minimal', as we already have a stdout callback.
+Skipping callback 'oneline', as we already have a stdout callback.
+
+PLAYBOOK: ansible-provision.yaml **********************************************
+1 plays in infra/ansible-provision.yaml
+
+PLAY [all] ********************************************************************
+
+TASK [Gathering Facts] ********************************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:2
+ok: [staging.ottg.co.uk]
+PLAYBOOK: ansible-provision.yaml **********************************************
+1 plays in infra/ansible-provision.yaml
+
+TASK [Install docker] *********************************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:6
+ok: [staging.ottg.co.uk] => {"cache_update_time": 1708981325, "cache_updated": true, "changed": false}
+
+
+TASK [Install docker] *************************************************************************************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:6
+changed: [staging.ottg.co.uk] => {"cache_update_time": [...]
+"cache_updated": true, "changed": true, "stderr": "", "stderr_lines": [],
+"stdout": "Reading package lists...\nBuilding dependency tree...\nReading [...]
+information...\nThe following additional packages will be installed:\n
+wmdocker\nThe following NEW packages will be installed:\n  docker wmdocker\n0
+
+TASK [Run test container] *****************************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:13
+changed: [staging.ottg.co.uk] => {"changed": true, "container":
+{"AppArmorProfile": "docker-default", "Args": ["hello", "world"], "Config":
+[...]
+
+PLAY RECAP ********************************************************************
+staging.ottg.co.uk         : ok=3    changed=2    unreachable=0    failed=0
+skipped=0    rescued=0    ignored=0
+----
+
+// DAVID: rather than having to edit the username and domains each time,
+// what about getting the reader to set them as environment variables at the beginning of the chapter?
+
+// DAVID: I got ansible-playbook: error: unrecognized arguments: --vv
+// ansible==9.4.0
+// ansible-core==2.16.6
+// Changed it to -v
+
+// DAVID: Then I got:
+// FAILED! => {"msg": "Missing sudo password"}
+// I don't have much context about what's going on here, e.g. there are several machines
+// this could be interacting with - my local, a container in my local,
+// the remote, a container in remote. Or maybe I'm contacting the wrong remote computer.
+// So not that clear how to troubleshoot.
+// (I did set up a sudo user on the server as per your github guide.)
+// Maybe giving a bit more explanation on what this command is doing would help.
+
+// UPDATE: got this working with `--ask-become-pass` - we discussed this in person.
+// But, as discussed, it is annoying to have to keep typing your password in when we could
+// authenticate with the ssh key. Could we change this?
+
+// CSANAD: without rootless docker or adding the server's user to the docker
+//         group, this requires a password for `sudo` on the server. I would add
+// a TIP or something similar to inform the reader it can be done with the `-K` flag:
+// ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -K -vv
+//
+// Even with the server's user added to `docker`, if there is a task where
+// `become: true` is set, we need to provide the password with the `-K`
+
+I don't know about you, but whenever I make a terminal spew out a stream
+of output, I like to make little _brrp brrp brrp_ noises, a bit like the
+computer Mother, in _Alien_.
+Ansible scripts are particularly satisfying in this regard.
+
+
+TIP: You may need to use the `--ask-become-pass` argument to `ansible-playbook`
+    if you get an error "Missing sudo password".
+
+
+=== SSHing Into the Server and Viewing Container Logs
+
+Time to get into some good old-fashioned sysadmin!
+Let's SSH into our server and see if we can see any evidence that our container has run.
+
+We use `docker ps -a` to view all containers, including old/stopped ones,
+and we can use `docker logs` to view the output from one of them:
+
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+$ *ssh elspeth@staging.superlists.ottg.co.uk*
+Welcome to Ubuntu 22.04.4 LTS (GNU/Linux 5.15.0-67-generic x86_64)
+ [...]
+
+elspeth@server$ *docker ps -a*
+CONTAINER ID   IMAGE     COMMAND              CREATED      STATUS
+PORTS     NAMES
+3a2e600fbe77   busybox   "echo hello world"   2 days ago   Exited (0) 10
+minutes ago             testcontainer
+
+elspeth@server:$ *docker logs testcontainer*
+hello world
+----
+// CSANAD: we haven't set up rootless docker and haven't added the user to the
+//         `docker` group either, so `docker ps` would only run with sudo.
+
+// DAVID: Got
+// permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock
+// Sudo fixed it.
+// Update: I think better to add my user to the docker group before this point.
+
+TIP: Look out for that `elspeth@server`
+    in the command-line listings in this chapter.
+    It indicates commands that must be run on the server,
+    as opposed to commands you run on your own PC.
+
+
+SSHing in to check things worked is a key server debugging skill!
+It's something we want to practice on our staging server,
+because ideally we'll want to avoid doing it on production machines.
+
+Let's move on to trying to get our actual docker container running on the server.
+As we go through, you'll see that we're going to work through very similar issues
+to the ones we've already figured our way through in the last couple of chapters:
+
+* Configuration
+* Networking
+* And the database.
+
+
+=== Getting our image onto the server
+
+Typically, you can "push" and "pull" container images
+to a "container registry" -- Docker offers a public one called DockerHub,
+and organisations will often run private ones,
+hosted by cloud providers like AWS.
+
+So your process of getting an image onto a server is usually
+
+* Push the image from your machine to the registry
+
+* Pull the image from the registry onto the server.
+  Usually this step is implicit,
+  in that you just specify the image name in the format registry-url/image-name:tag,
+  and then `docker run` takes care of pulling down the image for you.
+
+But I don't want to ask you to create a DockerHub account,
+or implicitly endorse any particular provider,
+so we're going to "simulate" this process by doing it manually.
+
+It turns out you can "export" a container image to an archive format,
+manually copy that to the server, and then re-import it.
+In Ansible config, it looks like this:
+
+[role="sourcecode"]
+.infra/ansible-provision.yaml (ch11l002)
+====
+[source,yaml]
+----
+---
+- hosts: all
+
+  tasks:
+    - name: Install docker
+      ansible.builtin.apt:
+        name: docker.io
+        state: latest
+      become: true
+
+    - name: Export container image locally  #<1>
+      community.docker.docker_image:
+        name: superlists
+        archive_path: /tmp/superlists-img.tar
+        source: local
+      delegate_to: 127.0.0.1
+
+    - name: Upload image to server  #<2>
+      ansible.builtin.copy:
+        src: /tmp/superlists-img.tar
+        dest: /tmp/superlists-img.tar
+
+    - name: Import container image on server  #<3>
+      community.docker.docker_image:
+        name: superlists
+        load_path: /tmp/superlists-img.tar
+        source: load
+        state: present
+      become: true
+
+    - name: Run container
+      community.docker.docker_container:
+        name: superlists
+        image: superlists
+        state: started
+        recreate: true
+----
+====
+
+// CSANAD: I would add `update_cache: true` to the `Install docker` task back,
+//         it's a good practice to update the apt cache before installing.
+//
+// Also because of the `delegate_to` the reader may face permission errors if they
+// have not set up rootless docker or haven't added their user to the docker group
+// on their local (developer) system.
+// TASK [Export container image locally] ****[...]
+// task path: /path/to/goat-book/infra/ansible-provision.yaml:12
+// fatal: [192.168.122.23 -> 127.0.0.1]: FAILED! => {"changed": false, "msg": "Error connecting: Error while fetching server API version: ('Connection aborted.', PermissionError(13, 'Permission denied'))"}
+//
+// They may get away with just using `sudo docker` but `sudo ansible-playbook`
+// will not work.
+//
+
+<1> We export the docker image to a `.tar` file by using the `docker_image` module
+  with the `archive_path` set to temp file, and setting the `delegate_to` attribute
+  to say we're running that command on our local machine rather than the server.
+
+<2> We then use the `copy` module to upload the tarfile to the server
+
+<3> And we use `docker_image` again but this time with `load_path` and `source: load`
+  to import the image back on the server
+
+// RITA: Please add a sentence or two to introduce the following code block.
+[subs="specialcharacters,quotes"]
+----
+$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*
+[...]
+
+PLAYBOOK: ansible-provision.yaml **********************************************
+1 plays in infra/ansible-provision.yaml
+
+PLAY [all] ********************************************************************
+
+TASK [Gathering Facts] ********************************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:2
+ok: [staging.ottg.co.uk]
+
+TASK [Install docker] *********************************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:5
+ok: [staging.ottg.co.uk] => {"cache_update_time": 1708982855, "cache_updated": false, "changed": false}
+
+TASK [Export container image locally] *****************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:11
+changed: [staging.ottg.co.uk -> 127.0.0.1] => {"actions": ["Archived image
+superlists:latest to /tmp/superlists-img.tar, overwriting archive with image
+11ff3b83873f0fea93f8ed01bb4bf8b3a02afa15637ce45d71eca1fe98beab34 named
+superlists:latest"], "changed": true, "image": {"Architecture": "amd64",
+[...]
+
+TASK [Upload image to server] *************************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:18
+changed: [staging.ottg.co.uk] => {"changed": true, "checksum":
+"313602fc0c056c9255eec52e38283522745b612c", "dest": "/tmp/superlists-img.tar",
+[...]
+
+TASK [Import container image on server] ***************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:23
+changed: [staging.ottg.co.uk] => {"actions": ["Loaded image superlists:latest
+from /tmp/superlists-img.tar"], "changed": true, "image": {"Architecture":
+"amd64", "Author": "", "Comment": "buildkit.dockerfile.v0", "Config":
+[...]
+
+TASK [Run container] **********************************************************
+task path: ...goat-book/superlists/infra/ansible-provision.yaml:32
+changed: [staging.ottg.co.uk] => {"changed": true, "container":
+{"AppArmorProfile": "docker-default", "Args": ["--bind", ":8888",
+"superlists.wsgi:application"], "Config": {"AttachStderr": true, "AttachStdin":
+false, "AttachStdout": true, "Cmd": ["gunicorn", "--bind", ":8888",
+"superlists.wsgi:application"], "Domainname": "", "Entrypoint": null, "Env":
+[...]
+----
+// CSANAD: earlier we also added the `PLAY RECAP` line.
+
+// DAVID: I got error during the 'Export container image locally' step.
+// FAILED! => {"changed": false, "msg": "Error connecting: Error while fetching server API version:
+// ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))"}
+// Update: I fixed it by doing ``sudo usermod -aG docker ${USER}`` on the remote machine.
+// Maybe worth getting them to shell in and run `docker run hello-world` to
+// check their user has permission.
+// DAVID: by the way it's getting annoying having to type my sudo password in all the time.
+
+For completeness, let's also add a step to explicitly build the image locally.
+This means we don't have a dependency on having run `docker build` locally.
+
+
+[role="sourcecode"]
+.infra/ansible-provision.yaml (ch11l003)
+====
+[source,yaml]
+----
+    - name: Install docker
+      [...]
+
+    - name: Build container image locally
+      community.docker.docker_image:
+        name: superlists
+        source: build
+        state: present
+        build:
+          path: ..
+          platform: linux/amd64  # <1>
+        force_source: true
+      delegate_to: 127.0.0.1
+
+    - name: Export container image locally
+      [...]
+----
+====
+
+<1> I needed this `platform` attribute to work around an issue
+  with compatibility between Apple's new ARM-based chips and our server's
+  x86/amd64 architecture.
+  You could also use this `platform:` to cross-build docker images
+  for a Rasberry Pi from a regular PC, or vice-versa.
+  It does no harm in any case.
+
+
+Now let's see if it works!
+
+[subs="specialcharacters,quotes"]
+----
+$ *ssh elspeth@staging.superlists.ottg.co.uk*
+Welcome to Ubuntu 22.04.4 LTS (GNU/Linux 5.15.0-67-generic x86_64)
+ [...]
+
+elspeth@server$ *docker ps -a*
+CONTAINER ID   IMAGE     COMMAND              CREATED      STATUS
+PORTS     NAMES
+3a2e600fbe77   busybox   "echo hello world"   2 days ago   Exited (0) 10
+minutes ago             testcontainer
+129e36a42190   superlists   "/bin/sh -c \'gunicor…"   About a minute ago   Exited (3) About a minute ago             superlists
+
+elspeth@server:$ *docker logs superlists*
+[2024-02-26 22:19:15 +0000] [1] [INFO] Starting gunicorn 21.2.0
+[2024-02-26 22:19:15 +0000] [1] [INFO] Listening at: http://0.0.0.0:8888 (1)
+[2024-02-26 22:19:15 +0000] [1] [INFO] Using worker: sync
+[...]
+  File "/src/superlists/settings.py", line 22, in <module>
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen os>", line 685, in __getitem__
+KeyError: 'DJANGO_SECRET_KEY'
+[2024-02-26 22:19:15 +0000] [7] [INFO] Worker exiting (pid: 7)
+[2024-02-26 22:19:15 +0000] [1] [ERROR] Worker (pid:7) exited with code 3
+[2024-02-26 22:19:15 +0000] [1] [ERROR] Shutting down: Master
+[2024-02-26 22:19:15 +0000] [1] [ERROR] Reason: Worker failed to boot.
+----
+
+// DAVID: (re docker ps) I can also see superlists listed (though exited).
+// In any event, feels like needs a bit more explanation of
+// your thought process?
+
+Whoops, we need to set those environment variables on the server too.
+
+
+NOTE: If you see an error saying "Error connecting: Error while fetching server API version",
+    it may be because the Python Docker SDK can't find your docker daemon.
+    Try restarting Docker Desktop if you're on Windows or a Mac.
+    If you're not using the standard docker engine, with Colima for example,
+    you may need to set the `DOCKER_HOST` environment variable
+    or use a symlink to point to the right place.
+    See the
+    https://github.com/abiosoft/colima/blob/main/docs/FAQ.md#cannot-connect-to-the-docker-daemon-at-unixvarrundockersock-is-the-docker-daemon-running[Colima FAQ].
+
+
+=== Using an env File to Store Our Environment Variables
+
+When we run our container manually locally, we can pass in environment variables with the `-e` flag.
+But we don't want to hard-code secrets like SECRET_KEY into our Ansible files
+and commit them to our repo!
+
+Instead, we can use Ansible to automate the creation of a secret key,
+and then save it to a file on the server, where it _ill be _relatively_ secure
+(better than saving it to version control and pushing it to GitHub in any case!)
+
+We can use a so-called "env file" to store environment variables.
+Env files are essentially a list of key-value pairs using shell syntax,
+a bit like you'd use with `export`.
+
+One extra subtlety is that we want to vary the actual contents of the env file,
+depending on where we're deploying to.
+Each server should get its own unique secret key,
+and we want different config for staging and prod, for example.
+
+So, just as we inject variables into our html templates in Django,
+we can use a templating language called "jinja2" to have variables in our env file.
+It's a common tool in Ansible scripts, and the syntax is very similar to Django's.
+
+Here's what our template for the env file will look like:
+
+// DAVID: These days wouldn't it be called env.jinja as
+// per https://jinja.palletsprojects.com/en/3.1.x/templates/#template-file-extension?
+
+[role="sourcecode"]
+.infra/env.j2 (ch11l004)
+====
+[source,python]
+----
+DJANGO_DEBUG_FALSE=1
+DJANGO_SECRET_KEY={{ secret_key }}
+DJANGO_ALLOWED_HOSTS={{ host }}
+----
+====
+
+And here's how we use it in the provisioning script:
+
+
+[role="sourcecode small-code"]
+.infra/ansible-provision.yaml (ch11l005)
+====
+[source,yaml]
+----
+    - name: Import container image on server
+      [...]
+
+    - name: Ensure .env file exists
+      ansible.builtin.template:  #<1>
+        src: env.j2
+        dest: ~/superlists.env
+        force: false  # do not recreate file if it already exists. <2>
+      vars:  # <3>
+        host: "{{ inventory_hostname }}"  # <4>
+        secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"  # <5>
+
+    - name: Run container
+      community.docker.docker_container:
+        name: superlists
+        image: superlists
+        state: started
+        recreate: true
+        env_file: ~/superlists.env  # <6>
+----
+====
+
+<1> We use `ansible.builtin.template` to specify the local template file to use (`src`),
+   and the destination (`dest`) on the server
+
+<2> `force: false` means we will only write the file once.
+    So after the first time we generate our secret key, it won't change.
+// CSANAD: but it also means any change we make in the .env would not take
+//         effect until we manually delete the old superlists.env file from
+// the server.
+// We should mention this, because if the reader makes a mistake
+// in the env file, but then they find it, they won't be able to fix it unless
+// they realize this is why the values don't change. Guess how I learned that :)
+
+<3> The `vars` section defines the variables we'll inject into our template.
+
+<4> We actually use a built-in Ansible variable called `inventory_hostname`.
+    This variable would actually be available in the template already,
+    but I'm renaming it for clarity.
+
+<5> This `lookup('password')` thing I copy-pasted from StackOverflow.
+    Come on there's no shame in that.
+// CSANAD: the source code may be a little too long. The (5) mark renders on
+//         the next line and it should be at the end of the line of the
+// `secret_key`.
+
+<6> Here's where Ansible tells Docker to use our env file when it runs our container.
+
+
+NOTE: Using an env file to store secrets is definitely better than committing
+    it to version control, but it's maybe not the state of the art either.
+    You'll probably come across more advanced alternatives from various cloud providers,
+    or Hashicorp's Vault tool.
+
+
+
+.Idempotence and Declarative Configuration
+*******************************************************************************
+
+Infrastructure-as-code tools like Ansible aim to be "declarative",
+meaning that, as much as possible, you specify the desired state that you want,
+rather than specifying a series of steps to get there.
+
+This concept goes along with the idea of "idempotence",
+which is is when you want a thing that has the same effect,
+whether it is run just once, or multiple times.
+
+An example is the `apt` module that we used to install docker.
+It doesn't crash if docker is already installed, and in fact,
+Ansible is smart enough to check first before trying to install anything.
+
+// CSANAD: I think adding a counter-example, something that isn't idempotent
+//         would be helpful. E.g. adding a list item to our superlist, because
+// it results in the list getting longer.
+
+There is some subtlety here, for example, our templated env file
+will only be written once, so the step is idempotent in the sense
+that it doesn't overwrite the file with a new random secret key every time you run it.
+But that does come with the downside that you can't easily add new variables to the file.
+
+Probably a more sophisticated solution involving separate files for the secret
+and other parts of the config would be better,
+but I wanted to keep this (already long) chapter as simple as possible.
+
+*******************************************************************************
+
+
+
+Let's run the latest version of our playbook and see how our tests get on:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*
+[...]
+PLAYBOOK: ansible-provision.yaml **********************************************
+1 plays in infra/ansible-provision.yaml
+
+PLAY [all] ********************************************************************
+
+TASK [Gathering Facts] ********************************************************
+ok: [staging.ottg.co.uk]
+
+TASK [Install docker] *********************************************************
+ok: [staging.ottg.co.uk] => {"cache_update_time": 1709136057, "cache_updated":
+false, "changed": false}
+
+TASK [Build container image locally] ******************************************
+changed: [staging.ottg.co.uk -> 127.0.0.1] => {"actions": ["Built image [...]
+
+TASK [Export container image locally] *****************************************
+changed: [staging.ottg.co.uk -> 127.0.0.1] => {"actions": ["Archived image [...]
+
+TASK [Upload image to server] *************************************************
+changed: [staging.ottg.co.uk] => {"changed": true, [...]
+
+TASK [Import container image on server] ***************************************
+changed: [staging.ottg.co.uk] => {"actions": ["Loaded image [...]
+
+TASK [Ensure .env file exists] ************************************************
+changed: [staging.ottg.co.uk] => {"changed": true, [...]
+
+TASK [Run container] **********************************************************
+changed: [staging.ottg.co.uk] => {"changed": true, "container": [...]
+
+PLAY RECAP ********************************************************************
+staging.ottg.co.uk         : ok=8    changed=6    unreachable=0    failed=0
+skipped=0    rescued=0    ignored=0
+----
+
+// DAVID: suggest you get us to we shell in and see the env file there.
+
+Looks good!  What do our tests think?
+
+// DAVID: this command assumes we'll be in a different working directory
+// to the previous command.
+// Also... I originally just pasted this as-is, which contacted YOUR server. Another
+// reason to get them to set environment variables at the start of the chapter.
+==== More debugging
+
+We run our tests as usual and run into a new problem:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
+[...]
+selenium.common.exceptions.WebDriverException: Message: Reached error page:
+about:neterror?e=connectionFailure&u=http%3A//staging.ottg.co.uk/[...]
+----
+
+
+That `neterror` makes me think it's another networking problem.
+
+NOTE: If your domain provider puts up a temporary holding page,
+    you may get a 404 rather than a connection error at this point,
+    and the traceback might have NoSuchElementException instead.
+
+
+Let's try our standard debugging technique, of using `curl`
+both locally and then from inside the container on the server.
+First, on our own machine:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*curl -iv staging.ottg.co.uk*]
+[...]
+curl: (7) Failed to connect to staging.ottg.co.uk port 80 after 25 ms: Couldn't
+connect to server
+----
+// CSANAD: my curl output looks a little different, saying "Connection refused"
+//
+// $ curl -iv 192.168.122.23
+// *   Trying 192.168.122.23:80...
+// * connect to 192.168.122.23 port 80 failed: Connection refused
+// * Failed to connect to 192.168.122.23 port 80 after 2 ms: Connection refused
+// * Closing connection 0
+// curl: (7) Failed to connect to 192.168.122.23 port 80 after 2 ms: Connection refused
+
+
+NOTE: Similarly, depending on your domain/hosting provider,
+    you may see "Host not found" here instead.
+
+
+Now let's ssh in to our server and take a look at the docker logs:
+
+[subs="specialcharacters,quotes"]
+----
+elspeth@server$ *docker logs superlists*
+[2024-02-28 22:14:43 +0000] [7] [INFO] Starting gunicorn 21.2.0
+[2024-02-28 22:14:43 +0000] [7] [INFO] Listening at: http://0.0.0.0:8888 (7)
+[2024-02-28 22:14:43 +0000] [7] [INFO] Using worker: sync
+[2024-02-28 22:14:43 +0000] [8] [INFO] Booting worker with pid: 8
+----
+
+No errors there.  Let's try our `curl`:
+
+[subs="specialcharacters,quotes"]
+----
+elspeth@server$ *curl -iv localhost*
+*   Trying 127.0.0.1:80...
+* connect to 127.0.0.1 port 80 failed: Connection refused
+*   Trying ::1:80...
+* connect to ::1 port 80 failed: Connection refused
+* Failed to connect to localhost port 80 after 0 ms: Connection refused
+* Closing connection 0
+curl: (7) Failed to connect to localhost port 80 after 0 ms: Connection refused
+----
+
+Hmm, `curl` fails on the server too.
+But all this talk of `port 80`, both locally and on the server, might be giving us a clue.
+Let's check `docker ps`:
+
+// CSANAD: Ackchually I'm not sure if it's supposed to work, since we set
+//         `inventory_hostname` for DJANGO_ALLOWED_HOSTS, so `localhost`
+// would not get through.
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker ps*
+CONTAINER ID   IMAGE        COMMAND                  CREATED         STATUS
+PORTS     NAMES
+1dd87cbfa874   superlists   "/bin/sh -c 'gunicor…"   9 minutes ago   Up 9
+minutes             superlists
+----
+
+This might be ringing a bell now--we forgot the ports.
+
+We want to map port 8888 inside the container as port 80 (the default web/http port)
+on the server:
+
+[role="sourcecode"]
+.infra/ansible-provision.yaml (ch11l006)
+====
+[source,yaml]
+----
+    - name: Run container
+      community.docker.docker_container:
+        name: superlists
+        image: superlists
+        state: started
+        recreate: true
+        env_file: ~/superlists.env
+        ports: 80:8888
+----
+====
+
+// CSANAD: I would remind the reader we need to run ansible-playbook again.
+
+That gets us to:
+
+----
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]; [...]
+----
+
+// DAVID: tests pass for me now! And I can create lists on the server...
+// Strange, I'm pretty sure I didn't run migrations.
+// TODO:  let's add an rm db.slqite3 inside the dockerfile maybe, to make sure this doesn't happen.
+
+=== Mounting the database on the server and running migrations
+
+Taking a look at the logs from the server,
+we can see that the database is not initialised:
+
+// CSANAD: this is not the case for me. I had to ssh into the server, run bash
+//         in the container and remove the `db.sqlite3` manually to achieve this state.
+//
+// After checking the work again from Chapter 09 I think the reader would also find the db
+// there before the next step.
+//
+// We should put the db into a .dockerignore file so that it doesn't end up COPY -ed.
+//
+// I'm adding a comment to Chapter 09, "Mounting files inside the container" section.
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *ssh elspeth@server docker logs superlists*
+[...]
+django.db.utils.OperationalError: no such table: lists_list
+----
+
+// DAVID: confused by this next para.
+
+// CSANAD: I think this `ansible-playbook` output was supposed to be shown after
+//         the changes in the `ansible-provision.yaml`
+
+[subs="specialcharacters,quotes"]
+----
+$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*
+[...]
+TASK [Run migration inside container] *****************************************
+changed: [staging.ottg.co.uk] => {"changed": true, "rc": 0, "stderr": "",
+"stderr_lines": [], "stdout": "Operations to perform:\n  Apply all migrations:
+auth, contenttypes, lists, sessions\nRunning migrations:\n  Applying
+contenttypes.0001_initial... OK\n  Applying
+contenttypes.0002_remove_content_type_name... OK\n  Applying
+auth.0001_initial... OK\n  Applying
+auth.0002_alter_permission_name_max_length... OK\n  Applying
+[...]
+PLAY RECAP ********************************************************************
+staging.ottg.co.uk         : ok=9    changed=2    unreachable=0    failed=0
+skipped=0    rescued=0    ignored=0
+----
+
+// RITA: Please expand this intro sentence. Here's how to do what?
+
+Here's how
+
+// CSANAD: I think a little more explanation is missing from here. Maybe just
+//         a sentence, but just showing the changes and the output feels a
+// little incomplete.
+
+[role="sourcecode"]
+.infra/ansible-provision.yaml (ch11l007)
+====
+[source,python]
+----
+    - name: Ensure db.sqlite3 file exists outside container
+      ansible.builtin.file:
+        path: /home/elspeth/db.sqlite3
+        state: touch  # <1>
+
+    - name: Run migration inside container
+      community.docker.docker_container_exec:  # <2>
+        container: superlists
+        command: ./manage.py migrate
+
+    - name: Run container
+      community.docker.docker_container:
+        name: superlists
+        image: superlists
+        state: started
+        recreate: true
+        env_file: ~/superlists.env
+        mounts:  # <3>
+          - type: bind
+            source: /home/elspeth/db.sqlite3
+            target: /src/db.sqlite3
+        ports: 80:8888
+----
+====
+
+<1> We use `file` with `state=touch` to make sure a placeholder file exists
+    before we try and mount it in
+
+<2> And we use the API for `docker exec` to run the migration command inside
+    the container.
+
+<3> Here is the `mounts` config, which works a lot like the `--mount` flag to
+    `docker run`.
+
+
+
+
+=== It workssss
+
+// RITA: I'd prefer to call the section "It works!" with an exclamation point or two, but OK. Please expand the first sentence of the section to be more than just "Hooray." What was achieved? What does the following result indicate?
+
+Hooray
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
+Found 3 test(s).
+[...]
+
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 13.537s
+OK
+----
+
+////
+==== Making Sure Our Container Starts on Boot
+
+((("Container", "automatic booting/reloading of")))
+Our final step is to make sure
+that the server starts up our container automatically on boot,
+and reloads it automatically if it crashes.
+
+(used to need systemd, now you can just set restart_policy.
+////
+
+// DAVID: Maybe you should say this debugging stuff at the beginning, not the end!
+
+.More Debugging Tips and Commands
+*******************************************************************************
+
+A few more places to look and things to try, now that we've introduced
+Docker into the mix, should things not go according to plan--all of these
+should be run on the server, inside an SSH session:
+
+- You can check the Container logs using
+  `docker logs superlists`.
+// CSANAD: we already used this a lot, so this isn't "more debugging tip"
+
+- You can get detailed info on the Container using
+  `docker inspect superlists`.
+  This is a good place to go check on environment variables,
+  port mappings, and exactly which image was running, for example.
+
+- You can inspect the image with
+  `docker image inspect superlists`.
+  You might need this to check the exact image hash,
+  to make sure it's the same one you built locally.
+
+((("debugging", "Docker")))
+
+*******************************************************************************
+
+
+
+
+////
+old content follows
+
+
+Use Vagrant to Spin Up a Local VM
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+Running tests against the staging site gives us the ultimate confidence that
+things are going to work when we go live, but we can also use a VM on our
+local machine.
+
+Download Vagrant and Virtualbox, and see if you can get Vagrant to build a
+dev server on your own PC, using our Ansible playbook to deploy code to it.
+Rewire the FT runner to be able to test against the local VM.
+
+Having a Vagrant config file is particularly helpful when working
+in a team--it helps new developers to spin up servers that look exactly
+like yours.((("", startref="ansible29")))
+
+
+
+
+Deploying to Live
+^^^^^^^^^^^^^^^^^
+
+TODO update this
+
+So, let's try using it for our live site!
+
+[role="small-code against-server"]
+[subs=""]
+----
+$ <strong>fab deploy:host=elspeth@superlists.ottg.co.uk</strong>
+
+Done.
+Disconnecting from elspeth@superlists.ottg.co.uk... done.
+----
+
+
+'Brrp brrp brpp'. You can see the script follows a slightly different path,
+doing a `git clone` to bring down a brand new repo instead of a `git pull`.
+It also needs to set up a new virtualenv from scratch, including a fresh
+install of pip and Django. The `collectstatic` actually creates new files this
+time, and the `migrate` seems to have worked too.
+
+
+
+Git Tag the Release
+~~~~~~~~~~~~~~~~~~~
+
+
+((("Git", "tagging releases")))One
+final bit of admin.  In order to preserve a historical marker,
+we'll use Git tags to mark the state of the codebase that reflects
+what's currently live on the server:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *git tag LIVE*
+$ *export TAG=$(date +DEPLOYED-%F/%H%M)*  # this generates a timestamp
+$ *echo $TAG* # should show "DEPLOYED-" and then the timestamp
+$ *git tag $TAG*
+$ *git push origin LIVE $TAG* # pushes the tags up
+----
+
+Now it's easy, at any time, to check what the difference is between
+our current codebase and what's live on the servers.  This will come
+in useful in a few chapters, when we look at database migrations. Have
+a look at the tag in the history:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git log --graph --oneline --decorate*
+[...]
+----
+
+////
+
+// RITA: Perhaps add the note about the reader emailing you when their site goes live to this point. "Tell your mum! Tell me! Email me at....""
+You now have a live website!  Tell all your friends!
+Tell your mum, if no one else is interested!
+And, in the next chapter, it's back to coding again.((("", startref="Fstage11")))
+
+// DAVID: maybe more of a conclusion here? It's quite a heavy chapter,
+// a bit of an anticlimax to stop here. I want some inspiring note to end on.
+// In particular, how does this tie into TDD?
+// DAVID: Also - now it's on staging, should we release to prod too?
+
+=== Further Reading
+
+((("automated deployment", "additional resources")))
+There's no such thing as the One True Way in deployment;
+I've tried to set you off on a reasonably sane path,
+but there are plenty of things you could do differently,
+and lots, lots more to learn besides.
+Here are some resources I used for inspiration:
+
+
+* https://12factor.net/[The 12-factor App] by the Heroku team
+
+* http://hynek.me/talks/python-deployments[Solid Python Deployments for Everybody] by Hynek Schlawack
+// CSANAD: the author suggests another, slightly more up-to date (from 2018)
+//         talk now: https://hynek.me/talks/deploy-friendly/
+
+* The deployment chapter of
+  https://www.feldroy.com/books/two-scoops-of-django-3-x[Two Scoops of Django]
+  by Dan Greenfeld and Audrey Roy
+// CSANAD: this is 404 now. The book no longer seems to have a separate page
+//         instead, they list all their books at
+// https://www.feldroy.com/two-scoops-press
+
+
+
+
+[role="pagebreak-before less_space"]
+.Automated Deployment Recap
+*******************************************************************************
+
+Here's a brief recap of what we've been through,
+which are a fairly typical set of steps for deployment in general
+
+1. *Provisioning* a server. This tends to be vendor-specific,
+  so we didn't automate it, but you absolutely can!
+
+2. Installing *system dependencies* - in our case, it was mainly Docker,
+  but inside the Docker image, we also had some system dependencies too,
+  like Python itself.
+// CSANAD: this is not true in the current edition as we are just using the
+//         superlists image which is built upon the python:slim
+
+3. Getting our *application code* (or "artifacts") onto the server.
+  In our case, since we're using Docker, the thing we needed to transfer was a Docker image.
+  We used a manual process, but typically you'd push and pull to an image repository.
+// CSANAD: we actually automated this step in this edition
+
+4. Setting *environment variables and secrets*.
+  Depending on how you need to vary them,
+  you can set environment variables on your local PC,
+  in a Dockerfile, in your Ansible scripts, or on the server itself.
+  Figuring out which to use in which case is a big part of deployment.
+
+5. Attaching to the *Database*. In our case we mount a file from the local filesystem.
+  More typically, you'd be supplying some environment variables and secrets to define
+  a host, port, username and password to use for accessing a database server.
+
+6. Configuring *networking and port mapping*.  This includes DNS config,
+  as well as Docker configuration. Web apps need to be able to talk to the outside world!
+
+7. Running *Database migrations*.  We'll revisit this later in the book,
+  but migrations are one of the most risky part of a deployment,
+  and automating them is a key part of reducing that risk.
+
+8. *Switching across* to the new version of our application.
+  In our case, we stop the old container and start a new one.
+  In more advanced setups, you might be trying to achieve zero-downtime deploys,
+  and looking into techniques like red-green deployments.
+// CSANAD: we haven't mentioned the downtime so far
+
+// TODO is there a better word than "switching across"?
+// CSANAD: I can only think of "releasing" or "deploying"
+
+Every single aspect of deployment can and probably should be automated.
+Here are a couple of general principles to think about
+when implementing infrastructure-as-code:
+
+Idempotence::
+  If your deployment script is deploying to existing servers,
+  you need to design them so that they work against a fresh installation _and_ against
+  a server that's already configured.
+  ((("idempotence")))
+
+Declarative::
+  As much as possible, we want to try and specify _what_ we want the state to be on the server,
+  rather than _how_ we should get there.
+  This goes hand-in-hand with the idea of idempotence above.
+
+
+*******************************************************************************

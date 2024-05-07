@@ -1,24 +1,24 @@
 #!/bin/bash
-set -e
-
+set -eux
+set -o pipefail
 
 OLD_CHAPTER=$1
-OLD_XREF=$2
-NEW_NAME=$3
+NEW_NAME=$2
 
-sed -i s/$OLD_XREF/$NEW_NAME/g *.asciidoc
+# git mv "$OLD_CHAPTER.asciidoc" "$NEW_NAME.asciidoc"
+# git mv "tests/test_$OLD_CHAPTER.py" "tests/test_$NEW_NAME.py"
+#
+# git mv "source/$OLD_CHAPTER" "source/$NEW_NAME"
+#
+# cd "source/$NEW_NAME/superlists" 
+# git checkout "$OLD_CHAPTER"
+# git checkout -b "$NEW_NAME"
+# git push -u local
+# git push -u origin
+# cd ../../..
 
-git mv $OLD_CHAPTER.asciidoc $NEW_NAME.asciidoc
-git mv tests/test_$OLD_CHAPTER.py tests/test_$NEW_NAME.py
+git grep -l "$OLD_CHAPTER" | xargs sed -i '' "s/$OLD_CHAPTER/$NEW_NAME/g"
 
-mkdir source/$NEW_NAME
-git mv source/$OLD_CHAPTER/superlists source/$NEW_NAME/superlists
-cd source/$NEW_NAME/superlists && git checkout -b $NEW_NAME && cd ../../..
+make "test_$NEW_NAME" || echo -e "\a"
 
-sed -i s/$OLD_CHAPTER/$NEW_NAME/g .travis.yml atlas.json book.asciidoc copy_html_to_site_and_print_toc.py tests/*.py 
-cd source && ./push-back.sh $NEW_NAME && cd ..
-
-xvfb-run -a make test_$NEW_NAME || echo -e "\a"
-
-echo git commit -am \"rename $OLD_CHAPTER $NEW_NAME\"
-
+echo git commit -am \'rename "$OLD_CHAPTER" to "$NEW_NAME".\'

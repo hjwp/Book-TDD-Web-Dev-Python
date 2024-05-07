@@ -1,0 +1,618 @@
+[[chapter_06_explicit_waits_1]]
+== Improving Functional Tests: Ensuring Isolation and Removing Voodoo Sleeps
+
+.A Note for Early Release Readers
+****
+With Early Release ebooks, you get books in their earliest form—the author's raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.
+
+This will be the 6th chapter of the final book. The GitHub repo is available at https://github.com/hjwp/book-example.
+
+If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the author at obeythetestinggoat@gmail.com.
+****
+
+Before we dive in and fix our single-global-list problem,
+let's take care of a couple of housekeeping items.
+At the end of the last chapter, we made a note
+that different test runs were interfering with each other, so we'll fix that.
+I'm also not happy with all these ++time.sleep++s peppered through the code;
+they seem a bit unscientific, so we'll replace them with something more reliable.
+
+[role="scratchpad"]
+*****
+* _Clean up after FT runs_
+* _Remove time.sleeps_
+*****
+
+Both of these changes will be moving us towards testing "best practices",
+making our tests more deterministic and more reliable.
+
+
+=== Ensuring Test Isolation in Functional Tests
+
+
+((("functional tests (FTs)", "ensuring isolation", id="FTisolation06")))
+((("isolation, ensuring", "in functional tests", secondary-sortas="functional tests", id="isolation06")))
+We ended the last chapter with a classic testing problem:
+how to ensure _isolation_ between tests.
+Each run of our functional tests was leaving list items lying around in the database,
+and that would interfere with the test results when you next ran the tests.
+
+((("unit tests", "in Django", "test databases", secondary-sortas="Django")))
+When we run _unit_ tests,
+the Django test runner automatically creates a brand new test database
+(separate from the real one),
+which it can safely reset before each individual test is run,
+and then throw away at the end.
+But our functional tests currently run against the "real" database, _db.sqlite3_.
+
+One way to tackle this would be to "roll our own" solution,
+and add some code to _functional_tests.py_ which would do the cleaning up.
+The `setUp` and `tearDown` methods are perfect for this sort of thing.
+
+
+((("LiveServerTestCase class")))
+But since this is a common problem, Django supplies a test class called `LiveServerTestCase`
+which addresses this issue.
+It will automatically create a test database (just like in a unit test run),
+and start up a development server for the functional tests to run against.
+Although as a tool it has some limitations which we'll need to work around later,
+it's dead useful at this stage, so let's check it out.
+
+`LiveServerTestCase` expects to be run by the Django test runner using
+_manage.py_, which will run tests from any files whose name begins with _test__.
+To keep things neat and tidy, let's make a folder for our functional tests,
+so that it looks a bit like an app.
+All Django needs is for it to be a valid Python package directory
+(i.e., one with a +++<i>___init___.py</i>+++ in it):
+
+[subs=""]
+----
+$ <strong>mkdir functional_tests</strong>
+$ <strong>touch functional_tests/__init__.py</strong>
+----
+
+((("Git", "moving files")))
+Now we want to 'move' our functional tests,
+from being a standalone file called 'functional_tests.py',
+to being the 'tests.py' of the `functional_tests` app.
+We use *`git mv`* so that Git keeps track of the fact that this
+is the same file and should have a single history.
+
+
+[subs=""]
+----
+$ <strong>git mv functional_tests.py functional_tests/tests.py</strong>
+$ <strong>git status</strong> # shows the rename to functional_tests/tests.py and __init__.py
+----
+
+At this point your directory tree should look like this:
+
+----
+.
+├── db.sqlite3
+├── functional_tests
+│   ├── __init__.py
+│   └── tests.py
+├── lists
+│   ├── __init__.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── migrations
+│   │   ├── 0001_initial.py
+│   │   ├── 0002_item_text.py
+│   │   └── __init__.py
+│   ├── models.py
+│   ├── templates
+│   │   └── home.html
+│   ├── tests.py
+│   └── views.py
+├── manage.py
+└── superlists
+    ├── __init__.py
+    ├── asgi.py
+    ├── settings.py
+    ├── urls.py
+    └── wsgi.py
+----
+
+'functional_tests.py' is gone, and has turned into 'functional_tests/tests.py'.
+Now, whenever we want to run our functional tests, instead of running `python
+functional_tests.py`, we will use `python manage.py test functional_tests`.
+
+NOTE: You could mix your functional tests into the tests for the `lists` app.
+    I tend to prefer to keep them separate, because functional tests usually
+    have cross-cutting concerns that run across different apps.  FTs are meant
+    to see things from the point of view of your users, and your users don't
+    care about how you've split work between different apps!
+
+
+Now let's edit 'functional_tests/tests.py' and change our `NewVisitorTest`
+class to make it use `LiveServerTestCase`:
+
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch06l001)
+====
+[source,python]
+----
+from django.test import LiveServerTestCase
+from selenium import webdriver
+[...]
+
+
+class NewVisitorTest(LiveServerTestCase):
+    def setUp(self):
+        [...]
+----
+====
+
+Next, instead of hardcoding the visit to localhost port 8000,
+`LiveServerTestCase` gives us an attribute called `live_server_url`:
+
+
+[role="dofirst-ch06l003 sourcecode"]
+.functional_tests/tests.py (ch06l002)
+====
+[source,python]
+----
+    def test_can_start_a_todo_list(self):
+        # Edith has heard about a cool new online to-do app.
+        # She goes to check out its homepage
+        self.browser.get(self.live_server_url)
+----
+====
+
+We can also remove the `if __name__ == '__main__'` from the end if we want,
+since we'll be using the Django test runner to launch the FT.
+
+
+TODO -- FIXES FROM HERE
+
+Now we are able to run our functional tests using the Django test runner,
+by telling it to run just the tests for our new `functional_tests` app:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests*]
+Creating test database for alias 'default'...
+Found 1 test(s).
+System check identified no issues (0 silenced).
+.
+ ---------------------------------------------------------------------
+Ran 1 test in 10.519s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+[role="pagebreak-before"]
+The FT still passes, reassuring us that our refactor didn't break anything.
+You'll also notice that if you run the tests a second time,
+there aren't any old list items lying around from the previous test--it
+has cleaned up after itself.
+Success! We should commit it as an atomic change:
+
+[subs=""]
+----
+$ <strong>git status</strong> # functional_tests.py renamed + modified, new __init__.py
+$ <strong>git add functional_tests</strong>
+$ <strong>git diff --staged</strong>
+$ <strong>git commit</strong>  # msg eg "make functional_tests an app, use LiveServerTestCase"
+----
+
+
+==== Running Just the Unit Tests
+
+((("Django framework", "running functional and/or unit tests")))
+Now if we run `manage.py test`,
+Django will run both the functional and the unit tests:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test*]
+Creating test database for alias 'default'...
+Found 7 test(s).
+System check identified no issues (0 silenced).
+.......
+ ---------------------------------------------------------------------
+Ran 7 tests in 10.859s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+((("", startref="FTisolation06")))
+((("", startref="isolation06")))
+In order to run just the unit tests, we can specify that we want to
+only run the tests for the `lists` app:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test lists*]
+Creating test database for alias 'default'...
+Found 6 test(s).
+System check identified no issues (0 silenced).
+......
+ ---------------------------------------------------------------------
+Ran 6 tests in 0.009s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+
+[role="pagebreak-before less_space"]
+.Useful Commands Updated
+*******************************************************************************
+
+((("Django framework", "commands and concepts", "python manage.py test functional_tests")))To run the functional tests::
+    *`python manage.py test functional_tests`*
+
+((("Django framework", "commands and concepts", "python manage.py test lists")))To run the unit tests::
+    *`python manage.py test lists`*
+
+What to do if I say "run the tests", and you're not sure which ones I mean?
+Have another look at the flowchart at the end of <<chapter_04_philosophy_and_refactoring>>,
+and try to figure out where we are.
+As a rule of thumb, we usually only run the functional tests once all the unit tests are passing,
+so if in doubt, try both!
+
+*******************************************************************************
+
+
+
+=== Aside: Upgrading Selenium and Geckodriver
+
+((("Selenium", "upgrading")))
+((("Geckodriver", "upgrading")))
+((("Firefox", "upgrading")))
+((("functional tests (FTs)", "troubleshooting hung tests")))
+((("troubleshooting", "hung functional tests")))
+As I was running through this chapter again today,
+I found the FTs hung when I tried to run them.
+
+It turns out that Firefox had auto-updated itself overnight,
+and my versions of Selenium and Geckodriver needed upgrading too.
+A quick visit to the https://github.com/mozilla/geckodriver/releases[geckodriver releases page]
+confirmed there was a new version out.
+So a few downloads and upgrades were in order:
+
+* A quick `pip install --upgrade selenium` first.
+
+* Then a quick download of the new geckodriver.
+
+* I saved a backup copy of the old one somewhere, and put the new one in its
+  place somewhere on the `PATH`.
+
+* And a quick check with `geckodriver --version` confirms the new one was
+  ready to go.
+
+The FTs were then back to running the way I expected them to.
+
+There was no particular reason that it happened at this point in the book;
+indeed, it's quite unlikely that it'll happen right now for you, but it may
+happen at some point, and this seemed as good a place as any to talk about
+it, since we're doing some [keep-together]#housekeeping#.
+
+It's one of the things you have to put up with when using Selenium.
+Although it is possible to pin your browser and Selenium versions
+(on a CI server, for example),
+browser versions don't stand still out in the real world,
+and you need to keep up with what your users have.
+
+NOTE: If something strange is going on with your FTs,
+    it's always worth trying to upgrade Selenium.
+
+Back to our regular programming now.
+
+// CSANAD:  This is pretty useful, however, as you already mentioned, there was no particular reason
+// for it to have happened just now. So, I think it would be better to put in in an appedix or earlier
+// ahead in the book, as a highlighted note - maybe when we first run our functional tests.
+
+
+=== On Implicit and Explicit Waits, and Voodoo time.sleeps
+
+((("functional tests (FTs)", "implicit/explicit waits and time.sleeps", id="FTimplicit06")))
+((("implicit and explicit waits", id="implicit06")))
+((("explicit and implicit waits", id="explicit06")))
+((("time.sleeps", id="timesleep06")))
+Let's talk about the `time.sleep` in our FT:
+
+[role="sourcecode currentcontents"]
+.functional_tests/tests.py
+====
+[source,python]
+----
+        # When she hits enter, the page updates, and now the page lists
+        # "1: Buy peacock feathers" as an item in a to-do list table
+        inputbox.send_keys(Keys.ENTER)
+        time.sleep(1)
+
+        self.check_for_row_in_list_table("1: Buy peacock feathers")
+----
+====
+
+
+This is what's called an "explicit wait".
+That's by contrast with "implicit waits":
+in certain cases, Selenium tries to wait "automatically" for you, when it thinks the page is loading.
+It even provides a method called `implicitly_wait`
+that lets you control how long it will wait
+if you ask it for an element that doesn't seem to be on the page yet.
+
+In fact, in the first edition, I was able to rely entirely on implicit waits.
+The problem is that implicit waits are always a little flakey, and with the
+release of Selenium 4, implicit waits were disabled by default.
+At the same time, the general opinion from the Selenium team was that implicit
+waits were just a bad idea,
+and https://www.selenium.dev/documentation/webdriver/waits/[to be avoided].
+
+
+So this edition has explicit waits from the very beginning.
+But the problem is that those ++time.sleep++s have their own issues.
+
+Currently we're waiting for one second, but who's to say that's the right amount of time?
+For most tests we run against our own machine, one second is way too long,
+and it's going to really slow down our FT runs. 0.1s would be fine.
+But the problem is that if you set it that low,
+every so often you're going to get a spurious failure
+because, for whatever reason, the laptop was being a bit slow just then.
+And even at 1s you can never be quite sure you're not going to get random failures that don't indicate a real problem,
+and false positives in tests are a real annoyance (there's lots more on this in
+https://martinfowler.com/articles/nonDeterminism.html[an article by Martin Fowler]).
+
+
+((("NoSuchElementException")))
+((("StaleElementException")))
+TIP: Unexpected `NoSuchElementException` and `StaleElementException` errors
+    are often a sign that you need an explicit wait.
+
+So let's replace our sleeps with a tool that will wait for just as long as is needed,
+up to a nice long timeout to catch any glitches.
+We'll rename `check_for_row_in_list_table` to `wait_for_row_in_list_table`,
+and add some polling/retry logic to it:
+
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch06l004)
+====
+[source,python]
+----
+[...]
+from selenium.common.exceptions import WebDriverException
+import time
+
+MAX_WAIT = 5  # <1>
+
+
+class NewVisitorTest(LiveServerTestCase):
+    def setUp(self):
+        [...]
+    def tearDown(self):
+        [...]
+
+    def wait_for_row_in_list_table(self, row_text):
+        start_time = time.time()
+        while True:  # <2>
+            try:
+                table = self.browser.find_element(By.ID, "id_list_table")  # <3>
+                rows = table.find_elements(By.TAG_NAME, "tr")
+                self.assertIn(row_text, [row.text for row in rows])
+                return  # <4>
+            except (AssertionError, WebDriverException):  # <5>
+                if time.time() - start_time > MAX_WAIT:  # <6>
+                    raise  # <6>
+                time.sleep(0.5)  # <5>
+----
+====
+
+<1> We'll use a constant called `MAX_WAIT`
+    to set the maximum amount of time we're prepared to wait.
+    5 seconds should be enough to catch any glitches or random slowness.
+
+<2> Here's the loop, which will keep going forever,
+    unless we get to one of two possible exit routes.
+
+<3> Here are our three lines of assertions
+    from the old version of the method.
+
+<4> If we get through them and our assertion passes,
+    we return from the function and escape the loop.
+
+<5> But if we catch an exception,
+    we wait a short amount of time and loop around to retry.
+    There are two types of exceptions we want to catch:
+    `WebDriverException` for when the page hasn't loaded
+    and Selenium can't find the table element on the page,
+    and `AssertionError` for when the table is there,
+    but it's perhaps a table from before the page reloads,
+    so it doesn't have our row in yet.
+
+<6> Here's our second escape route.
+    If we get to this point, that means our code kept raising exceptions
+    every time we tried it until we exceeded our timeout.
+    So this time, we re-raise the exception
+    and let it bubble up to our test,
+    and most likely end up in our traceback,
+    telling us why the test failed.
+
+Are you thinking this code is a little ugly,
+and makes it a bit harder to see exactly what we're doing?
+I agree. Later on (<<self.wait-for>>),
+we'll refactor out a general `wait_for` helper,
+to separate the timing and re-raising logic from the test assertions.
+But we'll wait until we need it in multiple places.
+
+NOTE: If you've used Selenium before, you may know that it has a few
+    https://www.selenium.dev/documentation/webdriver/waits/#explicit-waits[helper functions to do waits].
+    I'm not a big fan of them, though not for any objective reason really.
+    Over the course of the book we'll build a couple of wait helper tools
+    which I think will make for nice, readable code,
+    but of course you should check out the homegrown Selenium waits in your own time,
+    and see if you prefer them.
+
+Now we can rename our method calls, and remove the voodoo ++time.sleep++s:
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch06l005)
+====
+[source,python]
+----
+    [...]
+    # When she hits enter, the page updates, and now the page lists
+    # "1: Buy peacock feathers" as an item in a to-do list table
+    inputbox.send_keys(Keys.ENTER)
+    self.wait_for_row_in_list_table("1: Buy peacock feathers")
+
+    # There is still a text box inviting her to add another item.
+    # She enters "Use peacock feathers to make a fly"
+    # (Edith is very methodical)
+    inputbox = self.browser.find_element(By.ID, "id_new_item")
+    inputbox.send_keys("Use peacock feathers to make a fly")
+    inputbox.send_keys(Keys.ENTER)
+
+    # The page updates again, and now shows both items on her list
+    self.wait_for_row_in_list_table("1: Buy peacock feathers")
+    self.wait_for_row_in_list_table("2: Use peacock feathers to make a fly")
+    [...]
+----
+====
+
+
+And rerun the tests:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test*]
+Creating test database for alias 'default'...
+Found 7 test(s).
+System check identified no issues (0 silenced).
+.......
+ ---------------------------------------------------------------------
+Ran 7 tests in 4.552s
+
+OK
+Destroying test database for alias 'default'...
+----
+
+Hooray we're back to passing,
+and notice we've shaved a couple of seconds off the execution time too.
+That might not seem like a lot right now, but it all adds up.
+
+Just to check we've done the right thing,
+let's deliberately break the test
+in a couple of ways and see some errors.
+First let's check that if we look for some row text that will never appear,
+we get the right error:
+
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch06l006)
+====
+[source,python]
+----
+def wait_for_row_in_list_table(self, row_text):
+    [...]
+        rows = table.find_elements(By.TAG_NAME, "tr")
+        self.assertIn("foo", [row.text for row in rows])
+        return
+----
+====
+
+We see we still get a nice self-explanatory test failure message:
+
+[subs="specialcharacters,macros"]
+----
+    self.assertIn("foo", [row.text for row in rows])
+AssertionError: 'foo' not found in ['1: Buy peacock feathers']
+----
+
+NOTE: Did you get a bit bored waiting 5 seconds for the test to fail?
+    That's one of the downsides of explicit waits.
+    There's a tricky tradeoff between waiting long enough
+    that little glitches don't throw you,
+    versus waiting so long that expected failures are painfully slow to watch.
+    Making MAX_WAIT configurable so that it's fast in local dev,
+    but more conservative on Continuous Integration (CI) servers
+    can be a good idea.
+    See <<chapter_CI>> for an introduction to CI.
+
+Let's put that back the way it was and break something else:
+
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch06l007)
+====
+[source,python]
+----
+    try:
+        table = self.browser.find_element(By.ID, "id_nothing")
+        rows = table.find_elements(By.TAG_NAME, "tr")
+        self.assertIn(row_text, [row.text for row in rows])
+        return
+    [...]
+----
+====
+
+
+Sure enough, we get the errors for when the page doesn't contain the element
+we're looking for too:
+
+----
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_nothing"]; For documentation on this error, [...]
+----
+
+
+Everything seems to be in order.  Let's put our code back to way it should be,
+and do one final test run:
+
+[role="dofirst-ch06l008"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test*]
+[...]
+OK
+----
+
+
+Great. With that little interlude over,
+let's crack on with getting our application actually working
+for multiple lists.  Don't forget to commit first!
+((("", startref="FTimplicit06")))
+((("", startref="implicit06")))
+((("", startref="explicit06")))
+((("", startref="timesleep06")))
+
+
+.Testing "Best Practices" Applied in this Chapter
+*******************************************************************************
+
+Ensuring test isolation and managing global state::
+    ((("testing best practices")))Different
+    tests shouldn't affect one another.  This means we need to
+    reset any permanent state at the end of each test. Django's test runner
+    helps us do this by creating a test database, which it wipes clean in
+    between each test.  (See also <<chapter_purist_unit_tests>>.)
+
+
+
+Avoid "voodoo" sleeps::
+    Whenever we need to wait for something to load,
+    it's always tempting to throw in a quick-and-dirty `time.sleep`.
+    But the problem is that the length of time we wait
+    is always a bit of a shot in the dark,
+    either too short and vulnerable to spurious failures,
+    or too long and it'll slow down our test runs.
+    Prefer a retry loop that polls our app
+    and moves on as soon as possible.
+
+Don't rely on Selenium's implicit waits::
+    Selenium does theoretically do some "implicit" waits,
+    but the implementation varies between browsers,
+    and is not always reliable.
+    "Explicit is better than implicit", as the Zen of Python says,
+    so prefer explicit waits.
+
+*******************************************************************************

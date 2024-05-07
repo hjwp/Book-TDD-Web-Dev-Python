@@ -98,6 +98,14 @@ class ParseCodeListingTest(unittest.TestCase):
         self.assertEqual(listing.filename, 'lists/tests/test_models.py')
         self.assertEqual(listing.commit_ref, 'ch09l010')
         self.assertEqual(listing.type, 'code listing with git ref')
+        self.assertTrue(listing.is_diff())
+
+    def test_recognises_diffs_even_if_they_dont_have_atat(self):
+        code_html = examples.EXAMPLE_DIFF_LISTING.replace('\n', '\r\n')
+        node = html.fromstring(code_html)
+        [listing] = parse_listing(node)
+        self.assertEqual(listing.type, 'code listing with git ref')
+        self.assertTrue(listing.is_diff())
 
 
     def test_recognises_skipme_tag_on_unmarked_code_listing(self):

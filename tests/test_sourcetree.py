@@ -18,8 +18,7 @@ from sourcetree import (
 class GetFileTest(unittest.TestCase):
     def test_get_contents(self):
         sourcetree = SourceTree()
-        with open(sourcetree.tempdir + "/foo.txt", "w") as f:
-            f.write("bla bla")
+        (sourcetree.tempdir / "foo.txt").write_text("bla bla")
         assert sourcetree.get_contents("foo.txt") == "bla bla"
 
 
@@ -46,7 +45,7 @@ class StartWithCheckoutTest(unittest.TestCase):
             os.path.join(os.path.dirname(__file__), "../source/chapter_name/superlists")
         )
 
-    def test_checks_out_repo_chapter_as_master(self):
+    def test_checks_out_repo_chapter_as_main(self):
         sourcetree = SourceTree()
         sourcetree.get_local_repo_path = lambda c: os.path.abspath(
             os.path.join(os.path.dirname(__file__), "testrepo")
@@ -55,7 +54,7 @@ class StartWithCheckoutTest(unittest.TestCase):
         remotes = sourcetree.run_command("git remote").split()
         assert remotes == ["repo"]
         branch = sourcetree.run_command("git branch").strip()
-        assert branch == "* master"
+        assert branch == "* main"
         diff = sourcetree.run_command("git diff repo/chapter_16").strip()
         assert diff == ""
 
@@ -75,26 +74,22 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            file 1 line 2 amended
-            file 1 line 3
-            """
+                file 1 line 2 amended
+                file 1 line 3
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
 
         self.sourcetree.apply_listing_from_commit(listing)
 
-        with open(self.sourcetree.tempdir + "/file1.txt") as f:
-            assert (
-                f.read()
-                == dedent(
-                    """
-                file 1 line 1
-                file 1 line 2 amended
-                file 1 line 3
-                """
-                ).lstrip()
-            )
+        assert (self.sourcetree.tempdir / "file1.txt").read_text() == dedent(
+            """
+            file 1 line 1
+            file 1 line 2 amended
+            file 1 line 3
+            """
+        ).lstrip()
 
         assert listing.was_written
 
@@ -103,9 +98,9 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            file 1 line 2 amended
-            file 1 line 3
-            """
+                file 1 line 2 amended
+                file 1 line 3
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -120,10 +115,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            file 1 line 1
-            file 1 line 2 amended
-            file 1 line 3
-            """
+                file 1 line 1
+                file 1 line 2 amended
+                file 1 line 3
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -141,9 +136,9 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            file 1 line 1
-            file 1 line 2
-            """
+                file 1 line 1
+                file 1 line 2
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l023"
@@ -157,8 +152,8 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            file 1 line 3
-            """
+                file 1 line 3
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -171,9 +166,9 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            file 1 line 3
-            file 1 line 2 amended
-            """
+                file 1 line 3
+                file 1 line 2 amended
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -186,13 +181,13 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            another line changed
-            some duplicate lines coming up...
+                another line changed
+                some duplicate lines coming up...
 
-            hello
-            goodbye
-            hello
-            """
+                hello
+                goodbye
+                hello
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l027"
@@ -205,15 +200,15 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            some duplicate lines coming up...
+                some duplicate lines coming up...
 
-            hello
+                hello
 
-            one more line at end
-            add a line with a dupe of existing
-            hello
-            goodbye
-            """
+                one more line at end
+                add a line with a dupe of existing
+                hello
+                goodbye
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l031"
@@ -227,15 +222,15 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            some duplicate lines coming up...
+                some duplicate lines coming up...
 
-            hello
+                hello
 
-            one more line at end
-            add a line with a dupe of existing
-            goodbye
-            hello
-            """
+                one more line at end
+                add a line with a dupe of existing
+                goodbye
+                hello
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l031"
@@ -249,10 +244,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            what is this?
-            file 1 line 2 amended
-            file 1 line 3
-            """
+                what is this?
+                file 1 line 2 amended
+                file 1 line 3
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -265,13 +260,13 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            file 2 line 1 changed
-            [...]
+                file 2 line 1 changed
+                [...]
 
-            hello
-            hello
+                hello
+                hello
 
-            one more line at end
+                one more line at end
             """
             ).lstrip(),
         )
@@ -285,12 +280,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            hello
-            goodbye
-            hello
+                hello
+                goodbye
+                hello
 
-            one more line at end
-            """
+                one more line at end
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l028"
@@ -303,10 +298,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            file 1 line 1
-            file 1 line 2 amended
-            file 1 line 3
-            """
+                file 1 line 1
+                file 1 line 2 amended
+                file 1 line 3
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -320,13 +315,13 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="pythonfile.py",
             contents=dedent(
                 """
-            class NuKlass(object):
+                class NuKlass(object):
 
-                def method1(self):
-                    [...]
-                    a = a + 3
-                    [...]
-            """
+                    def method1(self):
+                        [...]
+                        a = a + 3
+                        [...]
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l029"
@@ -341,10 +336,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            hello
+                hello
 
-            one more line at end
-            """
+                one more line at end
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l030"
@@ -357,10 +352,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            [...]
-            file 1 line 2 amended
-            file 1 line 3
-            """
+                [...]
+                file 1 line 2 amended
+                file 1 line 3
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -397,10 +392,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            [...]
-            file 1 line 2 amended #
-            file 1 line 3 #
-            """
+                [...]
+                file 1 line 2 amended  #
+                file 1 line 3  #
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -412,10 +407,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file1.txt",
             contents=dedent(
                 """
-            [...]
-            file 1 line 2 amended //
-            file 1 line 3 //
-            """
+                [...]
+                file 1 line 2 amended  //
+                file 1 line 3  //
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l021"
@@ -427,10 +422,10 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            file 2 line 1 changed
+                file 2 line 1 changed
 
-            another line changed
-            """
+                another line changed
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l024"
@@ -443,12 +438,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="pythonfile.py",
             contents=dedent(
                 """
-            def method1(self):
-                # amend method 1
-                return 2
+                def method1(self):
+                    # amend method 1
+                    return 2
 
-            [...]
-            """
+                [...]
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l026"
@@ -461,12 +456,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="pythonfile.py",
             contents=dedent(
                 """
-            def method1(self):
-                    # amend method 1
-                return 2
+                def method1(self):
+                        # amend method 1
+                    return 2
 
-            [...]
-            """
+                [...]
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l026"
@@ -480,12 +475,12 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="pythonfile.py",
             contents=dedent(
                 """
-            def method1(self):
-            # amend method 1
-            return 2
+                def method1(self):
+                # amend method 1
+                return 2
 
-            [...]
-            """
+                [...]
+                """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l026"
@@ -499,18 +494,18 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            diff --git a/file2.txt b/file2.txt
-            index 93f054e..519d518 100644
-            --- a/file2.txt
-            +++ b/file2.txt
-            @@ -4,6 +4,5 @@ another line changed
-             some duplicate lines coming up...
+                diff --git a/file2.txt b/file2.txt
+                index 93f054e..519d518 100644
+                --- a/file2.txt
+                +++ b/file2.txt
+                @@ -4,6 +4,5 @@ another line changed
+                 some duplicate lines coming up...
 
-             hello
-            -hello
+                 hello
+                -hello
 
-             one more line at end
-             """
+                 one more line at end
+                 """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l030"
@@ -523,19 +518,19 @@ class ApplyFromGitRefTest(unittest.TestCase):
             filename="file2.txt",
             contents=dedent(
                 """
-            diff --git a/file2.txt b/file2.txt
-            index 93f054e..519d518 100644
-            --- a/file2.txt
-            +++ b/file2.txt
-            @@ -4,6 +4,5 @@ another line changed
-             some duplicate lines coming up...
+                diff --git a/file2.txt b/file2.txt
+                index 93f054e..519d518 100644
+                --- a/file2.txt
+                +++ b/file2.txt
+                @@ -4,6 +4,5 @@ another line changed
+                 some duplicate lines coming up...
 
-             hello
-            -hello
-            +something else
+                 hello
+                -hello
+                +something else
 
-             one more line at end
-             """
+                 one more line at end
+                 """
             ).lstrip(),
         )
         listing.commit_ref = "ch17l030"
@@ -628,12 +623,12 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         mock_subprocess.Popen.return_value.returncode = 0
         mock_subprocess.Popen.return_value.communicate.return_value = "a", "b"
         sourcetree = SourceTree()
-        sourcetree.run_command("fab deploy:host=elspeth@superlists-staging.ottg.eu")
+        sourcetree.run_command("fab deploy:host=elspeth@staging.ottg.co.uk")
         expected = (
             "cd deploy_tools &&"
             " fab -D -i"
             " ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key"
-            " deploy:host=elspeth@superlists-staging.ottg.eu"
+            " deploy:host=elspeth@staging.ottg.co.uk"
         )
         assert mock_subprocess.Popen.call_args[0][0] == expected
 
@@ -874,7 +869,6 @@ class CheckChunksTest(unittest.TestCase):
             """
         ).strip()
         check_chunks_against_future_contents(code, future_contents)  # should not raise
-
 
     def test_trailing_blank_lines_in_listing_are_ignored(self):
         code = dedent(

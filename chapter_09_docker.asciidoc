@@ -1,0 +1,1497 @@
+[[chapter_09_docker]]
+== Containerization aka Docker
+
+
+.A Note for Early Release Readers
+****
+With Early Release ebooks, you get books in their earliest form—the author's raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.
+
+This will be the 9th chapter of the final book. The GitHub repo is available at https://github.com/hjwp/book-example.
+
+If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the author at obeythetestinggoat@gmail.com.
+****
+
+[quote, 'http://bit.ly/2uhCXnH[Devops Borat]']
+______________________________________________________________
+Is all fun and game until you are need of put it in production.
+______________________________________________________________
+
+It's time to deploy the first version of our site and make it public.
+They say that if you wait until you feel _ready_ to ship,
+then you've waited too long.
+
+Is our site usable? Is it better than nothing? Can we make lists on it?
+Yes, yes, yes.
+
+No, you can't log in yet.
+No, you can't mark tasks as completed.
+But do we really need any of that stuff?
+Not really--and you can never be sure
+what your users are _actually_ going to do with your site
+once they get their hands on it.
+We think our users want to use the site for to-do lists,
+but maybe they actually want to use it
+to make "top 10 best fly-fishing spots" lists,
+for which you don't _need_ any kind of "mark completed" function.
+We won't know until we put it out there.
+
+Over the next couple of chapters we're going to go through
+and actually deploy our site to a real, live web server.
+
+You might be tempted to skip this bit--there's lots of daunting stuff in it,
+and maybe you think this isn't what you signed up for.
+But I _strongly_ urge you to give it a go.
+This is one of the sections of the book I'm most pleased with,
+and it's one that people often write to me
+saying they were really glad they stuck through it.
+
+If you've never done a server deployment before,
+it will demystify a whole world for you,
+and there's nothing like the feeling of seeing your site live
+on the actual internet.
+Give it a buzzword name like "DevOps"
+if that's what it takes to convince you it's worth it.
+
+.Warning, chapter under construction
+****
+As part of my work on the third edition of the book,
+I'm making big changes to the deployment chapters,
+and this is a very new draft.
+
+What that means is that I'd, really, really love feedback from readers.
+Please have a go at following along and let me know what you think!
+I'm obeythetestinggoat@gmail.com, or you can open up
+https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues[GitHub Issue]
+or Pull Requests.
+
+Let me know how you got on, if you get stuck on anything,
+if any explanations don't make sense,
+or if any of the instructions don't work for you.
+
+I hope you enjoy the new version!
+****
+
+=== TDD and the Danger Areas of Deployment
+
+Deploying a site to a live web server can be a tricky topic.
+Oft-heard is the forlorn cry __"but it works on my machine!"__
+
+((("deployment", "danger areas of")))
+Some of the danger areas of deployment include:
+
+Networking::
+    Once we're off our own machine, networking issues come in:
+    making sure that DNS is routing our domain to the correct IP address for our server,
+    making sure our server is configured to listen to traffic coming in from the world,
+    making sure it's using the right ports,
+    and making sure any firewalls in the way are configured to let traffic through.
+
+Dependencies::
+    We need to make sure that the packages our software relies on
+    (Python, Django, and so on) are installed on the server,
+    and have the correct versions.
+
+The database::
+    There can be permissions and path issues,
+    and we need to be careful about preserving data between deploys.
+
+Static files (CSS, JavaScript, images, etc.)::
+    Web servers usually need special configuration for serving these.
+    ((("static files", "challenges of")))
+
+Security and Configuration::
+    Once we're on the public internet,
+    we need to worry more about security.
+    Various settings that are really useful for local development
+    (like the Django debug page)
+    become dangerous in production
+    (because they expose our source code in tracebacks).
+
+
+One way to approach the problem is to get a server
+and start manually configuring and installing everything,
+hacking about until it works,
+and maybe think about automating things laterfootnote:[
+This was, more or less, the approach I took in earlier editions of the book.
+With a fair bit of testing thrown in of course.].
+
+But if there's one thing we've learned
+in the world of agile/lean software development,
+it's that taking smaller steps usually pays off.
+
+How can we take smaller, safer steps towards a production deployment?
+Can we _simulate_ the process of moving to a server
+so that we can iron out all the bugs
+before we actually take the plunge?
+Can we then make small changes one at a time,
+solving problems one by one,
+rather than having to bite off everything in one mouthful?
+
+Absolutely we can.  And from the title of the chapter,
+I'm sure you're already guessing that Docker is going
+to be part of the answer.
+
+
+=== Docker, Containers and Virtualization
+
+
+// TODO: consider moving this intro to docker to before the tdd danger areas bit.
+
+Docker is a commercial product that wraps several free
+and open source technologies from the world of Linux,
+sometimes referred to as "containerization".
+(Feel free to skip this section if you already know all about Docker.)
+
+You may have already heard of the idea of "virtualization",
+which allows a single physical computer to pretend to be several machines.
+Pioneered by IBM (amongst others) on mainframes in the 1960s,
+it rose to mainstream adoption in the 90s,
+where it was sold as a way to optimise resource usage in datacentres.
+AWS, for example, was an offshoot of Amazon,
+who were using virtualization already,
+and realised they could sell some spare capacity on their servers
+to customers outside the business.
+
+So when you come to deploy your code to a real server in a datacentre,
+it will be using virtualization.
+And, actually, you can use virtualization on your own machine,
+with software like Virtualbox or KVM.
+
+// SEBASTIAN: I'd consider giving a simple example, like:
+//      "Running virtualized Linux alongside Windows on your MacBook with MacOS? No problem!"
+//      Not sure how familiar new kids on the block are with virtualization, TBH.
+//      From the tone of paragraphs I have a feeling that readers' familiarity is assumed.
+//      While explanation of virtualization is great, I feel we lack relatable example.
+
+But that can be fiddly to set up!
+And nowadays, thanks to containerization, we can do better
+because containerization is a kind of even-more-virtual virtualization.
+
+Conceptually, "regular" virtualization works at the hardware level:
+it gives you multiple virtual machines (VMs)
+that pretend to be physical computers, on a single real machine.
+So you can run multiple operating systems using separate VMs
+on the same physical box.
+
+Containerization works at the operating system level:
+it gives you multiple virtual operating systems that
+all run on a single real OS.
+It lets us pack the source code and its dependencies together--
+the entire environment required to run the application.
+This allows you to run programs inside separate virtual environments,
+using a single real host operating system and kernel.
+
+Have a look at
+https://www.docker.com/resources/what-container/[Docker's resources on containers]
+for more explanation.
+The upshot of this is that containers are much "cheaper".
+You can start one up in milliseconds,
+and you can run hundreds on the same machine.
+
+
+==== Docker and your CV
+
+That's all well and good for the _theoretical_ justification,
+but let's get to the _real_ reason for using this technology,
+which, as always, is:
+"it's fashionable so it's going to look good on my CV."
+
+For the purposes of this book,
+that's not such a bad justification really!
+
+Yes, I think it's going to be a nice way to have a "pretend"
+deployment on our own machine, before we try the real one--but
+also, containers are so popular nowadays,
+that it's very likely that you're going to encounter them at work
+(if you haven't already).
+For many working developers, a container image is the final artifact of their work,
+it's what they "deliver",
+and most of the rest of the deployment process is taken care of by someone else.
+
+
+=== Docker and the Danger Areas of Deployment
+
+How will containerizing our software help with the danger areas?
+
+* Containers can be like little virtual servers and this is how
+  we will use them,
+  so they will force us to address many of the problems
+  like dependency management and configuration.
+
+* We can use the containers to package up as much
+  of the functionality of our application as possible,
+  like a production-ready web server and static files system.
+  This in turn will minimise the amount of configuration
+  we need to do to our actual servers.
+
+* We can test our containers work by running our functional tests
+  against them.
+
+* Later, when we deploy our containers to a staging server,
+  we can run the FTs against that too.
+
+* If we automate container creation and deployment to staging,
+  and we've tested both those things, then we will have
+  minimised the risk of deployment to production.
+
+// TODO: consider getting rid of the staging server??
+// CSANAD:  I would keep the staging server.
+// SEBASTIAN: I second that.
+
+////
+
+old content follows. is there anything we want to rescue from here?
+
+But there are solutions to all of these.  In order:
+
+((("staging sites", "benefits of")))
+*   Using a 'staging site', on the same infrastructure as the production site,
+    can help us test out our deployments and get things right before we go to
+    the "real" site.
+
+*   We can also 'run our functional tests against the staging site'. That will
+    reassure us that we have the right code and packages on the server, and
+    since we now have a "smoke test" for our site layout, we'll know that the
+    CSS is loaded correctly.
+
+
+*   ((("virtual environment (virtualenv)", "server-based")))Just
+    like on our own PC, a 'virtualenv' is useful on the server for
+    managing packages and dependencies when you might be running more than one
+    Python [keep-together]#application#.
+
+*   ((("automated deployment", "benefits of")))((("automated deployment", see="also Fabric")))And
+    finally, 'automation, automation, automation'.  By using an automated
+    script to deploy new versions, and by using the same script to deploy to
+    staging and production, we can reassure ourselves that staging is as much
+    like live as possible.footnote:[What I'm calling a "staging" server, some people would
+    call a "development" server, and some others would also like to distinguish
+    "preproduction" servers.  Whatever we call it, the point is to have
+    somewhere we can try our code out in an environment that's as similar as
+    possible to the real production server.]
+////
+
+
+
+=== An Overview of Our Deployment Procedure
+
+Over the next three chapters, I'm going to go through _a_ deployment procedure.
+It isn't meant to be the _perfect_ deployment procedure,
+so please don't take it as being best practice,
+or a recommendation--it's meant to be an illustration,
+to show the kinds of issues involved in putting code into production,
+and where testing fits in.
+
+
+**This chapter: Containerizing our software**
+
+* Adapt our FTs so they can run against a container.
+
+* Build a minimal Dockerfile with everything we need to run our site.
+
+* Learn how to build and run a container on our machine.
+
+* Learn how to run our FTs against our container.
+
+* Get a first cut of our code up and running inside Docker,
+  with passing tests.
+
+// DAVID: might be worth condensing this bulleted list, it's rather skimmable
+// at the moment. For example is there any difference between the first and fourth point?
+
+//RITA: Consider cross-referencing the chapter by number here so we can hyperlink it for convenience.
+
+**Next chapter: Moving to a production-ready configuration**
+
+* Gradually, incrementally change the container configuration
+  to make it production-ready.
+
+* Regularly re-run the FTs to check we didn't break anything.
+
+* Address issues to do with the database, static files, and so on.
+
+// gunicorn, DEBUG=False, secret key, etc
+
+//RITA: Consider cross-referencing the chapter by number here so we can hyperlink it for convenience.
+**Third chapter: Automating deployment to real servers**
+
+* Gradually build up an Ansible playbook to deploy our containers on a real server.
+
+* Again, use our FTs to check for any problems.
+
+* Learn how to SSH in to the server to debug things,
+  where to find logs and other useful information.
+
+* Use Ansible to build an automated script that can deploy
+  our container to staging.
+
+* Confidently deploy to production once we have a working deployment script for staging.
+
+
+
+=== As Always, Start with a Test
+
+((("environment variables")))
+Let's adapt our functional tests slightly
+so that they can run against a standalone server,
+instead of the one that `LiveServerTestCase` creates for us.
+We'll do it by checking for an environment variable
+called `TEST_SERVER`:
+
+//TODO; the word "server" is overloaded.
+// here we mean docker containers, later we mean a real server.  TEST_HOST??
+
+
+[role="sourcecode"]
+.functional_tests/tests.py (ch09l001)
+====
+[source,python]
+----
+import os
+[...]
+
+class NewVisitorTest(StaticLiveServerTestCase):
+    def setUp(self):
+        self.browser = webdriver.Firefox()
+        test_server = os.environ.get("TEST_SERVER")  #<1>
+        if test_server:
+            self.live_server_url = "http://" + test_server  #<2>
+----
+====
+// DAVID: could use a walrus operator here?
+
+Do you remember I said that `LiveServerTestCase` had certain limitations?
+Well, one is that it always assumes you want to use its own test server,
+which it makes available at `self.live_server_url`.
+I still want to be able to do that sometimes,
+but I also want to be able to selectively tell it not to bother,
+and to use a real server instead.
+
+<1> The way I decided to do it is using an environment variable called
+    `TEST_SERVER`.
+
+<2> Here's the hack: we replace `self.live_server_url` with the address of
+    our "real" server.
+
+NOTE: A clarification: when we say we run tests _against_ our Docker container,
+  or _against_ our staging server,
+  that doesn't mean we run the tests _from_ Docker or _from_ our staging server.
+  We still run the tests from our own laptop,
+  but they target the place that's running our code.
+
+
+We test that said hack hasn't broken anything by running the functional
+tests [keep-together]#"normally"#:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test functional_tests*]
+[...]
+Ran 3 tests in 8.544s
+
+OK
+----
+
+And now we can try them against our docker server URL,
+which once we've done the right docker magic,
+will be at _http://localhost:8888_
+
+TIP: I'm deliberately choosing a different port to run Dockerised Django on (8888)
+    from the default port that a local `manage.py runserver` would choose (8080),
+    to avoid getting in the situation where I (or the tests) _think_
+    we're looking at Docker, when we're actually looking at a local `runserver`
+    that I've left running in some terminal somewhere.
+
+I'll use the `--failfast` option to exit as soon as a single test fails:
+
+// CSANAD:  are line breaks necessary below and at other occurrences of
+//          --failfast? it does keep the asciidoc lines of source below 80
+// characters but there are some wider lines elsewhere.
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./manage.py test functional_tests \
+    --failfast*]
+[...]
+E
+======================================================================
+ERROR: test_can_start_a_todo_list
+(functional_tests.tests.NewVisitorTest.test_can_start_a_todo_list)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/functional_tests/tests.py", line 38, in
+test_can_start_a_todo_list
+    self.browser.get(self.live_server_url)
+[...]
+
+selenium.common.exceptions.WebDriverException: Message: Reached error page: abo
+ut:neterror?e=connectionFailure&u=http%3A//localhost%3A8888/[...]
+
+
+Ran 1 tests in 5.518s
+
+FAILED (errors=1)
+----
+
+NOTE: If, on Windows, you see an error saying something like
+    "TEST_SERVER is not recognized as a command",
+  it's probably because you're not using Git-Bash.
+  Take another look at the <<pre-requisites>> section.
+
+You can see that our tests are failing, as expected, since we're not running Docker yet.
+Selenium reports that Firefox is seeing an error and "cannot establish connection to the server",
+and you can see _localhost:8888_ in there too.
+
+
+The FT seems to be testing the right things, so let's commit:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* # should show changes to functional_tests.py
+$ *git commit -am "Hack FT runner to be able to test docker"*
+----
+
+
+TIP: Don't use `export` to set the 'TEST_SERVER' environment variable;
+    otherwise, all your subsequent test runs in that terminal will be against staging,
+    and that can be very confusing if you're not expecting it.
+    Setting it explicitly inline each time you run the FTs is best.
+
+
+==== Making an src Folder
+
+// DAVID: FWIW it reads weirdly to me to have 'an src' rather than 'a src'.
+// It's probably because I pronounce it as 'source' rather than 'S.R.C.'
+
+When preparing a codebase for deployment,
+it's often convenient to separate out the actual source code of our production app,
+from the rest of the files that you need in the project.
+A folder called _src_ is a common convention.
+
+// DAVID: I'd expect src here and below to be in monospace.
+
+Currently, all our code is source code really, so we move everything into _src_
+(we'll be seeing some new files appearing outside _src_ shortly).footnote:[
+A common thing to find outside of the _src_ folder is a folder called _tests_.
+We won't be doing that while we're relying on the standard Django test framework,
+but it's a good thing to do if you're using pytest, for example.]
+
+
+
+//002
+[subs="specialcharacters,quotes"]
+----
+$ *mkdir src*
+$ *git mv functional_tests lists superlists manage.py src*
+$ *git commit -m "Move all our code into a src folder"*
+----
+
+
+=== Installing Docker
+
+The https://docs.docker.com/get-docker/[Docker documentation] is pretty good,
+and you'll find detailed installation instructions for Windows, Mac, and Linux.
+Follow those, and then test your installation by running:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*docker run busybox echo hello world*]
+Unable to find image 'busybox:latest' locally
+[...]
+latest: Pulling from library/busybox
+[...]: Pull complete
+Digest: sha256:[...]
+Status: Downloaded newer image for busybox:latest
+hello world
+----
+
+What's happened there is that Docker has:
+
+* Searched for a local copy of the "busybox" image and not found it
+* Downloaded the image from DockerHub
+* Created a container based on that image
+* Started up that container, telling it to run `echo hello world`
+* And we can see it worked!
+
+Cool! We'll find out more about all of these steps as the chapter progresses.
+
+
+.Podman, a Docker Alternative
+*****************************************************************************************
+Impartiality commands me to also recommend https://podman.io/[Podman],
+which is a like-for-like replacement for Docker.
+
+// DAVID: It might be worth mentioning Colima, which I have running on my machine
+// instead of Docker because of licensing restrictions. I was able to run the
+// same command because I have Colima installed. The good thing about Colima
+// is you just use the same `docker` command, don't need to change it.
+// Also - possibly worth moving the alternatives a couple of paras further
+// up, so that they know their options before running the Docker install?
+
+It's pretty much exactly the same as Docker,
+arguably with a few advantages even, but I won't go into detail here.
+
+I actually tried it out on early drafts of this chapter and it worked perfectly well.
+But it's a little less well established and documented,
+(the Windows installation instructions are a little more DIY for example),
+and in the end, although I'm a fan of a plucky upstart,
+Docker is open source too,
+so I decided to stick with it. But you could definitely check it out!
+
+You can follow along all the instructions in the book
+by just substituting the `docker` binary for `podman` in all the CLI instructions,
+e.g.
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *docker run busybox echo hello*
+# becomes
+$ *podman run busybox echo hello*
+# similarly with podman build, podman ps, etc.
+----
+
+*****************************************************************************************
+
+
+=== Building a Docker Image and Running a Docker Container
+
+Docker has the concepts of _images_ as well as containers.
+An image is essentially a pre-prepared root filesystem,
+including the operating system, dependencies, and any code you want to run.
+
+Once you have an image, you can run one or many containers that use the same image.
+
+// DAVID: Not sure whether this is going to be understandable in its current form.
+// An analogy that I find helpful here is that images are like classes
+// and containers are like instances.
+
+==== A First Cut of a Dockerfile
+
+Think of a Dockerfile as instructions for setting up a brand new computer,
+that we're going to use to run our Django server on.
+What do we need to do?  Something like this, right?
+
+1. Install an operating system
+2. Make sure it has Python on it
+3. Get our source code onto it
+4. Run `python manage.py runserver`
+
+
+We create a new file called _Dockerfile_ in the base folder of our repo,
+next to the `src/` directory we made earlier:
+
+// DAVID: As discussed, I misread this and put the Dockerfile in src.
+// That led to a difficult to understand error message when I tried to build.
+// ERROR: failed to solve: failed to compute cache key: failed to calculate
+// checksum of ref e126cbb4-3e0c-4e6e-867f-dbfbf5fb190f::k2oys44pcnbefrlpps3ooux7w: "/src": not found
+
+// JAN: I'd suggest to use python3.11:slim or python3:12 slim. Keeping image tags too open leads to issues in a couple of months (not always, but waaay too often)
+// JAN: I'd use Docker comments with # for <1>, <2>, ... Otherwise, you need to edit the code when you paste it
+
+
+
+[role="sourcecode"]
+.Dockerfile (ch09l003)
+====
+[source,dockerfile]
+----
+FROM python:slim  # <1>
+
+COPY src /src  # <2>
+
+WORKDIR /src  # <3>
+
+CMD python manage.py runserver  # <4>
+----
+====
+
+<1> The `FROM` line is usually the first thing in a Dockerfile,
+    and it says which _base image_ we are starting from.
+    Docker images are built from other Docker images!
+    It's not quite turtles all the way down, but almost.
+    So this is the equivalent of choosing a base operating system,
+    but images can actually have lots of software preinstalled too.
+    You can browse various base images on DockerHub,
+    we're using https://hub.docker.com/_/python[one that's published by the Python Software Foundation],
+    called "slim" because it's as small as possible.
+    It's based on a popular version of Linux called Debian,
+    and of course it comes with Python already installed on it.
+
+<2> The `COPY` instruction (the uppercase words are called "instructions")
+    lets you copy files from your own computer into the container image.
+    We use it to copy all our source code from the newly-created _src_ folder,
+    into a similarly-named folder at the root of the container image.
+
+<3> `WORKDIR` sets the current working directory for all subsequent commands.
+     It's a bit like doing `cd /src`.
+
+<4> Finally the `CMD` instruction tells docker which command you want it to run
+    by default, when you start a container based on that image.
+
+
+It's probably worth just showing a directory tree,
+to make sure everything is in the right place?
+All our source code is in a folder called `src`,
+next to our `Dockerfile`:
+
+[[tree-with-src-and-dockerfile]]
+[subs="specialcharacters,macros"]
+----
+.
+├── Dockerfile
+├── db.sqlite3
+├── src
+│   ├── functional_tests
+│   │   ├── [...]
+│   ├── lists
+│   │   ├── [...]
+│   ├── manage.py
+│   └── superlists
+│       ├── [...]
+└── static
+    └── [...]
+----
+
+// TODO: figure out what to do with the /static folder
+
+
+==== Docker Build
+
+You build an image with `docker build <path-containing-dockerfile>`
+and we'll use the `-t <tagname>` argument to "tag" our image
+with a memorable name.
+
+It's typical to invoke `docker build` from the folder that contains your Dockerfile,
+so the last argument is usually `.`:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*docker build -t superlists .*]
+[+] Building 1.2s (8/8) FINISHED                            docker:default
+ => [internal] load build definition from Dockerfile                  0.0s
+ => => transferring dockerfile: 115B                                  0.0s
+ => [internal] load .dockerignore                                     0.1s
+ => => transferring context: 2B                                       0.0s
+ => [internal] load metadata for docker.io/library/python:slim        3.4s
+ => [internal] load build context                                     0.2s
+ => => transferring context: 68.54kB                                  0.1s
+ => [1/3] FROM docker.io/library/python:slim                                                                 0.0s
+ => [2/3] COPY src /src                                               0.2
+ => [3/3] WORKDIR /src                                                0.1s
+ => exporting to image                                                0.0s
+ => => exporting layers                                               0.0s
+ => => writing image sha256:7b8e1c9fa68e7bad7994fa41e2aca852ca79f01a  0.0s
+ => => naming to docker.io/library/superlists                         0.0s
+----
+
+// CSANAD:  Just a note: this output is slightly smaller and faster compared to when
+//          the reader first runs the `docker build`.
+
+Now we can see our image in the list of docker images on the system:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker images*
+REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+[...]
+superlists   latest    522824a399de   2 minutes ago    164MB
+----
+
+
+
+NOTE: If you see an error about `failed to solve / compute cache key` and `src: not found`
+  it may be because you saved the Dockerfile into the wrong place.
+  Have another look at the directory tree from earlier <<tree-with-src-and-dockerfile>>.
+
+
+
+
+==== Docker Run
+
+Once you've built an image,
+you can run one or more containers based on that image, using `docker run`.
+What happens when we run ours?
+
+
+[role="ignore-errors"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*docker run superlists*]
+Traceback (most recent call last):
+  File "/src/manage.py", line 11, in main
+    from django.core.management import execute_from_command_line
+ModuleNotFoundError: No module named 'django'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/src/manage.py", line 22, in <module>
+    main()
+  File "/src/manage.py", line 13, in main
+    raise ImportError(
+ImportError: Couldn't import Django. Are you sure it's installed and available
+on your PYTHONPATH environment variable? Did you forget to activate a virtual
+environment?
+----
+
+
+// DAVID: I got:
+// python: can't open file '/src/manage.py': [Errno 2] No such file or directory
+
+Ah, we forgot that we need to install Django.
+
+
+=== Installing Django into our Virtualenv
+
+Just like on our own machine,
+a virtualenv is useful in a deployed environment to make
+sure we have full control over the packages installed for a particular
+project.
+
+We can create a virtualenv in our Dockerfile
+just like we did on our own machine with `python -m venv`,
+and then we can use `pip install` to get Django:
+
+
+[role="sourcecode"]
+.Dockerfile (ch09l004)
+====
+[source,dockerfile]
+----
+FROM python:slim
+
+RUN python -m venv /venv  <1>
+ENV PATH="/venv/bin:$PATH"  <2>
+
+RUN pip install "django<5" <3>
+
+COPY src /src
+
+WORKDIR /src
+
+CMD python manage.py runserver
+----
+====
+
+<1> Here's where we create our virtualenv
+
+<2> You can't really "activate" a virtualenv inside a Dockerfile,
+    so instead we change the system PATH so that the venv versions
+    of `pip` and `python` become the default ones
+    (this is actually one of the things that `activate` does, under the hood).
+
+<3> We install Django with `pip install`, just like we do locally.
+
+
+// DAVID: Why bother with a virtualenv?
+
+==== Successful Run
+
+Let's do the `build` and `run` in a single line.
+This is a pattern I used quite often when developing a Dockerfile,
+to be able to quickly rebuild and see the effect of a change:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run -it superlists*
+[+] Building 0.2s (11/11) FINISHED                                  docker:default
+[...]
+ => [internal] load .dockerignore                                   0.1s
+ => => transferring context: 2B                                     0.0s
+ => [internal] load build definition from Dockerfile                0.0s
+ => => transferring dockerfile: 246B                                0.0s
+ => [internal] load metadata for docker.io/library/python:slim      0.0s
+ => CACHED [1/5] FROM docker.io/library/python:slim                 0.0s
+ => [internal] load build context                                   0.0s
+ => => transferring context: 4.75kB                                 0.0s
+ => [2/5] RUN python -m venv /venv                                  0.0s
+ => [3/5] pip install "django<5"                                    0.0s
+ => [4/5] COPY src /src                                             0.0s
+ => [5/5] WORKDIR /src                                              0.0s
+ => exporting to image                                              0.0s
+ => => exporting layers                                             0.0s
+ => => writing image sha256:[...]                                   0.0s
+ => => naming to docker.io/library/superlists                       0.0s
+Watching for file changes with StatReloader
+Performing system checks...
+
+System check identified no issues (0 silenced).
+
+You have 19 unapplied migration(s). Your project may not [...]
+[...]
+Django version 4.2.7, using settings 'superlists.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
+----
+
+
+OK, scanning through that, it looks like the server is running!
+
+
+WARNING: Make sure you use the `-it` flags to the Docker `run`
+    command when running `runserver`, or any other tool that expects
+    to be run in an interactive terminal session,
+    otherwise you'll get strange behaviours, including not being able
+    to interrupt the docker process with _Ctrl-C_.
+    See <<how-to-stop-a-docker-container>> for an escape hatch.
+
+// DAVID: behaviours -> behaviour?
+
+[[how-to-stop-a-docker-container]]
+.How to Stop a Docker Container
+*******************************************************************************
+If you've got a container that's "hanging" in a terminal window,
+you can kill it from another one.
+// CSANAD:  `docker stop` would trigger a graceful SIGTERM, `docker kill` sends a SIGKILL.
+//          SIGKILL would terminate the container even when SIGTERM cannot, but it could
+// also result in broken DB, leave the port "in use" or other side effects. I would prefer
+// using `docker stop` over `kill` and mention `kill` in case the container is still stuck.
+//
+// However, if we leave it with just `docker kill`, then maybe we should mention these
+// possible side effects and also the title should reflect it like:
+// "How to Forcefully Stop a Docker Container" (since "How to Kill a Container" may sound a bit
+// harsh...
+
+
+// DAVID: are we actually killing it from another container?
+
+The docker daemon lets you list all the currently running containers
+with `docker ps`:
+
+[role="skipme small-code"]
+----
+$ *docker ps*
+CONTAINER ID   IMAGE        COMMAND                  CREATED         STATUS         PORTS     NAMES
+0818e1b8e9bf   superlists   "/bin/sh -c 'python …"   4 seconds ago   Up 4 seconds             hardcore_moore
+----
+
+This tells us a bit about each container, including a unique ID,
+and a randomly-generated name (you can override that if you want to).
+
+We can use the ID or the name to kill the container with `docker kill`:
+
+[role="skipme"]
+----
+$ docker kill 0818e1b8e9bf
+0818e1b8e9bf
+----
+
+And if you go back to your other terminal window,
+you should find the docker process has been terminated.
+
+*******************************************************************************
+
+
+
+=== Using the FT to Check That Our Container Works
+
+Let's see what our FTs think about this Docker version of our site:
+
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test src/functional_tests \
+    --failfast*]
+[...]
+selenium.common.exceptions.WebDriverException: Message: Reached error page: abo
+ut:neterror?e=connectionFailure&u=http%3A//localhost%3A8888/[...]
+----
+
+What's going on here?  Time for a little debugging.
+
+
+
+=== Debugging a Container Networking Problems
+
+First, let's try and take a look ourselves, in our browser, by going to http://localhost:8888/:
+
+[[firefox-unable-to-connect-screenshot]]
+.Cannot connect on that port
+image::images/firefox-unable-to-connect.png["Firefox showing the 'Unable to connect' error"]
+
+Now let's take another look at the output from our `docker run`.
+Here's what appeared right at the end:
+
+
+[role="skipme"]
+----
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
+----
+
+Aha!  We notice that we're using the wrong port, the default `8000` instead of the `8888`
+that we specified in the `TEST_SERVER` env var.
+
+Let's fix that by amending the `CMD` instruction in the Dockerfile:
+
+
+[role="sourcecode"]
+.Dockerfile (ch09l005)
+====
+[source,dockerfile]
+----
+[...]
+WORKDIR /src
+
+CMD python manage.py runserver 8888
+----
+====
+
+Ctrl+C the current dockerized container process if it's still running in your terminal,
+then give it another `build && run`:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run -it superlists*
+[...]
+Starting development server at http://127.0.0.1:8888/
+----
+
+
+==== Debugging Web Server Connectivity With "curl"
+
+A quick run of the FT or check in our browser will show us that nope, that doesn't work either.
+Let's try an even lower-level smoke test, the traditional Unix utility `curl`.
+It's a command-line tool for making HTTP requests.  Try it on your own computer first:
+
+[role="ignore-errors"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*curl -iv localhost:8888*]
+*   Trying 127.0.0.1:8888...
+* connect to 127.0.0.1 port 8888 failed: Connection refused
+*   Trying [::1]:8888...
+* connect to ::1 port 8888 failed: Connection refused
+* Failed to connect to localhost port 8888 after 0 ms: Couldn't connect to
+server
+* Closing connection
+[...]
+curl: (7) Failed to connect to localhost port 8888 after 0 ms: Couldn't connect
+to server
+----
+
+TIP: The `-iv` flag to curl is useful for debugging.
+    It prints verbose output, as well as full HTTP headers.
+
+// CSANAD:  my `curl` output is slightly different, but it doesn't change much.
+
+
+=== Running code "inside" the container with docker exec
+
+So, we can't see Django running on port 8888 when we're _outside_ the container.
+What do we see if we run things from _inside_ the container?
+
+We can use `docker exec` to run commands inside a running container.
+First we need to get the name or ID of the container:
+
+// TODO use --name arg to docker run??
+
+[role="skipme small-code"]
+[subs="specialcharacters,quotes"]
+----
+$ *docker ps*
+CONTAINER ID   IMAGE        COMMAND                  CREATED          STATUS          PORTS     NAMES
+5ed84681fdf8   superlists   "/bin/sh -c 'python …"   12 minutes ago   Up 12 minutes             trusting_wu
+----
+
+Your values for `CONTAINER_ID` and `NAMES` will be different from mine,
+because they're randomly generated.
+But, make a note of one or the other, and then run `docker exec -it <container-id> bash`.
+On most platforms, you can use tab-completion for the container id or name.
+
+Let's try it now.  Notice that the shell prompt will change from your default Bash prompt
+to `root@container-id`.  Watch out for those in future listings,
+so that you can be sure of what's being run inside vs outside containers.
+
+// I'll use a little hackery:
+// $ pass:quotes[*docker exec -it $(docker ps --filter "ancestor=superlists" -q) bash*]
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*docker exec -it container-id-or-name bash*]
+root@5ed84681fdf8:/src# pass:specialcharacters,quotes[*apt-get update && apt-get install -y curl*]
+Get:1 pass:[http://deb.debian.org/debian] bookworm InRelease [151 kB]
+Get:2 pass:[http://deb.debian.org/debian] bookworm-updates InRelease [52.1 kB]
+[...]
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  libbrotli1 libcurl4 libldap-2.5-0 libldap-common libnghttp2-14 libpsl5
+[...]
+root@5ed84681fdf8:/src# pass:quotes[*curl -iv http://localhost:8888*]
+*   Trying 127.0.0.1:8888...
+* Connected to localhost (127.0.0.1) port 8888 (#0)
+> GET / HTTP/1.1
+> Host: localhost:8888
+> User-Agent: curl/7.88.1
+> Accept: */*
+>
+< HTTP/1.1 200 OK
+HTTP/1.1 200 OK
+[...]
+<!doctype html>
+<html lang="en">
+
+  <head>
+    <title>To-Do lists</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="/static/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  </head>
+
+  <body>
+    [...]
+  </body>
+
+</html>
+----
+
+That's definitely some HTML! And the `<title>To-Do lists</title>` looks like it's our html, too.
+
+So, we can see Django is serving our site _inside_ the container,
+why can't we see it _outside_??
+
+==== Docker Port Mapping
+
+The pythonspeed guide to Docker's very first section is called
+https://pythonspeed.com/articles/docker-connection-refused/[Connection Refused],
+so I'll refer you there once again for an _excellent_, detailed explanation.
+
+But in short, Docker runs in its own little world,
+specifically it has its own little network,
+so the ports _inside_ the container are different
+from the ports _outside_ the container, the ones we can see on our host machine.
+
+So we need to tell Docker to connect the internal ports to the outside ones,
+to "publish" or "map" them, in Docker terminology.
+
+`docker run` takes a `-p` argument, with the syntax `OUTSIDE:INSIDE`.
+So you can actually map a different port number on the inside and outside.
+But we're just mapping 8888 to 8888, and that will look like this:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run -p 8888:8888 -it superlists*
+----
+
+Now that will _change_ the error we see, but only quite subtly (see <<firefox-connection-reset>>).
+Things clearly aren't working yet.
+
+// DAVID: FWIW in Chrome the message is "127.0.0.1 didn’t send any data."
+
+//RITA: If at all possible, I suggest using the light or daytime theme for all browser screenshots to make them easier to read.
+
+[[firefox-connection-reset]]
+.Cannot connect on that port
+image::images/firefox-connection-reset.png["Firefox showing the 'Connection reset' error"]
+
+// FT would show this
+// selenium.common.exceptions.WebDriverException: Message: Reached error page: about:neterror?e=netReset&u=http%3A//localhost%3A8888/&c=UTF-8&d=The%20connection%20to%20the%20server%20was%20reset%20while%20the%20page%20was%20loading.
+
+Similarly, if you try our `curl -iv` (outside the container) once again,
+you'll see the error has changed from "Failed to connect",
+to "Empty reply":
+
+[role="ignore-errors"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*curl -iv localhost:8888*]
+*   Trying 127.0.0.1:8888...
+* Connected to localhost (127.0.0.1) port 8888
+> GET / HTTP/1.1
+> Host: localhost:8888
+> User-Agent: curl/7.88.1
+> Accept: */*
+[...]
+* Empty reply from server
+* Closing connection 0
+curl: (52) Empty reply from server
+----
+
+// CSANAD:  I'm getting a different error for some reason:
+//          curl: (56) Recv failure: Connection reset by peer
+// Hopefully, just like above, the difference is irrelevantr but somebody please
+// confirm.
+
+
+==== Essential Googling the Error Message
+
+The need to map ports and the `-p` argument to `docker run` are something you just learn,
+fairly early on in learning Docker.  But the next debugging step is quite a bit more obscure
+(although admittedly Itamar does address it in his
+https://pythonspeed.com/articles/docker-connection-refused/[docker networking article],
+did I already mention how excellent it is?).
+
+
+But if we haven't read that, we can always resort to the tried and tested "Googling the error message" technique instead
+(<<googling-the-error>>).
+
+
+[[googling-the-error]]
+.An indispensable publication (source: https://news.ycombinator.com/item?id=11459601[])
+image::images/orly-essential-googling-the-error-message.png["Cover of a fake O'Reilly book called Googling the Error Message",400]
+
+
+Everyone's search results are a little different,
+and mine are perhaps shaped by years of working with Docker and Django,
+but I found the answer in my very first result
+(see <<google-results-screenshot>>),
+when I searched for "cannot access django runserver inside docker",
+and the result was was a https://stackoverflow.com/questions/49476217/docker-cant-access-django-server[stackoverflow post],
+saying something about needing to specify `0.0.0.0` as the IP address.
+
+
+[[google-results-screenshot]]
+.Google can still deliver results
+image::images/google-results-with-stackoverflow.png["Google results with a useful stackoverflow post in first position",1000]
+
+
+We're nearing the edges of my understanding of Docker now,
+but as I understand it, `runserver` binds to `127.0.0.1` by default,
+but that IP address doesn't correspond to the network adapter _inside_
+the container that's actually connected to the outside world,
+via the port mapping we defined earlier.
+
+The long and short of it is that
+we need use the long-form `ipaddr:port` version of the `runserver` command,
+using the magic "wilcard" IP address `0.0.0.0`:
+
+// DAVID: Some readers might not be that comfortable with the idea of ports.
+// I think this could do with more explanation.
+
+.Dockerfile (ch09l007)
+====
+[source,dockerfile]
+----
+[...]
+WORKDIR /src
+
+CMD python manage.py runserver 0.0.0.0:8888
+----
+====
+
+Rebuild and re-run your server, and if you have eagle eyes,
+you'll spot it's binding to `0.0.0.0` instead of `127.0.0.1`:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run -p 8888:8888 -it superlists*
+[...]
+Starting development server at http://0.0.0.0:8888/
+----
+
+
+We can verify it's working with `curl`:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*curl -iv localhost:8888*]
+*   Trying 127.0.0.1:8888...
+* Connected to localhost (127.0.0.1) port 8888 (#0)
+[...]
+
+  </body>
+
+</html>
+* Connection #0 to host localhost left intact
+----
+
+Looking good!
+
+
+.On Debugging
+*******************************************************************************
+Let me let you in on a little secret.  I'm actually bad at debugging.
+We all have our psychological strengths and weaknesses,
+and one of my weaknesses is
+that when I run into a problem I can't see an obvious solution to,
+I want to throw up my hands way too soon
+and say "well, this is hopeless, it can't be fixed",
+and give up.
+
+Thankfully I have had some good role models over the years
+who are much better at it than me (hi, Glenn!).
+Debugging needs the patience and tenacity of a bloodhound.
+If at first you don't succeed,
+you need to systematically rule out options,
+check your assumptions,
+eliminate various aspects of the problem and simplify things down,
+find the parts that do and don't work,
+until you eventually find the cause.
+
+It always seems hopeless at first!  But eventually you get there.
+
+*******************************************************************************
+
+
+=== Database migrations
+
+((("database migrations")))
+A quick visual inspection confirms--the site is up (<<site-in-docker-is-up>>)!
+
+[[site-in-docker-is-up]]
+.The site in Docker is up!
+image::images/twp2_0903.png["The front page of the site, at least, is up"]
+
+
+Let's see what our functional tests say:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test src/functional_tests \
+    --failfast*]
+[...]
+E
+======================================================================
+ERROR: test_can_start_a_todo_list
+(functional_tests.tests.NewVisitorTest.test_can_start_a_todo_list)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/tests.py", line 56, in
+test_can_start_a_todo_list
+    self.wait_for_row_in_list_table("1: Buy peacock feathers")
+  File "...goat-book/src/functional_tests/tests.py", line 26, in
+wait_for_row_in_list_table
+    table = self.browser.find_element(By.ID, "id_list_table")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]; For documentation [...]
+----
+
+Although the FTs can connect happily and interact with our site,
+they are failing as soon as they try to submit a new item.
+
+It's because we haven't set up the database (which, as you may remember,
+we highlighted as one of the "danger areas" of deployment).
+You might have spotted the yellow Django debug page (<<django-debug-screen>>)
+telling us as much, or if you tried it manually.
+
+// DAVID: Grammar on that last sentence?
+
+NOTE: The tests saved us from potential embarrassment there.
+    The site _looked_ fine when we loaded its front page.
+    If we'd been a little hasty and only testing manually,
+    we might have thought we were done,
+    and it would have been the first users that discovered that nasty Django DEBUG page.
+    Okay, slight exaggeration for effect, maybe we _would_ have checked,
+    but what happens as the site gets bigger and more complex?
+    You can't check everything. The tests can.
+
+
+[[django-debug-screen]]
+.But the database isn't
+image::images/twp2_0904.png["Django DEBUG page showing database error"]
+
+
+To be fair, if you look back through the `runserver` command output
+each time we've been starting our container,
+you'll see it's been warning us about this issue:
+
+// DAVID: mix between 'you' and 'our' reads weirdly.
+
+[role="skipme"]
+----
+You have 19 unapplied migration(s). Your project may not work properly until
+you apply the migrations for app(s): auth, contenttypes, lists, sessions.
+Run 'python manage.py migrate' to apply them.
+----
+
+
+
+NOTE: If you don't see this error,
+    it's because your src folder had the database file in it, unlike mine.
+    For the sake of argument, run `rm src/db.sqlite3` and re-run the build & run commands,
+    and you should be able to reproduce the error.  I promise it's instructive!
+
+
+==== Should we run "migrate" inside the Dockerfile? No.  // JAN: Not sure I understand this line. You're saying that we shouldn't run migrate inside our Dockerfile, but then in the next line you do exactly that
+
+So, should we include `manage.py migrate` in our Dockerfile?
+
+If you try it, you'll find it certainly fixes the problem:
+
+[role="sourcecode"]
+.Dockerfile (ch09l008)
+====
+[source,dockerfile]
+----
+[...]
+WORKDIR /src
+
+RUN python manage.py migrate --noinput  <1>
+CMD python manage.py runserver 0.0.0.0:8888
+----
+====
+
+<1> We run `migrate` using the `--noinput` argument to suppress any little "are you sure" prompts.
+
+
+If we rebuild the image and try our FTs again, they all pass!
+
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test src/functional_tests \
+    --failfast*]
+Found 3 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 26.965s
+
+OK
+----
+
+
+=== Mounting files inside the container.
+
+But we don't actually want to package up our database _inside_ the image, do we?
+We want the database on the server to have totally separate data from the one on our machine.
+// CSANAD: we need to list `src/db.sqlite3` in the .dockerignore file to achieve this.
+//         Otherwise, if the reader did not delete the DB, it would still end up built into
+// the image since the COPY directive copies everything that's inside `src`.
+
+// DAVID: This is an important point which might need a bit more explanation.
+// What would happen if we did?
+
+In most deployments, you'd probably be talking to a separate database server, like postgres.
+
+For the purposes of this book, the easiest analogy to a server that's "outside" our container,
+is to access the database from the filesystem outside the container.
+
+That also gives us a convenient excuse to talk about mounting files in Docker,
+which is a very Useful Thing to be Able to Do (TM).
+
+
+First let's revert our change:
+
+[role="sourcecode"]
+.Dockerfile (ch09l009)
+====
+[source,dockerfile]
+----
+[...]
+WORKDIR /src
+
+CMD python manage.py runserver 0.0.0.0:8888
+----
+====
+
+
+Let's start by re-creating the database with `migrate`
+(when we moved everything into `./src`, we left the database file behind):
+
+[subs="specialcharacters,quotes"]
+----
+$ *./src/manage.py migrate --noinput*
+Operations to perform:
+  Apply all migrations: auth, contenttypes, lists, sessions
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+[...]
+  Applying sessions.0001_initial... OK
+----
+
+Let's make sure to .gitignore the new location of the DB file:
+
+[subs="specialcharacters,quotes"]
+----
+$ *echo src/db.sqlite3 >> .gitignore*
+----
+
+Now let's try mounting our database file.
+The extra flag to add to the Docker run command is `--mount`,
+where we specify `type=bind`, the `source` path on our machine,
+and the `target` path _inside_ the container:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+  -p 8888:8888 \
+  --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+  -it superlists*
+----
+
+TIP: The old syntax for mounts was `-v`.
+    One of the advantages of the new `--mount` syntax is that it will fail hard
+    if the path you're trying to mount into the container does not exist
+    (it says something like `bind source path does not exist`)
+    This avoids a lot of pain, ask me how I know this.
+
+
+And we check the FTs again.
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 ./src/manage.py test src/functional_tests \
+    --failfast*]
+Found 3 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...
+ ---------------------------------------------------------------------
+Ran 3 tests in 26.965s
+
+OK
+----
+
+//RITA: I'd rather add exclamation marks than extend the word.
+AMAZING IT ACTUALLY WORKSSSSSSSS.
+
+Ahem, that's definitely good enough for now!  Let's commit.
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add Dockerfile*
+$ *git commit -m"First cut of a Dockerfile"*
+----
+// DAVID: This is the second cut really?
+
+Phew.  Well, it took a bit of hacking about,
+but now we can be reassured that the basic Docker plumbing works.
+Notice that the FT was able to guide us incrementally towards a working config,
+and spot problems early on (like the missing database).
+
+But we really can't be using the Django dev server in production,
+or running on port 8888 forever.
+In the next chapter, we'll make our hacky image more production-ready.
+
+But first, time for a well-earned tea break I think, and perhaps a
+https://en.wikipedia.org/wiki/Digestive_biscuit[chocolate biscuit].
+
+// DAVID: That ain't no chocolate biscuit!
+
+.Test-Driving Server Configuration and Deployment
+*******************************************************************************
+
+Tests and small steps take some of the uncertainty out of deployment::
+    For developers, ops and infra work is always "fun",
+    by which I mean a process full of fear, uncertainty and surprises.
+    My aim during this chapter was to show that a step-by-step approach
+    helps to minimise risk, especially when allied to a functional test suite
+    that can help us to catch errors early.
+
+Some typical pain points--networking, ports, static files, and the database::
+    Moving from the local django development server to a container
+    is chance to rehearse the fiddliness of configuring networking
+    in a deployed environment.
+    It's also a chance to think about persistence and the database,
+    and some configuration issues like static files.
+
+
+// TODO: add debugging tips docker ps, docker inspect, docker logs.
+// also brief description of network debugging:  try curl outside, try curl inside, restart pc / docker /colima
+// also maybe the lsof command to see who's using what port
+
+*******************************************************************************

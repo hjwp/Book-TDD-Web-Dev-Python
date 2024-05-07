@@ -53,12 +53,12 @@ class Chapter18Test(ChapterTest):
             if self.pos == fab_deploy_pos + 1 and DO_SERVER_COMMANDS:
                 print('hacking in code update on server')
                 self.run_server_command(
-                    'cd /home/elspeth/sites/superlists-staging.ottg.eu'
+                    'cd /home/elspeth/sites/staging.ottg.co.uk'
                     ' && git checkout chapter_server_side_debugging'
                     ' && git reset --hard origin/chapter_server_side_debugging',
                 )
                 self.run_server_command(
-                    'sudo systemctl restart gunicorn-superlists-staging.ottg.eu'
+                    'sudo systemctl restart gunicorn-staging.ottg.co.uk'
                 )
             self.recognise_listing_and_process_it()
 
