@@ -128,9 +128,9 @@ test_chapter_14_simple_form: chapter_14_simple_form.html $(TMPDIR) .venv/bin
 .PHONY: test_chapter_15_advanced_forms
 test_chapter_15_advanced_forms: chapter_15_advanced_forms.html $(TMPDIR) .venv/bin
 	.venv/bin/pytest -s --tb=short ./tests/test_chapter_15_advanced_forms.py
-.PHONY: test_chapter_javascript
-test_chapter_javascript: chapter_javascript.html $(TMPDIR) .venv/bin
-	.venv/bin/pytest -s --tb=short ./tests/test_chapter_javascript.py
+.PHONY: test_chapter_16_javascript
+test_chapter_16_javascript: chapter_16_javascript.html $(TMPDIR) .venv/bin
+	.venv/bin/pytest -s --tb=short ./tests/test_chapter_16_javascript.py
 .PHONY: test_chapter_deploying_validation
 test_chapter_deploying_validation: chapter_deploying_validation.html $(TMPDIR) .venv/bin
 	.venv/bin/pytest -s --tb=short ./tests/test_chapter_deploying_validation.py
