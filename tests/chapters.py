@@ -16,7 +16,7 @@ CHAPTERS = [
     "chapter_13_database_layer_validation",
     "chapter_14_simple_form",
     "chapter_15_advanced_forms",
-    "chapter_javascript",
+    "chapter_16_javascript",
     "chapter_deploying_validation",
     # part 3
     "chapter_spiking_custom_auth",

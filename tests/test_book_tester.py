@@ -1009,30 +1009,30 @@ class TestContains:
 @pytest.mark.skipif(not shutil.which("phantomjs"), reason="PhantomJS not available")
 class CheckQunitOuptutTest(ChapterTest):
     def test_partial_listing_passes(self):
-        self.chapter_name = "chapter_javascript"
+        self.chapter_name = "chapter_16_javascript"
         self.sourcetree.start_with_checkout(
-            "chapter_deploying_validation", "chapter_javascript"
+            "chapter_deploying_validation", "chapter_16_javascript"
         )
         expected = Output("2 assertions of 2 passed, 0 failed.")
         self.check_qunit_output(expected)  # should pass
         assert expected.was_checked
 
     def test_fails_if_lists_fail_and_no_accounts(self):
-        self.chapter_name = "chapter_javascript"
+        self.chapter_name = "chapter_16_javascript"
         self.sourcetree.start_with_checkout(
-            "chapter_deploying_validation", "chapter_javascript"
+            "chapter_deploying_validation", "chapter_16_javascript"
         )
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output("arg"))
 
     def test_runs_phantomjs_runner_against_lists_tests(self):
-        self.chapter_name = "chapter_javascript"
+        self.chapter_name = "chapter_16_javascript"
         self.sourcetree.start_with_checkout(
-            "chapter_deploying_validation", "chapter_javascript"
+            "chapter_deploying_validation", "chapter_16_javascript"
         )
         lists_tests = os.path.join(
             os.path.abspath(os.path.dirname(__file__)),
-            "../source/chapter_javascript/superlists/lists/static/tests/tests.html",
+            "../source/chapter_16_javascript/superlists/lists/static/tests/tests.html",
         )
 
         manual_run = subprocess.check_output(
@@ -1045,7 +1045,7 @@ class CheckQunitOuptutTest(ChapterTest):
     def DONTtest_runs_against_accounts_if_lists_pass(self):
         self.chapter_name = "chapter_deploying_validation"
         self.sourcetree.start_with_checkout(
-            "chapter_deploying_validation", "chapter_javascript"
+            "chapter_deploying_validation", "chapter_16_javascript"
         )
         lists_tests = os.path.abspath(
             os.path.join(
