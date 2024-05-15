@@ -177,6 +177,15 @@ def strip_screenshot_timestamps(output):
     return fixed
 
 
+def strip_docker_image_ids_and_creation_times(output):
+    fixed = re.sub(
+        r"superlists\s+latest\s+\w+\s+\d+ \w+ ago\s+164MB",
+        r"superlists   latest   someidorother   X time ago   164MB",
+        output,
+    )
+    return fixed
+
+
 SQLITE_MESSAGES = {
     "django.db.utils.IntegrityError: lists_item.list_id may not be NULL": "django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id",
     "django.db.utils.IntegrityError: columns list_id, text are not unique": "django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,\nlists_item.text",
@@ -353,8 +362,8 @@ class ChapterTest(unittest.TestCase):
             )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
-        print("checking expected output", expected)
-        print("against actual", actual)
+        print("checking expected output\n", expected)
+        print("against actual\n", actual)
         self.assertEqual(
             type(expected),
             Output,
@@ -382,6 +391,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_object_ids(actual_fixed)
         actual_fixed = strip_migration_timestamps(actual_fixed)
         actual_fixed = strip_session_ids(actual_fixed)
+        actual_fixed = strip_docker_image_ids_and_creation_times(actual_fixed)
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
@@ -398,6 +408,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_bdd_test_speed(expected_fixed)
         expected_fixed = strip_git_hashes(expected_fixed)
         expected_fixed = strip_mock_ids(expected_fixed)
+        expected_fixed = strip_docker_image_ids_and_creation_times(expected_fixed)
         expected_fixed = strip_object_ids(expected_fixed)
         expected_fixed = strip_migration_timestamps(expected_fixed)
         expected_fixed = strip_session_ids(expected_fixed)
@@ -836,6 +847,22 @@ class ChapterTest(unittest.TestCase):
                 else:
                     next_listing.skip = True
                 self.pos += 2
+
+        elif listing.type == "docker run tty":
+            self.sourcetree.run_command(
+                "docker kill $(docker ps -q)", ignore_errors=True
+            )
+            fixed = Command(listing.replace(" -it ", " -t "))
+            next_listing = self.listings[self.pos + 1]
+            if next_listing.type == "output" and not next_listing.skip:
+                output = self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                self.assert_console_output_correct(output, next_listing)
+                next_listing.was_checked = True
+                self.pos += 2
+            else:
+                self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_checked = True
+                self.pos += 1
 
         elif listing.type == "other command":
             print("A COMMAND")

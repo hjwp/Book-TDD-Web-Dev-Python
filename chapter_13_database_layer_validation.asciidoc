@@ -56,6 +56,10 @@ selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: .invalid-feedback; For documentation [...]
 ----
 
+// CSANAD: I don't have the "For documentation" here:
+//   Unable to locate element: .invalid-feedback
+// I only have the stack trace.
+
 It's expecting to see an error message if the user tries to input an empty
 item.
 
@@ -111,7 +115,7 @@ TIP: If you're new to Python, you may never have seen the `with` statement.
     It's used with what are called "context managers", which wrap a block of code,
     usually with some kind of setup, cleanup, or error-handling code.
     There's a good write-up in the
-    http://docs.python.org/release/2.5/whatsnew/pep-343.html[Python 2.5 release notes].
+    https://docs.python.org/release/2.5/whatsnew/pep-343.html[Python 2.5 release notes].
     ((("with statements")))
     ((("Python 3", "with statements")))
 
@@ -131,6 +135,8 @@ except ValidationError:
 
 But the `with` formulation is neater.  Now, we can try running the test,
 and see its expected failure:
+// CSANAD: I would highlight we are running the unit test here
+// python src/manage.py test lists
 
 ----
     with self.assertRaises(ValidationError):
@@ -145,16 +151,18 @@ A Django Quirk: Model Save Doesn't Run Validation
 ((("model-layer validation", "running full validation")))
 And now we discover one of Django's little quirks.
 _This test should already pass_.
-f you take a look at the
-http://bit.ly/SuxPJO[docs for the Django model fields],
-you'll see that `TextField` actually defaults to `blank=False`, which means
-that it 'should' disallow empty values.
+If you take a look at the
+https://docs.djangoproject.com/en/4.2/ref/models/fields/#blank[docs for the Django model fields],
+you'll see under _Field options_ that the default setting for `blank` is `False`. Which means,
+since TextField is a type of Field, it 'should' disallow empty values.
+// CSANAD: I rephrased this a little, because `blank` is False for all `Field`s.
 
 ((("data integrity errors")))
 So why is the test still failing?
 Well, for
 http://bit.ly/2v3SfRq[slightly counterintuitive historical reasons],
 Django models don't run full validation on save.
+// CSANAD: I'd argue against the use of shortened URLs.
 As we'll see later,
 any constraints that are actually implemented in the database
 will raise errors on save,
@@ -167,6 +175,9 @@ But Django knows that SQLite doesn't support this type of constraint,
 so if we try to run `makemigrations`, it will report there's nothing to do:
 
 
+// CSANAD: maybe I'm missing something here but I don't think there would have
+//         been any changes detected here even with another DB. I don't remember
+// changing the model since the last migration.
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py makemigrations*]
@@ -177,7 +188,7 @@ No changes detected
 ((("full_clean method")))Django
 does have a method to manually run full validation, however, called
 `full_clean` (more info in
-http://bit.ly/2u5SIxA[the docs]).
+https://docs.djangoproject.com/en/4.2/ref/models/instances/#django.db.models.Model.full_clean[the docs]).
 Let's hack it in to see it work:
 
 
@@ -187,11 +198,17 @@ Let's hack it in to see it work:
 [source,python]
 ----
     with self.assertRaises(ValidationError):
-        item.save()
         item.full_clean()
+        item.save()
 ----
 ====
 //19
+// CSANAD: full_clean() should be executed before save() is called. It doesn't
+//         make a difference here since the test DB is destroyed anyway, but
+// we are actually saving an invalid item and only then calling full_clean().
+// Which results in raising the correct error. But I think we should always
+// show the correct order even when it doesn't matter: validation first and
+// only then attempting save().
 
 That gets the unit test to pass:
 
@@ -211,7 +228,7 @@ Surfacing Model Validation Errors in the View
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ((("model-layer validation", "surfacing errors in the view", id="MLVsurfac13")))
-Let"s try to enforce our model validation in the views layer
+Let's try to enforce our model validation in the views layer
 and bring it up through into our templates, so the user can see them.
 Here's how we can optionally display an error in our HTML--we check whether the template has
 been passed an error variable, and if so, we do this:
@@ -241,8 +258,15 @@ been passed an error variable, and if so, we do this:
 
 ((("Bootstrap", "documentation")))
 ((("form control classes (Bootstrap)")))
-Take a look at the http://getbootstrap.com/css/#forms[Bootstrap docs] for more
+Take a look at the https://getbootstrap.com/docs/5.3/forms/validation/#server-side[Bootstrap docs] for more
 info on form controls.
+// CSANAD: these are the new docs for Bootstrap, but for some reason they begin
+//         with saying "We recommend client-side validation" which is bad.
+// Client side validation is fine for faster UI aesthetics, sure. But they are
+// not emphasizing that it is only for faster feedback and for security,
+// whatever reaches the server should be validated on the server side before
+// accepting it as an input for literally anything... Maybe we should mention
+// this in a side note?
 
 Passing this error to the template is the job of the view function. Let's take
 a look at the unit tests in the `NewListTest` class.  I'm going to use two
@@ -406,7 +430,7 @@ self.assertContains(response, expected_error)
 ====
 
 ...will show us the cause—Django has
-https://docs.djangoproject.com/en/1.11/ref/templates/builtins/#autoescape[HTML-escaped]
+https://docs.djangoproject.com/en/4.2/ref/templates/builtins/#autoescape[HTML-escaped]
 the apostrophe:
 
 ----
@@ -538,7 +562,9 @@ element: .invalid-feedback; [...]
 ----
 
 
-Not quite, but they did get a little further.  Checking 'line 31', we can
+Not quite, but they did get a little further.  Checking the line in which the
+error occurred -- 'line 31' in my case -- , we can
+// CSANAD: I think emphasizing what to look for in the error log is helpful.
 see that we've got past the first part of the test, and are now onto the second
 check--that submitting a second empty item also shows an error.
 
@@ -573,6 +599,19 @@ The current situation is that we have one view and URL for displaying a list,
 and one view and URL for processing additions to that list.  We're going to
 combine them into one. So, in 'list.html', our form will have a different
 target:
+// CSANAD: Since we are working in a not completely working state, I would
+// already mention or move the NOTE here from the end of the subsection:
+//   "Refactor: Transferring the new_item Functionality into view_list".
+// And then just re-reference it from where it is right now.
+//
+// I think adding a few words on how this is not just a simple refactor but it's
+// going to get us to our working state would help the reader recognise these
+// situations later, independently.
+// Something like pointing out how the FT is partially passing for:
+//  - adding one empty list item results in an error message
+//  - adding one valid list item is also passing
+//  - the error occurs when we try adding an empty list item again
+// from which we conclude why we are refactoring the views first
 
 [role="sourcecode"]
 .src/lists/templates/list.html (ch11l030)
@@ -614,7 +653,10 @@ NOTE: In this section we're performing a refactor at the application level.
     and things are back to working as before.
     Have another look at the diagram from the end of <<chapter_04_philosophy_and_refactoring>>
     if you need to get your bearings.
-
+// CSANAD: my comment from above to say a few words on why we are refactoring
+//         despite the failing FT again feels justified since we are even
+// mentioning the diagram too. It might feel confusing without telling the
+// reader earlier what we are doing here.
 
 
 ==== Refactor: Transferring the new_item Functionality into view_list
@@ -952,7 +994,7 @@ a [keep-together]#parameter#:
 ====
 
 See the
-http://bit.ly/2uKaMzA[Django
+https://docs.djangoproject.com/en/4.2/topics/http/urls/#reverse-resolution-of-urls[Django
 docs on reverse URL resolution] for more info. We run the tests again, and check that they all pass:
 
 [subs="specialcharacters,macros"]
@@ -1031,7 +1073,7 @@ AttributeError: 'List' object has no attribute 'get_absolute_url'
 The implementation is to use Django's `reverse` function, which
 essentially does the reverse of what Django normally does with 'urls.py'
 (see the
-https://docs.djangoproject.com/en/1.11/topics/http/urls/#reverse-resolution-of-urls[docs]):
+https://docs.djangoproject.com/en/4.2/topics/http/urls/#reverse-resolution-of-urls[docs]):
 
 
 [role="sourcecode"]
@@ -1065,7 +1107,7 @@ def new_list(request):
 ====
 
 There's more info in the
-https://docs.djangoproject.com/en/1.11/topics/http/shortcuts/#redirect[Django
+https://docs.djangoproject.com/en/4.2/topics/http/shortcuts/#redirect[Django
 docs].  Quick check that the unit tests still pass:
 
 [subs="specialcharacters,macros"]

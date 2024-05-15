@@ -76,6 +76,8 @@ class Command(str):
             return "interactive manage.py"
         if self == "python manage.py collectstatic":
             return "interactive manage.py"
+        if "docker run" in self and "-it" in self:
+            return "docker run tty"
         if self.startswith("STAGING_SERVER="):
             return "against staging"
         return "other command"

@@ -1,7 +1,7 @@
 # Ultra-brief instructions for how to get a Linux server
 
 These instructions are meant as companion to the 
-[deployment chapter of my book](http://www.obeythetestinggoat.com/book/chapter_09_docker.html).
+[deployment chapter of my book](https://www.obeythetestinggoat.com/book/chapter_11_ansible.html).
 They're almost telegraphic in style, but I hope they're better than nothing!
 
 
@@ -23,15 +23,18 @@ ssh-keygen
 
 **NOTE** *If you're on Windows, you need to be using Git-Bash for `ssh-keygen`
 and `ssh` to work. There's more info in the
-[installation instructions chapter](http://www.obeythetestinggoat.com/book/pre-requisite-installations.html)*
+[installation instructions chapter](https://www.obeythetestinggoat.com/book/pre-requisite-installations.html)*
 
 Just accept all the defaults if you really want to just get started in a hurry,
 and no passphrase.
 
 Later on, you'll want to re-create a key with a passphrase for extra security,
 but that means you have to figure out how to save that passphrase in such a way
-that Fabric won't ask for it later, and I don't have time to write instructions
+that Ansible won't ask for it later, and I don't have time to write instructions
 for that now!
+<!--
+CSANAD: We are no longer using Fabric
+-->
 
 Make a note of your "public key"
 
@@ -39,8 +42,8 @@ Make a note of your "public key"
 cat ~/.ssh/id_rsa.pub
 ```
 
-More info on public key authentication [here](https://www.linode.com/docs/networking/ssh/use-public-key-authentication-with-ssh/)
-and [here](https://www.digitalocean.com/community/tutorials/how-to-use-ssh-keys-with-digitalocean-droplets)
+More info on public key authentication [here](https://www.linode.com/docs/guides/use-public-key-authentication-with-ssh/)
+and [here](https://docs.digitalocean.com/products/droplets/how-to/add-ssh-keys/)
 
 
 ## Start a Droplet
@@ -72,7 +75,10 @@ need for a password.
 useradd -m -s /bin/bash elspeth # add user named elspeth 
 # -m creates a home folder, -s sets elspeth to use bash by default
 usermod -a -G sudo elspeth # add elspeth to the sudoers group
-passwd elspeth # set password for elspeth
+# allow elspeth to sudo without retyping password
+echo 'elspeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/elspeth
+ # set password for elspeth (you'll need to type one in)
+passwd elspeth
 su - elspeth # switch-user to being elspeth!
 ```
 
@@ -113,18 +119,25 @@ is to map a domain name to your server's IP address.
 
 If you don't already own a domain name you can use (you don't
 have to use the *www.* subdomain, you could use *superlists.yourdomain.com*),
-then you'll need to get on from a "domain registrar".  There are loads
+then you'll need to get one from a "domain registrar".  There are loads
 out there, I quite like Gandi or the slightly-more-friendly (but
 no 2FA) 123-reg.
 
 If you want a free one there's [dot.tk](http://www.dot.tk).  Be aware
 that their business model is based on ads, so there will be ads
 all over your domain until you configure it.
+<!-- CSANAD: first I thought this website was down, but then I realized my
+browser blocked it. Unless there are no better alternatives, I don't think
+recommending a services that don't use TLS is good. -->
 
-Once you have a domain, you need to set up a couple of **A-records** in
+Once you have a domain, you need to set up a couple of **A-records**, short
+for Address Records, in
 its DNS configuration, one for your "staging" subdomain and one for your
 "live" subdomain.  Mine are *superlists.ottg.co.uk* and *staging.ottg.co.uk*
 for example.
+<!-- CSANAD: maybe I would mention associating IPv6 addresses are done in
+AAAA records. I think it's a good practice to configure it too, and I
+came across a few providers whose cheapest VPS packages were IPv6 only -->
 
 *(tip: DNS changes take time to propagate, so if your domain doesn't
 take you to the server straight away, you may need to wait.  Some registrars
@@ -132,7 +145,7 @@ will let you control this using a setting called "TTL")*.
 
 
 And now you should be all set to follow the rest of the instructions in 
-the manual deployment chapter
+the manual deployment chapter.
 
 
 # Pull requests and suggestions accepted!

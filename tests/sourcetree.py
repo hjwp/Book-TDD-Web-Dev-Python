@@ -122,8 +122,16 @@ class SourceTree:
         self.processes.append(process)
         if "runserver" in command:
             # can't read output, stdout.read just hangs.
-            # TODO: readline?
+            # TODO: readline?  see below.
             return
+        if "docker run" in command and "superlists" in command and not ignore_errors:
+            output = ""
+            while True:
+                output += process.stdout.readline()
+                if "Quit the server with CONTROL-C." in output:
+                    # go any further and we hang.
+                    print("docker run out:\n", output)
+                    return output
 
         if user_input and not user_input.endswith("\n"):
             user_input += "\n"
