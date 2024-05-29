@@ -1,10 +1,9 @@
 [[chapter_16_javascript]]
-== Dipping Our Toes, Very Tentatively, [keep-together]#into JavaScript#
+== A Gentle Excursion Into JavaScript
 
-[quote, 'John Calvin (as portrayed in http://onemillionpoints.blogspot.co.uk/2008/08/calvin-and-chipmunks.html[Calvin and the Chipmunks])']
+[quote, Geoffrey Willans]
 ______________________________________________________________
-If the Good Lord had wanted us to enjoy ourselves,
-he wouldn't have granted us his precious gift of relentless misery.
+You can never understand one language until you understand at least two.
 ______________________________________________________________
 
 
@@ -16,25 +15,26 @@ It's very rough at the moment!
 
 *******************************************************************************
 
+Our new validation logic is good,
+but wouldn't it be nice if the duplicate item error messages disappeared
+once the user started fixing the problem?
+Just like our nice HTML5 validation errors do?
+For that we'd need a teeny-tiny bit of JavaScript.
 
-Our new validation logic is good, but wouldn't it be nice if the duplicate item
-error messages disappeared once the user started fixing the problem?  Just like
-our nice HTML5 validation errors do? For that we'd need a teeny-tiny bit of
-JavaScript.
-
-We are utterly spoiled by programming every day in such a joyful language as
-Python.  JavaScript is our punishment. For a web developer though, there's
-no way around it. So let's dip our toes in, very gingerly.
+Python is a delightful language to program in.
+JavaScript wasn't always that.
+But many of the rough edges have been smoothed off,
+and I think it's fair to say that it's actually quite nice now.
+And in the world of web development, it's unavoidable.
+So let's dip our toes in, and see if we can't have fun.
 
 NOTE: ((("JavaScript testing", "additional resources")))I'm
-going to assume you know the basics of JavaScript syntax. If you
-    haven't read <<jsgoodparts,'JavaScript: The Good Parts'>>, go and get
-    yourself a copy right away!  It's not a very long book.
-
-// TODO: find a modern replacement.
-// YDKJS is too hardcore.
-// https://javascript.info/ is ok but doesn't point out footguns.
-// maybe https://eloquentjavascript.net ?
+  going to assume you know the basics of JavaScript syntax.
+  https://amzn.to/3UXVUKd[JavaScript: The Good Parts] was the best guide,
+  once upon a time.  Nowadays many of the "bad parts" it warns again
+  have actually been fixed, so it's a little out of date.
+  Try it, but if you find it anachronistic, I've heard good things about
+  https://eloquentjavascript.net[Eloquent JavaScript].
 
 
 ////
@@ -44,54 +44,74 @@ and add sparkles to the ones we like
 ////
 
 
-Starting with an FT
-~~~~~~~~~~~~~~~~~~~
+=== Starting with an FT
 
-((("JavaScript testing", "functional test")))((("functional tests (FTs)", "JavaScript", id="FTjava16")))Let's
-add a new functional test to the `ItemValidationTest` class:
+((("JavaScript testing", "functional test")))
+((("functional tests (FTs)", "JavaScript", id="FTjava16")))
+Let's add a new functional test to the `ItemValidationTest` class:
 
 [role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch14l001)
+.src/functional_tests/test_list_item_validation.py (ch16l001)
 ====
 [source,python]
 ----
 def test_error_messages_are_cleared_on_input(self):
     # Edith starts a list and causes a validation error:
     self.browser.get(self.live_server_url)
-    self.get_item_input_box().send_keys('Banter too thick')
+    self.get_item_input_box().send_keys("Banter too thick")
     self.get_item_input_box().send_keys(Keys.ENTER)
-    self.wait_for_row_in_list_table('1: Banter too thick')
-    self.get_item_input_box().send_keys('Banter too thick')
+    self.wait_for_row_in_list_table("1: Banter too thick")
+    self.get_item_input_box().send_keys("Banter too thick")
     self.get_item_input_box().send_keys(Keys.ENTER)
-
-    self.wait_for(lambda: self.assertTrue(  #<1>
-        self.browser.find_element_by_css_selector('.has-error').is_displayed()  #<2>
-    ))
+    self.wait_for(  # <1>
+        lambda: self.assertTrue(  # <1>
+            self.browser.find_element(
+                By.CSS_SELECTOR, ".invalid-feedback"
+            ).is_displayed()  # <2>
+        )
+    )
 
     # She starts typing in the input box to clear the error
-    self.get_item_input_box().send_keys('a')
+    self.get_item_input_box().send_keys("a")
 
     # She is pleased to see that the error message disappears
-    self.wait_for(lambda: self.assertFalse(
-        self.browser.find_element_by_css_selector('.has-error').is_displayed()  #<2>
-    ))
+    self.wait_for(
+        lambda: self.assertFalse(
+            self.browser.find_element(
+                By.CSS_SELECTOR, ".invalid-feedback"
+            ).is_displayed()  # <2>
+        )
+    )
 ----
 ====
 
 <1> We use another of our `wait_for` invocations, this time with `assertTrue`.
 
-<2> `is_displayed()` tells you whether an element is visible or not. We
-    can't just rely on checking whether the element is present in the DOM,
-    because now we're starting to hide elements.
+<2> `is_displayed()` tells you whether an element is visible or not.
+    We can't just rely on checking whether the element is _present_ in the DOM,
+    because we're now going to mark elements as hidden,
+    rather than removing them from the DOM altogether.
 
 
+That fails appropriately:
 
-That fails appropriately, but before we move on:  three strikes and refactor!
+[subs="specialcharacters,quotes"]
+----
+FAIL: test_error_messages_are_cleared_on_input
+(functional_tests.test_list_item_validation.ItemValidationTest.test_error_messages_are_cleared_on_input)
+  File ".../src/functional_tests/test_list_item_validation.py", line 89, in
+  <lambda>
+    lambda: self.assertFalse(
+            ^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+----
+
+But, before we move on:  three strikes and refactor!
 We've got several places where we find the error element using CSS. Let's
 move it to a helper function:
 
 [role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch14l002)
+.functional_tests/test_list_item_validation.py (ch16l002)
 ====
 [source,python]
 ----
@@ -111,26 +131,28 @@ TIP: I like to keep helper functions in the FT class that's using them, and
 And we then make three replacements in 'test_list_item_validation', like this:
 
 [role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch14l003)
+.functional_tests/test_list_item_validation.py (ch16l003)
 ====
 [source,python]
 ----
-    self.wait_for(lambda: self.assertEqual(
-        self.get_error_element().text,
-        "You've already got this in your list"
-    ))
+    self.wait_for(
+        lambda: self.assertEqual(
+            self.get_error_element().text,
+            "You've already got this in your list",
+        )
+    )
 [...]
-    self.wait_for(lambda: self.assertTrue(
-        self.get_error_element().is_displayed()
-    ))
+    self.wait_for(
+        lambda: self.assertTrue(self.get_error_element().is_displayed()),
+    )
 [...]
-    self.wait_for(lambda: self.assertFalse(
-        self.get_error_element().is_displayed()
-    ))
+    self.wait_for(
+        lambda: self.assertFalse(self.get_error_element().is_displayed()),
+    )
 ----
 ====
 
-We have an expected failure:
+We still have our expected failure:
 
 [subs="specialcharacters,macros"]
 ----
@@ -144,35 +166,57 @@ And we can commit this as the first cut of our FT.
 
 
 Setting Up a Basic JavaScript Test Runner
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-((("test running libraries")))((("JavaScript testing", "test running libraries", id="JStestrunner16")))((("nose")))((("Green")))((("pytest")))Choosing
-your testing tools in the Python and Django world is fairly
-straightforward.  The standard library `unittest` package is perfectly
-adequate, and the Django test runner also makes a good default choice.
-There are some alternatives out there&mdash;http://nose.readthedocs.org/[nose]
-is popular, https://github.com/CleanCut/green[Green] is the new kid on the
-block, and I've personally found http://pytest.org/[pytest] to be very
-impressive.  But there is a clear default option, and it's just
-fine.footnote:[Admittedly once you start looking for Python BDD tools, things
-are a little more confusing.]
+((("test running libraries")))
+((("JavaScript testing", "test running libraries", id="JStestrunner16")))
+((("nose")))
+((("Green")))
+((("pytest")))
+Choosing your testing tools in the Python is fairly straightforward.
+The standard library `unittest` package is perfectly adequate,
+and the Django test runner also makes a good default choice.
+More and more though, people will choose http://pytest.org/[pytest]
+for its `assert` based assertions, and its fixture management.
+We don't need to get into the pros and cons now!
+The point is that there's a "good enough" default,
+and there's one main popular alternative.footnote:[
+Admittedly once you start looking for Python BDD tools,
+things are a little more confusing.]
 
-Not so in the JavaScript world!  We use YUI and Jest at work, but I thought I'd
-go out and see whether there were any new tools out there.  I was overwhelmed
-with options--jsUnit, Qunit, Mocha, Chutzpah, Karma, Jasmine, and many more.
-And it doesn't end there either: as I had almost settled on one of them,
-Mocha,footnote:[Purely because it features the
-https://mochajs.org/#nyan[NyanCat] test runner.] I find out that I now need to
-choose an 'assertion framework' and a 'reporter', and maybe a 'mocking
-library', and it never ends!
+The JavaScript world has more of a proliferation!
+Mocha, Karma, Jester, Chai, Ava, and Tape are just a few of the options
+I came across when researching the Third Edition.
+
+I chose Jasmine, because it's still popular despite being around for nearly a decade,
+and because it offers a "standalone" test runner that you can use
+without needing to dive into the whole Node/NPM ecosystem.
+((("Jasmine")))
 
 
+Let's download the so-called "standalone" version of Jasmine,
+which will let us run tests in a normal browser:
 
-((("QUnit", id="qunit16")))In
-the end I decided we should use http://qunitjs.com/[QUnit] because it's
-simple, has a similar look and feel to Python unit tests,  and it works well
-with jQuery.
+[role="small-code"]
+[subs="specialcharacters,quotes"]
+----
+$ *wget -O jasmine.zip \
+  https://github.com/jasmine/jasmine/releases/download/v4.6.1/jasmine-standalone-4.6.1.zip*
+$ *unzip jasmine.zip -d src/lists/static/tests*
+$ *rm jasmine.zip*
+
+# delete some of the example files we don't need
+$ *rm -r src/lists/static/tests/lib*
+$ *rm src/lists/static/tests/spec/SpecHelper.js*
+
+# move the example tests "Spec" file to a more central location
+$ *mv mv src/lists/static/tests/spec/PlayerSpec.js src/lists/static/tests/Spec.js*
+$ *rmdir src/lists/static/tests/spec/"
+----
+
+
+//004
+
 
 Make a directory called 'tests' inside 'lists/static', and download the QUnit
 JavaScript and CSS files into it. We'll also put a file called 'tests.html' in
