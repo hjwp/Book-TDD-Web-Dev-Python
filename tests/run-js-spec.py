@@ -21,7 +21,7 @@ def run(path: Path):
     assert path.exists()
 
     options = webdriver.FirefoxOptions()
-    # options.add_argument("--headless")
+    options.add_argument("--headless")
     browser = webdriver.Firefox(options=options)
 
     def _el_text(sel, node: webdriver.Remote | WebElement = browser):
