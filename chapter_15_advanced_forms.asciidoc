@@ -232,190 +232,7 @@ https://docs.djangoproject.com/en/4.2/ref/models/options/[Django docs on model
 `Meta` attributes] at this point.
 
 
-==== A Little Digression on Queryset Ordering and String Representations
-
-//TODO: actually, this error will never appear with the new migrations
-// framework. could drop this whole section?
-
-((("queryset ordering", id="queryset15")))((("string representations", id="triprep15")))When
-we run the tests they reveal an unexpected failure:
-
-[role="skipme"]
-----
-======================================================================
-FAIL: test_saving_and_retrieving_items
-(lists.tests.test_models.ListAndItemModelsTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/lists/tests/test_models.py", line 31, in
-test_saving_and_retrieving_items
-    self.assertEqual(first_saved_item.text, 'The first (ever) list item')
-AssertionError: 'Item the second' != 'The first (ever) list item'
-- Item the second
-[...]
-----
-
-NOTE: Depending on your platform and its SQLite installation, you may
-    not see this error. You can follow along anyway; the code and tests are
-    interesting in their own right.
-
-That's a bit of a puzzler. A bit of print-based debugging:
-
-[role="sourcecode skipme"]
-.lists/tests/test_models.py
-====
-[source,python]
-----
-    first_saved_item = saved_items[0]
-    print(first_saved_item.text)
-    second_saved_item = saved_items[1]
-    print(second_saved_item.text)
-    self.assertEqual(first_saved_item.text, 'The first (ever) list item')
-----
-====
-
-will show us...
-
-[role="skipme"]
-----
-.....Item the second
-The first (ever) list item
-F.....
-----
-
-It looks like our uniqueness constraint has messed with the default ordering
-of queries like `Item.objects.all()`.  Although we already have a failing test,
-it's best to add a new test that explicitly tests for ordering:
-
-
-[role="sourcecode"]
-.lists/tests/test_models.py (ch09l032)
-====
-[source,python]
-----
-    def test_list_ordering(self):
-        list1 = List.objects.create()
-        item1 = Item.objects.create(list=list1, text='i1')
-        item2 = Item.objects.create(list=list1, text='item 2')
-        item3 = Item.objects.create(list=list1, text='3')
-        self.assertEqual(
-            Item.objects.all(),
-            [item1, item2, item3]
-        )
-----
-====
-
-
-That gives us a new failure, but it's not a very readable one:
-
-----
-AssertionError: <QuerySet [<Item: Item object>, <Item: Item object>, <Item:
-Item object>]> != [<Item: Item object>, <Item: Item object>, <Item: Item
-object>]
-----
-
-
-We need a better string representation for our objects.  Let's add another
-unit test:
-
-
-NOTE: Ordinarily you would be wary of adding more failing tests when you
-    already have some--it makes reading test output that much more complicated,
-    and just generally makes you nervous. Will we ever get back to a working
-    state? In this case, they're all quite simple tests, so I'm not worried.
-
-
-[role="sourcecode"]
-.lists/tests/test_models.py (ch13l008)
-====
-[source,python]
-----
-def test_string_representation(self):
-    item = Item(text='some text')
-    self.assertEqual(str(item), 'some text')
-----
-====
-
-That gives us:
-
-----
-AssertionError: 'Item object' != 'some text'
-----
-
-As well as the other two failures.  Let's start fixing them all now:
-
-
-[role="sourcecode"]
-.lists/models.py (ch09l034)
-====
-[source,python]
-----
-class Item(models.Model):
-    [...]
-
-    def __str__(self):
-        return self.text
-----
-====
-
-NOTE: In Python 2.x versions of Django, the string representation method used
-    to be `__unicode__`. Like much string handling, this is simplified in
-    Python 3. See the
-    https://docs.djangoproject.com/en/4.2/topics/python3/#str-and-unicode-methods[Django docs].
-
-
-Now we're down to two failures, and the ordering test has a more readable
-failure message:
-
-----
-AssertionError: <QuerySet [<Item: i1>, <Item: item 2>, <Item: 3>]> != [<Item:
-i1>, <Item: item 2>, <Item: 3>]
-
-----
-
-We can fix that in the `class Meta`:
-
-[role="sourcecode"]
-.lists/models.py (ch09l035)
-====
-[source,python]
-----
-    class Meta:
-        ordering = ('id',)
-        unique_together = ('list', 'text')
-----
-====
-
-Does that work?
-
-----
-AssertionError: <QuerySet [<Item: i1>, <Item: item 2>, <Item: 3>]> != [<Item:
-i1>, <Item: item 2>, <Item: 3>]
-----
-
-Urp?  It has worked; you can see the items 'are' in the same order, but the
-tests are confused.  I keep running into this problem actually--Django
-querysets don't compare well with lists.  We can fix it by converting the
-queryset to a listfootnote:[You could also check out `assertSequenceEqual` from `unittest`, and
-`assertQuerysetEqual` from Django's test tools, although I confess when I last
-looked at `assertQuerysetEqual` I was quite baffled...]
-in our test:
-
-[role="sourcecode"]
-.lists/tests/test_models.py (ch09l036)
-====
-[source,python]
-----
-    self.assertEqual(
-        list(Item.objects.all()),
-        [item1, item2, item3]
-    )
-----
-====
-
-((("", startref="triprep15")))((("", startref="queryset15")))That
-works; we get a fully passing test suite:
-
+Great! Our unit tests are passing.
 ----
 OK
 ----
@@ -426,10 +243,10 @@ OK
 ==== Rewriting the Old Model Test
 
 
-That long-winded model test did serendipitously help us find an unexpected
-bug, but now it's time to rewrite it. I wrote it in a very verbose style to
-introduce the Django ORM, but in fact, now that we have the explicit test for
-ordering, we can get the same coverage from a couple of much shorter tests.
+That long-winded model test did serendipitously help us find unexpected
+bugs, but now it's time to rewrite it. I wrote it in a very verbose style to
+introduce the Django ORM, but in fact, we can get the same coverage from a
+couple of much shorter tests.
 Delete `test_saving_and_retrieving_items` and replace with this:
 
 [role="sourcecode"]
@@ -485,7 +302,7 @@ That's neater and tidier:
 ----
 $ pass:quotes[*python manage.py test lists*]
 [...]
-Ran 29 tests in 0.092s
+Ran 25 tests in 0.092s
 
 OK
 ----
@@ -555,7 +372,7 @@ Let's revert our changes to the test, and see them all passing again:
 ----
 $ pass:quotes[*python manage.py test lists*]
 [...]
-Ran 29 tests in 0.092s
+Ran 25 tests in 0.092s
 OK
 ----
 
@@ -919,7 +736,7 @@ And we're there!  All the unit tests pass:
 ----
 $ pass:quotes[*python manage.py test lists*]
 [...]
-Ran 34 tests in 0.082s
+Ran 30 tests in 0.082s
 
 OK
 ----
