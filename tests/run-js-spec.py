@@ -23,6 +23,7 @@ def run(path: Path):
     options = webdriver.FirefoxOptions()
     options.add_argument("--headless")
     browser = webdriver.Firefox(options=options)
+    failed = False
 
     def _el_text(sel, node: webdriver.Remote | WebElement = browser):
         return "\n".join(el.text for el in node.find_elements(By.CSS_SELECTOR, sel))
@@ -40,6 +41,7 @@ def run(path: Path):
             for spec_failure in failures_el.find_elements(
                 By.CSS_SELECTOR, ".jasmine-spec-detail.jasmine-failed"
             ):
+                failed = True
                 print()
                 print(_el_text(".jasmine-description", spec_failure))
                 print(_el_text(".jasmine-messages", spec_failure))
@@ -55,10 +57,12 @@ def run(path: Path):
 
     finally:
         browser.quit()
+    return failed
 
 
 if __name__ == "__main__":
     _, fn, *__ = sys.argv
     if fn.endswith("Spec.js"):
         fn = fn.replace("Spec.js", "SpecRunner.html")
-    run(Path(fn).resolve())
+    failed = run(Path(fn).resolve())
+    sys.exit(1 if failed is True else 0)
