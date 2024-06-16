@@ -52,7 +52,7 @@ build: $(HTML_PAGES) $(TMPDIR)
 
 .PHONY: install
 install: .venv/bin
-	which brew && brew install asciidoctor || apt install -y asciidoctor
+	which brew && brew install asciidoctor tree || apt install -y asciidoctor tree
 
 .PHONY: update-submodules
 update-submodules:

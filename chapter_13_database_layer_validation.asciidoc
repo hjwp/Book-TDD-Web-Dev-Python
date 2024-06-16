@@ -1,6 +1,7 @@
 [[chapter_13_database_layer_validation]]
 == Validation at the Database Layer
 
+// RITA: Update the warning since you have reviewed the chapter text in detail?
 .🚧 Warning, Chapter update in progress
 *******************************************************************************
 This chapter is currently in the process of being rewritten for the 3e.
@@ -111,14 +112,6 @@ class ListAndItemModelsTest(TestCase):
 ----
 ====
 
-TIP: If you're new to Python, you may never have seen the `with` statement.
-    It's used with what are called "context managers", which wrap a block of code,
-    usually with some kind of setup, cleanup, or error-handling code.
-    There's a good write-up in the
-    https://docs.python.org/release/2.5/whatsnew/pep-343.html[Python 2.5 release notes].
-    ((("with statements")))
-    ((("Python 3", "with statements")))
-
 This is a new unit testing technique: when we want to check that doing
 something will raise an error, we can use the `self.assertRaises` context
 manager.  We could have used something like this instead:
@@ -142,6 +135,15 @@ and see its expected failure:
     with self.assertRaises(ValidationError):
 AssertionError: ValidationError not raised
 ----
+
+
+TIP: If you're new to Python, you may never have seen the `with` statement.
+    It's used with what are called "context managers", which wrap a block of code,
+    usually with some kind of setup, cleanup, or error-handling code.
+    There's a good write-up in the
+    https://docs.python.org/release/2.5/whatsnew/pep-343.html[Python 2.5 release notes].
+    ((("with statements")))
+    ((("Python 3", "with statements")))
 
 
 A Django Quirk: Model Save Doesn't Run Validation
@@ -256,10 +258,25 @@ been passed an error variable, and if so, we do this:
 <1> We add the `.is-invalid` class to an form inputs with validation errors
 <2> We use a `div.invalid-feedback` to display any error messages from the server.
 
+// RITA: Perhaps put the Bootstrap docs note and the footnote text into a tip box?
 ((("Bootstrap", "documentation")))
 ((("form control classes (Bootstrap)")))
 Take a look at the https://getbootstrap.com/docs/5.3/forms/validation/#server-side[Bootstrap docs] for more
 info on form controls.
+footnote:[... and ignore their advice to prefer client-side validation.
+Ideally, having both server- and client-side validation is the best.
+If you can't do both, then server-side validation is the one you really can't do
+without.
+Check the
+https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/stable-en/02-checklist/05-checklist.html[OWASP checklist],
+if you are not convinced yet.
+Client-side validation will provide faster feedback on the UI, but
+https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html#client-side-vs-server-side-validation[it is not a security measure.]
+Server-side validation is indispensable for handling any input
+that gets processed by the server--and it will also provide albeit slower,
+feedback for the client side.]
+
+
 // CSANAD: these are the new docs for Bootstrap, but for some reason they begin
 //         with saying "We recommend client-side validation" which is bad.
 // Client side validation is fine for faster UI aesthetics, sure. But they are
@@ -346,7 +363,7 @@ blank.']}
 
 So we try our first approach:  using a `try/except` to detect errors. Obeying
 the Testing Goat, we start with just the `try/except` and nothing else.  The
-tests should tell us what to code next...
+tests should tell us what to code next.
 
 [role="sourcecode"]
 .src/lists/views.py (ch11l025)
@@ -578,6 +595,44 @@ $ *git commit -am "Adjust new list view to do model validation"*
 ----
 
 
+Let's put an early return in the FT to separate
+what we got working from those that still need to be dealt with:
+
+[role="sourcecode"]
+.src/functional_tests/test_list_item_validation.py (ch13l030-3)
+====
+[source,python]
+----
+class ItemValidationTest(FunctionalTest):
+    def test_cannot_add_empty_list_items(self):
+        [...]
+        self.browser.find_element(By.ID, "id_new_item").send_keys(Keys.ENTER)
+        self.wait_for_row_in_list_table("1: Buy milk")
+
+        return  # TODO re-enable the rest of this test.
+
+        # Perversely, she now decides to submit a second blank list item
+        self.browser.find_element(By.ID, "id_new_item").send_keys(Keys.ENTER)
+        [...]
+----
+====
+
+
+We should also remind ourselves not to forget to remove this early return:
+
+
+[role="scratchpad"]
+*****
+* 'Remove hardcoded URLs from views.py'
+* 'Remove the early return from the FT'
+*****
+
+And now, we can focus on making our code a little neater.
+
+TIP: When working on a new feature, it's common to realize partway through that
+    a refactor of the application is needed. Adding an early return to the FT
+    you're currently working on allows you to perform this refactor against
+    passing FTs, even while the feature is still in progress.
 
 
 
@@ -628,6 +683,7 @@ and while we're thinking about it, there's one in 'home.html' too:
 [role="scratchpad"]
 *****
 * 'Remove hardcoded URLs from views.py'
+* 'Remove the early return from the FT'
 * 'Remove hardcoded URL from forms in list.html and home.html'
 *****
 
@@ -639,12 +695,12 @@ This will immediately break our original functional test, because the
 ----
 $ pass:quotes[*python src/manage.py test functional_tests*]
 [...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: .invalid-feedback; [...]
-[...]
 AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
 peacock feathers']
 ----
+
+The FTs are warning us that our attempted refactor has introduced a regression.
+Let's try and finish the refactor as soon as we can, and get back to green.
 
 NOTE: In this section we're performing a refactor at the application level.
     We execute our application-level refactor by changing or adding unit tests,
@@ -777,14 +833,59 @@ urlpatterns = [
 ----
 ====
 
-And that gets us to the `OK`.
+And that gets us to the green on the unit tests.
 
 ----
 OK
 ----
 
 
-Let's try a full FT run:
+Let's try a full FT run: they're all passing!
+
+----
+Ran 4 tests in 9.951s
+
+OK
+----
+
+Our refactor of the `add_item` functionality is complete.
+We should commit there:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am "Refactor list view to handle new item POSTs"*
+----
+
+
+We can remove the early return now.
+
+
+[role="sourcecode"]
+.src/functional_tests/test_list_item_validation.py (ch13l033-1)
+====
+[source,diff]
+----
+@@ -24,8 +24,6 @@ class ItemValidationTest(FunctionalTest):
+         self.browser.find_element(By.ID, "id_new_item").send_keys(Keys.ENTER)
+         self.wait_for_row_in_list_table("1: Buy milk")
+
+-        return  # TODO re-enable the rest of this test.
+-
+         # Perversely, she now decides to submit a second blank list item
+----
+====
+
+And from our scratchpad:
+
+
+[role="scratchpad"]
+*****
+* 'Remove hardcoded URLs from views.py'
+* '[strikethrough line-through]#Remove the early return from the FT#'
+* 'Remove hardcoded URL from forms in list.html and home.html'
+*****
+
+Run the FTs again to see what's still there that needs to be fixed:
 
 
 [subs="specialcharacters,quotes"]
@@ -800,24 +901,6 @@ FAILED (errors=1)
 ----
 
 We're back to the one failure in our new functional test.
-Our refactor of the `add_item` functionality is complete.
-We should commit there:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git commit -am "Refactor list view to handle new item POSTs"*
-----
-
-NOTE: So did I break the rule about never refactoring against failing tests?
-    In this case, it's allowed, because the refactor is required
-    to get our new functionality to work.
-    You should definitely never refactor against failing _unit_ tests.
-    But in my book it's OK for the FT for the current story you're working on
-    to be failing.footnote:[
-    If you really want a "clean" test run, you could add a skip or an early return
-    to the current FT, but you'd need to make sure you didn't accidentally forget it.]
-
-
 
 
 
@@ -901,6 +984,7 @@ We'll just add it to our scratchpad for now:
 [role="scratchpad"]
 *****
 * 'Remove hardcoded URLs from views.py'
+* '[strikethrough line-through]#Remove the early return from the FT#'
 * 'Remove hardcoded URL from forms in list.html and home.html'
 * 'Remove duplication of validation logic in views'
 *****
@@ -910,7 +994,7 @@ NOTE: One of the reasons that the "three strikes and refactor" rule exists is th
     if you wait until you have three use cases, each might be slightly different,
     and it gives you a better view for what the common functionality is.
     If you refactor too early,
-    you may find that the third use case doesn't quite fit with your refactored code...
+    you may find that the third use case doesn't quite fit with your refactored code.
     ((("database testing", "three strikes and refactor rule")))
     ((("Test-Driven Development (TDD)", "concepts", "three strikes and refactor")))
     ((("three strikes and refactor rule")))
@@ -1004,17 +1088,18 @@ OK
 $ pass:quotes[*python src/manage.py test functional_tests*]
 OK
 ----
-
+// RITA: Perhaps add a few words after "Excellent" to explain what you're doing?
 Excellent:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git commit -am "Refactor hard-coded URLs out of templates"*
 ----
-
+// RITA: Please add a sentence to give the figure context. "Let's remove the item from our scratchpad." 
 [role="scratchpad"]
 *****
 * 'Remove hardcoded URLs from views.py'
+* '[strikethrough line-through]#Remove the early return from the FT#'
 * '[strikethrough line-through]#Remove hardcoded URL from forms in list.html and home.html#'
 * 'Remove duplication of validation logic in views'
 *****
@@ -1143,16 +1228,17 @@ $ pass:quotes[*python src/manage.py test functional_tests*]
 OK
 ----
 
-Cross off our to-dos...
+Time to cross off our to-dos...
 
 [role="scratchpad"]
 *****
 * '[strikethrough line-through]#Remove hardcoded URLs from views.py#'
+* '[strikethrough line-through]#Remove the early return from the FT#'
 * '[strikethrough line-through]#Remove hardcoded URL from forms in list.html and home.html#'
 * 'Remove duplication of validation logic in views'
 *****
 
-And a commit...
+And commit...
 
 [subs="specialcharacters,quotes"]
 ----
@@ -1165,7 +1251,7 @@ and we've taken the opportunity to do a few refactors along the way.
 ((("", startref="MLVhard13")))((("", startref="url13")))
 
 
-That final scratchpad item will be the subject of the next chapter...
+That final scratchpad item will be the subject of the next chapter.
 
 .On Database-Layer Validation
 *******************************************************************************
