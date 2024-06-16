@@ -1,96 +1,111 @@
 [[chapter_16_javascript]]
-Dipping Our Toes, Very Tentatively, [keep-together]#into JavaScript#
---------------------------------------------------------------------
+== A Gentle Excursion Into JavaScript
 
-[quote, 'John Calvin (as portrayed in http://onemillionpoints.blogspot.co.uk/2008/08/calvin-and-chipmunks.html[Calvin and the Chipmunks])']
+[quote, Geoffrey Willans]
 ______________________________________________________________
-If the Good Lord had wanted us to enjoy ourselves, he wouldn't have granted us
-his precious gift of relentless misery.
+You can never understand one language until you understand at least two.
 ______________________________________________________________
 
 
-.🚧 Warning, this Chapter is the 2e version, and uses Django 1.11
+.🚧 Warning, Chapter update in progress
 *******************************************************************************
-This chapter and all the following ones are the second edition versions,
-so they still use Django 1.11, Python 3.8, and so on.
+This chapter is currently in the process of being rewritten for the 3e.
 
-To follow along with this chapter, it's probably easiest to reset your code
-to match my example code as it was in the 2e, by resetting to:
-https://github.com/hjwp/book-example/tree/chapter_automate_deployment_with_fabric
+It's very rough at the moment!
 
-And you should also probably delete and re-create your virtualenv with
-* Python 3.8 or 3.9
-* and Django 1.11 (`pip install "django <2"`)
-
-Alternatively, you can muddle through and try and figure out
-how to make things work with Django 4 etc, but be aware that
-the listings below won't be quite right.
 *******************************************************************************
 
-Our new validation logic is good, but wouldn't it be nice if the duplicate item
-error messages disappeared once the user started fixing the problem?  Just like
-our nice HTML5 validation errors do? For that we'd need a teeny-tiny bit of
-JavaScript.
+Our new validation logic is good,
+but wouldn't it be nice if the duplicate item error messages disappeared
+once the user started fixing the problem?
+Just like our nice HTML5 validation errors do?
+For that we'd need a teeny-tiny bit of JavaScript.
 
-We are utterly spoiled by programming every day in such a joyful language as
-Python.  JavaScript is our punishment. For a web developer though, there's
-no way around it. So let's dip our toes in, very gingerly.
+Python is a delightful language to program in.
+JavaScript wasn't always that.
+But many of the rough edges have been smoothed off,
+and I think it's fair to say that it's actually quite nice now.
+And in the world of web development, it's unavoidable.
+So let's dip our toes in, and see if we can't have a bit of fun.
 
 NOTE: ((("JavaScript testing", "additional resources")))I'm
-going to assume you know the basics of JavaScript syntax. If you
-    haven't read <<jsgoodparts,'JavaScript: The Good Parts'>>, go and get
-    yourself a copy right away!  It's not a very long book.
+  going to assume you know the basics of JavaScript syntax.
+  https://amzn.to/3UXVUKd[JavaScript: The Good Parts] was the best guide,
+  once upon a time.  Nowadays many of the "bad parts" it warns again
+  have actually been fixed, so it's a little out of date.
+  Try it, but if you find it anachronistic, I've heard good things about
+  https://eloquentjavascript.net[Eloquent JavaScript].
 
 
 
-Starting with an FT
-~~~~~~~~~~~~~~~~~~~
+=== Starting with an FT
 
-((("JavaScript testing", "functional test")))((("functional tests (FTs)", "JavaScript", id="FTjava16")))Let's
-add a new functional test to the `ItemValidationTest` class:
+((("JavaScript testing", "functional test")))
+((("functional tests (FTs)", "JavaScript", id="FTjava16")))
+Let's add a new functional test to the `ItemValidationTest` class:
 
 [role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch14l001)
+.src/functional_tests/test_list_item_validation.py (ch16l001)
 ====
 [source,python]
 ----
 def test_error_messages_are_cleared_on_input(self):
     # Edith starts a list and causes a validation error:
     self.browser.get(self.live_server_url)
-    self.get_item_input_box().send_keys('Banter too thick')
+    self.get_item_input_box().send_keys("Banter too thick")
     self.get_item_input_box().send_keys(Keys.ENTER)
-    self.wait_for_row_in_list_table('1: Banter too thick')
-    self.get_item_input_box().send_keys('Banter too thick')
+    self.wait_for_row_in_list_table("1: Banter too thick")
+    self.get_item_input_box().send_keys("Banter too thick")
     self.get_item_input_box().send_keys(Keys.ENTER)
-
-    self.wait_for(lambda: self.assertTrue(  #<1> 
-        self.browser.find_element_by_css_selector('.has-error').is_displayed()  #<2>
-    ))
+    self.wait_for(  # <1>
+        lambda: self.assertTrue(  # <1>
+            self.browser.find_element(
+                By.CSS_SELECTOR, ".invalid-feedback"
+            ).is_displayed()  # <2>
+        )
+    )
 
     # She starts typing in the input box to clear the error
-    self.get_item_input_box().send_keys('a')
+    self.get_item_input_box().send_keys("a")
 
     # She is pleased to see that the error message disappears
-    self.wait_for(lambda: self.assertFalse(
-        self.browser.find_element_by_css_selector('.has-error').is_displayed()  #<2>
-    ))
+    self.wait_for(
+        lambda: self.assertFalse(
+            self.browser.find_element(
+                By.CSS_SELECTOR, ".invalid-feedback"
+            ).is_displayed()  # <2>
+        )
+    )
 ----
 ====
 
 <1> We use another of our `wait_for` invocations, this time with `assertTrue`.
 
-<2> `is_displayed()` tells you whether an element is visible or not. We
-    can't just rely on checking whether the element is present in the DOM,
-    because now we're starting to hide elements.
+<2> `is_displayed()` tells you whether an element is visible or not.
+    We can't just rely on checking whether the element is _present_ in the DOM,
+    because we're now going to mark elements as hidden,
+    rather than removing them from the DOM altogether.
 
 
+That fails appropriately:
 
-That fails appropriately, but before we move on:  three strikes and refactor! 
-We've got several places where we find the error element using CSS. Let's 
+[subs="specialcharacters,quotes"]
+----
+FAIL: test_error_messages_are_cleared_on_input
+(functional_tests.test_list_item_validation.ItemValidationTest.test_error_messages_are_cleared_on_input)
+  File ".../src/functional_tests/test_list_item_validation.py", line 89, in
+  <lambda>
+    lambda: self.assertFalse(
+            ^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+----
+
+But, before we move on:  three strikes and refactor!
+We've got several places where we find the error element using CSS. Let's
 move it to a helper function:
 
 [role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch14l002)
+.functional_tests/test_list_item_validation.py (ch16l002)
 ====
 [source,python]
 ----
@@ -110,30 +125,32 @@ TIP: I like to keep helper functions in the FT class that's using them, and
 And we then make three replacements in 'test_list_item_validation', like this:
 
 [role="sourcecode"]
-.functional_tests/test_list_item_validation.py (ch14l003)
+.functional_tests/test_list_item_validation.py (ch16l003)
 ====
 [source,python]
 ----
-    self.wait_for(lambda: self.assertEqual(
-        self.get_error_element().text,
-        "You've already got this in your list"
-    ))
+    self.wait_for(
+        lambda: self.assertEqual(
+            self.get_error_element().text,
+            "You've already got this in your list",
+        )
+    )
 [...]
-    self.wait_for(lambda: self.assertTrue(
-        self.get_error_element().is_displayed()
-    ))
+    self.wait_for(
+        lambda: self.assertTrue(self.get_error_element().is_displayed()),
+    )
 [...]
-    self.wait_for(lambda: self.assertFalse(
-        self.get_error_element().is_displayed()
-    ))
+    self.wait_for(
+        lambda: self.assertFalse(self.get_error_element().is_displayed()),
+    )
 ----
 ====
 
-We have an expected failure:
+We still have our expected failure:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests.test_list_item_validation*]
+$ pass:quotes[*python src/manage.py test functional_tests.test_list_item_validation*]
 [...]
     self.get_error_element().is_displayed()
 AssertionError: True is not false
@@ -142,425 +159,536 @@ AssertionError: True is not false
 And we can commit this as the first cut of our FT.
 
 
-Setting Up a Basic JavaScript Test Runner
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Setting Up a Basic JavaScript Test Runner
 
 
-((("test running libraries")))((("JavaScript testing", "test running libraries", id="JStestrunner16")))((("nose")))((("Green")))((("pytest")))Choosing
-your testing tools in the Python and Django world is fairly
-straightforward.  The standard library `unittest` package is perfectly
-adequate, and the Django test runner also makes a good default choice. 
-There are some alternatives out there&mdash;http://nose.readthedocs.org/[nose]
-is popular, https://github.com/CleanCut/green[Green] is the new kid on the
-block, and I've personally found http://pytest.org/[pytest] to be very
-impressive.  But there is a clear default option, and it's just
-fine.footnote:[Admittedly once you start looking for Python BDD tools, things
-are a little more confusing.]
+((("test running libraries")))
+((("JavaScript testing", "test running libraries", id="JStestrunner16")))
+((("pytest")))
+Choosing your testing tools in the Python is fairly straightforward.
+The standard library `unittest` package is perfectly adequate,
+and the Django test runner also makes a good default choice.
+More and more though, people will choose http://pytest.org/[pytest]
+for its `assert` based assertions, and its fixture management.
+We don't need to get into the pros and cons now!
+The point is that there's a "good enough" default,
+and there's one main popular alternative.
 
-Not so in the JavaScript world!  We use YUI and Jest at work, but I thought I'd
-go out and see whether there were any new tools out there.  I was overwhelmed
-with options--jsUnit, Qunit, Mocha, Chutzpah, Karma, Jasmine, and many more.
-And it doesn't end there either: as I had almost settled on one of them,
-Mocha,footnote:[Purely because it features the
-https://mochajs.org/#nyan[NyanCat] test runner.] I find out that I now need to
-choose an 'assertion framework' and a 'reporter', and maybe a 'mocking
-library', and it never ends!
+The JavaScript world has more of a proliferation!
+Mocha, Karma, Jester, Chai, Ava, and Tape are just a few of the options
+I came across when researching the Third Edition.
+
+I chose Jasmine, because it's still popular despite being around for nearly a decade,
+and because it offers a "standalone" test runner that you can use
+without needing to dive into the whole Node/NPM ecosystem.
+((("Jasmine")))
 
 
+Let's download the so-called "standalone" version of Jasmine,
+which will let us run tests in a normal browser:
 
-((("QUnit", id="qunit16")))In
-the end I decided we should use http://qunitjs.com/[QUnit] because it's
-simple, has a similar look and feel to Python unit tests,  and it works well
-with jQuery.  
+[role="small-code"]
+[subs="specialcharacters,quotes"]
+----
+$ *wget -O jasmine.zip \
+  https://github.com/jasmine/jasmine/releases/download/v4.6.1/jasmine-standalone-4.6.1.zip*
+$ *unzip jasmine.zip -d src/lists/static/tests*
+$ *rm jasmine.zip*
+# if you're on windows you may not have wget or unzip,
+# but i'm sure you can manage to manually download and unzip the jasmine release
 
-Make a directory called 'tests' inside 'lists/static', and download the QUnit
-JavaScript and CSS files into it. We'll also put a file called 'tests.html' in
-there:
+# delete some of the example files we don't need
+$ *rm -r src/lists/static/tests/src*
+$ *rm src/lists/static/tests/spec/SpecHelper.js*
+
+# move the example tests "Spec" file to a more central location
+$ *mv src/lists/static/tests/spec/PlayerSpec.js src/lists/static/tests/Spec.js*
+$ *rmdir src/lists/static/tests/spec/"
+----
+//004, 005
+
+That leaves us with a directory structure like this:
 
 [role="dofirst-ch14l004"]
 [subs="specialcharacters,quotes"]
 ----
-$ *tree lists/static/tests/*
-lists/static/tests/
-├── qunit-2.6.0.css
-├── qunit-2.6.0.js
-└── tests.html
+$ *tree src/lists/static/tests/*
+src/lists/static/tests
+├── MIT.LICENSE
+├── Spec.js
+├── SpecRunner.html
+└── lib
+    └── jasmine-4.6.1
+        ├── boot0.js
+        ├── boot1.js
+        ├── jasmine-html.js
+        ├── jasmine.css
+        ├── jasmine.js
+        └── jasmine_favicon.png
 ----
 
-The boilerplate for a QUnit HTML file looks like this, including a smoke test:
+We need to go edit the _SpecRunner.html_ file to take into account the things we've moved around:
+
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
-[source,html]
+.lists/static/tests/SpecRunner.html (ch16l006)
+[source,diff]
 ----
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width">
-  <title>Javascript tests</title>
-  <link rel="stylesheet" href="qunit-2.6.0.css">
-</head>
-<body>
-  <div id="qunit"></div>
-  <div id="qunit-fixture"></div>
-  <script src="qunit-2.6.0.js"></script>
+@@ -14,12 +14,10 @@
+   <script src="lib/jasmine-4.6.1/boot1.js"></script>
 
-  <script>
+   <!-- include source files here... -->
+-  <script src="src/Player.js"></script>
+-  <script src="src/Song.js"></script>
++  <script src="../lists.js"></script>
 
-QUnit.test("smoke test", function (assert) {
-  assert.equal(1, 1, "Maths works!");
-});
+   <!-- include spec files here... -->
+-  <script src="spec/SpecHelper.js"></script>
+-  <script src="spec/PlayerSpec.js"></script>
++  <script src="Spec.js"></script>
 
-  </script>
-</body>
-</html>
+ </head>
 ----
 
-Dissecting that, the important things to pick up are the fact that we pull
-in 'qunit-2.6.0.js' using the first `<script>` tag, and then use the second one
-to write the main body of tests.
+We change the "source files" to point at a (for-now imaginary) _lists.js_ file
+that we'll put into the _static_ folder,
+and we change the "spec files" to point at a single _Spec.js_ file,
+in the _static/tests_ folder.
 
-If you open up the file using your web browser (no need to run the dev
-server, just find the file on disk), you should see something like 
-<<basic-qunit-screen>>.
+Now let's open up the _Spec.js_ file,
+and strip it down to a single minimal smoke test:
 
-[[basic-qunit-screen]]
-.Basic QUnit screen
-image::images/twp2_1601.png["Qunit screen showing 1 passing test"]
 
-Looking at the test itself, we'll find many similarities with the Python
-tests we've been writing so far:
 
-[role="skipme"]
+
+[role="sourcecode"]
+.src/lists/static/tests/Spec.js (ch16l007)
+====
 [source,javascript]
 ----
-QUnit.test("smoke test", function (assert) { // <1>
-    assert.equal(1, 1, "Maths works!"); // <2>
+describe("Superlists tests", () => {  //<1><2>
+
+  it("smoke test", () => {  //<3>
+    expect(1 + 1).toEqual(2);  //<4>
+  });
+
 });
 ----
-
-<1> The `QUnit.test` function defines a test case, a bit like 
-    `def test_something(self)` did in Python. Its first argument is a name for
-    the test, and the second is a function for the body of the test.
-
-<2> The `assert.equal` function is an assertion; very much like `assertEqual`,
-    it compares two arguments. Unlike in Python, though, the message is
-    displayed both for failures and for passes, so it should be phrased as a
-    positive rather than a [keep-together]#negative#.
-
-Why not try changing those arguments to see a deliberate failure?((("", startref="JStestrunner16")))((("", startref="qunit16")))
-
-
-Using jQuery and the Fixtures Div
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-
-
-((("JavaScript testing", "jQuery and fixtures div", id="JSjquery16")))((("jQuery", id="jquery16")))((("fixtures div", id="fixtures16")))Let's
-get a bit more comfortable with what our testing framework can do,
-and start using a bit of jQuery--an almost indispensable library that
-gives you a cross-browser-compatible API for manipulating the DOM.
-
-NOTE: If you've never seen jQuery before, I'm going to try to explain it as we
-    go, just enough so that you won't be totally lost; but this isn't a jQuery
-    tutorial.  You may find it helpful to spend an hour or two investigating
-    jQuery at some point during this chapter.
-
-Download the latest jQuery from https://jquery.com/download/[jquery.com] and
-save it into the _lists/static_ folder.
-
-Then let's start using it in our tests file, along with adding a couple of
-HTML elements. We'll start by seeing if we can show and hide an element,
-and write some assertions about its visibility:
-
-[role="sourcecode dofirstch14l005"]
-.lists/static/tests/tests.html
 ====
-[source,html]
+
+
+<1> The `describe` block is a way of grouping tests together,
+    a bit like we use classes in our Python tests.
+
+<2> If your javascript is a little rusty,
+    you may not have seen this "arrow function" syntax, `() => {...}`.
+    It's basically the new way of writing anonymous functions.
+    I think they're cute!
+
+<3> The `it` block is a single test, a bit like a method in a Python test class.
+    Similarly to the `describe` block, we have a name, and then an arrow function
+    to capture the body of the test
+
+<4> Now we have our assertion.  This is a little different from assertions
+    in unittest, it's using what's sometimes called "expect" syntax,
+    often also seen in the Ruby world.
+    We wrap our "actual" value in the `expect()` function,
+    and then our assertions are methods on the expect object,
+    where `.toEqual` is the equivalent of `assertEqual` in Python.
+
+
+Let's see how that looks in our browser (<<jasmine-specrunner-green>>):
+
+[[jasmine-specrunner-green]]
+.The Jasmine Spec runner in action
+image::images/jasmine-in-browser-green.png["Jasmine browser-based spec runner showing one passing test."]
+
+
+Let's try adding a deliberate failure to see what that looks like:
+
+
+[role="sourcecode"]
+.src/lists/static/tests/Spec.js (ch16l008)
+====
+[source,javascript]
 ----
-  <div id="qunit-fixture"></div>
+  it("smoke test", () => {
+    expect(1 + 1).toEqual(3);
+  });
+----
+====
 
-  <form>  <1>
-    <input name="text" />
-    <div class="has-error">Error text</div>
-  </form>
+Now if we refresh our browser, we'll see red (<<jasmine-specrunner-red>>):
 
-  <script src="../jquery-3.3.1.min.js"></script> <2>
-  <script src="qunit-2.6.0.js"></script>
+[[jasmine-specrunner-red]]
+.Our Jasmine tests are now red
+image::images/jasmine-in-browser-red.png["Jasmine browser-based spec runner showing one failing test, with lots of red."]
 
-  <script>
 
-QUnit.test("smoke test", function (assert) {
-  assert.equal($('.has-error').is(':visible'), true);  //<3><4>
-  $('.has-error').hide();  //<5>
-  assert.equal($('.has-error').is(':visible'), false);  //<6>
+.Is the Jasmine Standalone Browser Test Runner Unconventional?
+*******************************************************************************
+In all honesty, I'm not sure, the JavaScript world moves so fast that
+even if I was sure when I wrote it, I'd be wrong by the time you read this.
+
+What I do know is that, along with moving very fast, JavaScript things can
+very quickly become very complicated.
+A lot of people are working with frameworks these days (React is the main one), 
+and along with that comes TypeScript, transpilers, to say nothing of Node.js,
+`npm`, the `node_modules` folder, and a very steep learning curve.
+
+In this chapter my aim is to stick with the basics.
+The standalone / browser-based test runner lets us write tests without
+needing to install node or anything else,
+and it lets us tests interactions with the DOM.
+
+That's enough to give us a basic environment in which to do TDD in JavaScript.
+
+If you decide to go further in the world of frontend,
+you probably will eventutally get into the complexity of frameworks and transpilers,
+but the basics we work with here will still be a good foundation.
+
+If you want to take a small step further,
+look into installing the `jasmine-browser-runner` npm package,
+and a bit of fiddling with its config file should let you run our tests
+from the command-line instead of with a browser.
+*******************************************************************************
+
+
+((("", startref="JStestrunner16")))
+((("", startref="qunit16")))
+
+=== Testing with some DOM content
+
+What do we want to test?
+We want some JavaScript that will hide the `.invalid-feedback` error div,
+when the user starts typing into the input box.
+
+In other words, our code is going to interact with the `input` element
+on the page, and the `div.invalid-feedback`.
+
+Let's see how to set up some copies of these elements in our JS test environment,
+for our tests and our code to interact with.
+
+
+[role="sourcecode dofirstch16l009"]
+.lists/static/tests/Spec.js (ch16l010)
+====
+[source,javascript]
+----
+describe("Superlists tests", () => {
+  let testDiv;  //<3>
+
+  beforeEach(() => {  //<1>
+    testDiv = document.createElement("div");
+    testDiv.innerHTML = `  <2>
+      <form>
+        <input
+          id="id_text"
+          name="text"
+          class="form-control form-control-lg is-invalid
+          placeholder="Enter a to-do item"
+          value="Value as submitted"
+          required
+        />
+        <div class="invalid-feedback">An error message</div>
+      </form>
+    `
+    document.body.appendChild(testDiv)
+  });
+
+  afterEach(() => {  //<1>
+    testDiv.remove();
+  });
 });
-
-  </script>
 ----
 ====
-//ch14l006
 
-// TODO: is:visible  can be replace by checkVisibility: https://stackoverflow.com/a/72717388/366221
+<1> The `beforeEach` and `afterEach` functions are Jasmine's equivalent of `setUp` and `tearDown`.
 
-<1> The `<form>` and its contents are there to represent what will be
-    on the real list page.
+<2> We create a new div element, and populate it with some HTML that matches
+  the elements we care about from our Django template.
+  Notice the use of backticks (+`+) to allow us to write multi-line strings.
+  Depending on your text editor, it may even nicely syntax-highlight the HTML for you.
 
-<2> Here's where we load jQuery.
+<3> A little quirk of JavaScript here,
+  because we want the same `testDiv` variable to be available inside both the
+  `beforeEach` and `afterEach` functions, we declare the variable with this `let`
+  in the containing scope outside of both of them.
 
-<3> jQuery magic starts here!  `$` is the jQuery Swiss Army knife. It's
-    used to find bits of the DOM.  Its first argument is a CSS selector; here,
-    we're telling it to find all elements that have the class "has-error".  It
-    returns an object that represents one or more DOM elements. That, in turn,
-    has various useful methods that allow us to manipulate or find out about
-    those elements. 
+In theory, we could just add the HTML to the `SpecRunner.html` file,
+but by using `beforeEach` and `afterEach`,
+I'm making sure that each test gets a completely fresh copy of the html elements involved,
+so that one test can't affect another.
 
-<4> One of which is `.is`, which can tell us whether an element matches a
-    particular CSS property. Here we use `:visible` to check whether the
-    element is displayed or hidden.
 
-<5> We then use jQuery's `.hide()` method to hide the div.  Behind the
-    scenes, it dynamically sets a `style="display: none"` on the element. 
+Let's now have a play with our testing framework,
+to see if we find DOM elements and make assertions on whether they are visible.
+We'll also try manually hiding an element, from the tests,
+just as an experiment, before we write any of our "real" JS code.
 
-<6> And finally we check that it's worked, with a second `assert.equal`.
 
+[role="sourcecode"]
+.lists/static/tests/Spec.js (ch16l011)
+====
+[source,javascript]
+----
+  it("smoke test for checking visibility", () => {
+    const errorDiv = document.querySelector("div.invalid-feedback");  //<1>
+    expect(errorDiv.checkVisibility()).toBe(true, "error div should be visible on load");  //<2>
+    errorDiv.style.display = "none";  //<3>
+    expect(errorDiv.checkVisibility()).toBe(false, "js hiding should work");  //<4>
+  });
+----
+====
+
+<1> We retrieve our error div with `document.querySelector`,
+  which is probably the easiest way to find a particular piece of the DOM,
+  in modern plain-old JavaScript (does anyone still remember jQuery?).
+
+<2> Another fairly new API in JavaScript-Land is `checkVisibility()`.
+  Notice we're also adding a second argument in the `.toBe()` clause,
+  which is the message that will be printed if the test fails.
+
+<3> We manually hide the element in the test,
+  by setting its `style.display` to "none".
+
+<4> And we check it worked, with `checkVisibility()` again.
+
+
+TODO:  on-fail messages are deprecated in jasmine,
+  split out separate `it()` for default state.
 
 If you refresh the browser, you should see that all passes:
 
-.Expected results from QUnit in the browser
+.Expected results from Jasmine in the browser
 ====
-[role="qunit-output"]
+[role="jasmine-output"]
 ----
-2 assertions of 2 passed, 0 failed.
-1. smoke test (2)
-----
-====
+1 spec, 0 failures, randomized with seed 12345		finished in 0.009s
 
-Time to see how fixtures work. Let's just dupe up this test:
-
-
-[role="sourcecode"]
-.lists/static/tests/tests.html
-====
-[source,html]
-----
-  <script>
-
-QUnit.test("smoke test", function (assert) {
-  assert.equal($('.has-error').is(':visible'), true);
-  $('.has-error').hide();
-  assert.equal($('.has-error').is(':visible'), false);
-});
-QUnit.test("smoke test 2", function (assert) {
-  assert.equal($('.has-error').is(':visible'), true);
-  $('.has-error').hide();
-  assert.equal($('.has-error').is(':visible'), false);
-});
-
-  </script>
+Superlists tests
+  * smoke test for checking visibility
 ----
 ====
 
-Slightly unexpectedly, we find one of them fails--see <<one-test-is-failing>>.
 
-[[one-test-is-failing]]
-.One of the two tests is failing
-image::images/twp2_1602.png["Qunit screen showing only 1 passing test"]
 
-What's happening here is that the first test hides the error div, so when 
-the second test runs, it starts out invisible. 
+////
 
-NOTE: QUnit tests do not run in a predictable order, so you can't rely on the
-    first test running before the second one.  Try hitting refresh a few times,
-    and you'll find that the test which fails changes...
+=== TODO: new plan
 
-We need some way of tidying up between tests, a bit like `setUp` and
-`tearDown`, or like the Django test runner would reset the database between
-each test.  The `qunit-fixture` div is what we're looking for.  Move the form
-in there:
+this chapter is a decent first pass now, want to improve it as follows:
 
-[role="sourcecode"]
-.lists/static/tests/tests.html
+* start with basic inline script that just hides the thing on input,
+  see FT pass
+
+* install jasmine browser runner via npm/npx.  use esm/modules straight away
+
+* see if just specifying it as a .js works, and we can do the chat about execution times.  then switch to .mjs and imports
+
+* split out tests, especially sense-check bits, into 3 different its
+////
+
+
+
+
+=== Building a JavaScript Unit Test for Our Desired Functionality
+
+
+((("JavaScript testing", "unit test")))
+((("unit tests", "JavaScript")))
+Now that we're acquainted with our JavaScript testing tools,
+we can switch back to just one test and start to write the real thing:
+
+[role="sourcecode small-code"]
+.lists/static/tests/Spec.js (ch16l012)
 ====
 [source,html]
 ----
-  <div id="qunit"></div>
-  <div id="qunit-fixture">
-      <form>
-          <input name="text" />
-          <div class="has-error">Error text</div>
-      </form>
-  </div>
+  it("error message should be hidden on input", () => {  //<1>
+    const inputSelector = "input#id_text";
+    const errorSelector = "div.invalid-feedback";
+    const textInput = document.querySelector(inputSelector); //<2>
+    const errorDiv = document.querySelector(errorSelector);
+    expect(errorDiv.checkVisibility()).toBe(true, "error div should be visible on load"); //<3>
 
-  <script src="../jquery-3.3.1.min.js"></script>
-----
-====
-//008
+    initialize(textInput, errorDiv);  //<4>
 
+    expect(errorDiv.checkVisibility()).toBe(true, "error div should not be hidden by initialize()");  //<5>
 
-
-((("", startref="JSjquery16")))((("", startref="jquery16")))((("", startref="fixtures16")))As
-you've probably guessed, jQuery resets the content of the fixtures div
-before each test, so that gets us back to two neatly passing tests:
-
-[role="qunit-output"]
-----
-4 assertions of 4 passed, 0 failed.
-1. smoke test (2)
-2. smoke test 2 (2)
-----
-
-Building a JavaScript Unit Test for Our Desired Functionality
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-
-((("JavaScript testing", "unit test")))((("unit tests", "JavaScript")))Now
-that we're acquainted with our JavaScript testing tools, we can switch
-back to just one test and start to write the real thing:
-
-[role="sourcecode"]
-.lists/static/tests/tests.html
-====
-[source,html]
-----
-  <script>
-
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  $('input[name="text"]').trigger('keypress'); // <1>
-  assert.equal($('.has-error').is(':visible'), false); 
-});
-
-  </script>
+    textInput.dispatchEvent(new InputEvent("input"));  //<6>
+    expect(errorDiv.checkVisibility()).toBe(false, "error div should be hidden on input"); //<7>
+  });
 ----
 ====
 
-<1> The jQuery `.trigger` method is mainly used for testing.  It says "fire off
-    a JavScript DOM event on the element(s)".  Here we use the 'keypress'
-    event, which is fired off by the browser behind the scenes whenever a user
-    types something into a particular input element. 
+<1> Let's change our test name to a description of what we want to happen;
+  our objective is that, when the user starts typing into the input box,
+  we should hide the error message.
 
-NOTE: jQuery is hiding a lot of complexity behind the scenes here.  Check
-    out http://www.quirksmode.org/dom/events/index.html[Quirksmode.org] for a
-    view on the hideous nest of differences between the different browsers'
-    interpretation of events.  The reason that jQuery is so popular is that it
-    just makes all this stuff go away.
+<2> We retrieve the `<input>` element from the DOM,
+  in a similar way to how we found the error message div.
 
-And that gives us:
+<3> We leave our old assertion in-place,
+  just to sense-check that our fixtures start out with the error visible,
+  like the real page will when we render an error for the user.
 
-[role="qunit-output"]
+<4> Here's where we start "programming by wishful thinking".
+  Let's imagine we have an `initialize()` function to set up our auto-hiding behaviour.
+  We pass in the input element to watch for input events,
+  and the error div that we want to hide.
+
+<5> Let's sense-check once again that our `initialize()` function doesn't
+    just cheekily hide the error div immediately.
+
+<6> Here's how we simulate a user typing into the input box.
+
+<7> And here's our real assertion: the error div should be hidden after
+  the input box sees an input event.
+
+
+And that gives us a fairly silly error,
+because we haven't got an `initialize()` function yet:
+
+
+[role="jasmine-output"]
 ----
-0 assertions of 1 passed, 1 failed.
-1. errors should be hidden on keypress (1, 0, 1)
-    1. failed
-        Expected: false
-        Result: true
+1 spec, 1 failure, randomized with seed 12345		finished in 0.009s
+Spec List | Failures
+
+Superlists tests > error message should be hidden on input
+ReferenceError: initialize is not defined in
+file:///...goat-book/src/lists/static/tests/Spec.js (line 32)
+@file:///...goat-book/src/lists/static/tests/Spec.js:32:5
+<Jasmine>
 ----
 
-Let's say we want to keep our code in a standalone JavaScript file called
-'list.js'.
 
+For now, let's just define it inline in our tests file, _Spec.js_:
 
-[role="sourcecode"]
-.lists/static/tests/tests.html
+[role="sourcecode small-code"]
+.lists/static/tests/Spec.js (ch16l013)
 ====
 [source,html]
 ----
-  <script src="../jquery-3.3.1.min.js"></script>
-  <script src="../list.js"></script>
-  <script src="qunit-2.6.0.js"></script>
+describe("Superlists tests", () => {
+  let testDiv;
 
-  <script>
-    [...]
+  const initialize = () => {
+  };
+
+  beforeEach(() => {
+    testDiv = document.createElement("div");
+  [...]
 ----
 ====
 
-Here's the minimal code to get that test to pass:
+
+Now we get our expected failure:
+
+
+[role="jasmine-output"]
+----
+1 spec, 1 failure, randomized with seed 12345		finished in 0.01s
+Spec List | Failures
+
+Superlists tests > error message should be hidden on input
+Expected true to be false, 'error div should be hidden on input'.
+<Jasmine>
+@file:///...goat-book/src/lists/static/tests/Spec.js:40:40
+<Jasmine>
+----
+
+You might have been expecting a failure to do with the fact that `initialize()`
+was defined as taking no arguments, but we passed two?
+But JavaScript is too chill for that.
+You can call a function with too many or too few arguments,
+and JS will just _deal with it_.
+
+
+Let's write `initialize()` deliberately wrong then.
+Since it's our first time doing TDD with JavaScript,
+we can afford to really go step by step:
 
 [role="sourcecode"]
-.lists/static/list.js
+.lists/static/tests/Spec.js (ch16l014)
 ====
 [source,javascript]
 ----
-$('.has-error').hide();
+  const initialize = (inputSelector, errorSelector) => {
+    const errorDiv = document.querySelector(errorSelector);
+    errorDiv.style.display = "none";
+  };
 ----
 ====
 
-And it works...
+That gives us the right failure, our sense-check guards are working:
 
-[role="qunit-output"]
+[role="jasmine-output"]
 ----
-1 assertions of 1 passed, 0 failed.
-1. errors should be hidden on keypress (1)
+Superlists tests > error message should be hidden on input
+Expected false to be true, 'error div should not be hidden by initialize()'.
+<Jasmine>
+@file:///...goat-book/src/lists/static/tests/Spec.js:40:42
+<Jasmine>
 ----
 
-But it has an obvious problem. We'd better add another test:
+And here's a first cut of a working hide-errors-on-input function:
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
+.lists/static/tests/Spec.js (ch16l015)
 ====
 [source,javascript]
 ----
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  $('input[name="text"]').trigger('keypress');
-  assert.equal($('.has-error').is(':visible'), false); 
-});
-
-QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
-  assert.equal($('.has-error').is(':visible'), true);
-});
+  const initialize = (inputSelector, errorSelector) => {
+    const textInput = document.querySelector(inputSelector);
+    const errorDiv = document.querySelector(errorSelector);
+    textInput.oninput = () => {
+      errorDiv.style.display = "none";
+    };
+  };
 ----
 ====
 
-Now we get an expected failure:
 
-[role="qunit-output"]
+That gets our test passing:
+
+
+[role="jasmine-output"]
 ----
-1 assertions of 2 passed, 1 failed.
-1. errors should be hidden on keypress (1)
-2. errors aren't hidden if there is no keypress (1, 0, 1)
-    1. failed
-        Expected: true
-        Result: false
-[...]
+1 spec, 0 failures, randomized with seed 12345		finished in 0.008s
+
+Superlists tests
+  * error message should be hidden on input
 ----
 
-And we can make a more realistic implementation:
 
-[role="sourcecode"]
-.lists/static/list.js
+==== Moving our code out to a standalone file
+
+Time to move our `initialize()` function into a standalone JavaScript file,
+which we can include in our pages:
+
+
+
+[role="sourcecode dofirst-ch16l017"]
+.src/lists/static/lists.js (ch16l016)
 ====
 [source,javascript]
 ----
-$('input[name="text"]').on('keypress', function () { //<1>
-  $('.has-error').hide();
-});
+const initialize = (inputSelector, errorSelector) => {
+  const errorDiv = document.querySelector(errorSelector);
+  const textInput = document.querySelector(inputSelector);
+  textInput.oninput = () => {
+    errorDiv.style.display = "none";
+  }
+};
 ----
 ====
 
-<1> This line says: find any input elements whose name attribute is "text", and
-    add an event listener which reacts 'on' keypress events.  The event
-    listener is the inline function, which hides all elements that have the
-    class `.has-error`.
 
 
-Does it work?  No.
-
-
-[role="qunit-output"]
-----
-1 assertions of 2 passed, 1 failed.
-1. errors should be hidden on keypress (1, 0, 1)
-    1. failed
-        Expected: false
-        Result: true
-[...]
-2. errors aren't hidden if there is no keypress (1)
-----
-
-Curses!  Why is that?
+////
+old content follows. i'm skipping straight to the right answer in this edition.
 
 Fixtures, Execution Order, and Global State: Key Challenges of JS Testing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -689,76 +817,68 @@ QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
 
 ----
 ====
+////
 
-Now we should see our tests pass, and our debug output should make
-more sense:
 
-[role="qunit-output"]
-----
-2 assertions of 2 passed, 0 failed.
-1. errors should be hidden on keypress (1)
-2. errors aren't hidden if there is no keypress (1)
+Depending on whether you copied my _SpecRunner.html_ exactly,
+you may see a test failure at this point:
 
-list.js loaded
-qunit tests start
-in test 1
-initialize called
-in keypress handler
-in test 2
-initialize called
-----
-
-Hooray!  Let's strip out those console.logs:
-
-[role="sourcecode"]
-.lists/static/list.js
 ====
-[source,javascript]
+[role="jasmine-output"]
 ----
-var initialize = function () {
-  $('input[name="text"]').on('keypress', function () {
-    $('.has-error').hide();
-  });
-};
+1 spec, 1 failure, randomized with seed 12345		finished in 0.008s
+Spec List | Failures
+
+Superlists tests > error message should be hidden on input
+...goat-book/src/lists/static/tests/Spec.js (line 34)
+@file:////...goat-book/src/lists/static/tests/Spec.js:34:5
+<Jasmine>
 ----
 ====
 
-And from the tests too...
+We need to amend _SpecRunner.html_ as well so that it "imports" our _list.js_ file:
 
-[role="sourcecode"]
-.lists/static/tests/tests.html
+NOTE: We're using `<script>` tag to import our code,
+  but modern Javascript lets you use `import` and `export` to explicitly
+  import particular parts of your code.
+  But that involves specifying the scripts as modules,
+  which is incompatible with the single-file test runner we're using,
+  so I decided to use the "simple" old fashioned way.
+  By all means investigate modules in your own projects!
+
+
+[role="sourcecode currentcontents"]
+.lists/static/tests/SpecRunner.html
+[source,html]
 ====
-[source,javascript]
 ----
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  initialize();
-  $('input[name="text"]').trigger('keypress');
-  assert.equal($('.has-error').is(':visible'), false);
-});
+  <!-- include source files here... -->
+  <script src="../lists.js"></script>
 
-QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
-  initialize();
-  assert.equal($('.has-error').is(':visible'), true);
-});
+  <!-- include spec files here... -->
+  <script src="Spec.js"></script>
 ----
 ====
 
 
-And for the moment of truth, we'll pull in jQuery, our script, and
-invoke our initialize function on our real pages:
+==== Does it work?
+
+And for the moment of truth, we'll pull in our script
+and invoke our initialize function on our real pages.
+Add the following to the bottom of our _base.html_ template:
+
 
 
 [role="sourcecode"]
-.lists/templates/base.html (ch14l020)
+.src/lists/templates/base.html (ch16l018)
 ====
 [source,html]
 ----
     </div>
-    <script src="/static/jquery-3.3.1.min.js"></script>
-    <script src="/static/list.js"></script>
 
+    <script src="/static/lists.js"></script>
     <script>
-      initialize();
+      initialize("input#id_text", "div.invalid-feedback");
     </script>
 
   </body>
@@ -766,16 +886,17 @@ invoke our initialize function on our real pages:
 ----
 ====
 
-NOTE: It's good practice to put your script loads at the end of your body HTML,
+TIP: It's good practice to put your script loads at the end of your body HTML,
     as it means the user doesn't have to wait for all your JavaScript to load
-    before they can see something on the page.  It also helps to make sure most
-    of the DOM has loaded before any scripts run.
+    before they can see something on the page.
+    It also helps to make sure most of the DOM has loaded before any scripts run.
+
 
 Aaaand we run our FT:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python manage.py test functional_tests.test_list_item_validation.\
+$ *python src/manage.py test functional_tests.test_list_item_validation.\
 ItemValidationTest.test_error_messages_are_cleared_on_input*
 [...]
 
@@ -784,102 +905,228 @@ Ran 1 test in 3.023s
 OK
 ----
 
-((("", startref="JSTkey16")))Hooray!  That's a commit!
+Hooray!  That's a commit!
+
+// ((("", startref="JSTkey16")))
 
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add lists/static*
-$ *git commit -m"add jquery, qunit tests, list.js with keypress listeners"*
+$ *git add src/lists/static*
+$ *git commit -m"add jamsine specrunner, js tests, and lists.js with onpinput listener"*
 ----
 
+TODO: resume here:
+
+* open in browser, not quite right. see <<input-still-red>>
+
+[[input-still-red]]
+.The error message is gone but the input box is still red
+image::images/error-gone-but-input-still-red.png["Screenshot of our page where the error div is gone but the input is still red."]
+
+* Also you might notice some errors in the js console see <<js-console-errors>>
+
+[[js-console-errors]]
+.An error in the browser devtools console
+image::images/js-errordiv-is-null-in-console.png["Screenshot of the browser devtools console with an error saying errorDiv is Null"]
 
 
-Columbo Says: Onload Boilerplate and Namespacing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How to fix?  
+
+=== Experimenting with the browser devtools
 
 
-'Oh, and one more thing'.  ((("JavaScript testing", "boilerplate and namespacing")))Our
-`initialize` function name is too generic--what
-if we include some third-party JavaScript tool later that also defines a 
-function called `initialize`? Let's give ourselves a "namespace" that's
-unlikely to be used by anyone else:
+this calls for a spike really, we don't know bootstrap well enough.
+let's hack about in devtools
+
+
+see <<editing-html-in-devtools>>
+
+[[editing-html-in-devtools]]
+.Editing the HTML in the browser devtools
+image::images/editing-html-via-devtools.png["Screenshot of the browser devtools with us editing the classes for the input element"]
+
+
+removing the `is-invalid` class from the input element seems to do the trick
+
+
+
+basically we're testing interaction with bootstrap so we need to load bootstrap in our test runner:
+
+
+//todo remove bootsrap from earlier commit
 
 
 [role="sourcecode"]
-.lists/static/list.js
+.src/lits/static/tests/SpecRunner.html (ch16l019)
 ====
 [source,javascript]
 ----
-window.Superlists = {}; //<1>
-window.Superlists.initialize = function () { //<2>
-  $('input[name="text"]').on('keypress', function () {
-    $('.has-error').hide();
+  <title>Jasmine Spec Runner v4.6.1</title>
+
+  <link rel="shortcut icon" type="image/png" href="lib/jasmine-4.6.1/jasmine_favicon.png">
+  <link rel="stylesheet" href="lib/jasmine-4.6.1/jasmine.css">
+
+  <!-- Bootstrap so visibility tests work -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+  <script src="lib/jasmine-4.6.1/jasmine.js"></script>
+
+----
+====
+
+Now we can go back to doing some TDD
+
+
+[role="sourcecode"]
+.src/lists/static/Spec.js (ch16l020))
+====
+[source,javascript]
+----
+  it("error message should be hidden on input", () => {
+    const inputSelector = "input#id_text";
+    const errorSelector = "div.invalid-feedback";
+    const textInput = document.querySelector(inputSelector);
+    const errorDiv = document.querySelector(errorSelector);
+    expect(errorDiv.checkVisibility()).toBe(true, "error div should be visible on load");
+    expect(textInput.classList).toContain("is-invalid", "input should have is-invalid class by default");
+
+    initialize(inputSelector, errorSelector);
+
+    expect(errorDiv.checkVisibility()).toBe(true, "error div should not be hidden by initialize()");
+
+    textInput.dispatchEvent(new InputEvent("input"));
+    expect(errorDiv.checkVisibility()).toBe(false, "error div should be hidden on input");
+    expect(textInput.classList).not.toContain("is-invalid", "should remove is-invalid class");
   });
+
+----
+====
+
+ok let's remove that class
+
+
+[role="sourcecode"]
+.src/lists/static/lists.js (ch16l020)
+====
+[source,javascript]
+----
+const initialize = (inputSelector, errorSelector) => {
+  const errorDiv = document.querySelector(errorSelector);
+  const textInput = document.querySelector(inputSelector);
+  textInput.oninput = () => {
+    errorDiv.style.display = "none";
+    textInput.classList.remove("is-invalid");
+  }
+};
+
+----
+====
+
+* red green refactor, does it work with just the class removal?
+
+
+[role="sourcecode"]
+.lists.tests.py (ch16l021)
+====
+[source,javascript]
+----
+const initialize = (inputSelector, errorSelector) => {
+  const errorDiv = document.querySelector(errorSelector);
+  const textInput = document.querySelector(inputSelector);
+  textInput.oninput = () => {
+    textInput.classList.remove("is-invalid");
+  }
 };
 ----
 ====
 
-<1> We explicitly declare an object as a property of the "window" global,
-    giving it a name that we think no one else is likely to use.
 
-<2> Then we make our `initialize` function an attribute of that namespace
-    object.
+yep tests pass
 
-TIP: There are lots of other, much cleverer ways of dealing with namespaces in
-    JavaScript, but they are all more complicated, and I'm not enough of an
-    expert to be able to steer you around them.  If you do want to learn
-    more, search for 'require.js', which seemed to be the done thing, or at
-    least it was in the last JavaScript femtosecond.
+more refactor, we dont need the erordiv now:
+
 
 
 [role="sourcecode"]
-.lists/static/tests/tests.html
+.src/lists/static/lists.js (ch16l022)
+====
+[source,javascript]
+----
+const initialize = (inputSelector) => {
+  const textInput = document.querySelector(inputSelector);
+  textInput.oninput = () => {
+    textInput.classList.remove("is-invalid");
+  }
+};
+
+----
+====
+
+change test too
+
+
+[role="sourcecode"]
+.src/lists/static/tests/Spec.js (ch16l023)
+====
+[source,python]
+----
+    initialize(inputSelector);
+----
+====
+
+and base template
+
+[role="sourcecode"]
+.src/lists/templates/base.html (ch16l024)
 ====
 [source,html]
 ----
-  <script>
-QUnit.test("errors should be hidden on keypress", function (assert) {
-  window.Superlists.initialize();
-  $('input[name="text"]').trigger('keypress');
-  assert.equal($('.has-error').is(':visible'), false);
-});
-
-QUnit.test("errors aren't hidden if there is no keypress", function (assert) {
-  window.Superlists.initialize();
-  assert.equal($('.has-error').is(':visible'), true);
-});
-  </script>
+    <script>
+      initialize("input#id_text");
+    </script>
 ----
 ====
 
+
+and the ft should pass still
+
+should we change it?  maybe.
+
+
+
+
+////
+old content follows
+
+Columbo Says: wait for Onload 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 Finally, whenever you have some JavaScript that interacts with the DOM, it's
 always good to wrap it in some "onload" boilerplate code to make sure that the
 page has fully loaded before it tries to do anything. Currently it works
 anyway, because we've placed the `<script>` tag right at the bottom of the
-page, but we shouldn't rely on that.  
+page, but we shouldn't rely on that.
 
 
-The jQuery `onload` boilerplate is quite minimal:
+The modern js onload boilerplate is minimal
 
 [role="sourcecode"]
 .lists/templates/base.html
 ====
 [source,javascript]
 ----
-    <script>
+window.onload = (event) => {
+    console.log("page is fully loaded");
+};
+---
+===
 
-$(document).ready(function () {
-  window.Superlists.initialize();
-});
-
-    </script>
-----
-====
-
-Read more in the http://api.jquery.com/ready/[jQuery `.ready()` docs].
+Read more hgere
+https://developer.mozilla.org/en-US/docs/Web/API/Window/load_even://developer.mozilla.org/en-US/docs/Web/API/Window/load_event
+////
 
 
 JavaScript Testing in the TDD Cycle
@@ -888,7 +1135,7 @@ JavaScript Testing in the TDD Cycle
 
 
 ((("JavaScript testing", "in the TDD cycle", secondary-sortas="TDD cycle")))((("Test-Driven Development (TDD)", "JavaScipt testing in")))You
-may be wondering how these JavaScript tests fit in with our "double loop" 
+may be wondering how these JavaScript tests fit in with our "double loop"
 TDD cycle.  The answer is that they play exactly the same role as our
 Python unit tests.
 
@@ -913,59 +1160,53 @@ new code to our servers. Don't forget to do a final commit including
 A Few Things That Didn't Make It
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-((("JavaScript testing", "additional considerations for")))In
-this chapter I wanted to cover the very basics of JavaScript testing and how
-it fits into our TDD workflow in this chapter.  Here are a few pointers for
-further research:
+TODO update this
 
-* At the moment, our test only checks that the JavaScript works on one page.
-  It works because we're including it in 'base.html', but if we'd only
-  added it to 'home.html' the tests would still pass.  It's a judgement 
-  call, but you could choose to write an extra test here.
+((("JavaScript testing", "additional considerations for")))
+In this chapter I wanted to cover the very basics of JavaScript testing
+and how it fits into our TDD workflow in this chapter.
+Here are a few pointers for further research:
 
-* ((("JavaScript testing", "syntax errors")))When
-writing JavaScript, get as much help from your editor as you can to
-  avoid common "gotchas".  Check out syntax/error-checking tools like
-  "jslint" and "jshint", also known as "linters".
-  
+* When writing JavaScript,
+  get as much help from your editor as you can to avoid common "gotchas".
+  Check out syntax/error-checking tools like `eslint` or `tsserver`.
+  ((("JavaScript testing", "syntax errors")))
 
-* ((("QUnit")))QUnit
-mainly expects you to "run" your tests using an actual web browser.
-  This has the advantage that it's easy to create some HTML fixtures that 
+* The Jasmine Browser Runner mainly expects you to "run" your tests using an actual web browser.
+  This has the advantage that it's easy to create some HTML fixtures that
   match the kind of HTML your site actually contains, for tests to run against.
   But it's also possible to run JS tests from the command line.  We'll see
   an example in <<chapter_CI>>.
 
-* ((("MVC frameworks")))((("angular.js")))((("React")))The
-new shiny thing in the world of frontend development are MVC frameworks
-  like 'angular.js' and React.  ((("Jasmine")))Most
-tutorials for these use an RSpec-like
-  assertion library called https://jasmine.github.io/[Jasmine].  If you're
-  going to use one of them, you'll probably find life easier if you use Jasmine
-  rather than QUnit. 
-  
-  
-  
-  
+
+There is more JavaScript fun in this book too!
+Have a look at the <<appendix_rest_api,Rest API appendix>>
+when you're ready for it.
+((("", startref="FTjava16")))
 
 
-There is more JavaScript fun in this book too!  Have a look at the
-<<appendix_rest_api,Rest API appendix>> when you're ready for it.((("", startref="FTjava16")))
+TODO: something about the balance between selenium and js unit tests.
+
+////
 
 
 [role="less_space pagebreak-before"]
 .JavaScript Testing Notes
 *******************************************************************************
 
-* ((("Selenium", "and JavaScript", secondary-sortas="JavaScript")))One
-of the great advantages of Selenium is that it allows you to test that
+* ((("Selenium", "and JavaScript", secondary-sortas="JavaScript")))
+  One of the great advantages of Selenium is that it allows you to test that
   your JavaScript really works, just as it tests your Python code.
 
-* ((("JavaScript testing", "test running libraries")))There
-are many JavaScript test running libraries out there.  QUnit is closely
-  tied to jQuery, which is the main reason I chose it.  
+* There are many JavaScript test running libraries out there.
+  Jasmine has been around for a while,
+  but others like Jest and Mocha are not dissimilar.
+  ((("JavaScript testing", "test running libraries")))
 
-* ((("JavaScript testing", "managing global state")))((("global state")))No
+*
+((("JavaScript testing", "managing global state")))
+((("global state")))
+No
 matter which testing library you use, you'll always need to find solutions
   to the main challenge of JavaScript testing, which is about 'managing global
   state'.  That includes:
@@ -973,11 +1214,9 @@ matter which testing library you use, you'll always need to find solutions
     - namespacing
     - understanding and controlling execution order.
 
-* I don't really mean it when I say that JavaScript is awful. It can actually
-  be quite fun.  But I'll say it again: make sure you've read
-  <<jsgoodparts,'JavaScript: The Good Parts'>>.
-
 *******************************************************************************
+
+////
 
 //IDEA: take the opportunity to use {% static %} tag in templates?
 
