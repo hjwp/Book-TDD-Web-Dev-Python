@@ -36,6 +36,8 @@ def run(path: Path):
             f"{_el_text('.jasmine-overall-result')}\t\t{_el_text('.jasmine-duration')}"
         )
 
+        print(_el_text(".jasmine-bar.jasmine-errored"))
+
         print(_el_text(".jasmine-menu.jasmine-failure-list"))
         for failures_el in browser.find_elements(By.CSS_SELECTOR, ".jasmine-failures"):
             for spec_failure in failures_el.find_elements(
