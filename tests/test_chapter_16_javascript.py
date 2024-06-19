@@ -23,7 +23,7 @@ class Chapter14Test(ChapterTest):
         self.skip_with_check(15, "delete all the other stuff")
 
         # hack fast-forward
-        skip = True
+        skip = False
         if skip:
             self.pos = 10
             self.sourcetree.run_command(
