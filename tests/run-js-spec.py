@@ -23,6 +23,10 @@ def run(path: Path):
     options = webdriver.FirefoxOptions()
     options.add_argument("--headless")
     browser = webdriver.Firefox(options=options)
+    # options = webdriver.ChromeOptions()
+    # options.add_argument("--headless=new")
+    # options.binary_location = "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi"
+    # browser = webdriver.Chrome(options=options)
     failed = False
 
     def _el_text(sel, node: webdriver.Remote | WebElement = browser):
@@ -32,9 +36,14 @@ def run(path: Path):
         browser.get(f"file:///{path}?seed=12345")
         time.sleep(0.2)
 
+        # for entry in browser.get_log('browser'):
+        #     print(entry)
+
         print(
             f"{_el_text('.jasmine-overall-result')}\t\t{_el_text('.jasmine-duration')}"
         )
+
+        print(_el_text(".jasmine-bar.jasmine-errored"))
 
         print(_el_text(".jasmine-menu.jasmine-failure-list"))
         for failures_el in browser.find_elements(By.CSS_SELECTOR, ".jasmine-failures"):
