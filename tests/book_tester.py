@@ -20,7 +20,6 @@ from update_source_repo import update_sources_for_chapter
 from write_to_file import write_to_file
 
 JASMINE_RUNNER = Path(__file__).parent / "run-js-spec.py"
-
 # DO_SERVER_COMMANDS = True
 # if os.environ.get("CI") or os.environ.get("NO_SERVER_COMMANDS"):
 DO_SERVER_COMMANDS = False
@@ -349,6 +348,8 @@ class ChapterTest(unittest.TestCase):
         self.sourcetree.run_command(f"python {self._manage_py()} migrate --noinput")
 
     def assertLineIn(self, line, lines):
+        if "\t" in line or "\t" in "\n".join(lines):
+            print('tabz')
         if line not in lines:
             raise AssertionError(
                 "%s not found in:\n%s" % (repr(line), "\n".join(repr(l) for l in lines))
@@ -530,14 +531,16 @@ class ChapterTest(unittest.TestCase):
         self.pos += 2
 
     def run_js_tests(self, tests_path: Path):
-        output = subprocess.check_output(
-            [JASMINE_RUNNER, str(tests_path)],
+        p = subprocess.run(
+            ["python", str(JASMINE_RUNNER), str(tests_path)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             # env={**os.environ, "OPENSSL_CONF": "/dev/null"},
-        ).decode()
-        return output
+            check=False,
+        )
+        return p.stdout.decode()
 
-    def check_qunit_output(self, expected_output):
-        lists_tests = Path(self.tempdir) / "lists/static/tests/SpecRunner.html"
+    def check_jasmine_output(self, expected_output):
+        lists_tests = Path(self.tempdir) / "src/lists/static/tests/SpecRunner.html"
         assert lists_tests.exists()
         lists_run = self.run_js_tests(lists_tests)
         self.assert_console_output_correct(lists_run, expected_output)
@@ -850,8 +853,8 @@ class ChapterTest(unittest.TestCase):
         elif listing.type == "server code listing":
             assert 0, "reimplement"
 
-        elif listing.type == "qunit output":
-            self.check_qunit_output(listing)
+        elif listing.type == "jasmine output":
+            self.check_jasmine_output(listing)
             self.pos += 1
 
         elif listing.type == "output":

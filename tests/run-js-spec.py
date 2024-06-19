@@ -30,7 +30,8 @@ def run(path: Path):
     failed = False
 
     def _el_text(sel, node: webdriver.Remote | WebElement = browser):
-        return "\n".join(el.text for el in node.find_elements(By.CSS_SELECTOR, sel))
+        raw = "\n".join(el.text for el in node.find_elements(By.CSS_SELECTOR, sel))
+        return re.sub(r" 0\.\d+s", " 0.005s", raw)
 
     try:
         browser.get(f"file:///{path}?seed=12345")
@@ -40,7 +41,7 @@ def run(path: Path):
         #     print(entry)
 
         print(
-            f"{_el_text('.jasmine-overall-result')}\t\t{_el_text('.jasmine-duration')}"
+            f"{_el_text('.jasmine-overall-result')}      {_el_text('.jasmine-duration')}"
         )
 
         print(_el_text(".jasmine-bar.jasmine-errored"))
