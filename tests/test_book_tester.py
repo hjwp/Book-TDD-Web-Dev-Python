@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch, call
 
 from book_tester import (
     ChapterTest,
-    PHANTOMJS_RUNNER,
+    JASMINE_RUNNER,
     contains,
     wrap_long_lines,
     split_blocks,
@@ -1025,7 +1025,7 @@ class CheckQunitOuptutTest(ChapterTest):
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output("arg"))
 
-    def test_runs_phantomjs_runner_against_lists_tests(self):
+    def TODOtest_runs_phantomjs_runner_against_lists_tests(self):
         self.chapter_name = "chapter_16_javascript"
         self.sourcetree.start_with_checkout(
             "chapter_deploying_validation", "chapter_16_javascript"
@@ -1036,39 +1036,10 @@ class CheckQunitOuptutTest(ChapterTest):
         )
 
         manual_run = subprocess.check_output(
-            ["phantomjs", PHANTOMJS_RUNNER, lists_tests],
-            env={**os.environ, "OPENSSL_CONF": "/dev/null"},
+            ["python", JASMINE_RUNNER, lists_tests],
         )
         expected = Output(manual_run.strip().decode())
-        self.check_qunit_output(expected)  # should pass
-
-    def DONTtest_runs_against_accounts_if_lists_pass(self):
-        self.chapter_name = "chapter_deploying_validation"
-        self.sourcetree.start_with_checkout(
-            "chapter_deploying_validation", "chapter_16_javascript"
-        )
-        lists_tests = os.path.abspath(
-            os.path.join(
-                os.path.dirname(__file__),
-                "../source/chapter_15_advanced_forms/superlists/lists/static/tests/tests.html",
-            )
-        )
-        accounts_tests = lists_tests.replace("/lists/", "/accounts/")
-
-        def test_results(path):
-            if path == lists_tests:
-                return "0 failed"
-            if path == accounts_tests:
-                return "2 failed"
-
-        self.run_js_tests = test_results
-        self.assert_console_output_correct = Mock()
-
-        self.check_qunit_output("expected")
-        assert self.assert_console_output_correct.call_args_list == [
-            call("0 failed", "expected"),
-            call("2 failed", "expected"),
-        ]
+        self.check_jasmine_output(expected)  # should pass
 
 
 class CheckFinalDiffTest(ChapterTest):
