@@ -1,12 +1,11 @@
 import io
 import os
 import re
-import stat
 import subprocess
 import tempfile
 import time
 import unittest
-from getpass import getuser
+from pathlib import Path
 from textwrap import wrap
 
 from book_parser import (
@@ -20,13 +19,7 @@ from sourcetree import Commit, SourceTree
 from update_source_repo import update_sources_for_chapter
 from write_to_file import write_to_file
 
-PHANTOMJS_RUNNER = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "my-phantomjs-qunit-runner.js"
-)
-SLIMERJS_BINARY = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "slimerjs-0.9.0/slimerjs"
-)
-
+JASMINE_RUNNER = Path(__file__).parent / "run-js-spec.py"
 
 # DO_SERVER_COMMANDS = True
 # if os.environ.get("CI") or os.environ.get("NO_SERVER_COMMANDS"):
@@ -536,69 +529,18 @@ class ChapterTest(unittest.TestCase):
         self.assert_console_output_correct(test_run, self.listings[self.pos + 1])
         self.pos += 2
 
-    def run_js_tests(self, tests_path):
+    def run_js_tests(self, tests_path: Path):
         output = subprocess.check_output(
-            ["phantomjs", PHANTOMJS_RUNNER, tests_path],
-            env={**os.environ, "OPENSSL_CONF": "/dev/null"},
+            [JASMINE_RUNNER, str(tests_path)],
+            # env={**os.environ, "OPENSSL_CONF": "/dev/null"},
         ).decode()
-        # some fixes to make phantom more like firefox
-        output = output.replace("at file", "@file")
-        output = re.sub(r"Can't find variable: (\w+)", r"\1 is not defined", output)
-        output = re.sub(
-            r"'(\w+)' is not an object \(evaluating '(\w+)\.\w+'\)", r"\2 is \1", output
-        )
-        output = re.sub(
-            r"'undefined' is not a function \(evaluating '(.+)\(.*\)'\)",
-            r"\1 is not a function",
-            output,
-        )
-        print("fixed phantomjs output", output)
         return output
 
-        os.chmod(SLIMERJS_BINARY, os.stat(SLIMERJS_BINARY).st_mode | stat.S_IXUSR)
-        os.environ["SLIMERJSLAUNCHER"] = "/usr/bin/firefox"
-        return subprocess.check_output(
-            [
-                "xvfb-run",
-                "--auto-servernum",
-                SLIMERJS_BINARY,
-                PHANTOMJS_RUNNER,
-                tests_path,
-            ]
-        ).decode()
-
     def check_qunit_output(self, expected_output):
-        lists_tests = os.path.join(self.tempdir, "lists/static/tests/tests.html")
-        accounts_tests_exist = os.path.exists(
-            os.path.join(self.sourcetree.tempdir, "accounts/static/tests/tests.html")
-        )
-
-        accounts_tests = lists_tests.replace("/lists/", "/accounts/")
+        lists_tests = Path(self.tempdir) / "lists/static/tests/SpecRunner.html"
+        assert lists_tests.exists()
         lists_run = self.run_js_tests(lists_tests)
-        if not accounts_tests_exist:
-            self.assert_console_output_correct(lists_run, expected_output)
-            return
-        else:
-            if "0 failed" in lists_run and "0 failed" not in expected_output:
-                print("lists tests pass, assuming accounts tests")
-                accounts_run = self.run_js_tests(accounts_tests)
-                self.assert_console_output_correct(accounts_run, expected_output)
-
-            else:
-                try:
-                    self.assert_console_output_correct(lists_run, expected_output)
-                except AssertionError as first_error:
-                    if "0 failed" in lists_run and "0 failed" in expected_output:
-                        print(
-                            "lists and expected both had 0 failed but didnt match. checking accounts"
-                        )
-                        print("lists run was", lists_run)
-                        accounts_run = self.run_js_tests(accounts_tests)
-                        self.assert_console_output_correct(
-                            accounts_run, expected_output
-                        )
-                    else:
-                        raise first_error
+        self.assert_console_output_correct(lists_run, expected_output)
 
     def check_current_contents(self, listing, actual_contents):
         print("CHECK CURRENT CONTENTS")

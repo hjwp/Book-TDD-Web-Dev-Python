@@ -265,11 +265,15 @@ def check_chunks_against_future_contents(listing_contents, future_contents):
                 )
             else:
                 print("reindented listing")
-                print(repr(reindented_chunk))
+                print("\n".join(repr(l) for l in reindented_chunk.splitlines()))
                 print("future contents")
-                print(repr(future_contents))
+                print("\n".join(repr(l) for l in future_contents.splitlines()))
+                tdir = Path(tempfile.mkdtemp())
+                print("saving to", tdir)
+                (tdir / "listing.txt").write_text(reindented_chunk)
+                (tdir / "future.txt").write_text(future_contents)
                 raise ApplyCommitException(
-                    f"Commit lines in wrong order, or listing is missing a [...] (?)"
+                    "Commit lines in wrong order, or listing is missing a [...] (?)"
                 )
 
 
