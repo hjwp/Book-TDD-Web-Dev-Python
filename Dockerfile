@@ -1,5 +1,9 @@
 FROM python:slim
 
+# -- WIP --
+# this dockerfile is a work in progress,
+# the vague intention is to use it for CI.
+
 # RUN add-apt-repository ppa:mozillateam/ppa && \
 RUN apt-get update -y
 
