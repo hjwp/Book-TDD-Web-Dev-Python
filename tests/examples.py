@@ -35,7 +35,6 @@ CODE_LISTING_WITH_CAPTION_AND_GIT_COMMIT_REF = """<div class="exampleblock sourc
 </div>"""
 
 
-
 SERVER_COMMAND = """<div class="listingblock server-commands">
 <div class="content">
 <pre><code>elspeth@server:$ <strong>sudo do stuff</strong></code></pre>
@@ -70,14 +69,14 @@ CODE_LISTING_WITH_DIFF_FORMATING_AND_COMMIT_REF = """<div class="listingblock so
 </pre></div></div></div>"""
 
 
-COMMAND_MADE_WITH_ATS="""
+COMMAND_MADE_WITH_ATS = """
 <div class="listingblock">
 <div class="content">
 <pre><code>$ <strong>grep id_new_item functional_tests/tests/test*</strong></code></pre>
 </div></div>
 """
 
-OUTPUT_WITH_SKIPME="""
+OUTPUT_WITH_SKIPME = """
 <div class="listingblock skipme">
 <div class="content"><div class="highlight"><pre><span class="k">try</span><span class="p">:</span>
     <span class="n">item</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
@@ -166,33 +165,28 @@ Migrations for 'lists':
 
 
 CODE_LISTING_WITH_ASCIIDOCTOR_CALLOUTS = """
-<div class="listingblock sourcecode">
-<div class="title">lists/static/tests/tests.html</div>
+<div class="exampleblock sourcecode">
+<div class="title">src/lists/templates/base.html (ch16l004)</div>
 <div class="content">
-<pre class="CodeRay highlight"><code data-lang="html">    <span class="tag">&lt;div</span> <span class="attribute-name">id</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">qunit-fixture</span><span class="delimiter">&quot;</span></span><span class="tag">&gt;</span><span class="tag">&lt;/div&gt;</span>
+<div class="listingblock">
+<div class="content">
+<pre class="pygments highlight"><code data-lang="html"><span></span>    <span class="tok-p">&lt;/</span><span class="tok-nt">div</span><span class="tok-p">&gt;</span>
 
-    <span class="tag">&lt;form&gt;</span>  <i class="conum" data-value="1"></i><b>(1)</b>
-        <span class="tag">&lt;input</span> <span class="attribute-name">name</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">text</span><span class="delimiter">&quot;</span></span> <span class="tag">/&gt;</span>
-        <span class="tag">&lt;div</span> <span class="attribute-name">class</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">has-error</span><span class="delimiter">&quot;</span></span><span class="tag">&gt;</span>Error text<span class="tag">&lt;/div&gt;</span>
-    <span class="tag">&lt;/form&gt;</span>
-
-    <span class="tag">&lt;script</span> <span class="attribute-name">src</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">http://code.jquery.com/jquery.min.js</span><span class="delimiter">&quot;</span></span><span class="tag">&gt;</span><span class="tag">&lt;/script&gt;</span>
-    <span class="tag">&lt;script</span> <span class="attribute-name">src</span>=<span class="string"><span class="delimiter">&quot;</span><span class="content">qunit.js</span><span class="delimiter">&quot;</span></span><span class="tag">&gt;</span><span class="tag">&lt;/script&gt;</span>
-    <span class="tag">&lt;script&gt;</span>
-<span class="inline"><span class="comment">/*global $, test, equal */</span>
-
-test(<span class="string"><span class="delimiter">&quot;</span><span class="content">smoke test</span><span class="delimiter">&quot;</span></span>, <span class="keyword">function</span> () {
-    equal(<span class="predefined">$</span>(<span class="string"><span class="delimiter">'</span><span class="content">.has-error</span><span class="delimiter">'</span></span>).is(<span class="string"><span class="delimiter">'</span><span class="content">:visible</span><span class="delimiter">'</span></span>), <span class="predefined-constant">true</span>);  <i class="conum" data-value="2"></i><b>(2)</b> <i class="conum" data-value="3"></i><b>(3)</b>
-    <span class="predefined">$</span>(<span class="string"><span class="delimiter">'</span><span class="content">.has-error</span><span class="delimiter">'</span></span>).hide();  <i class="conum" data-value="4"></i><b>(4)</b>
-    equal(<span class="predefined">$</span>(<span class="string"><span class="delimiter">'</span><span class="content">.has-error</span><span class="delimiter">'</span></span>).is(<span class="string"><span class="delimiter">'</span><span class="content">:visible</span><span class="delimiter">'</span></span>), <span class="predefined-constant">false</span>);  <i class="conum" data-value="5"></i><b>(5)</b>
-});</span>
-
-    <span class="tag">&lt;/script&gt;</span></code></pre>
+    <span class="tok-p">&lt;</span><span class="tok-nt">script</span><span class="tok-p">&gt;</span>
+<span class="tok-w">      </span><span class="tok-kd">const</span><span class="tok-w"> </span><span class="tok-nx">textInput</span><span class="tok-w"> </span><span class="tok-o">=</span><span class="tok-w"> </span><span class="tok-nb">document</span><span class="tok-p">.</span><span class="tok-nx">querySelector</span><span class="tok-p">(</span><span class="tok-s2">&quot;#id_text&quot;</span><span class="tok-p">);</span><span class="tok-w">  </span><i class="conum" data-value="1"></i><b>(1)</b>
+<span class="tok-w">      </span><span class="tok-nx">textInput</span><span class="tok-p">.</span><span class="tok-nx">oninput</span><span class="tok-w"> </span><span class="tok-o">=</span><span class="tok-w"> </span><span class="tok-p">()</span><span class="tok-w"> </span><span class="tok-p">=&gt;</span><span class="tok-w"> </span><span class="tok-p">{</span><span class="tok-w">  </span><i class="conum" data-value="2"></i><b>(2)</b> <i class="conum" data-value="3"></i><b>(3)</b>
+<span class="tok-w">        </span><span class="tok-kd">const</span><span class="tok-w"> </span><span class="tok-nx">errorMsg</span><span class="tok-w"> </span><span class="tok-o">=</span><span class="tok-w"> </span><span class="tok-nb">document</span><span class="tok-p">.</span><span class="tok-nx">querySelector</span><span class="tok-p">(</span><span class="tok-s2">&quot;.invalid-feedback&quot;</span><span class="tok-p">);</span>
+<span class="tok-w">        </span><span class="tok-nx">errorMsg</span><span class="tok-p">.</span><span class="tok-nx">style</span><span class="tok-p">.</span><span class="tok-nx">display</span><span class="tok-w"> </span><span class="tok-o">=</span><span class="tok-w"> </span><span class="tok-s2">&quot;none&quot;</span><span class="tok-p">;</span><span class="tok-w">  </span><i class="conum" data-value="4"></i><b>(4)</b>
+<span class="tok-w">      </span><span class="tok-p">}</span>
+<span class="tok-w">    </span><span class="tok-p">&lt;/</span><span class="tok-nt">script</span><span class="tok-p">&gt;</span></code></pre>
+</div>
+</div>
 </div>
 </div>
 """
 
-OUTPUT_WITH_CALLOUTS = '''<div class="listingblock">
+
+OUTPUT_WITH_CALLOUTS = """<div class="listingblock">
 <div class="content">
 <pre>$ <strong>python manage.py test functional_tests.test_list_item_validation</strong>
 Creating test database for alias 'default'...
@@ -222,7 +216,7 @@ Ran 1 test in 10.575s
 
 FAILED (errors=1)</pre>
 </div>
-</div>'''
+</div>"""
 
 EXAMPLE_DIFF_LISTING = """
 <div class="exampleblock sourcecode small-code">
