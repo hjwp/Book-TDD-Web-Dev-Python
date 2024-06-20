@@ -1,40 +1,37 @@
 FROM python:slim
+# -- Dockerfile is intended mainly for use in CI --
 
-# -- WIP --
-# this dockerfile is a work in progress,
-# the vague intention is to use it for CI.
+RUN apt-get update -y && \
+    apt-get install -y \
+        asciidoctor \
+        curl \
+        firefox-esr \
+        git \
+        locales \
+        make \
+        ruby-pygments.rb \
+        tree \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# RUN add-apt-repository ppa:mozillateam/ppa && \
-RUN apt-get update -y
+ENV LC_ALL=en_GB.UTF-8 LANG=en_GB.UTF8 LANGUAGE=en_GB:en
+RUN echo "en_GB.UTF-8 UTF-8" > /etc/locale.gen
+RUN locale-gen
 
-RUN apt-get install -y \
-    git \
-    asciidoctor \
-    # language-pack-en \
-    ruby-pygments.rb \
-    firefox-esr \
-    tree \
-    locales
-
-RUN apt-get install -y \
-    make \
-    curl
-
-RUN locale-gen en_GB.UTF-8
-# RUN pip install uv
 ADD --chmod=755 https://astral.sh/uv/install.sh /install.sh
-RUN /install.sh && rm /install.sh
-RUN ln -s $HOME/.cargo/bin/uv /usr/bin/uv
+RUN /install.sh && rm /install.sh && \
+    ln -s $HOME/.cargo/bin/uv /usr/bin/uv
 
 RUN git config --global user.email "elspeth@example.com" && \
     git config --global user.name "Elspeth See-Eye" && \
     git config --global init.defaultBranch main
 
 WORKDIR /app
-RUN uv venv .venv
-
 COPY pyproject.toml pyproject.toml
-RUN uv pip install .
 
+# install python deps systemwide with uv
+ENV PIP_CACHE_DIR=/var/cache/pip
+
+RUN uv pip install --system .
 
 CMD bash

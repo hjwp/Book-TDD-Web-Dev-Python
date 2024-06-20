@@ -167,3 +167,7 @@ unit-test: chapter_01.html $(VENV)/bin
 clean:
 	rm -rf $(TMPDIR)
 	rm -v $(HTML_PAGES)
+
+.PHONY: docker-build
+docker-build:
+	docker build --platform=linux/amd64 -t hjwp/obeythetestinggoat-book-tester:latest .
