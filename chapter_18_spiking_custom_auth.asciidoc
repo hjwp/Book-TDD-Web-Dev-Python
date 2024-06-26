@@ -173,7 +173,7 @@ First we prep an app for our accounts stuff:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *python src/manage.py startapp accounts*
+$ *cd src && python manage.py startapp accounts*
 ----
 //16l002
 
@@ -684,48 +684,54 @@ Then we'll go back to master and commit just the FT.
 
 Here's a first, simple version of the FT:
 
-//l018
 [role="sourcecode"]
-.functional_tests/test_login.py
+.functional_tests/test_login.py (ch18l018)
 ====
 [source,python]
 ----
-from django.core import mail
-from selenium.webdriver.common.keys import Keys
 import re
+
+from django.core import mail
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 
 from .base import FunctionalTest
 
-TEST_EMAIL = 'edith@example.com'
-SUBJECT = 'Your login link for Superlists'
+TEST_EMAIL = "edith@example.com"
+SUBJECT = "Your login link for Superlists"
 
 
 class LoginTest(FunctionalTest):
-
     def test_can_get_email_link_to_log_in(self):
         # Edith goes to the awesome superlists site
         # and notices a "Log in" section in the navbar for the first time
         # It's telling her to enter her email address, so she does
         self.browser.get(self.live_server_url)
-        self.browser.find_element_by_name('email').send_keys(TEST_EMAIL)
-        self.browser.find_element_by_name('email').send_keys(Keys.ENTER)
+        self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
+            TEST_EMAIL
+        )
+        self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
+            Keys.ENTER
+        )
 
         # A message appears telling her an email has been sent
-        self.wait_for(lambda: self.assertIn(
-            'Check your email',
-            self.browser.find_element_by_tag_name('body').text
-        ))
+        self.wait_for(
+            lambda: self.assertIn(
+                "Check your email",
+                self.browser.find_element(By.CSS_SELECTOR, "body").text,
+            )
+        )
 
         # She checks her email and finds a message
-        email = mail.outbox[0]  #<1>
+        email = mail.outbox[0]  # <1>
         self.assertIn(TEST_EMAIL, email.to)
         self.assertEqual(email.subject, SUBJECT)
 
-        # It has a url link in it
-        self.assertIn('Use this link to log in', email.body)
-        url_search = re.search(r'http://.+/.+$', email.body)
+        # It has a URL link in it
+        self.assertIn("Use this link to log in", email.body)
+        url_search = re.search(r"http://.+/.+$", email.body)
         if not url_search:
-            self.fail(f'Could not find url in email body:\n{email.body}')
+            self.fail(f"Could not find url in email body:\n{email.body}")
         url = url_search.group(0)
         self.assertIn(self.live_server_url, url)
 
@@ -733,10 +739,8 @@ class LoginTest(FunctionalTest):
         self.browser.get(url)
 
         # she is logged in!
-        self.wait_for(
-            lambda: self.browser.find_element_by_link_text('Log out')
-        )
-        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.wait_for(lambda: self.browser.find_element(By.LINK_TEXT, "Log out"))
+        navbar = self.browser.find_element(By.CSS_SELECTOR, ".navbar")
         self.assertIn(TEST_EMAIL, navbar.text)
 ----
 ====
@@ -747,6 +751,7 @@ class LoginTest(FunctionalTest):
     us access to any emails the server tries to send via the `mail.outbox`
     attribute. We'll save checking "real" emails for later (but we will do it!).
 
+// TODO: will we?
 
 And if we run the FT, it works!
 
@@ -763,19 +768,17 @@ new user
 
 .
  ---------------------------------------------------------------------
-Ran 1 test in 3.729s
+Ran 1 test in 2.729s
 
 OK
 ----
 
-You can even see some of the debug output I left in my spiked view
-implementations.  Now it's time to revert all of our temporary changes,
+You can even see some of the debug output I left in my spiked view implementations.
+Now it's time to revert all of our temporary changes,
 and reintroduce them one by one in a test-driven way.
 
 
-Reverting Our Spiked Code
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
+==== Reverting Our Spiked Code
 
 [subs="specialcharacters,quotes"]
 ----
@@ -804,24 +807,34 @@ form for the login email:
 ====
 [source,html]
 ----
-<div class="container">
+<body>
+  <div class="container">
 
-  <nav class="navbar navbar-default" role="navigation">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="/">Superlists</a>
-      <form class="navbar-form navbar-right" method="POST" action="#">
-        <span>Enter email to log in:</span>
-        <input class="form-control" name="email" type="text" />
-        {% csrf_token %}
-      </form>
-    </div>
-  </nav>
+    <nav class="navbar">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="/">Superlists</a>
+        <form method="POST" action="/accounts/send_login_email">
+          <div class="input-group">
+            <label class="navbar-text me-2" for="id_email_input">
+              Enter your email to log in
+            </label>
+            <input
+              id="id_email_input"
+              name="email"
+              class="form-control"
+              placeholder="your@email.com"
+            />
+          </div>
+        </form>
+      </div>
+    </nav>
 
-  <div class="row">
-  [...]
+    <div class="row justify-content-center p-5 bg-body-tertiary rounded-3">
+      <div class="col-lg-6 text-center">
+        <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
+        [...]
 ----
 ====
-//ch16l018
 
 
 Now our FT fails because the login form doesn't actually do anything:
@@ -834,22 +847,15 @@ AssertionError: 'Check your email' not found in 'Superlists\nEnter email to log
 in:\nStart a new To-Do list'
 ----
 
-NOTE: I recommend reintroducing the `LOGGING` setting from earlier at this
-    point.  There's no need for an explicit test for it; our current test
-    suite will let us know in the unlikely event that it breaks anything. As
-    we'll find out in <<chapter_server_side_debugging>>, it'll be useful for
-    debugging later.
-
-
 Time to start writing some Django code. We begin by creating an app called
 `accounts` to hold all the files related to login:
 
-[role="dofirst-ch16l021-1"]
 [subs="specialcharacters,quotes"]
 ----
 $ *cd src && python manage.py startapp accounts*
 ----
-//21-2
+//ch18l021
+
 
 You could even do a commit just for that, to be able to distinguish the
 placeholder app files from our modifications.
@@ -859,48 +865,45 @@ if it turns out neater than it did in the spike.((("", startref="SDde18")))
 
 
 
-A Minimal Custom User Model
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== A Minimal Custom User Model
 
 
-
-((("authentication", "minimal custom user model", id="SDminimal18")))Django's
-built-in user model makes all sorts of assumptions about what
-information you want to track about users, from explicitly recording
-first name and last
-namefootnote:[A decision which you'll find prominent Django maintainers saying
-they now regret.  Not everyone has a first name and a last name.]
-to forcing you to use a username.   I'm a great believer in not storing
-information about users unless you absolutely must, so a user model that
-records an email address and nothing else sounds good to me!
+((("authentication", "minimal custom user model", id="SDminimal18")))
+Django's built-in user model makes all sorts of assumptions about
+what information you want to track about users,
+from explicitly recording first name and last namefootnote:[
+A decision which you'll find prominent Django maintainers
+saying they now regret.  Not everyone has a first name and a last name.]
+to forcing you to use a username.
+I'm a great believer in not storing information about users
+unless you absolutely must,
+so a user model that records an email address and nothing else
+sounds good to me!
 
 By now I'm sure you can manage to create the tests folder and its pass:[<em>__init__.py</em>],
-remove _tests.py_, and then add a __test_models.py__ to say:
+remove _tests.py_, and then add a _test_models.py_ to say:
 
-[role="sourcecode dofirst-ch16l022"]
-.accounts/tests/test_models.py (ch16l024)
+[role="sourcecode dofirst-ch18l022"]
+.accounts/tests/test_models.py (ch18l023)
 ====
 [source,python]
 ----
-from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 
 User = get_user_model()
 
 
 class UserModelTest(TestCase):
-
     def test_user_is_valid_with_email_only(self):
-        user = User(email='a@b.com')
+        user = User(email="a@b.com")
         user.full_clean()  # should not raise
 ----
 ====
-//24
 
 
 That gives us an expected failure:
 
-[role="dofirst-ch16l023"]
 ----
 django.core.exceptions.ValidationError: {'password': ['This field cannot be
 blank.'], 'username': ['This field cannot be blank.']}
@@ -910,7 +913,7 @@ Password?  Username?  Bah!  How about this?
 
 
 [role="sourcecode"]
-.accounts/models.py
+.accounts/models.py (ch18l025)
 ====
 [source,python]
 ----
@@ -920,41 +923,33 @@ class User(models.Model):
     email = models.EmailField()
 ----
 ====
-//25
 
 
-And we wire it up inside 'settings.py', adding `accounts` to `INSTALLED_APPS`
+And we wire it up inside _settings.py_, adding `accounts` to `INSTALLED_APPS`
 and a variable called `AUTH_USER_MODEL`:
 
 [role="sourcecode"]
-.superlists/settings.py (ch16l026)
+.superlists/settings.py (ch18l026)
 ====
 [source,python]
 ----
 INSTALLED_APPS = [
-    #'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'lists',
-    'accounts',
+    # "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "lists",
+    "accounts",
 ]
 
-AUTH_USER_MODEL = 'accounts.User'
-
+AUTH_USER_MODEL = "accounts.User"
 ----
 ====
 
 
-The next error is a database error:
-
-----
-django.db.utils.OperationalError: no such table: accounts_user
-----
-
-That prompts us, as usual, to do a migration... When we try, Django complains
+Now when we run our tests, Django complains
 that our custom user model is missing a couple of bits of metadata:
 
 
@@ -963,16 +958,21 @@ that our custom user model is missing a couple of bits of metadata:
 $ pass:quotes[*python manage.py makemigrations*]
 Traceback (most recent call last):
 [...]
+    new_errors = check(app_configs=app_configs, databases=databases)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ".../django/contrib/auth/checks.py", line 29, in check_user_model
     if not isinstance(cls.REQUIRED_FIELDS, (list, tuple)):
+                      ^^^^^^^^^^^^^^^^^^^
 AttributeError: type object 'User' has no attribute 'REQUIRED_FIELDS'
 ----
 
 
-Sigh.  Come on, Django, it's only got one field, so you should be able to figure
-out the answers to these questions for yourself.  Here you go:
+Sigh.  Come on, Django, it's only got one field,
+so you should be able to figure out the answers to these questions for yourself.
+Here you go:
 
 [role="sourcecode"]
-.accounts/models.py
+.accounts/models.py (ch18l027)
 ====
 [source,python]
 ----
@@ -982,22 +982,22 @@ class User(models.Model):
 ----
 ====
 
-Next silly question?footnote:[You might ask, if I think Django is so silly, why
-don't I submit a pull request to fix it?  Should be quite a simple fix.  Well,
-I promise I will, as soon as I've finished writing the book.  For now, snarky
-comments will have to suffice.]
+Next silly question?footnote:[
+You might ask, if I think Django is so silly,
+why don't I submit a pull request to fix it?
+Should be quite a simple fix.
+Well, I promise I will, as soon as I've finished writing the book.
+For now, snarky comments will have to suffice.]
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py makemigrations*]
-[...]
 AttributeError: type object 'User' has no attribute 'USERNAME_FIELD'
 ----
 
 And we go through a few more of these, until we get to:
 
 [role="sourcecode"]
-.accounts/models.py
+.accounts/models.py (ch18l029)
 ====
 [source,python]
 ----
@@ -1029,7 +1029,7 @@ Well, the simple way to fix that would be like this:
 
 
 [role="sourcecode"]
-.accounts/models.py (ch16l028-1)
+.accounts/models.py (ch18l030)
 ====
 [source,python]
 ----
@@ -1037,7 +1037,16 @@ Well, the simple way to fix that would be like this:
 ----
 ====
 
-Now the migration is successful:
+And now we get a different error again, slightly more familiar this time!
+Django is a bit happier with the structure of our custom User model,
+but it's unhappy about the database:
+
+----
+django.db.utils.OperationalError: no such table: accounts_user
+----
+
+
+In other words, we need to create a migration:
 
 
 [subs="specialcharacters,macros"]
@@ -1047,6 +1056,8 @@ Migrations for 'accounts':
   accounts/migrations/0001_initial.py
     - Create model User
 ----
+//ch18l031
+
 
 And the test passes:
 
@@ -1064,26 +1075,27 @@ and also an autogenerated "ID" field as its primary key.  We could make it
 even simpler!
 
 
-Tests as Documentation
-^^^^^^^^^^^^^^^^^^^^^^
+
+==== Tests as Documentation
 
 
-
-
-((("tests as documentation")))((("documentation")))Let's
-go all the way and make the email field into the primary
-key,footnote:[Emails may not be the perfect primary key IRL. One reader, clearly
-deeply emotionally scarred, wrote me a tearful email about how much they've
-suffered for over a decade from trying to deal with the effects of email primary
-keys, due to their making multiuser account management impossible. So, as
-ever, YMMV.]
+((("tests as documentation")))
+((("documentation")))
+Let's go all the way and make the email field into the primary key,footnote:[
+Emails may not be the perfect primary key IRL.
+One reader, clearly deeply emotionally scarred,
+wrote me a tearful email about how much they've suffered for over a decade
+from trying to deal with the effects of email primary keys,
+due to their making multiuser account management impossible.
+So, as ever, YMMV.]
 and thus implicitly remove the autogenerated `id` column.
 
-Although we could just do it and our test would still pass, and conceivably
-claim it was "just a refactor", it would be better to have a specific test:
+Although we could just _do it_ and our test would still pass,
+and conceivably claim it was "just a refactor",
+it would be better to have a specific test:
 
 [role="sourcecode"]
-.accounts/tests/test_models.py (ch16l028-3)
+.accounts/tests/test_models.py (ch18l032)
 ====
 [source,python]
 ----
@@ -1107,11 +1119,10 @@ NOTE: Your tests can be a form of documentation for your code--they express
     looking at the tests will give you the answer.  That's why it's important
     to give your tests explicit, verbose method names.
 
-And here's the implementation (feel free to check what happens with
-`unique=True` first):
+And here's the implementation (`primary_key` makes the `unique=True` obsolete):
 
 [role="sourcecode"]
-.accounts/models.py (ch16l028-4)
+.accounts/models.py (ch18l033)
 ====
 [source,python]
 ----
@@ -1125,13 +1136,13 @@ And we mustn't forget to adjust our migrations:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*rm accounts/migrations/0001_initial.py*]
-$ pass:quotes[*python manage.py makemigrations*]
+$ pass:quotes[*rm src/accounts/migrations/0001_initial.py*]
+$ pass:quotes[*python src/manage.py makemigrations*]
 Migrations for 'accounts':
   accounts/migrations/0001_initial.py
     - Create model User
 ----
-//029
+//ch18l034
 
 
 
@@ -1149,17 +1160,16 @@ OK
 
 
 
-A Token Model to Link Emails with a Unique ID
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== A Token Model to Link Emails with a Unique ID
 
-((("authentication", "token model to link emails", id="SDtoken18")))Next
-let's build a token model.  Here's a short unit test
-that captures the essence—you should be able to link an
-email to a unique ID, and that ID shouldn't be the same two
-times in a row:
+((("authentication", "token model to link emails", id="SDtoken18")))
+Next let's build a token model.
+Here's a short unit test that captures the essence--you
+should be able to link an email to a unique ID,
+and that ID shouldn't be the same two times in a row:
 
 [role="sourcecode"]
-.accounts/tests/test_models.py (ch16l030)
+.accounts/tests/test_models.py (ch18l035)
 ====
 [source,python]
 ----
@@ -1168,58 +1178,52 @@ from accounts.models import Token
 
 
 class TokenModelTest(TestCase):
-
     def test_links_user_with_auto_generated_uid(self):
-        token1 = Token.objects.create(email='a@b.com')
-        token2 = Token.objects.create(email='a@b.com')
+        token1 = Token.objects.create(email="a@b.com")
+        token2 = Token.objects.create(email="a@b.com")
         self.assertNotEqual(token1.uid, token2.uid)
 ----
 ====
 
-I won't show every single listing for creating the
-Token class in 'models.py'; I'll let you do that yourself
-instead. Driving Django models with basic TDD involves jumping
-through a few hoops because of the migration, so you'll
-see a few iterations like this—minimal code change,
+I won't show every single listing for creating the Token class in _models.py_;
+I'll let you do that yourself instead.
+Driving Django models with basic TDD
+involves jumping through a few hoops because of the migration,
+so you'll see a few iterations like this--minimal code change,
 make migrations, get new error, delete migrations,
 re-create new migrations, another code change, and so on...
 
 
-
-[role="dofirst-ch16l031"]
+[role="dofirst-ch18l036"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py makemigrations*]
-Migrations for 'accounts':
-  accounts/migrations/0002_token.py
-    - Create model Token
 $ pass:quotes[*python manage.py test accounts*]
 [...]
-TypeError: 'email' is an invalid keyword argument for this function
+TypeError: Token() got unexpected keyword arguments: 'email'
 ----
 
-I'll trust you to go through these conscientiously—remember,
+I'll trust you to go through these conscientiously--remember,
+r: Token() got unexpected keyword arguments: 'email'
 I may not be able to see you, but the Testing Goat can!
 
 
-
-[role="dofirst-ch16l032"]
+[role="dofirst-ch18l037"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*rm accounts/migrations/0002_token.py*]
-$ pass:quotes[*python manage.py makemigrations*]
+$ pass:quotes[*rm src/accounts/migrations/0002_token.py*]
+$ pass:quotes[*python src/manage.py makemigrations*]
 Migrations for 'accounts':
   accounts/migrations/0002_token.py
     - Create model Token
 $ pass:quotes[*python manage.py test accounts*]
-AttributeError: 'Token' object has no attribute 'uid'
+AttributeError: 'Token' object has no attribute 'uid'. Did you mean: 'id'?
 ----
 
 
 Eventually you should get to this code...
 
 [role="sourcecode"]
-.accounts/models.py (ch16l033)
+.accounts/models.py (ch18l038)
 ====
 [source,python]
 ----
@@ -1231,7 +1235,7 @@ class Token(models.Model):
 
 And this error:
 
-[role="dofirst-ch16l034"]
+[role="dofirst-ch18l039"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test accounts*]
@@ -1250,7 +1254,7 @@ We can use that like this:
 
 
 [role="sourcecode"]
-.accounts/models.py (ch16l035)
+.accounts/models.py (ch18l040)
 ====
 [source,python]
 ----
@@ -1264,11 +1268,10 @@ class Token(models.Model):
 ====
 
 
-And, with a bit more wrangling of migrations, that should get us to passing
-tests:
+And, perhaps with a bit more wrangling of migrations,
+that should get us to passing tests:
 
 
-[role="dofirst-ch16l036"]
 [subs="specialcharacters,quotes"]
 ----
 $ *python manage.py test accounts*
@@ -1280,34 +1283,40 @@ OK
 
 
 
-Well,  that gets us on our way!  The models layer is done, at least.
-In the next chapter, we'll get into mocking, a key technique for testing
-external dependencies like email.((("", startref="SDtoken18")))
+Well,  we are well on our way!
+The models layer is done, at least.
+In the next chapter, we'll get into mocking,
+a key technique for testing external dependencies like email.
+((("", startref="SDtoken18")))
 
 .Exploratory Coding, Spiking, and De-spiking
-****
+*******************************************************************************
 Spiking::
-    ((("spiking and de-spiking", "defined")))Exploratory
-coding to find out about a new API, or to explore the
-    feasibility   of a new solution.  Spiking can be done without tests.  It's
-    a good idea to do your spike on a new branch, and go back to master when
-    de-spiking.
+    Exploratory coding to find out about a new API,
+    or to explore the feasibility of a new solution.
+    Spiking can be done without tests.
+    It's a good idea to do your spike on a new branch,
+    and go back to your main branch when de-spiking.
+    ((("spiking and de-spiking", "defined")))
 
 
 De-spiking::
     Taking the work from a spike and making it part of the production codebase.
-    The idea is to throw away the old spike code altogether, and start again
-    from scratch, using TDD once again. De-spiked code can often come out
-    looking quite different from the original spike, and usually much nicer.
+    The idea is to throw away the old spike code altogether,
+    and start again from scratch, using TDD once again.
+    De-spiked code can often come out looking quite different
+    from the original spike, and usually much nicer.
 
 
 Writing your FT against spiked code::
-    ((("functional tests (FTs)", "spiked code and")))Whether
-or not this is a good idea depends on your circumstances.  The
-    reason it can be useful is because it can help you write the FT
-    correctly--figuring out how to test your spike can be just as challenging
-    as the spike itself.  On the other hand, it might constrain you towards
-    reimplementing a very similar solution to your spiked one--something to
-    watch out for.((("", startref="Adespike18")))
-****
+    Whether or not this is a good idea depends on your circumstances.
+    The reason it can be useful is because it can help you write the FT
+    correctly--figuring out how to test your spike
+    can be just as challenging as the spike itself.
+    On the other hand, it might constrain you towards
+    reimplementing a very similar solution to your spiked one;
+    something to watch out for.
+    ((("functional tests (FTs)", "spiked code and")))
+    ((("", startref="Adespike18")))
+*******************************************************************************
 
