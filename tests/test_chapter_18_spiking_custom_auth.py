@@ -3,7 +3,8 @@ import unittest
 
 from book_tester import ChapterTest
 
-class Chapter16Test(ChapterTest):
+
+class Chapter18Test(ChapterTest):
     chapter_name = 'chapter_18_spiking_custom_auth'
     previous_chapter = 'chapter_17_second_deploy'
 
@@ -17,8 +18,8 @@ class Chapter16Test(ChapterTest):
         #self.assertTrue(self.listings[88].dofirst)
 
         # skips
-        self.skip_with_check(29, 'switch back to master') # comment
-        self.skip_with_check(31, 'remove any trace') # comment
+        self.skip_with_check(28, 'switch back to main') # comment
+        self.skip_with_check(30, 'remove any trace') # comment
 
         # prep
         self.start_with_checkout()
