@@ -127,9 +127,9 @@ test_chapter_15_advanced_forms: chapter_15_advanced_forms.html $(TMPDIR) $(VENV)
 .PHONY: test_chapter_16_javascript
 test_chapter_16_javascript: chapter_16_javascript.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_16_javascript.py
-.PHONY: test_chapter_deploying_validation
-test_chapter_deploying_validation: chapter_deploying_validation.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_deploying_validation.py
+.PHONY: test_chapter_17_second_deploy
+test_chapter_17_second_deploy: chapter_17_second_deploy.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_17_second_deploy.py
 .PHONY: test_chapter_spiking_custom_auth
 test_chapter_spiking_custom_auth: chapter_spiking_custom_auth.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_spiking_custom_auth.py
