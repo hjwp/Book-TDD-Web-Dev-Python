@@ -5,7 +5,7 @@ from book_tester import ChapterTest
 
 class Chapter17Test(ChapterTest):
     chapter_name = 'chapter_mocking'
-    previous_chapter = 'chapter_spiking_custom_auth'
+    previous_chapter = 'chapter_18_spiking_custom_auth'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
