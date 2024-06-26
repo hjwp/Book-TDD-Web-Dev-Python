@@ -2,7 +2,7 @@ FROM python:slim
 # -- Dockerfile is intended mainly for use in CI --
 
 RUN apt-get update -y && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         asciidoctor \
         curl \
         firefox-esr \
