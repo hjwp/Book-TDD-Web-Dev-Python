@@ -221,6 +221,7 @@ def fix_interactive_managepy_stuff(actual_text):
 
 
 class ChapterTest(unittest.TestCase):
+    chapter_name = "override me"
     maxDiff = None
 
     def setUp(self):
@@ -234,6 +235,9 @@ class ChapterTest(unittest.TestCase):
 
     def tearDown(self):
         print(f"finished running test in {self.sourcetree.tempdir}")
+        print("writing tmpdir out to", f".tmpdir.test_{self.chapter_name}")
+        with open(f".tmpdir.test_{self.chapter_name}", "w") as f:
+            f.write(str(self.sourcetree.tempdir))
         self.sourcetree.cleanup()
 
     def parse_listings(self):
