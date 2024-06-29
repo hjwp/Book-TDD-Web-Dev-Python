@@ -21,6 +21,7 @@ class Chapter15Test(ChapterTest):
         self.prep_database()
 
         # skips
+        self.skip_with_check(21, "python src/manage.py migrate")  # a possible DB error in a NOTE
         self.skip_with_check(28, "# should show changes")  # diff
 
         # hack fast-forward
