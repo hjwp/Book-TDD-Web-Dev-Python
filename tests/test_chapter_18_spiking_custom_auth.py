@@ -20,13 +20,16 @@ class Chapter18Test(ChapterTest):
         # skips
         self.skip_with_check(28, "switch back to main")  # comment
         self.skip_with_check(30, "remove any trace")  # comment
+        # self.skip_with_check(70, "rm src/accounts/migrations/0002_token.py")
+        # self.skip_with_check(71, "python src/manage.py makemigrations")
+        # self.skip_with_check(72, "Migrations for")
 
         # prep
         self.start_with_checkout()
         self.prep_database()
 
         # hack fast-forward
-        skip = False
+        skip = True
         if skip:
             self.pos = 38
             self.sourcetree.run_command(
