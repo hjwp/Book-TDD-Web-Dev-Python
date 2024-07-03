@@ -202,7 +202,7 @@ class SourceTree:
 
     def tidy_up_after_patches(self):
         # tidy up any .origs from patches
-        self.sourcetree.run_command('find . -name "*.orig" -exec rm {} \\;')
+        self.run_command('find . -name "*.orig" -exec rm {} \\;')
 
     def apply_listing_from_commit(self, listing):
         commit_spec = self.get_commit_spec(listing.commit_ref)

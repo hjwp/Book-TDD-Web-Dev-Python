@@ -165,6 +165,8 @@ silent_test_%: %.html $(TMPDIR) $(VENV)/bin
 unit-test: chapter_01.html $(VENV)/bin
 	SKIP_CHAPTER_SUBMODULES=1 ./tests/update_source_repo.py
 	source $(VENV)/bin/activate && ./run_test_tests.sh
+	# this is a hack to make 'Archive the temp dir' step work in CI
+	echo "tests" > .tmpdir.unit-test
 
 .PHONY: clean
 clean:
