@@ -133,9 +133,9 @@ test_chapter_17_second_deploy: chapter_17_second_deploy.html $(TMPDIR) $(VENV)/b
 .PHONY: test_chapter_18_spiking_custom_auth
 test_chapter_18_spiking_custom_auth: chapter_18_spiking_custom_auth.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_18_spiking_custom_auth.py
-.PHONY: test_chapter_mocking
-test_chapter_mocking: chapter_mocking.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_mocking.py
+.PHONY: test_chapter_19_mocking
+test_chapter_19_mocking: chapter_19_mocking.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_19_mocking.py
 .PHONY: test_chapter_fixtures_and_wait_decorator
 test_chapter_fixtures_and_wait_decorator: chapter_fixtures_and_wait_decorator.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_fixtures_and_wait_decorator.py

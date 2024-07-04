@@ -20,7 +20,7 @@ CHAPTERS = [
     "chapter_17_second_deploy",
     # part 3
     "chapter_18_spiking_custom_auth",
-    "chapter_mocking",
+    "chapter_19_mocking",
     "chapter_fixtures_and_wait_decorator",
     "chapter_server_side_debugging",
     "chapter_outside_in",
