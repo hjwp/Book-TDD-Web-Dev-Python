@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import unittest
 
 from book_tester import ChapterTest
@@ -24,11 +25,10 @@ class Chapter17Test(ChapterTest):
         # self.sourcetree.run_command("rm src/accounts/tests.py")
 
         # hack fast-forward
-        skip = False
-        if skip:
-            self.pos = 100
+        if os.environ.get("SKIP"):
+            self.pos = 40
             self.sourcetree.run_command(
-                "git checkout {0}".format(self.sourcetree.get_commit_spec("ch16l047"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch19l017"))
             )
 
         while self.pos < len(self.listings):
