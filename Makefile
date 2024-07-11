@@ -13,11 +13,6 @@ export MOZ_HEADLESS = 1
 # for warning introduce in selenium 4.10
 export PYTHONWARNINGS=ignore::ResourceWarning
 
-# required for firefox snap to work via geckodriver.
-export TMPDIR := $(HOME)/snap/firefox/common/tmp
-$(TMPDIR):
-	mkdir -p $(TMPDIR)
-
 export TMPDIR_CLEANUP = false
 
 part%.forbook.asciidoc: part%.asciidoc
