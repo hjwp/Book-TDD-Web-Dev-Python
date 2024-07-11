@@ -23,6 +23,7 @@ class Chapter17Test(ChapterTest):
 
         self.prep_database()
         # self.sourcetree.run_command("rm src/accounts/tests.py")
+        self.sourcetree.run_command("mkdir -p src/static")
 
         # hack fast-forward
         if os.environ.get("SKIP"):

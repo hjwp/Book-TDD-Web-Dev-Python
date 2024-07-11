@@ -917,7 +917,7 @@ So we can insert the token into our email like this:
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch17l023)
+.src/accounts/views.py (ch19l023)
 ====
 [source,python]
 ----
@@ -947,42 +947,44 @@ def send_login_email(request):
     framework, and that gets overcomplicated pretty quickly.  You can find
     lots more discussion on this if you're curious by doing a bit of googling.
 
-Two more pieces in the puzzle.  We need an authentication backend, whose
-job it will be to examine tokens for validity and then return the corresponding
-users; then we need to get our login view to actually log users in,
-if they can authenticate.((("", startref="Mpythong19")))((("", startref="Pmock19")))
+Two more pieces in the puzzle.
+We need an authentication backend,
+whose job it will be to examine tokens for validity
+and then return the corresponding users;
+then we need to get our login view to actually log users in,
+if they can authenticate.
+((("", startref="Mpythong19")))((("", startref="Pmock19")))
 
 
 
 
-De-spiking Our Custom Authentication Backend
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== De-spiking Our Custom Authentication Backend
 
-((("mocks", "de-spiking custom authentication", id="Mdespike19")))((("spiking and de-spiking", "de-spiking", id="SDdesp19")))Our
-custom authentication backend is next.  Here's how it looked in the spike:
+((("mocks", "de-spiking custom authentication", id="Mdespike19")))
+((("spiking and de-spiking", "de-spiking", id="SDdesp19")))
+Our custom authentication backend is next.
+Here's how it looked in the spike:
 
 
 [[spike-reminder]]
 [role="skipme small-code"]
 [source,python]
 ----
-class PasswordlessAuthenticationBackend(object):
-
-    def authenticate(self, uid):
-        print('uid', uid, file=sys.stderr)
+class PasswordlessAuthenticationBackend(BaseBackend):
+    def authenticate(self, request, uid):
+        print("uid", uid, file=sys.stderr)
         if not Token.objects.filter(uid=uid).exists():
-            print('no token found', file=sys.stderr)
+            print("no token found", file=sys.stderr)
             return None
         token = Token.objects.get(uid=uid)
-        print('got token', file=sys.stderr)
+        print("got token", file=sys.stderr)
         try:
             user = ListUser.objects.get(email=token.email)
-            print('got user', file=sys.stderr)
+            print("got user", file=sys.stderr)
             return user
         except ListUser.DoesNotExist:
-            print('new user', file=sys.stderr)
+            print("new user", file=sys.stderr)
             return ListUser.objects.create(email=token.email)
-
 
     def get_user(self, email):
         return ListUser.objects.get(email=email)
@@ -1006,46 +1008,49 @@ How about something like this?
 
 
 [role="sourcecode"]
-.src/accounts/tests/test_authentication.py
+.src/accounts/tests/test_authentication.py (ch19l024)
 ====
 [source,python]
 ----
-from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.http import HttpRequest
+from django.test import TestCase
+
 from accounts.authentication import PasswordlessAuthenticationBackend
 from accounts.models import Token
+
 User = get_user_model()
 
 
 class AuthenticateTest(TestCase):
-
     def test_returns_None_if_no_such_token(self):
         result = PasswordlessAuthenticationBackend().authenticate(
-            'no-such-token'
+            HttpRequest(), "no-such-token"
         )
         self.assertIsNone(result)
 
-
     def test_returns_new_user_with_correct_email_if_token_exists(self):
-        email = 'edith@example.com'
+        email = "edith@example.com"
         token = Token.objects.create(email=email)
-        user = PasswordlessAuthenticationBackend().authenticate(token.uid)
+        user = PasswordlessAuthenticationBackend().authenticate(
+            HttpRequest(), token.uid
+        )
         new_user = User.objects.get(email=email)
         self.assertEqual(user, new_user)
 
-
     def test_returns_existing_user_with_correct_email_if_token_exists(self):
-        email = 'edith@example.com'
+        email = "edith@example.com"
         existing_user = User.objects.create(email=email)
         token = Token.objects.create(email=email)
-        user = PasswordlessAuthenticationBackend().authenticate(token.uid)
+        user = PasswordlessAuthenticationBackend().authenticate(
+            HttpRequest(), token.uid
+        )
         self.assertEqual(user, existing_user)
-
 ----
 ====
 
 
-In 'authenticate.py' we'll just have a little placeholder:
+In _authenticate.py_ we'll just have a little placeholder:
 
 [role="sourcecode"]
 .src/accounts/authentication.py (ch19l025)
@@ -1053,7 +1058,6 @@ In 'authenticate.py' we'll just have a little placeholder:
 [source,python]
 ----
 class PasswordlessAuthenticationBackend:
-
     def authenticate(self, request, uid):
         pass
 ----
@@ -1062,31 +1066,35 @@ class PasswordlessAuthenticationBackend:
 
 How do we get on?
 
-[subs="specialcharacters,macros"]
+[subs="macros"]
 ----
 $ pass:quotes[*python src/manage.py test accounts*]
 
 .FE.........
 ======================================================================
-ERROR: test_returns_new_user_with_correct_email_if_token_exists
-(accounts.tests.test_authentication.AuthenticateTest)
+ERROR: test_returns_new_user_with_correct_email_if_token_exists (accounts.tests
+.test_authentication.AuthenticateTest.test_returns_new_user_with_correct_email_
+if_token_exists)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "...goat-book/accounts/tests/test_authentication.py", line 21, in
+  File "...goat-book/src/accounts/tests/test_authentication.py", line 24, in
 test_returns_new_user_with_correct_email_if_token_exists
     new_user = User.objects.get(email=email)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 [...]
-accounts.models.DoesNotExist: User matching query does not exist.
+accounts.models.User.DoesNotExist: User matching query does not exist.
+
 
 ======================================================================
-FAIL: test_returns_existing_user_with_correct_email_if_token_exists
-(accounts.tests.test_authentication.AuthenticateTest)
+FAIL: test_returns_existing_user_with_correct_email_if_token_exists (accounts.t
+ests.test_authentication.AuthenticateTest.test_returns_existing_user_with_corre
+ct_email_if_token_exists)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "...goat-book/accounts/tests/test_authentication.py", line 30, in
+  File "...goat-book/src/accounts/tests/test_authentication.py", line 34, in
 test_returns_existing_user_with_correct_email_if_token_exists
     self.assertEqual(user, existing_user)
-AssertionError: None != <User: User object>
+AssertionError: None != pass:specialcharacters[<User: User object (edith@example.com)>]
 
  ---------------------------------------------------------------------
 Ran 12 tests in 0.038s
@@ -1104,6 +1112,7 @@ Here's a first cut:
 ----
 from accounts.models import Token, User
 
+
 class PasswordlessAuthenticationBackend:
     def authenticate(self, request, uid):
         token = Token.objects.get(uid=uid)
@@ -1118,15 +1127,17 @@ That gets one test passing but breaks another one:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test accounts*]
-ERROR: test_returns_None_if_no_such_token
-(accounts.tests.test_authentication.AuthenticateTest)
 
-accounts.models.DoesNotExist: Token matching query does not exist.
-
-ERROR: test_returns_new_user_with_correct_email_if_token_exists
-(accounts.tests.test_authentication.AuthenticateTest)
+ERROR: test_returns_None_if_no_such_token (accounts.tests.test_authentication.A
+uthenticateTest.test_returns_None_if_no_such_token)
 [...]
-accounts.models.DoesNotExist: User matching query does not exist.
+accounts.models.Token.DoesNotExist: Token matching query does not exist.
+
+ERROR: test_returns_new_user_with_correct_email_if_token_exists (accounts.tests
+.test_authentication.AuthenticateTest.test_returns_new_user_with_correct_email_
+if_token_exists)
+[...]
+accounts.models.User.DoesNotExist: User matching query does not exist.
 ----
 
 Let's fix each of those in turn:
