@@ -1382,8 +1382,7 @@ is a good time to check out the
     docs on authentication] for a little more context.((("", startref="Mdespike19")))((("", startref="SDdesp19")))
 
 
-An Alternative Reason to Use Mocks: Reducing Duplication
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== An Alternative Reason to Use Mocks: Reducing Duplication
 
 ((("mocks", "reducing duplication with", id="Mreduce19")))((("duplication, eliminating", id="dupel19")))So
 far we've used mocks to test external dependencies, like Django's
@@ -1404,10 +1403,12 @@ it returns `None` for invalid tokens, existing users if they already exist,
 and creates new users for valid tokens if they don't exist yet. So, to fully
 test this view, I'd have to write tests for all three of those cases.
 
-TIP: ((("combinatorial explosion")))One
-good justification for using mocks is when they will reduce
-    duplication between tests.  It's one way of avoiding 'combinatorial
-    explosion'.
+TIP: One possible justification for using mocks is
+    when they will reduce duplication between tests.
+    It's one way of avoiding _combinatorial explosion_.
+    ((("combinatorial explosion")))
+
+// TODO: not on london-style tdd and how i personally just don't do this.
 
 On top of that, the fact that we're using the Django
 `auth.authenticate` function rather than calling our own code directly is
@@ -1866,7 +1867,7 @@ and non–logged-in users (which our FT relies on):
     {% if user.email %}
       <ul>
         <span class="navbar-text">Logged in as {{ user.email }}</span>
-        <a href="{% url 'logout' %}">Log out</a>
+        <a href="#TODO">Log out</a>
       </ul>
     {% else %}
       <form method="POST" action="{% url 'send_login_email' %}">
@@ -1895,104 +1896,6 @@ TODO resume updates to chapter from here
 ****
 
 
-And see if that...
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python src/manage.py test functional_tests.test_login*]
-Internal Server Error: /accounts/login
-[...]
-  File "...goat-book/accounts/views.py", line 31, in login
-    auth.login(request, user)
-[...]
-ValueError: The following fields do not exist in this model or are m2m fields:
-last_login
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Log out
-----
-
-
-Oh no!  Something's not right.  But assuming you've kept the `LOGGING`
-config in 'settings.py', you should see the explanatory traceback, as just
-shown. It's saying something about a `last_login` field.
-
-https://code.djangoproject.com/ticket/26823[In my opinion] this is a
-bug in Django, but essentially the auth framework expects the user
-model to have a `last_login` field.  We don't have one.  But never fear!
-There's a way of handling this failure.
-
-Let's write a unit test that reproduces the bug first. Since it's to do
-with our custom user model, as good a place to have it as any might be
-'test_models.py':
-
-
-[role="sourcecode"]
-.src/accounts/tests/test_models.py (ch17l047)
-====
-[source,python]
-----
-from django.contrib import auth
-from django.test import TestCase
-
-from accounts.models import Token
-
-User = auth.get_user_model()
-
-
-class UserModelTest(TestCase):
-    def test_user_is_valid_with_email_only(self):
-        [...]
-    def test_email_is_primary_key(self):
-        [...]
-
-    def test_no_problem_with_auth_login(self):
-        user = User.objects.create(email="edith@example.com")
-        user.backend = ""
-        request = self.client.request().wsgi_request
-        auth.login(request, user)  # should not raise
-----
-====
-
-We create a request object and a user, and then we pass them into the
-`auth.login` function.
-
-That will raise our error:
-
-----
-    auth.login(request, user)  # should not raise
-[...]
-ValueError: The following fields do not exist in this model or are m2m fields:
-last_login
-----
-
-
-The specific reason for this bug isn't really important for the purposes of
-this book, but if you're curious about what exactly is going on here, take a
-look through the Django source lines listed in the traceback, and have a read up
-of Django's https://docs.djangoproject.com/en/1.11/topics/signals/[docs on
-signals].
-
-// TODO this aint right
-
-The upshot is that we can fix it like this:
-
-[role="sourcecode"]
-.src/accounts/models.py (ch17l048)
-====
-[source,python]
-----
-import uuid
-from django.contrib import auth
-from django.db import models
-
-auth.signals.user_logged_in.disconnect(auth.models.update_last_login)
-
-
-class User(models.Model):
-    [...]
-----
-====
 
 
 How does our FT look now?
@@ -2011,13 +1914,12 @@ OK
 
 
 
-It Works in Theory!  Does It Work in Practice?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== It Works in Theory!  Does It Work in Practice?
 
 
-((("mocks", "practical application of")))Wow!
-Can you believe it?  I scarcely can!  Time for a manual look around with
-`runserver`:
+((("mocks", "practical application of")))
+Wow! Can you believe it?  I scarcely can!
+Time for a manual look around with `runserver`:
 
 
 [role="skipme"]
@@ -2033,9 +1935,7 @@ ConnectionRefusedError: [Errno 111] Connection refused
 ----
 
 
-Using Our New Environment Variable, and Saving It to .env
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
+==== Using Our New Environment Variable, and Saving It to .env
 
 You'll probably get an error, like I did, when you try to run things manually.
 It's because of two things:
@@ -2047,9 +1947,9 @@ It's because of two things:
 ====
 [source,python]
 ----
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_HOST_USER = 'obeythetestinggoat@gmail.com'
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD')
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_HOST_USER = "obeythetestinggoat@gmail.com"
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 ----
@@ -2105,6 +2005,7 @@ $ *python src/manage.py runserver*
 
 ...you should see something like <<despiked-success-message>>.
 
+//TODO: update screenshot
 
 [[despiked-success-message]]
 .Check your email....
@@ -2129,56 +2030,94 @@ $ *git commit -m "Custom passwordless auth backend + custom user model"*
 
 
 
-Finishing Off Our FT, Testing Logout
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Finishing Off Our FT, Testing Logout
 
 
-((("mocks", "logout link")))The
-last thing we need to do before we call it a day is to test the logout
-link.  We extend the FT with a couple more steps:
+((("mocks", "logout link")))
+The last thing we need to do before we call it a day is to test the logout link
+(you may remember the URL just says `#TODO` at the moment.)
+We extend the FT with a couple more steps:
 
 [role="sourcecode"]
-.functional_tests/test_login.py (ch17l050)
+.src/functional_tests/test_login.py (ch17l050)
 ====
 [source,python]
 ----
         [...]
         # she is logged in!
-        self.wait_for(
-            lambda: self.browser.find_element_by_link_text('Log out')
-        )
-        navbar = self.browser.find_element_by_css_selector('.navbar')
+        self.wait_for(lambda: self.browser.find_element(By.LINK_TEXT, "Log out"))
+        navbar = self.browser.find_element(By.CSS_SELECTOR, ".navbar")
         self.assertIn(TEST_EMAIL, navbar.text)
 
         # Now she logs out
-        self.browser.find_element_by_link_text('Log out').click()
+        self.browser.find_element(By.LINK_TEXT, "Log out").click()
 
         # She is logged out
         self.wait_for(
-            lambda: self.browser.find_element_by_name('email')
+            lambda: self.browser.find_element(By.CSS_SELECTOR, "input[name=email]")
         )
-        navbar = self.browser.find_element_by_css_selector('.navbar')
+        navbar = self.browser.find_element(By.CSS_SELECTOR, ".navbar")
         self.assertNotIn(TEST_EMAIL, navbar.text)
 ----
 ====
 
 With that, we can see that the test is failing because the logout button
-doesn't work:
+doesn't actually do anything:
 
 [subs=""]
 ----
 $ <strong>python src/manage.py test functional_tests.test_login</strong>
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: [name="email"]
+element: input[name=email]; [...]
 ----
 
-Implementing a logout button is actually very simple:  we can use Django's
-http://bit.ly/SuI0hA[built-in logout view], which clears down the user's
-session and redirects them to a page of our choice:
+
+So let's tell the base template that we want a new url named "logout":
 
 [role="sourcecode small-code"]
-.src/accounts/urls.py (ch19l051)
+.src/lists/templates/base.html (ch19l051)
+====
+[source,html]
+----
+          {% if user.email %}
+            <ul>
+              <span class="navbar-text">Logged in as {{ user.email }}</span>
+              <a href="{% url 'logout' %}">Log out</a>
+            </ul>
+          {% else %}
+----
+====
+
+If you try the FTs at this point,
+you'll see an error saying that URL doesn't exist yet:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test functional_tests.test_login*]
+Internal Server Error: /
+[...]
+django.urls.exceptions.NoReverseMatch: Reverse for 'logout' not found. 'logout'
+is not a valid view function or pattern name.
+
+======================================================================
+ERROR: test_can_get_email_link_to_log_in
+(functional_tests.test_login.LoginTest.test_can_get_email_link_to_log_in)
+[...]
+
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: Log out; [...]
+----
+
+
+
+Implementing a logout URL is actually very simple:
+we can use Django's
+https://docs.djangoproject.com/en/4.2/topics/auth/default/#module-django.contrib.auth.views[built-in logout view],
+which clears down the user's session and redirects them to a page of our choice:
+
+[role="sourcecode small-code"]
+.src/accounts/urls.py (ch19l052)
 ====
 [source,python]
 ----
@@ -2195,17 +2134,6 @@ urlpatterns = [
 ----
 ====
 
-And in 'base.html', we just make the logout into a real URL link:
-
-[role="sourcecode"]
-.src/lists/templates/base.html (ch19l052)
-====
-[source,python]
-----
-  <a href="{% url 'logout' %}">Log out</a>
-----
-====
-
 
 And that gets us a fully passing FT--indeed, a fully passing test suite:
 
@@ -2215,22 +2143,22 @@ And that gets us a fully passing FT--indeed, a fully passing test suite:
 $ pass:quotes[*python src/manage.py test functional_tests.test_login*]
 [...]
 OK
-$ pass:quotes[*python src/manage.py test*]
+$ pass:quotes[*cd src && python manage.py test*]
 [...]
-Ran 59 tests in 78.124s
+Ran 57 tests in 78.124s
 
 OK
 ----
 //54
 
 
-WARNING: ((("security issues and settings", "login systems")))We're
-    nowhere near a truly secure or acceptable login system
-    here.  Since this is just an example app for a book, we'll leave it
-    at that, but in "real life" you'd want to explore a lot more security
-    and usability issues before calling the job done.  We're dangerously
-    close to "rolling our own crypto" here, and relying on a more established
-    login system would be much safer.
+WARNING: We're nowhere near a truly secure or acceptable login system here.
+    Since this is just an example app for a book, we'll leave it at that,
+    but in "real life" you'd want to explore a lot more security
+    and usability issues before calling the job done.
+    We're dangerously close to "rolling our own crypto" here,
+    and relying on a more established login system would be much safer.
+    ((("security issues and settings", "login systems")))
 
 
 In the next chapter, we'll start trying to put our login system to good use.
