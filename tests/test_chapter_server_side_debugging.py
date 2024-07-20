@@ -8,7 +8,7 @@ from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 class Chapter18Test(ChapterTest):
     chapter_name = 'chapter_server_side_debugging'
-    previous_chapter = 'chapter_fixtures_and_wait_decorator'
+    previous_chapter = 'chapter_20_fixtures_and_wait_decorator'
 
 
     def test_listings_and_commands_and_output(self):
