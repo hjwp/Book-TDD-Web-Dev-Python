@@ -7,7 +7,7 @@ from book_tester import ChapterTest, DO_SERVER_COMMANDS
 
 
 class Chapter18Test(ChapterTest):
-    chapter_name = 'chapter_server_side_debugging'
+    chapter_name = 'chapter_21_server_side_debugging'
     previous_chapter = 'chapter_20_fixtures_and_wait_decorator'
 
 
@@ -20,7 +20,7 @@ class Chapter18Test(ChapterTest):
 
         # skips
         self.skip_with_check(1, "if you haven't already")
-        self.skip_with_check(47, "commit changes first")
+        self.skip_with_check(45, "commit changes first")
         if DO_SERVER_COMMANDS:
             self.replace_command_with_check(
                 13,
@@ -54,8 +54,8 @@ class Chapter18Test(ChapterTest):
                 print('hacking in code update on server')
                 self.run_server_command(
                     'cd /home/elspeth/sites/staging.ottg.co.uk'
-                    ' && git checkout chapter_server_side_debugging'
-                    ' && git reset --hard origin/chapter_server_side_debugging',
+                    ' && git checkout chapter_21_server_side_debugging'
+                    ' && git reset --hard origin/chapter_21_server_side_debugging',
                 )
                 self.run_server_command(
                     'sudo systemctl restart gunicorn-staging.ottg.co.uk'

@@ -22,7 +22,7 @@ CHAPTERS = [
     "chapter_18_spiking_custom_auth",
     "chapter_19_mocking",
     "chapter_20_fixtures_and_wait_decorator",
-    "chapter_server_side_debugging",
+    "chapter_21_server_side_debugging",
     "chapter_outside_in",
     "chapter_purist_unit_tests",
     "chapter_CI",
