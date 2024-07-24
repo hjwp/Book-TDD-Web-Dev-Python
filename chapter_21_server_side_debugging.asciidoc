@@ -1,29 +1,20 @@
 [[chapter_21_server_side_debugging]]
 == Server-Side Debugging
 
-.Warning, Chapter Not Updated.
+.Warning, Chapter Update in Progress
 *******************************************************************************
-🚧 Warning, this Chapter is the 2e version, and uses Django 1.11
+🚧 Warning, Chapter update for 3e in progress.
 
-This chapter and all the following ones are the second edition versions, so they still use Django 1.11, Python 3.8, and so on.
+This chapter has only been partially updated to Django 4, Ansible+Docker, etc.
 
-To follow along with this chapter, it’s probably easiest to reset your code to match my example code as it was in the 2e, by resetting to: https://github.com/hjwp/book-example/tree/chapter_20_fixtures_and_wait_decorator
-
-And you should also probably delete and re-create your virtualenv with
-* Python 3.8 or 3.9
-* and Django 1.11 (pip install "django <2")
-
-Alternatively, you can muddle through
-and try and figure out how to make things work with Django 4 etc,
-but be aware that the listings below won’t be quite right.
-All the fabric stuff needs to be migrated to ansible, for a start.
+Following along may be tricky, but I hope to have it in better shape soon!
 *******************************************************************************
 
 
-Popping a few layers off the stack of things we're working on: we have nice
-wait-for helpers; what were we using them for?  Oh yes, waiting to be logged
-in. And why was that?  Ah yes, we had just built a way of pre-authenticating
-a user.
+Popping a few layers off the stack of things we're working on:
+we have nice wait-for helpers; what were we using them for?
+Oh yes, waiting to be logged in. And why was that?
+Ah yes, we had just built a way of pre-authenticating a user.
 
 
 
@@ -39,32 +30,24 @@ and then we'll have to figure out a way of managing the database on the test ser
 
 * TODO: ansible instead of fab
 
-[role="against-server"]
+[role="against-server small-code"]
 [subs="specialcharacters,quotes"]
 ----
-$ *git push*  # if you haven't already
-$ *cd deploy_tools*
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*]
 $ *fab deploy:host=elspeth@staging.ottg.co.uk*
+
+PLAYBOOK: ansible-provision.yaml ***********************************************
+1 plays in infra/ansible-provision.yaml
 [...]
 ----
 
-////
-And restart Gunicorn...
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl daemon-reload*
-elspeth@server:$ *sudo systemctl restart gunicorn-staging.ottg.co.uk*
-----
-////
 
 Here's what happens when we run the functional tests:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
 
 ======================================================================
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
@@ -104,6 +87,10 @@ system is crashing the server.
 Let's practice a bit of server-side debugging!
 
 
+* TODO: show we can actually repro this with Docker.
+
+// TODO: actually, does this obviate the whole need for running fts against the server?
+
 
 === Inspecting Logs on the Server
 
@@ -121,32 +108,26 @@ settings which will actually send stuff to the console:
 [source,python]
 ----
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-        },
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
     },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-        },
+    "loggers": {
+        "root": {"handlers": ["console"], "level": "INFO"},
     },
-    'root': {'level': 'INFO'},
 }
 ----
 ====
 
-Restart Gunicorn again if necessary, and then either rerun the FT, or just try
-to log in manually.  While that happens, we watch the logs on the server with
-`journalctl -f`:
+Restart the Docker container again if necessary,
+and then either rerun the FT, or just try to log in manually.
+While that happens, we watch the logs on the server with `docker logs -f`:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo journalctl -f -u gunicorn-staging.ottg.co.uk*
+elspeth@server:$ *docker logs -f superlists*
 ----
 
 You should see an error like this:
@@ -170,24 +151,27 @@ at\n5.5.1  https://support.google.com/mail/?p=WantAuthError [...]
 - gsmtp', 'noreply@superlists')
 ----
 
-Hm, Gmail is refusing to send our emails, is it?  Now why might that be?  Ah
-yes, we haven't told the server what our password is!((("", startref="SScatch21")))((("", startref="DBserstag21")))
+Hm, Gmail is refusing to send our emails, is it?  Now why might that be?
+Ah yes, we haven't told the server what our password is!
+((("", startref="SScatch21")))((("", startref="DBserstag21")))
 
 
 === Another Environment Variable
 
-((("debugging", "server-side", "setting secret environment variables")))((("environment variables")))((("secret values")))Just
-as in <<chapter_11_ansible>>, the place we
-set environment variables on the server is in the _.env_ file:
+((("debugging", "server-side", "setting secret environment variables")))
+((("environment variables")))
+((("secret values")))
+Just as in <<chapter_11_ansible>>,
+the place we set environment variables on the server is in the _superlists.env_ file.
+Let's change it manually, on the server, for a test:
+
+* TODO: maybe use ansible straight away?  Also, need to discuss secret storage locally.
 
 [role="server-commands small-code"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *cd ~/sites/staging.ottg.co.uk/*
-elspeth@server:$ *echo EMAIL_PASSWORD=yoursekritpasswordhere >> .env*
-elspeth@server:$ *sudo systemctl daemon-reload*
-elspeth@server:$ *sudo systemctl restart gunicorn-staging.ottg.co.uk*
-elspeth@server:$ *sudo journalctl -f -u gunicorn-staging.ottg.co.uk*
+elspeth@server:$ *echo EMAIL_PASSWORD=yoursekritpasswordhere >> ~/superlists.env*
+elspeth@server:$ *docker restart superlists*
 ----
 
 Now if we rerun our FTs, we see a change:
@@ -195,7 +179,7 @@ Now if we rerun our FTs, we see a change:
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
 
 [...]
 Traceback (most recent call last):
@@ -211,10 +195,10 @@ element: Log out
 ----
 
 
-The `my_lists` failure is still the same, but we have more information in our
-login test: the FT gets further, and the site now looks like it's sending
-emails correctly (and the server log no longer shows any errors), but we can't
-check the email in the `mail.outbox`...
+The `my_lists` failure is still the same, but we have more information in our login test:
+the FT gets further, and the site now looks like it's sending emails correctly
+(and the server log no longer shows any errors),
+but we can't check the email in the `mail.outbox`...
 
 
 === Adapting Our FT to Be Able to Test Real Emails via POP3
@@ -222,25 +206,25 @@ check the email in the `mail.outbox`...
 ((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))
 ((("Django framework", "sending emails", id="DJFemail21")))
 ((("emails, sending from Django", id="email21")))
-Ah. That explains it. Now that we're running against a real server rather than
-the `LiveServerTestCase`, we can no longer inspect the local
-`django.mail.outbox` to see sent emails.
+Ah. That explains it.
+Now that we're running against a real server rather than the `LiveServerTestCase`,
+we can no longer inspect the local `django.mail.outbox` to see sent emails.
 
 
-First, we'll need to know, in our FTs, whether we're running against
-the staging server or not.  Let's save the `staging_server` variable
-on `self` in 'base.py':
+First, we'll need to know, in our FTs,
+whether we're running against the staging server or not.
+Let's save the `staging_server` variable on `self` in _base.py_:
 
 [role="sourcecode"]
-.functional_tests/base.py (ch18l009)
+.functional_tests/base.py (ch21l009)
 ====
 [source,python]
 ----
     def setUp(self):
         self.browser = webdriver.Firefox()
-        self.staging_server = os.environ.get('STAGING_SERVER')
-        if self.staging_server:
-            self.live_server_url = 'http://' + self.staging_server
+        self.test_server = os.environ.get("TEST_SERVER")
+        if self.test_server:
+            self.live_server_url = "http://" + self.test_server
 ----
 ====
 
@@ -249,7 +233,7 @@ email server, using the horrifically tortuous Python standard library POP3
 client:
 
 [role="sourcecode"]
-.functional_tests/test_login.py (ch18l010)
+.functional_tests/test_login.py (ch21l010)
 ====
 [source,python]
 ----
@@ -260,7 +244,7 @@ import time
 [...]
 
     def wait_for_email(self, test_email, subject):
-        if not self.staging_server:
+        if not self.test_server:
             email = mail.outbox[0]
             self.assertIn(test_email, email.to)
             self.assertEqual(email.subject, subject)
@@ -268,21 +252,20 @@ import time
 
         email_id = None
         start = time.time()
-        inbox = poplib.POP3_SSL('pop.mail.yahoo.com')
+        inbox = poplib.POP3_SSL("pop.mail.yahoo.com")
         try:
             inbox.user(test_email)
-            inbox.pass_(os.environ['YAHOO_PASSWORD'])
+            inbox.pass_(os.environ["YAHOO_PASSWORD"])
             while time.time() - start < 60:
                 # get 10 newest messages
                 count, _ = inbox.stat()
                 for i in reversed(range(max(1, count - 10), count + 1)):
-                    print('getting msg', i)
+                    print("getting msg", i)
                     _, lines, __ = inbox.retr(i)
-                    lines = [l.decode('utf8') for l in lines]
-                    print(lines)
-                    if f'Subject: {subject}' in lines:
+                    lines = [l.decode("utf8") for l in lines]
+                    if f"Subject: {subject}" in lines:
                         email_id = i
-                        body = '\n'.join(lines)
+                        body = "\n".join(lines)
                         return body
                 time.sleep(5)
         finally:
@@ -294,15 +277,18 @@ import time
 
 * TODO: consider not using POP3, maybe
   https://docs.djangoproject.com/en/5.0/topics/email/#file-backend[file backend] instead.
+  discuss tradeoff of testing config
+  vs not needing to test that django can actually send emails
 
-I'm using a Yahoo account for testing, but you can use any email service you
-like, as long as it offers POP3 access. You will need to set the
+I signed up for a Yahoo account for testing,
+but you can use any email service you like, as long as it offers POP3 access.
+You will need to set the
 `YAHOO_PASSWORD` environment variable in the console that's running the FT.
 
 [subs="specialcharacters,quotes"]
 ----
 $ *echo YAHOO_PASSWORD=otheremailpasswordhere >> .env*
-$ *source .env*
+$ *set -a; source .env; set +a*
 ----
 
 And then we feed through the rest of the changes to the FT that are required
@@ -312,37 +298,42 @@ local and staging tests:
 
 
 [role="sourcecode small-code"]
-.functional_tests/test_login.py (ch18l011-1)
+.functional_tests/test_login.py (ch21l011-1)
 ====
 [source,diff]
 ----
-@@ -7,7 +7,7 @@ from selenium.webdriver.common.keys import Keys
+@@ -9,7 +9,6 @@ from selenium.webdriver.common.keys import Keys
 
  from .base import FunctionalTest
 
--TEST_EMAIL = 'edith@example.com'
-+
- SUBJECT = 'Your login link for Superlists'
+-TEST_EMAIL = "edith@example.com"
+ SUBJECT = "Your login link for Superlists"
 
 
-@@ -33,7 +33,6 @@ class LoginTest(FunctionalTest):
-                     print('getting msg', i)
+@@ -34,7 +33,6 @@ class LoginTest(FunctionalTest):
+                     print("getting msg", i)
                      _, lines, __ = inbox.retr(i)
-                     lines = [l.decode('utf8') for l in lines]
+                     lines = [l.decode("utf8") for l in lines]
 -                    print(lines)
-                     if f'Subject: {subject}' in lines:
+                     if f"Subject: {subject}" in lines:
                          email_id = i
-                         body = '\n'.join(lines)
-@@ -49,6 +48,11 @@ class LoginTest(FunctionalTest):
+                         body = "\n".join(lines)
+@@ -49,9 +47,14 @@ class LoginTest(FunctionalTest):
          # Edith goes to the awesome superlists site
          # and notices a "Log in" section in the navbar for the first time
          # It's telling her to enter her email address, so she does
-+        if self.staging_server:
-+            test_email = 'edith.testuser@yahoo.com'
++        if self.test_server:
++            test_email = "edith.testuser@yahoo.com"
 +        else:
-+            test_email = 'edith@example.com'
++            test_email = "edith@example.com"
 +
          self.browser.get(self.live_server_url)
+         self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
+-            TEST_EMAIL
++            test_email
+         )
+         self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
+             Keys.ENTER
 ----
 ====
 
@@ -350,21 +341,12 @@ And then modifications involving using that variable and calling our new helper
 function:
 
 [role="sourcecode small-code"]
-.functional_tests/test_login.py (ch18l011-2)
+.functional_tests/test_login.py (ch21l011-2)
 ====
 [source,diff]
 ----
-@@ -54,7 +54,7 @@ class LoginTest(FunctionalTest):
-             test_email = 'edith@example.com'
-
-         self.browser.get(self.live_server_url)
--        self.browser.find_element_by_name('email').send_keys(TEST_EMAIL)
-+        self.browser.find_element_by_name('email').send_keys(test_email)
-         self.browser.find_element_by_name('email').send_keys(Keys.ENTER)
-
-         # A message appears telling her an email has been sent
-@@ -64,15 +64,13 @@ class LoginTest(FunctionalTest):
-         ))
+@@ -69,15 +69,13 @@ class LoginTest(FunctionalTest):
+         )
 
          # She checks her email and finds a message
 -        email = mail.outbox[0]
@@ -372,18 +354,19 @@ function:
 -        self.assertEqual(email.subject, SUBJECT)
 +        body = self.wait_for_email(test_email, SUBJECT)
 
-         # It has a url link in it
--        self.assertIn('Use this link to log in', email.body)
--        url_search = re.search(r'http://.+/.+$', email.body)
-+        self.assertIn('Use this link to log in', body)
-+        url_search = re.search(r'http://.+/.+$', body)
+-        # It has a URL link in it
+-        self.assertIn("Use this link to log in", email.body)
+-        url_search = re.search(r"http://.+/.+$", email.body)
++        # It has a url link in it
++        self.assertIn("Use this link to log in", body)
++        url_search = re.search(r"http://.+/.+$", body)
          if not url_search:
--            self.fail(f'Could not find url in email body:\n{email.body}')
-+            self.fail(f'Could not find url in email body:\n{body}')
+-            self.fail(f"Could not find url in email body:\n{email.body}")
++            self.fail(f"Could not find url in email body:\n{body}")
          url = url_search.group(0)
          self.assertIn(self.live_server_url, url)
 
-@@ -80,11 +78,11 @@ class LoginTest(FunctionalTest):
+@@ -85,10 +83,10 @@ class LoginTest(FunctionalTest):
          self.browser.get(url)
 
          # she is logged in!
@@ -391,7 +374,7 @@ function:
 +        self.wait_to_be_logged_in(email=test_email)
 
          # Now she logs out
-         self.browser.find_element_by_link_text('Log out').click()
+         self.browser.find_element(By.LINK_TEXT, "Log out").click()
 
          # She is logged out
 -        self.wait_to_be_logged_out(email=TEST_EMAIL)
@@ -407,7 +390,7 @@ that can actually check for logins that work, involving real emails!
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests.test_login*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests.test_login*]
 [...]
 OK
 ----
@@ -437,7 +420,7 @@ so the "My Lists" test fails:
 [role="skipme small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
 
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
 (functional_tests.test_my_lists.MyListsTest)
@@ -572,7 +555,7 @@ when we're on the local server,
 and make it run the management command on the staging server if we're on that:
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py (ch18l016)
+.functional_tests/test_my_lists.py (ch21l016)
 ====
 [source,python]
 ----
@@ -584,8 +567,8 @@ from .management.commands.create_session import create_pre_authenticated_session
 class MyListsTest(FunctionalTest):
 
     def create_pre_authenticated_session(self, email):
-        if self.staging_server:
-            session_key = create_session_on_server(self.staging_server, email)
+        if self.test_server:
+            session_key = create_session_on_server(self.test_server, email)
         else:
             session_key = create_pre_authenticated_session(email)
         ## to set a cookie we need to first visit the domain.
@@ -602,12 +585,12 @@ class MyListsTest(FunctionalTest):
 ====
 
 
-Let's also tweak 'base.py', to gather a bit more information
-when we populate `self.against_staging`:
+Let's also tweak _base.py_, to gather a bit more information
+when we populate `self.test_server`:
 
 
 [role="sourcecode"]
-.functional_tests/base.py (ch18l017)
+.functional_tests/base.py (ch21l017)
 ====
 [source,python]
 ----
@@ -618,10 +601,10 @@ class FunctionalTest(StaticLiveServerTestCase):
 
     def setUp(self):
         self.browser = webdriver.Firefox()
-        self.staging_server = os.environ.get('STAGING_SERVER')
-        if self.staging_server:
-            self.live_server_url = 'http://' + self.staging_server
-            reset_database(self.staging_server)  #<1>
+        self.test_server = os.environ.get("TEST_SERVER")
+        if self.test_server:
+            self.live_server_url = "http://" + self.test_server
+            reset_database(self.test_server)  #<1>
 ----
 ====
 
@@ -779,7 +762,7 @@ And now we run the test:
 [role="against-server small-code"]
 [subs=""]
 ----
-$ <strong>STAGING_SERVER=staging.ottg.co.uk python manage.py test \
+$ <strong>TEST_SERVER=staging.ottg.co.uk python manage.py test \
  functional_tests.test_my_lists</strong>
 [...]
 [elspeth@staging.ottg.co.uk] run:
@@ -802,7 +785,7 @@ Looking good!  We can rerun all the tests to make sure...
 [role="against-server small-code"]
 [subs=""]
 ----
-$ <strong>STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests</strong>
+$ <strong>TEST_SERVER=staging.ottg.co.uk python manage.py test functional_tests</strong>
 [...]
 [elspeth@staging.ottg.co.uk] run:
 ~/sites/staging.ottg.co.uk/.venv/bin/python
