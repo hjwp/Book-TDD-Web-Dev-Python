@@ -5,7 +5,7 @@ from book_tester import ChapterTest
 
 
 class Chapter19Test(ChapterTest):
-    chapter_name = 'chapter_outside_in'
+    chapter_name = 'chapter_22_outside_in'
     previous_chapter = 'chapter_21_server_side_debugging'
 
     def test_listings_and_commands_and_output(self):

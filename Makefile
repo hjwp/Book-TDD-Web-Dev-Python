@@ -137,9 +137,9 @@ test_chapter_20_fixtures_and_wait_decorator: chapter_20_fixtures_and_wait_decora
 .PHONY: test_chapter_21_server_side_debugging
 test_chapter_21_server_side_debugging: chapter_21_server_side_debugging.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_21_server_side_debugging.py
-.PHONY: test_chapter_outside_in
-test_chapter_outside_in: chapter_outside_in.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_outside_in.py
+.PHONY: test_chapter_22_outside_in
+test_chapter_22_outside_in: chapter_22_outside_in.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_22_outside_in.py
 .PHONY: test_chapter_purist_unit_tests
 test_chapter_purist_unit_tests: chapter_purist_unit_tests.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_purist_unit_tests.py
