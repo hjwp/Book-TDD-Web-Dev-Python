@@ -310,7 +310,7 @@ And we fix it, still at the presentation level, in 'urls.py':
 urlpatterns = [
     path("new", views.new_list, name="new_list"),
     path("<int:list_id>/", views.view_list, name="view_list"),
-    path("users/<str:email>/", views.view_list, name="view_list"),
+    path("users/<str:email>/", views.my_list, name="view_list"),
 ]
 ----
 ====
@@ -323,29 +323,29 @@ That gives us a test failure, which informs us of what we should do as we
 move down to the next level:
 
 ----
+    path("users/<str:email>/", views.my_lists, name="my_lists"),
+                               ^^^^^^^^^^^^^^
 AttributeError: module 'lists.views' has no attribute 'my_lists'
 ----
-
-* TODO: new django does not error in quite this way
 
 
 We move in from the presentation layer to the views layer, and create a
 minimal placeholder:
 
 [role="sourcecode"]
-.lists/views.py (ch19l005)
+.lists/views.py (ch22l005)
 ====
 [source,python]
 ----
 def my_lists(request, email):
-    return render(request, 'my_lists.html')
+    return render(request, "my_lists.html")
 ----
 ====
 
 And a minimal template:
 
 [role="sourcecode"]
-.lists/templates/my_lists.html
+.lists/templates/my_lists.html (ch22l006)
 ====
 [source,html]
 ----
@@ -368,51 +368,47 @@ element: Reticulate splines
 ----
 
 
-Another Pass, Outside-In
-~~~~~~~~~~~~~~~~~~~~~~~~
+=== Another Pass, Outside-In
 
-((("Outside-In TDD", "FT-driven development", id="OITDDft22")))At
-each stage, we still let the FT drive what development we do.
+((("Outside-In TDD", "FT-driven development", id="OITDDft22")))
+At each stage, we still let the FT drive what development we do.
 
-Starting again at the outside layer, in the template, we begin to
-write the template code we'd like to use to get the "My Lists" page to
-work the  way we want it to. As we do so, we start to specify the API
-we want from the code at the layers below.
-
-
-A Quick Restructure of the Template Inheritance Hierarchy
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Starting again at the outside layer, in the template,
+we begin to write the template code we'd like to use
+to get the "My Lists" page to work the  way we want it to.
+As we do so, we start to specify the API we want
+from the code at the layers below.
 
 
+==== A Quick Restructure of the Template Inheritance Hierarchy
 
-((("templates", "inheritance hierarchy")))Currently
-there's no place in our base template for us to put any new
-content.  Also, the "My Lists" page doesn't need the new item form, so
-we'll put that into a block too, making it optional:
+
+((("templates", "inheritance hierarchy")))
+Currently there's no place in our base template for us to put any new content.
+Also, the "My Lists" page doesn't need the new item form,
+so we'll put that into a block too, making it optional:
 
 [role="sourcecode"]
 .lists/templates/base.html (ch19l007-1)
 ====
-[source,html]
+[source,diff]
 ----
-      <div class="row">
-        <div class="col-md-6 col-md-offset-3 jumbotron">
-          <div class="text-center">
-            <h1>{% block header_text %}{% endblock %}</h1>
-            {% block list_form %}
-              <form method="POST" action="{% block form_action %}{% endblock %}">
-                {{ form.text }}
-                {% csrf_token %}
-                {% if form.errors %}
-                  <div class="form-group has-error">
-                    <div class="help-block">{{ form.text.errors }}</div>
-                  </div>
-                {% endif %}
-              </form>
-            {% endblock %}
-          </div>
-        </div>
-      </div>
+@@ -57,6 +57,7 @@
+         <div class="col-lg-6 text-center">
+           <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
+
++          {% block list_form %}
+             <form
+               method="POST"
+               action="{% block form_action %}{% endblock %}"
+@@ -75,6 +76,8 @@
+                 {% endif %}
+                 {% csrf_token %}
+             </form>
++          {% endblock %}
++
+         </div>
+       </div>
 ----
 ====
 
@@ -601,20 +597,19 @@ OK
 ----
 
 
-The Next "Requirement" from the Views Layer: New Lists Should Record Owner
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== The Next "Requirement" from the Views Layer: New Lists Should Record Owner
 
-((("Outside-In TDD", "views layer")))Before
-we move down to the model layer, there's another part of the code
-at the views layer that will need to use our model:  we need some way for
-newly created lists to be assigned to an owner, if the current user is
-logged in to the site.
+((("Outside-In TDD", "views layer")))
+Before we move down to the model layer,
+there's another part of the code at the views layer that will need to use our model:
+we need some way for newly created lists to be assigned to an owner,
+if the current user is logged in to the site.
 
 Here's a first crack at writing the test:
 
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch19l014)
+.lists/tests/test_views.py (ch22l014)
 ====
 [source,python]
 ----
@@ -622,11 +617,11 @@ class NewListTest(TestCase):
     [...]
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
-        user = User.objects.create(email='a@b.com')
+        user = User.objects.create(email="a@b.com")
         self.client.force_login(user)  #<1>
-        self.client.post('/lists/new', data={'text': 'new item'})
-        list_ = List.objects.first()
-        self.assertEqual(list_.owner, user)
+        self.client.post("/lists/new", data={"text": "new item"})  
+        new_list = List.objects.get()
+        self.assertEqual(new_list.owner, user)
 ----
 ====
 
@@ -642,20 +637,20 @@ AttributeError: 'List' object has no attribute 'owner'
 To fix this, we can try writing code like this:
 
 [role="sourcecode"]
-.lists/views.py (ch19l015)
+.lists/views.py (ch22l015)
 ====
 [source,python]
 ----
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
-        list_ = List()
-        list_.owner = request.user
-        list_.save()
-        form.save(for_list=list_)
-        return redirect(list_)
+        nulist = List.objects.create()
+        nulist.owner = request.user
+        nulist.save()
+        form.save(for_list=nulist)
+        return redirect(nulist)
     else:
-        return render(request, 'home.html', {"form": form})
+        return render(request, "home.html", {"form": form})
 ----
 ====
 //015
@@ -671,30 +666,33 @@ AttributeError: 'List' object has no attribute 'owner'
 ----
 
 
-A Decision Point: Whether to Proceed to the Next Layer with a Failing Test
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== A Decision Point: Whether to Proceed to the Next Layer with a Failing Test
+
+* TODO: rewrite this section if we do decide to drop the next chapter.
 
 
-((("Outside-In TDD", "model layer", id="OITDDmodel21")))In
-order to get this test passing, as it's written now, we have to move
-down to the model layer.  However, it means doing more work with a failing
-test, which is not ideal.
+((("Outside-In TDD", "model layer", id="OITDDmodel21")))
+In order to get this test passing, as it's written now,
+we have to move down to the model layer.
+However, it means doing more work with a failing test, which is not ideal.
 
-((("mocks", "isolating tests using")))The
-alternative is to rewrite the test to make it more 'isolated' from the
-level below, using mocks.
+((("mocks", "isolating tests using")))
+The alternative is to rewrite the test
+to make it more _isolated_ from the level below, using mocks.
 
-On the one hand, it's a lot more effort to use mocks, and it can lead to
-tests that are harder to read.  On the other hand, imagine if our app was more
-complex, and there were several more layers between the outside and the inside.
-Imagine leaving three or four or five layers of tests, all failing while we
-wait to get to the bottom layer to implement our critical feature.  While tests
-are failing, we're not sure that layer really works, on its own terms, or not.
+On the one hand, it's a lot more effort to use mocks,
+and it can lead to tests that are harder to read.
+On the other hand, imagine if our app was more complex,
+and there were several more layers between the outside and the inside.
+Imagine leaving three or four or five layers of tests, all failing
+while we wait to get to the bottom layer to implement our critical feature.
+While tests are failing, we're not sure that layer really works, on its own terms, or not.
 We have to wait until we get to the bottom layer.
 
-This is a decision point you're likely to run into in your own projects. Let's
-investigate both approaches.  We'll start by taking the shortcut, and leaving
-the test failing.  In the next chapter, we'll come back to this exact point,
+This is a decision point you're likely to run into in your own projects.
+Let's investigate both approaches.
+We'll start by taking the shortcut, and leaving the test failing.
+In the next chapter, we'll come back to this exact point,
 and investigate how things would have gone if we'd used more isolation.
 
 Let's do a commit, and then 'tag' the commit as a way of remembering our
@@ -707,19 +705,19 @@ $ *git tag revisit_this_point_with_isolated_tests*
 ----
 
 
-Moving Down to the Model Layer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Moving Down to the Model Layer
 
 Our outside-in design has driven out two requirements for the model layer:
-we want to be able to assign an owner to a list using the attribute
-`.owner`, and we want to be able to access the list's owner with
-the API `owner.list_set.all`.
+we want to be able to assign an owner to a list using the attribute `.owner`,
+and we want to be able to access the list's owner with the API `owner.list_set.all()`.
+
+// TODO: let's make this owner.lists.all() ?
 
 Let's write a test for that:
 
 
 [role="sourcecode"]
-.lists/tests/test_models.py (ch19l018)
+.lists/tests/test_models.py (ch22l018)
 ====
 [source,python]
 ----
@@ -765,7 +763,7 @@ that too:
 
 
 [role="sourcecode"]
-.lists/tests/test_models.py (ch19l020)
+.lists/tests/test_models.py (ch22l020)
 ====
 [source,python]
 ----
@@ -777,7 +775,7 @@ that too:
 The correct implementation is this:
 
 [role="sourcecode"]
-.lists/models.py
+.lists/models.py  (ch22l021)
 ====
 [source,python]
 ----
@@ -785,10 +783,12 @@ from django.conf import settings
 [...]
 
 class List(models.Model):
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, blank=True, null=True, on_delete=models.CASCADE
+    )
 
     def get_absolute_url(self):
-        return reverse('view_list', args=[self.id])
+        return reverse("view_list", args=[self.id])
 ----
 ====
 //21
@@ -840,16 +840,17 @@ Django represents users using a class called `AnonymousUser`, whose
 
 
 [role="sourcecode"]
-.lists/views.py (ch19l023)
+.lists/views.py (ch22l023)
 ====
 [source,python]
 ----
     if form.is_valid():
-        list_ = List()
+        nulist = List.objects.create()
         if request.user.is_authenticated:
-            list_.owner = request.user
-        list_.save()
-        form.save(for_list=list_)
+            nulist.owner = request.user
+            nulist.save()
+        form.save(for_list=nulist)
+        return redirect(nulist)
         [...]
 ----
 ====
