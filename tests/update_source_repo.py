@@ -5,7 +5,7 @@ import subprocess
 
 from chapters import CHAPTERS
 
-REMOTE = "local" if getpass.getuser() == "harry" else "origin"
+REMOTE = "local" if "harry" in getpass.getuser() else "origin"
 BASE_FOLDER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
