@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-import subprocess
-import os
 import getpass
-from chapters import CHAPTERS
+import os
+import subprocess
 
+from chapters import CHAPTERS
 
 REMOTE = "local" if getpass.getuser() == "harry" else "origin"
 BASE_FOLDER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +22,7 @@ def fetch_if_possible(target_dir):
         if (
             "Name or service not known" in stderr.decode()
             or "Could not resolve" in stderr.decode()
+            or "github.com port 22: Undefined error" in stderr.decode()
         ):
             # no internet
             print("No Internet")
