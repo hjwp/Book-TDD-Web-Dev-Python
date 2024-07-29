@@ -41,14 +41,14 @@ PLAYBOOK: ansible-provision.yaml ***********************************************
 
 Here's what happens when we run the functional tests:
 
-[role="small-code"]
+[role="against-server small-code"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 
 ======================================================================
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists (functional_tests.test_
+my_lists.MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
   File "...goat-book/functional_tests/test_my_lists.py", line 34, in
@@ -100,7 +100,7 @@ First, make sure your 'settings.py' still contains the `LOGGING`
 settings which will actually send stuff to the console:
 
 [role="sourcecode currentcontents"]
-.superlists/settings.py
+.src/superlists/settings.py
 ====
 [source,python]
 ----
@@ -173,7 +173,7 @@ elspeth@server:$ *docker restart superlists*
 
 Now if we rerun our FTs, we see a change:
 
-[role="small-code"]
+[role="against-server small-code"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
@@ -260,6 +260,7 @@ import time
                     print("getting msg", i)
                     _, lines, __ = inbox.retr(i)
                     lines = [l.decode("utf8") for l in lines]
+                    print(lines)
                     if f"Subject: {subject}" in lines:
                         email_id = i
                         body = "\n".join(lines)
@@ -384,7 +385,7 @@ And, believe it or not, that'll actually work, and give us an FT
 that can actually check for logins that work, involving real emails!
 
 
-[role="small-code"]
+[role="against-server small-code"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests.test_login*]
@@ -461,30 +462,31 @@ $ <strong>mkdir -p src/functional_tests/management/commands</strong>
 $ <strong>touch src/functional_tests/management/__init__.py</strong>
 $ <strong>touch src/functional_tests/management/commands/__init__.py</strong>
 ----
+//ch21l012-1
 
 The boilerplate in a management command is a class that inherits from
 `django.core.management.BaseCommand`, and that defines a method called
 `handle`:
 
 [role="sourcecode"]
-.src/functional_tests/management/commands/create_session.py
+.src/functional_tests/management/commands/create_session.py (ch21l012)
 ====
 [source,python]
 ----
 from django.conf import settings
 from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
-User = get_user_model()
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.management.base import BaseCommand
 
+User = get_user_model()
+
 
 class Command(BaseCommand):
-
     def add_arguments(self, parser):
-        parser.add_argument('email')
+        parser.add_argument("email")
 
     def handle(self, *args, **options):
-        session_key = create_pre_authenticated_session(options['email'])
+        session_key = create_pre_authenticated_session(options["email"])
         self.stdout.write(session_key)
 
 
@@ -497,19 +499,17 @@ def create_pre_authenticated_session(email):
     return session.session_key
 ----
 ====
-//12
 
 We've taken the code for `create_pre_authenticated_session` from
 'test_my_lists.py'. `handle` will pick up an email address from the parser,
 and then return the session key that we'll want to add to our browser cookies,
 and the management command prints it out at the command line. Try it out:
 
-//IDEA: test commands that have return code
-[role="skipme"]
+[role="ignore-errors"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py create_session a@b.com*]
-Unknown command: 'create_session'
+Unknown command: 'create_session'. Did you mean clearsessions?
 ----
 
 One more step: we need to add `functional_tests` to our 'settings.py'
@@ -517,15 +517,15 @@ for it to recognise it as a real app that might have management commands as
 well as tests:
 
 [role="sourcecode"]
-.superlists/settings.py
+.src/superlists/settings.py (ch21l014)
 ====
 [source,python]
 ----
 +++ b/superlists/settings.py
 @@ -42,6 +42,7 @@ INSTALLED_APPS = [
-     'lists',
-     'accounts',
-+    'functional_tests',
+     "lists",
+     "accounts",
++    "functional_tests",
  ]
 ----
 ====
@@ -557,25 +557,29 @@ and make it run the management command on the staging server if we're on that:
 [source,python]
 ----
 from django.conf import settings
+
 from .base import FunctionalTest
-from .server_tools import create_session_on_server
 from .management.commands.create_session import create_pre_authenticated_session
+from .server_tools import create_session_on_server
+
 
 class MyListsTest(FunctionalTest):
-
     def create_pre_authenticated_session(self, email):
         if self.test_server:
             session_key = create_session_on_server(self.test_server, email)
         else:
             session_key = create_pre_authenticated_session(email)
+
         ## to set a cookie we need to first visit the domain.
         ## 404 pages load the quickest!
         self.browser.get(self.live_server_url + "/404_no_such_url/")
-        self.browser.add_cookie(dict(
-            name=settings.SESSION_COOKIE_NAME,
-            value=session_key,
-            path='/',
-        ))
+        self.browser.add_cookie(
+            dict(
+                name=settings.SESSION_COOKIE_NAME,
+                value=session_key,
+                path="/",
+            )
+        )
 
     [...]
 ----
@@ -595,7 +599,6 @@ from .server_tools import reset_database  #<1>
 [...]
 
 class FunctionalTest(StaticLiveServerTestCase):
-
     def setUp(self):
         self.browser = webdriver.Firefox()
         self.test_server = os.environ.get("TEST_SERVER")
@@ -632,15 +635,13 @@ from fabric.context_managers import settings, shell_env
 
 
 def _get_manage_dot_py(host):
-    return f'~/sites/{host}/.venv/bin/python ~/sites/{host}/manage.py'
+    return f"~/sites/{host}/.venv/bin/python ~/sites/{host}/manage.py"
 
 
 def reset_database(host):
     manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f'elspeth@{host}'):  #<1>
-        run(f'{manage_dot_py} flush --noinput')  #<2>
-
-
+    with settings(host_string=f"elspeth@{host}"):  # <1>
+        run(f"{manage_dot_py} flush --noinput")  # <2>
 ----
 ====
 
@@ -832,7 +833,7 @@ Before we finish, let's update our deployment fabfile so that it can
 automatically add the `EMAIL_PASSWORD` to the _.env_ file on the server:
 
 
-[role="sourcecode"]
+[role="sourcecode dofirst-ch21l022"]
 .deploy_tools/fabfile.py (ch18l021)
 ====
 [source,python]

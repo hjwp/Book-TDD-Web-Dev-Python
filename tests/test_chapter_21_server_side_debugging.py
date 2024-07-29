@@ -1,6 +1,5 @@
 #!/usr/bin/env python3.7
 import os
-import subprocess
 import unittest
 
 from book_tester import DO_SERVER_COMMANDS, ChapterTest
