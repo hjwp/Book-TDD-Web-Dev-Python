@@ -736,6 +736,7 @@ Let's write a test for that:
 [source,python]
 ----
 from django.contrib.auth import get_user_model
+[...]
 
 User = get_user_model()
 [...]
@@ -757,7 +758,7 @@ And that gives us a new unit test failure:
 ----
     mylist = List.objects.create(owner=user)
     [...]
-TypeError: 'owner' is an invalid keyword argument for this function
+TypeError: List() got unexpected keyword arguments: 'owner'
 ----
 
 The naive implementation would be this:
@@ -790,7 +791,7 @@ that too:
 The correct implementation is this:
 
 [role="sourcecode"]
-.src/lists/models.py  (ch22l021)
+.src/lists/models.py (ch22l021)
 ====
 [source,python]
 ----
@@ -806,13 +807,13 @@ class List(models.Model):
         return reverse("view_list", args=[self.id])
 ----
 ====
-//21
 
 Now running the tests gives the usual database error:
 
 ----
-    return Database.Cursor.execute(self, query, params)
-django.db.utils.OperationalError: no such column: lists_list.owner_id
+    return super().execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.OperationalError: table lists_list has no column named owner_id
 ----
 
 
@@ -822,7 +823,7 @@ Because we need to make some migrations:
 ----
 $ pass:quotes[*python src/manage.py makemigrations*]
 Migrations for 'lists':
-  lists/migrations/0006_list_owner.py
+  src/lists/migrations/0006_list_owner.py
     - Add field owner to list
 ----
 //22
@@ -830,28 +831,31 @@ Migrations for 'lists':
 We're almost there; a couple more failures:
 
 ----
-ERROR: test_redirects_after_POST (lists.tests.test_views.NewListTest)
+ERROR: test_can_save_a_POST_request
 [...]
 ValueError: Cannot assign "<SimpleLazyObject:
-<django.contrib.auth.models.AnonymousUser object at 0x7f364795ef90>>":
-"List.owner" must be a "User" instance.
-ERROR: test_can_save_a_POST_request (lists.tests.test_views.NewListTest)
+<django.contrib.auth.models.AnonymousUser object at 0x1069852e>>": "List.owner" must
+be a "User" instance.
+[...]
 
+ERROR: test_redirects_after_POST
 [...]
 ValueError: Cannot assign "<SimpleLazyObject:
-<django.contrib.auth.models.AnonymousUser object at 0x7f364795ef90>>":
-"List.owner" must be a "User" instance.
+<django.contrib.auth.models.AnonymousUser object at 0x106a1b440>>": "List.owner" must
+be a "User" instance.
 ----
 
 
 
-We're moving back up to the views layer now, just doing a little
-tidying up. Notice that these are in the old test for the `new_list` view, when
-we haven't got a logged-in user.  We should only save the list owner when the
-user is actually logged in.  The `.is_authenticated` attribute we defined in
-<<chapter_18_spiking_custom_auth>> comes in useful now (when they're not logged in,
-Django represents users using a class called `AnonymousUser`, whose
-`.is_authenticated` is always `False`):
+We're moving back up to the views layer now, just doing a little tidying up.
+Notice that these are in the old test for the `new_list` view,
+when we haven't got a logged-in user.
+We should only save the list owner when the user is actually logged in.
+The `.is_authenticated` attribute we defined in <<chapter_18_spiking_custom_auth>>
+comes in useful now
+(when they're not logged in,
+Django represents users using a class called `AnonymousUser`,
+whose `.is_authenticated` is always `False`):
 
 
 [role="sourcecode"]
@@ -876,9 +880,8 @@ And that gets us passing!
 ----
 $ pass:quotes[*python src/manage.py test lists*]
 [...]
-.......................................
- ---------------------------------------------------------------------
-Ran 39 tests in 0.237s
+
+Ran 37 tests in 0.237s
 
 OK
 ----
@@ -887,14 +890,13 @@ This is a good time for a commit:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add lists*
+$ *git add src/lists*
 $ *git commit -m "lists can have owners, which are saved on creation."*
 ----
 
 
 
-Final Step: Feeding Through the .name API from the Template
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+=== Final Step: Feeding Through the .name API from the Template
 
 The last thing our outside-in design wanted came from the templates,
 which wanted to be able to access a list "name" based on the text of
@@ -907,9 +909,9 @@ its first item:
 ----
     def test_list_name_is_first_item_text(self):
         list_ = List.objects.create()
-        Item.objects.create(list=list_, text='first item')
-        Item.objects.create(list=list_, text='second item')
-        self.assertEqual(list_.name, 'first item')
+        Item.objects.create(list=list_, text="first item")
+        Item.objects.create(list=list_, text="second item")
+        self.assertEqual(list_.name, "first item")
 ----
 ====
 
