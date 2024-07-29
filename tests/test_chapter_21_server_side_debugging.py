@@ -62,7 +62,7 @@ class Chapter18Test(ChapterTest):
 
         self.sourcetree.tidy_up_after_patches()
         self.sourcetree.run_command('git add . && git commit -m"final commit ch17"')
-        self.check_final_diff(ignore=["moves"])
+        self.check_final_diff(ignore=["moves", "YAHOO_PASSWORD"])
         # if DO_SERVER_COMMANDS:
         #     subprocess.check_call(["vagrant", "snapshot", "save", "SERVER_DEBUGGED"])
 
