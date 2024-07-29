@@ -18,8 +18,7 @@ class Chapter18Test(ChapterTest):
         self.assertEqual(self.listings[1].type, "output")
 
         # skips
-        self.skip_with_check(1, "if you haven't already")
-        self.skip_with_check(45, "commit changes first")
+        # self.skip_with_check(45, "commit changes first")
         if DO_SERVER_COMMANDS:
             self.replace_command_with_check(
                 13,
@@ -27,14 +26,14 @@ class Chapter18Test(ChapterTest):
                 "EMAIL_PASSWORD=" + os.environ["EMAIL_PASSWORD"],
             )
 
-        fab_deploy_pos = 49
-        assert "fab deploy" in self.listings[fab_deploy_pos]
+        # deploy_pos = 49
+        # assert "ansible-playbook" in self.listings[deploy_pos]
 
         # prep
         self.start_with_checkout()
         self.prep_database()
 
-        vm_restore = "FABRIC_END"
+        # vm_restore = "FABRIC_END"
 
         # hack fast-forward
         if os.environ.get("SKIP"):
@@ -43,21 +42,21 @@ class Chapter18Test(ChapterTest):
                 "git checkout {}".format(self.sourcetree.get_commit_spec("ch17l004"))
             )
 
-        if DO_SERVER_COMMANDS:
-            subprocess.check_call(["vagrant", "snapshot", "restore", vm_restore])
+        # if DO_SERVER_COMMANDS:
+        #     subprocess.check_call(["vagrant", "snapshot", "restore", vm_restore])
 
         while self.pos < len(self.listings):
             print(self.pos)
-            if self.pos == fab_deploy_pos + 1 and DO_SERVER_COMMANDS:
-                print("hacking in code update on server")
-                self.run_server_command(
-                    "cd /home/elspeth/sites/staging.ottg.co.uk"
-                    " && git checkout chapter_21_server_side_debugging"
-                    " && git reset --hard origin/chapter_21_server_side_debugging",
-                )
-                self.run_server_command(
-                    "sudo systemctl restart gunicorn-staging.ottg.co.uk"
-                )
+            # if self.pos == deploy_pos + 1 and DO_SERVER_COMMANDS:
+            #     print("hacking in code update on server")
+            #     self.run_server_command(
+            #         "cd /home/elspeth/sites/staging.ottg.co.uk"
+            #         " && git checkout chapter_21_server_side_debugging"
+            #         " && git reset --hard origin/chapter_21_server_side_debugging",
+            #     )
+            #     self.run_server_command(
+            #         "sudo systemctl restart gunicorn-staging.ottg.co.uk"
+            #     )
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
@@ -65,8 +64,8 @@ class Chapter18Test(ChapterTest):
         self.sourcetree.tidy_up_after_patches()
         self.sourcetree.run_command('git add . && git commit -m"final commit ch17"')
         self.check_final_diff(ignore=["moves"])
-        if DO_SERVER_COMMANDS:
-            subprocess.check_call(["vagrant", "snapshot", "save", "SERVER_DEBUGGED"])
+        # if DO_SERVER_COMMANDS:
+        #     subprocess.check_call(["vagrant", "snapshot", "save", "SERVER_DEBUGGED"])
 
 
 if __name__ == "__main__":
