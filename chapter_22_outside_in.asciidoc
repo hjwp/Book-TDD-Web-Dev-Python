@@ -1,55 +1,41 @@
-[[chapter_outside_in]]
-Finishing "My Lists": Outside-In TDD
-------------------------------------
+[[chapter_22_outside_in]]
+== Finishing "My Lists": Outside-In TDD
 
-.Warning, Chapter Not Updated
+.Warning, Chapter Update In Progress
 *******************************************************************************
-🚧 Warning, this Chapter is the 2e version, and uses Django 1.11
+🚧 Warning, this Chapter half updated for the 3e.
 
-This chapter and all the following ones are the second edition versions, so they still use Django 1.11, Python 3.8, and so on.
+I'm currently updating the listings for the latest Django + Python,
+some things may not be quite right yet.
 
-To follow along with this chapter, it’s probably easiest to reset your code to match my example code as it was in the 2e, by resetting to: https://github.com/hjwp/book-example/tree/chapter_20_fixtures_and_wait_decorator
-
-And you should also probably delete and re-create your virtualenv with
-* Python 3.8 or 3.9
-* and Django 1.11 (pip install "django <2")
-
-Alternatively, you can muddle through
-and try and figure out how to make things work with Django 4 etc,
-but be aware that the listings below won’t be quite right.
-All the fabric stuff needs to be migrated to ansible, for a start.
 *******************************************************************************
 
 
+((("Test-Driven Development (TDD)", "outside-in technique", id="TTDoutside22")))
+In this chapter I'd like to talk about a technique called Outside-In TDD.
+It's pretty much what we've been doing all along.
+Our "double-loop" TDD process,
+in which we write the functional test first and then the unit tests,
+is already a manifestation of outside-in--we
+design the system from the outside, and build up our code in layers.
+Now I'll make it explicit, and talk about some of the common issues involved.
 
 
+=== The Alternative: "Inside-Out"
 
-((("Test-Driven Development (TDD)", "outside-in technique", id="TTDoutside22")))In
-this chapter I'd like to talk about a technique called Outside-In TDD.
-It's pretty much what we've been doing all along. Our "double-loop" TDD
-process, in which we write the functional test first and then the unit tests,
-is already a manifestation of outside-in--we design the system from the
-outside, and build up our code in layers. Now I'll make it explicit, and talk
-about some of the common issues involved. 
+The alternative to "outside-in" is to work "inside-out",
+which is the way most people intuitively work before they encounter TDD.
+After coming up with a design, the natural inclination is sometimes
+to implement it starting with the innermost, lowest-level components first.
 
-
-The Alternative: "Inside-Out"
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-
-The alternative to "outside-in" is to work "inside-out", which is the way most
-people intuitively work before they encounter TDD. After
-coming up with a design, the natural inclination is sometimes to implement it
-starting with the innermost, lowest-level components first.
-
-For example, when faced with our current problem, providing users with a
-"My Lists" page of saved lists, the temptation is to start by adding an "owner"
-attribute to the `List` model object, reasoning that an attribute like this is
-"obviously" going to be required. Once that's in place, we would modify the
-more peripheral layers of code, such as views and templates, taking advantage
-of the new attribute, and then finally add URL routing to point to the new
-view.
+For example, when faced with our current problem,
+providing users with a "My Lists" page of saved lists,
+the temptation is to start at the models layer:
+we probably want to add an "owner" attribute to the `List` model object,
+reasoning that an attribute like this is "obviously" going to be required.
+Once that's in place, we would modify the more peripheral layers of code,
+such as views and templates, taking advantage of the new attribute,
+and then finally add URL routing to point to the new view.
 
 It feels comfortable because it means you're never working on a bit of code
 that is dependent on something that hasn't yet been implemented. Each bit of
@@ -57,12 +43,12 @@ work on the inside is a solid foundation on which to build the next layer out.
 
 But working inside-out like this also has some weaknesses.
 
-Why Prefer "Outside-In"?
-~~~~~~~~~~~~~~~~~~~~~~~~
+=== Why Prefer "Outside-In"?
 
 
-((("Outside-In TDD", "vs. inside-out", secondary-sortas="inside-out")))((("inside-out TDD")))The
-most obvious problem with inside-out is that it requires us to stray from a
+((("Outside-In TDD", "vs. inside-out", secondary-sortas="inside-out")))
+((("inside-out TDD")))
+The most obvious problem with inside-out is that it requires us to stray from a
 TDD workflow. Our functional test's first failure might be due to missing URL
 routing, but we decide to ignore that and go off adding attributes to our
 database model objects instead.
@@ -82,15 +68,14 @@ with inner components which, you later realise, don't actually solve the
 problem that your outer layers need solved.
 
 In contrast, working outside-in allows you to use each layer to imagine the
-most convenient API you could want from the layer beneath it. Let's see it in 
+most convenient API you could want from the layer beneath it. Let's see it in
 action.
 
 
-The FT for "My Lists"
-~~~~~~~~~~~~~~~~~~~~~
+=== The FT for "My Lists"
 
-((("functional tests (FTs)", "outside-in technique")))As
-we work through the following functional test, we start with the most
+((("functional tests (FTs)", "outside-in technique")))
+As we work through the following functional test, we start with the most
 outward-facing (presentation layer), through to the view functions (or
 "controllers"), and lastly the innermost layers, which in this case will be
 model code.
@@ -100,29 +85,32 @@ write our FT to look for a "My Lists" page:
 
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py (ch19l001-1)
+.src/functional_tests/test_my_lists.py (ch22l001)
 ====
 [source,python]
 ----
+from selenium.webdriver.common.by import By
+[...]
+
     def test_logged_in_users_lists_are_saved_as_my_lists(self):
         # Edith is a logged-in user
-        self.create_pre_authenticated_session('edith@example.com')
+        self.create_pre_authenticated_session("edith@example.com")
 
         # She goes to the home page and starts a list
         self.browser.get(self.live_server_url)
-        self.add_list_item('Reticulate splines')
-        self.add_list_item('Immanentize eschaton')
+        self.add_list_item("Reticulate splines")
+        self.add_list_item("Immanentize eschaton")
         first_list_url = self.browser.current_url
 
         # She notices a "My lists" link, for the first time.
-        self.browser.find_element_by_link_text('My lists').click()
+        self.browser.find_element(By.LINK_TEXT, "My lists").click()
 
         # She sees that her list is in there, named according to its
         # first list item
         self.wait_for(
-            lambda: self.browser.find_element_by_link_text('Reticulate splines')
+            lambda: self.browser.find_element(By.LINK_TEXT, "Reticulate splines")
         )
-        self.browser.find_element_by_link_text('Reticulate splines').click()
+        self.browser.find_element(By.LINK_TEXT, "Reticulate splines").click()
         self.wait_for(
             lambda: self.assertEqual(self.browser.current_url, first_list_url)
         )
@@ -140,9 +128,9 @@ in the list.
 Let's validate that it really works by creating a second list, and seeing that
 appear on the My Lists page as well.  The FT continues, and while we're at it,
 we check that only logged-in users can see the "My Lists" page:
-        
+
 [role="sourcecode"]
-.functional_tests/test_my_lists.py (ch19l001-2)
+.src/functional_tests/test_my_lists.py (ch22l002)
 ====
 [source,python]
 ----
@@ -150,28 +138,28 @@ we check that only logged-in users can see the "My Lists" page:
         self.wait_for(
             lambda: self.assertEqual(self.browser.current_url, first_list_url)
         )
-        
+
         # She decides to start another list, just to see
         self.browser.get(self.live_server_url)
-        self.add_list_item('Click cows')
+        self.add_list_item("Click cows")
         second_list_url = self.browser.current_url
 
         # Under "my lists", her new list appears
-        self.browser.find_element_by_link_text('My lists').click()
-        self.wait_for(
-            lambda: self.browser.find_element_by_link_text('Click cows')
-        )
-        self.browser.find_element_by_link_text('Click cows').click()
+        self.browser.find_element(By.LINK_TEXT, "My lists").click()
+        self.wait_for(lambda: self.browser.find_element(By.LINK_TEXT, "Click cows"))
+        self.browser.find_element(By.LINK_TEXT, "Click cows").click()
         self.wait_for(
             lambda: self.assertEqual(self.browser.current_url, second_list_url)
         )
 
         # She logs out.  The "My lists" option disappears
-        self.browser.find_element_by_link_text('Log out').click()
-        self.wait_for(lambda: self.assertEqual(
-            self.browser.find_elements_by_link_text('My lists'),
-            []
-        ))
+        self.browser.find_element(By.LINK_TEXT, "Log out").click()
+        self.wait_for(
+            lambda: self.assertEqual(
+                self.browser.find_elements(By.LINK_TEXT, "My lists"),
+                [],
+            )
+        )
 ----
 ====
 
@@ -180,7 +168,7 @@ text into the right input box.  We define it in 'base.py':
 
 
 [role="sourcecode small-code"]
-.functional_tests/base.py (ch19l001-3)
+.src/functional_tests/base.py (ch22l003)
 ====
 [source,python]
 ----
@@ -188,11 +176,11 @@ from selenium.webdriver.common.keys import Keys
 [...]
 
     def add_list_item(self, item_text):
-        num_rows = len(self.browser.find_elements_by_css_selector('#id_list_table tr'))
+        num_rows = len(self.browser.find_elements(By.CSS_SELECTOR, "#id_list_table tr"))
         self.get_item_input_box().send_keys(item_text)
         self.get_item_input_box().send_keys(Keys.ENTER)
         item_number = num_rows + 1
-        self.wait_for_row_in_list_table(f'{item_number}: {item_text}')
+        self.wait_for_row_in_list_table(f"{item_number}: {item_text}")
 ----
 ====
 
@@ -200,12 +188,12 @@ from selenium.webdriver.common.keys import Keys
 And while we're at it we can use it in a few of the other FTs, like this:
 
 
-[role="sourcecode currentcontents dofirst-ch19l001-4"]
-.functional_tests/test_list_item_validation.py
+[role="sourcecode currentcontents dofirst-ch22l004"]
+.src/functional_tests/test_list_item_validation.py
 ====
 [source,python]
 ----
-    self.add_list_item('Buy wellies')
+    self.add_list_item("Buy wellies")
 ----
 ====
 
@@ -219,36 +207,37 @@ The first error should look like this:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+$ pass:quotes[*python src/manage.py test functional_tests.test_my_lists*]
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: My lists
+element: My lists; [...]
 ----
 
 
-The Outside Layer: Presentation and Templates
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== The Outside Layer: Presentation and Templates
 
 
-((("Outside-In TDD", "outside layer")))The
-test is currently failing saying that it can't find a link saying "My
-Lists". We can address that at the presentation layer, in 'base.html', in
-our navigation bar. Here's the minimal code change:
+((("Outside-In TDD", "outside layer")))
+The test is currently failing saying that it can't find a link saying "My Lists".
+We can address that at the presentation layer, in _base.html_, in our navigation bar.
+Here's the minimal code change:
 
+
+* TODO: update this link for latest bootstrap / style nicely
 
 [role="sourcecode small-code"]
-.lists/templates/base.html (ch19l002-1)
+.src/lists/templates/base.html (ch22l005)
 ====
 [source,html]
 ----
-  {% if user.email %}
-    <ul class="nav navbar-nav navbar-left">
-      <li><a href="#">My lists</a></li>
-    </ul>
-    <ul class="nav navbar-nav navbar-right">
-      <li class="navbar-text">Logged in as {{ user.email }}</li>
-      <li><a href="{% url 'logout' %}">Log out</a></li>
-    </ul>
+      <nav class="navbar">
+        <div class="container-fluid">
+          <a class="navbar-brand" href="/">Superlists</a>
+          {% if user.email %}
+            <a href="#">My lists</a>
+            <ul>
+              <span class="navbar-text">Logged in as {{ user.email }}</span>
+              [...]
 ----
 ====
 
@@ -257,53 +246,51 @@ the next failure:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+$ pass:quotes[*python src/manage.py test functional_tests.test_my_lists*]
 [...]
-    lambda: self.browser.find_element_by_link_text('Reticulate splines')
+    lambda: self.browser.find_element(By.LINK_TEXT, "Reticulate splines")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Reticulate splines
+element: Reticulate splines; [...]
 ----
 
 Which is telling us we're going to have to build a page that lists all of a
 user's lists by title.  Let's start with the basics--a URL and a placeholder
 template for it.
 
-Again, we can go outside-in, starting at the presentation layer with just the 
+Again, we can go outside-in, starting at the presentation layer with just the
 URL and nothing else:
 
 [role="sourcecode"]
-.lists/templates/base.html (ch19l002-2)
+.src/lists/templates/base.html (ch22l006)
 ====
 [source,html]
 ----
-    <ul class="nav navbar-nav navbar-left">
-      <li><a href="{% url 'my_lists' user.email %}">My lists</a></li>
-    </ul>
+  {% if user.email %}
+    <a href="{% url 'my_lists' user.email %}">My lists</a>
 ----
 ====
 
 
-Moving Down One Layer to View Functions (the Controller)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Moving Down One Layer to View Functions (the Controller)
 
-((("Outside-In TDD", "controller layer")))That
-will cause a template error, so we'll start to move down from the
+((("Outside-In TDD", "controller layer")))
+That will cause a template error, so we'll start to move down from the
 presentation layer and URLs down to the controller layer, Django's view
 functions.
 
 As always, we start with a test:
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch19l003)
+.src/lists/tests/test_views.py (ch19l003)
 ====
 [source,python]
 ----
 class MyListsTest(TestCase):
-
     def test_my_lists_url_renders_my_lists_template(self):
-        response = self.client.get('/lists/users/a@b.com/')
-        self.assertTemplateUsed(response, 'my_lists.html')
+        response = self.client.get("/lists/users/a@b.com/")
+        self.assertTemplateUsed(response, "my_lists.html")
 ----
 ====
 
@@ -317,45 +304,46 @@ And we fix it, still at the presentation level, in 'urls.py':
 
 
 [role="sourcecode"]
-.lists/urls.py
+.src/lists/urls.py (ch22l008)
 ====
 [source,python]
 ----
 urlpatterns = [
-    url(r'^new$', views.new_list, name='new_list'),
-    url(r'^(\d+)/$', views.view_list, name='view_list'),
-    url(r'^users/(.+)/$', views.my_lists, name='my_lists'),
+    path("new", views.new_list, name="new_list"),
+    path("<int:list_id>/", views.view_list, name="view_list"),
+    path("users/<str:email>/", views.my_lists, name="my_lists"),
 ]
 ----
 ====
-//004
+
 
 That gives us a test failure, which informs us of what we should do as we
 move down to the next level:
 
 ----
+    path("users/<str:email>/", views.my_lists, name="my_lists"),
+                               ^^^^^^^^^^^^^^
 AttributeError: module 'lists.views' has no attribute 'my_lists'
 ----
-
 
 
 We move in from the presentation layer to the views layer, and create a
 minimal placeholder:
 
 [role="sourcecode"]
-.lists/views.py (ch19l005)
+.src/lists/views.py (ch22l009)
 ====
 [source,python]
 ----
 def my_lists(request, email):
-    return render(request, 'my_lists.html')
+    return render(request, "my_lists.html")
 ----
 ====
 
 And a minimal template:
 
 [role="sourcecode"]
-.lists/templates/my_lists.html
+.src/lists/templates/my_lists.html (ch22l010)
 ====
 [source,html]
 ----
@@ -371,68 +359,66 @@ them to be clickable links named after the first item:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests.test_my_lists*]
+$ pass:quotes[*python src/manage.py test functional_tests.test_my_lists*]
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Reticulate splines
+element: Reticulate splines; [...]
 ----
 
 
-Another Pass, Outside-In
-~~~~~~~~~~~~~~~~~~~~~~~~
+=== Another Pass, Outside-In
 
-((("Outside-In TDD", "FT-driven development", id="OITDDft22")))At
-each stage, we still let the FT drive what development we do.
+((("Outside-In TDD", "FT-driven development", id="OITDDft22")))
+At each stage, we still let the FT drive what development we do.
 
-Starting again at the outside layer, in the template, we begin to
-write the template code we'd like to use to get the "My Lists" page to
-work the  way we want it to. As we do so, we start to specify the API
-we want from the code at the layers below.
-
-
-A Quick Restructure of the Template Inheritance Hierarchy
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Starting again at the outside layer, in the template,
+we begin to write the template code we'd like to use
+to get the "My Lists" page to work the  way we want it to.
+As we do so, we start to specify the API we want
+from the code at the layers below.
 
 
+==== A Quick Restructure of the Template Inheritance Hierarchy
 
-((("templates", "inheritance hierarchy")))Currently
-there's no place in our base template for us to put any new
-content.  Also, the "My Lists" page doesn't need the new item form, so
-we'll put that into a block too, making it optional:
+
+((("templates", "inheritance hierarchy")))
+Currently there's no place in our base template for us to put any new content.
+Also, the "My Lists" page doesn't need the new item form,
+so we'll put that into a block too, making it optional:
+
+
 
 [role="sourcecode"]
-.lists/templates/base.html (ch19l007-1)
+.src/lists/templates/base.html (ch22l011-1)
 ====
-[source,html]
+[source,diff]
 ----
-      <div class="row">
-        <div class="col-md-6 col-md-offset-3 jumbotron">
-          <div class="text-center">
-            <h1>{% block header_text %}{% endblock %}</h1>
-            {% block list_form %}
-              <form method="POST" action="{% block form_action %}{% endblock %}">
-                {{ form.text }}
-                {% csrf_token %}
-                {% if form.errors %}
-                  <div class="form-group has-error">
-                    <div class="help-block">{{ form.text.errors }}</div>
-                  </div>
-                {% endif %}
-              </form>
-            {% endblock %}
-          </div>
-        </div>
-      </div>
+@@ -57,6 +57,7 @@
+         <div class="col-lg-6 text-center">
+           <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
+
++          {% block list_form %}
+             <form
+               method="POST"
+               action="{% block form_action %}{% endblock %}"
+@@ -75,6 +76,8 @@
+                 {% endif %}
+                 {% csrf_token %}
+             </form>
++          {% endblock %}
++
+         </div>
+       </div>
 ----
 ====
 
 [role="sourcecode"]
-.lists/templates/base.html (ch19l007-2)
+.src/lists/templates/base.html (ch22l011-2)
 ====
 [source,html]
 ----
-      <div class="row">
-        <div class="col-md-6 col-md-offset-3">
+      <div class="row justify-content-center">
+        <div class="col-lg-6">
           {% block table %}
           {% endblock %}
         </div>
@@ -444,22 +430,24 @@ we'll put that into a block too, making it optional:
           {% endblock %}
         </div>
       </div>
-
     </div>
-    <script src="/static/jquery-3.1.1.min.js"></script>
+
+    <script src="/static/lists.js"></script>
     [...]
 ----
 ====
 
 
-Designing Our API Using the Template
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Designing Our API Using the Template
 
-((("templates", "designing APIs using")))Meanwhile, in 'my_lists.html' we override the `list_form` and say it should
-be empty...
+((("templates", "designing APIs using")))
+Meanwhile, in _my_lists.html_ we override the `list_form`
+and say it should be empty...
+
+// TODO: proper commits for these
 
 [role="sourcecode"]
-.lists/templates/my_lists.html
+.src/lists/templates/my_lists.html
 ====
 [source,html]
 ----
@@ -474,7 +462,7 @@ be empty...
 And then we can just work inside the `extra_content` block:
 
 [role="sourcecode"]
-.lists/templates/my_lists.html
+.src/lists/templates/my_lists.html
 ====
 [source,html]
 ----
@@ -493,33 +481,39 @@ And then we can just work inside the `extra_content` block:
 ----
 ====
 
-We've made several design decisions in this template which are going
-to filter their way down through the code:
+We've made several design decisions in this template
+which are going to filter their way down through the code:
 
 <1> We want a variable called `owner` to represent the user in our template.
 
-<2> We want to be able to iterate through the lists created by the user using
-    `owner.list_set.all` (I happen to know we get this for free from the Django
-    ORM).
+<2> We want to be able to iterate through the lists created by the user
+    using `owner.list_set.all`
+    (I happen to know we get this for free from the Django ORM).
 
-<3> We want to use `list.name` to print out the "name" of the list, which is
-    currently specified as the text of its first element.
+<3> We want to use `list.name` to print out the "name" of the list,
+    which is currently specified as the text of its first element.
 
-NOTE: Outside-In TDD is sometimes called "programming by wishful thinking",
-    and you can see why.  We start writing code at the higher levels based on
-    what we wish we had at the lower levels, even though it doesn't exist yet!
-    
+NOTE: Outside-In TDD is sometimes called "programming by wishful thinking",footnote:[
+    This phrase "programming by wishful thinking" was perhaps first used in
+    the amazing, mind-expanding textbook
+    https://en.wikipedia.org/wiki/Structure_and_Interpretation_of_Computer_Programs[SICP],
+    which I _cannot_ recommend highly enough.]
+    and you can see why.
+    We start writing code at the higher levels
+    based on what we wish we had at the lower levels,
+    even though it doesn't exist yet!
 
-We can rerun our FTs, to check that we didn't break anything, and to see whether
-we've got any further:
+
+We can rerun our FTs, to check that we didn't break anything,
+and to see whether we've got any further:
 
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests*]
+$ pass:quotes[*python src/manage.py test functional_tests*]
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Reticulate splines
+element: Reticulate splines; [...]
 
  ---------------------------------------------------------------------
 Ran 8 tests in 77.613s
@@ -531,36 +525,39 @@ Well, no further, but at least we didn't break anything. Time for a commit:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add lists*
+$ *git add src/lists*
 $ *git diff --staged*
 $ *git commit -m "url, placeholder view, and first-cut templates for my_lists"*
 ----
 
 
-Moving Down to the Next Layer: What the View Passes to the Template
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Moving Down to the Next Layer: What the View Passes to the Template
 
-((("templates", "views layer and")))Now
-our views layer needs to respond to the requirements we've laid out in the template layer, by giving it the objects it needs.  In this case, the list owner:
+((("templates", "views layer and")))
+Now our views layer needs to respond to the requirements we've laid out in the template layer,
+by giving it the objects it needs.
+In this case, the list owner:
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch19l011)
+.src/lists/tests/test_views.py (ch19l011)
 ====
 [source,python]
 ----
 from django.contrib.auth import get_user_model
+
 User = get_user_model()
 [...]
-class MyListsTest(TestCase):
 
+
+class MyListsTest(TestCase):
     def test_my_lists_url_renders_my_lists_template(self):
         [...]
 
     def test_passes_correct_owner_to_template(self):
-        User.objects.create(email='wrong@owner.com')
-        correct_user = User.objects.create(email='a@b.com')
-        response = self.client.get('/lists/users/a@b.com/')
-        self.assertEqual(response.context['owner'], correct_user)
+        User.objects.create(email="wrong@owner.com")
+        correct_user = User.objects.create(email="a@b.com")
+        response = self.client.get("/lists/users/a@b.com/")
+        self.assertEqual(response.context["owner"], correct_user)
 ----
 ====
 
@@ -573,17 +570,19 @@ KeyError: 'owner'
 So:
 
 [role="sourcecode"]
-.lists/views.py (ch19l012)
+.src/lists/views.py (ch19l012)
 ====
 [source,python]
 ----
 from django.contrib.auth import get_user_model
+
 User = get_user_model()
 [...]
 
+
 def my_lists(request, email):
     owner = User.objects.get(email=email)
-    return render(request, 'my_lists.html', {'owner': owner})
+    return render(request, "my_lists.html", {"owner": owner})
 ----
 ====
 
@@ -592,12 +591,12 @@ the previous test. We just need to add a user for it as well:
 
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch19l013)
+.src/lists/tests/test_views.py (ch19l013)
 ====
 [source,python]
 ----
     def test_my_lists_url_renders_my_lists_template(self):
-        User.objects.create(email='a@b.com')
+        User.objects.create(email="a@b.com")
         [...]
 ----
 ====
@@ -611,20 +610,19 @@ OK
 ----
 
 
-The Next "Requirement" from the Views Layer: New Lists Should Record Owner
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== The Next "Requirement" from the Views Layer: New Lists Should Record Owner
 
-((("Outside-In TDD", "views layer")))Before
-we move down to the model layer, there's another part of the code
-at the views layer that will need to use our model:  we need some way for
-newly created lists to be assigned to an owner, if the current user is 
-logged in to the site.
+((("Outside-In TDD", "views layer")))
+Before we move down to the model layer,
+there's another part of the code at the views layer that will need to use our model:
+we need some way for newly created lists to be assigned to an owner,
+if the current user is logged in to the site.
 
 Here's a first crack at writing the test:
 
 
 [role="sourcecode"]
-.lists/tests/test_views.py (ch19l014)
+.src/lists/tests/test_views.py (ch22l014)
 ====
 [source,python]
 ----
@@ -632,11 +630,11 @@ class NewListTest(TestCase):
     [...]
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
-        user = User.objects.create(email='a@b.com')
+        user = User.objects.create(email="a@b.com")
         self.client.force_login(user)  #<1>
-        self.client.post('/lists/new', data={'text': 'new item'})
-        list_ = List.objects.first()
-        self.assertEqual(list_.owner, user)
+        self.client.post("/lists/new", data={"text": "new item"})
+        new_list = List.objects.get()
+        self.assertEqual(new_list.owner, user)
 ----
 ====
 
@@ -652,20 +650,20 @@ AttributeError: 'List' object has no attribute 'owner'
 To fix this, we can try writing code like this:
 
 [role="sourcecode"]
-.lists/views.py (ch19l015)
+.src/lists/views.py (ch22l015)
 ====
 [source,python]
 ----
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
-        list_ = List()
-        list_.owner = request.user
-        list_.save()
-        form.save(for_list=list_)
-        return redirect(list_)
+        nulist = List.objects.create()
+        nulist.owner = request.user
+        nulist.save()
+        form.save(for_list=nulist)
+        return redirect(nulist)
     else:
-        return render(request, 'home.html', {"form": form})
+        return render(request, "home.html", {"form": form})
 ----
 ====
 //015
@@ -676,38 +674,42 @@ But it won't actually work, because we don't know how to save a list owner yet:
 
 
 ----
-    self.assertEqual(list_.owner, user)
+    self.assertEqual(new_list.owner, user)
+                     ^^^^^^^^^^^^^^
 AttributeError: 'List' object has no attribute 'owner'
 ----
 
 
-A Decision Point: Whether to Proceed to the Next Layer with a Failing Test
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== A Decision Point: Whether to Proceed to the Next Layer with a Failing Test
+
+* TODO: rewrite this section if we do decide to drop the next chapter.
 
 
-((("Outside-In TDD", "model layer", id="OITDDmodel21")))In
-order to get this test passing, as it's written now, we have to move
-down to the model layer.  However, it means doing more work with a failing
-test, which is not ideal.
+((("Outside-In TDD", "model layer", id="OITDDmodel21")))
+In order to get this test passing, as it's written now,
+we have to move down to the model layer.
+However, it means doing more work with a failing test, which is not ideal.
 
-((("mocks", "isolating tests using")))The
-alternative is to rewrite the test to make it more 'isolated' from the
-level below, using mocks.
+((("mocks", "isolating tests using")))
+The alternative is to rewrite the test
+to make it more _isolated_ from the level below, using mocks.
 
-On the one hand, it's a lot more effort to use mocks, and it can lead to
-tests that are harder to read.  On the other hand, imagine if our app was more
-complex, and there were several more layers between the outside and the inside.
-Imagine leaving three or four or five layers of tests, all failing while we
-wait to get to the bottom layer to implement our critical feature.  While tests
-are failing, we're not sure that layer really works, on its own terms, or not.
+On the one hand, it's a lot more effort to use mocks,
+and it can lead to tests that are harder to read.
+On the other hand, imagine if our app was more complex,
+and there were several more layers between the outside and the inside.
+Imagine leaving three or four or five layers of tests, all failing
+while we wait to get to the bottom layer to implement our critical feature.
+While tests are failing, we're not sure that layer really works, on its own terms, or not.
 We have to wait until we get to the bottom layer.
 
-This is a decision point you're likely to run into in your own projects. Let's
-investigate both approaches.  We'll start by taking the shortcut, and leaving
-the test failing.  In the next chapter, we'll come back to this exact point,
+This is a decision point you're likely to run into in your own projects.
+Let's investigate both approaches.
+We'll start by taking the shortcut, and leaving the test failing.
+In the next chapter, we'll come back to this exact point,
 and investigate how things would have gone if we'd used more isolation.
 
-Let's do a commit, and then 'tag' the commit as a way of remembering our 
+Let's do a commit, and then 'tag' the commit as a way of remembering our
 position for the next chapter:
 
 [subs="specialcharacters,quotes"]
@@ -717,44 +719,46 @@ $ *git tag revisit_this_point_with_isolated_tests*
 ----
 
 
-Moving Down to the Model Layer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Moving Down to the Model Layer
 
 Our outside-in design has driven out two requirements for the model layer:
-we want to be able to assign an owner to a list using the attribute
-`.owner`, and we want to be able to access the list's owner with 
-the API `owner.list_set.all`.
+we want to be able to assign an owner to a list using the attribute `.owner`,
+and we want to be able to access the list's owner with the API `owner.list_set.all()`.
+
+// TODO: let's make this owner.lists.all() ?
 
 Let's write a test for that:
- 
+
 
 [role="sourcecode"]
-.lists/tests/test_models.py (ch19l018)
+.src/lists/tests/test_models.py (ch22l018)
 ====
 [source,python]
 ----
 from django.contrib.auth import get_user_model
+[...]
+
 User = get_user_model()
 [...]
 
-class ListModelTest(TestCase):
 
+class ListModelTest(TestCase):
     def test_get_absolute_url(self):
         [...]
 
     def test_lists_can_have_owners(self):
-        user = User.objects.create(email='a@b.com')
-        list_ = List.objects.create(owner=user)
-        self.assertIn(list_, user.list_set.all())
+        user = User.objects.create(email="a@b.com")
+        mylist = List.objects.create(owner=user)
+        self.assertIn(mylist, user.list_set.all())
 ----
 ====
 
 And that gives us a new unit test failure:
 
 ----
-    list_ = List.objects.create(owner=user)
+    mylist = List.objects.create(owner=user)
     [...]
-TypeError: 'owner' is an invalid keyword argument for this function
+TypeError: List() got unexpected keyword arguments: 'owner'
 ----
 
 The naive implementation would be this:
@@ -775,7 +779,7 @@ that too:
 
 
 [role="sourcecode"]
-.lists/tests/test_models.py (ch19l020)
+.src/lists/tests/test_models.py (ch22l020)
 ====
 [source,python]
 ----
@@ -787,7 +791,7 @@ that too:
 The correct implementation is this:
 
 [role="sourcecode"]
-.lists/models.py
+.src/lists/models.py (ch22l021)
 ====
 [source,python]
 ----
@@ -795,19 +799,21 @@ from django.conf import settings
 [...]
 
 class List(models.Model):
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, blank=True, null=True, on_delete=models.CASCADE
+    )
 
     def get_absolute_url(self):
-        return reverse('view_list', args=[self.id])
+        return reverse("view_list", args=[self.id])
 ----
 ====
-//21
 
 Now running the tests gives the usual database error:
 
 ----
-    return Database.Cursor.execute(self, query, params)
-django.db.utils.OperationalError: no such column: lists_list.owner_id
+    return super().execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+django.db.utils.OperationalError: table lists_list has no column named owner_id
 ----
 
 
@@ -815,9 +821,9 @@ Because we need to make some migrations:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py makemigrations*]
+$ pass:quotes[*python src/manage.py makemigrations*]
 Migrations for 'lists':
-  lists/migrations/0006_list_owner.py
+  src/lists/migrations/0006_list_owner.py
     - Add field owner to list
 ----
 //22
@@ -825,41 +831,45 @@ Migrations for 'lists':
 We're almost there; a couple more failures:
 
 ----
-ERROR: test_redirects_after_POST (lists.tests.test_views.NewListTest)
+ERROR: test_can_save_a_POST_request
 [...]
 ValueError: Cannot assign "<SimpleLazyObject:
-<django.contrib.auth.models.AnonymousUser object at 0x7f364795ef90>>":
-"List.owner" must be a "User" instance.
-ERROR: test_can_save_a_POST_request (lists.tests.test_views.NewListTest)
+<django.contrib.auth.models.AnonymousUser object at 0x1069852e>>": "List.owner" must
+be a "User" instance.
+[...]
 
+ERROR: test_redirects_after_POST
 [...]
 ValueError: Cannot assign "<SimpleLazyObject:
-<django.contrib.auth.models.AnonymousUser object at 0x7f364795ef90>>":
-"List.owner" must be a "User" instance.
+<django.contrib.auth.models.AnonymousUser object at 0x106a1b440>>": "List.owner" must
+be a "User" instance.
 ----
 
 
 
-We're moving back up to the views layer now, just doing a little 
-tidying up. Notice that these are in the old test for the `new_list` view, when
-we haven't got a logged-in user.  We should only save the list owner when the
-user is actually logged in.  The `.is_authenticated` attribute we defined in
-<<chapter_18_spiking_custom_auth>> comes in useful now (when they're not logged in,
-Django represents users using a class called `AnonymousUser`, whose 
-`.is_authenticated` is always `False`):
+We're moving back up to the views layer now, just doing a little tidying up.
+Notice that these are in the old test for the `new_list` view,
+when we haven't got a logged-in user.
+We should only save the list owner when the user is actually logged in.
+The `.is_authenticated` attribute we defined in <<chapter_18_spiking_custom_auth>>
+comes in useful now
+(when they're not logged in,
+Django represents users using a class called `AnonymousUser`,
+whose `.is_authenticated` is always `False`):
 
 
 [role="sourcecode"]
-.lists/views.py (ch19l023)
+.src/lists/views.py (ch22l023)
 ====
 [source,python]
 ----
     if form.is_valid():
-        list_ = List()
+        nulist = List.objects.create()
         if request.user.is_authenticated:
-            list_.owner = request.user
-        list_.save()
-        form.save(for_list=list_)
+            nulist.owner = request.user
+            nulist.save()
+        form.save(for_list=nulist)
+        return redirect(nulist)
         [...]
 ----
 ====
@@ -868,11 +878,10 @@ And that gets us passing!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test lists*]
+$ pass:quotes[*python src/manage.py test lists*]
 [...]
-.......................................
- ---------------------------------------------------------------------
-Ran 39 tests in 0.237s
+
+Ran 37 tests in 0.237s
 
 OK
 ----
@@ -881,35 +890,34 @@ This is a good time for a commit:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add lists*
+$ *git add src/lists*
 $ *git commit -m "lists can have owners, which are saved on creation."*
 ----
 
 
 
-Final Step: Feeding Through the .name API from the Template
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+=== Final Step: Feeding Through the .name API from the Template
 
 The last thing our outside-in design wanted came from the templates,
 which wanted to be able to access a list "name" based on the text of
 its first item:
 
 [role="sourcecode"]
-.lists/tests/test_models.py (ch19l024)
+.src/lists/tests/test_models.py (ch19l024)
 ====
 [source,python]
 ----
     def test_list_name_is_first_item_text(self):
         list_ = List.objects.create()
-        Item.objects.create(list=list_, text='first item')
-        Item.objects.create(list=list_, text='second item')
-        self.assertEqual(list_.name, 'first item')
+        Item.objects.create(list=list_, text="first item")
+        Item.objects.create(list=list_, text="second item")
+        self.assertEqual(list_.name, "first item")
 ----
 ====
 
 
 [role="sourcecode"]
-.lists/models.py (ch19l025)
+.src/lists/models.py (ch19l025)
 ====
 [source,python]
 ----
@@ -919,12 +927,12 @@ its first item:
 ----
 ====
 
-And that, believe it or not, actually gets us a passing test, 
+And that, believe it or not, actually gets us a passing test,
 and a working "My Lists" page (<<my-lists-page>>)!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests*]
+$ pass:quotes[*python src/manage.py test functional_tests*]
 [...]
 Ran 8 tests in 93.819s
 
@@ -941,7 +949,7 @@ on a class to make it appear to the outside world like an attribute.
 
 
 ((("duck typing")))This
-is a powerful feature of the language, because it makes it easy to 
+is a powerful feature of the language, because it makes it easy to
 implement "duck typing", to change the implementation of a property without
 changing the interface of the class.  In other words, if we decide to change
 `.name` into being a "real" attribute on the model, which is stored as text in
@@ -975,24 +983,24 @@ Outside-In TDD::
     ((("Outside-In TDD", "defined")))A
 methodology for building code, driven by tests, which proceeds by
     starting from the "outside" layers (presentation, GUI), and moving
-    "inwards" step by step, via view/controller layers, down towards 
+    "inwards" step by step, via view/controller layers, down towards
     the model layer.  The idea is to drive the design of your code from
     the use to which it is going to be put, rather than trying to anticipate
     requirements from the ground up.
-    
+
 
 Programming by wishful thinking::
     ((("programming by wishful thinking")))The
 outside-in process is sometimes called "programming by wishful
-    thinking".  Actually, any kind of TDD involves some wishful thinking. 
+    thinking".  Actually, any kind of TDD involves some wishful thinking.
     We're always writing tests for things that don't exist yet.
-    
+
 
 The pitfalls of outside-in::
     ((("Outside-In TDD", "drawbacks of")))Outside-in isn't a silver bullet.  It encourages us to focus on things
-    that are immediately visible to the user, but it won't automatically 
+    that are immediately visible to the user, but it won't automatically
     remind us to write other critical tests that are less user-visible--things like security, for example. You'll need to remember them yourself.((("", startref="TTDoutside22")))
-    
+
 
 *******************************************************************************
 
