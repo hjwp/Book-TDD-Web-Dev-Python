@@ -732,6 +732,9 @@ class ChapterTest(unittest.TestCase):
 
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
+        if listing.pause_first:
+            print('pausing first')
+            time.sleep(2)
         if listing.dofirst:
             print("DOFIRST", listing.dofirst)
             self.sourcetree.patch_from_commit(
@@ -805,7 +808,7 @@ class ChapterTest(unittest.TestCase):
 
         elif listing.type == "docker run tty":
             self.sourcetree.run_command(
-                "docker kill $(docker ps -q)", ignore_errors=True
+                "docker kill $(docker ps -q)", ignore_errors=True, silent=True
             )
             fixed = Command(listing.replace(" -it ", " -t "))
             next_listing = self.listings[self.pos + 1]
