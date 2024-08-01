@@ -89,7 +89,7 @@ class SourceTree:
                 os.killpg(process.pid, signal.SIGTERM)
             except OSError:
                 pass
-        if os.environ.get("TMPDIR_CLEANUP") not in  ("0", "false"):
+        if os.environ.get("TMPDIR_CLEANUP") not in ("0", "false"):
             shutil.rmtree(self.tempdir)
 
     def run_command(
@@ -127,10 +127,11 @@ class SourceTree:
         if "docker run" in command and "superlists" in command and not ignore_errors:
             output = ""
             while True:
-                output += process.stdout.readline()
+                line = process.stdout.readline()
+                print(f"\t{line}", end="")
+                output += line
                 if "Quit the server with CONTROL-C." in output:
                     # go any further and we hang.
-                    print("docker run out:\n", output)
                     return output
 
         if user_input and not user_input.endswith("\n"):

@@ -20,6 +20,8 @@ class Chapter9Test(ChapterTest):
         # skips
         self.skip_with_check(20, "naming to docker.io/library/superlists")
         self.skip_with_check(27, "naming to docker.io/library/superlists")
+        self.skip_with_check(27, "naming to docker.io/library/superlists")
+        self.skip_with_check(73, "add Dockerfile, .dockerignore, .gitignore")
 
         self.start_with_checkout()
         # simulate having a db.sqlite3 and a static folder from previous chaps
