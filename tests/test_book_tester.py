@@ -607,7 +607,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             bad_actual = "geoff   latest    522824a399de   2 weeks ago     164MB"
             self.assert_console_output_correct(bad_actual, expected)
 
-    def test_ignores_minor_differences_in_curl_output(self):
+    def test_ignores_minor_differences_in_curl_output1(self):
         actual = "*   Trying ::1:8888..."
         expected = Output("*   Trying [::1]:8888...")
         self.assert_console_output_correct(actual, expected)
@@ -616,6 +616,15 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             bad_actual = "*   Trying ::1:9999..."
             self.assert_console_output_correct(bad_actual, expected)
             bad_actual = "*   Trying [::]1:9999..."
+            self.assert_console_output_correct(bad_actual, expected)
+
+    def test_ignores_minor_differences_in_curl_output2(self):
+        actual = "* Closing connection"
+        expected = Output("* Closing connection 0")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+        with self.assertRaises(AssertionError):
+            bad_actual = "Closing Geoff"
             self.assert_console_output_correct(bad_actual, expected)
 
     def test_ignores_screenshot_times(self):

@@ -177,6 +177,7 @@ def strip_docker_image_ids_and_creation_times(output):
     )
     return fixed
 
+
 def strip_curl_output_brackets(output):
     fixed = re.sub(
         r"Trying \[::1\]:(\d\d\d\d)...",
@@ -184,6 +185,16 @@ def strip_curl_output_brackets(output):
         output,
     )
     return fixed
+
+
+def strip_curl_output_zeroes(output):
+    fixed = re.sub(
+        r"Closing connection 0",
+        r"Closing connection",
+        output,
+    )
+    return fixed
+
 
 SQLITE_MESSAGES = {
     "django.db.utils.IntegrityError: lists_item.list_id may not be NULL": "django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id",
@@ -406,6 +417,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_session_ids(actual_fixed)
         actual_fixed = strip_docker_image_ids_and_creation_times(actual_fixed)
         actual_fixed = strip_curl_output_brackets(actual_fixed)
+        actual_fixed = strip_curl_output_zeroes(actual_fixed)
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
@@ -424,6 +436,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_mock_ids(expected_fixed)
         expected_fixed = strip_docker_image_ids_and_creation_times(expected_fixed)
         expected_fixed = strip_curl_output_brackets(expected_fixed)
+        expected_fixed = strip_curl_output_zeroes(expected_fixed)
         expected_fixed = strip_object_ids(expected_fixed)
         expected_fixed = strip_migration_timestamps(expected_fixed)
         expected_fixed = strip_session_ids(expected_fixed)
