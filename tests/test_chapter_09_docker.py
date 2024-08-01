@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-import unittest
+import os
 import subprocess
+import unittest
 
-from book_tester import ChapterTest, DO_SERVER_COMMANDS
+from book_tester import DO_SERVER_COMMANDS, ChapterTest
 
 
 class Chapter9Test(ChapterTest):
@@ -28,14 +29,16 @@ class Chapter9Test(ChapterTest):
         vm_restore = None  # 'MANUAL_1'
 
         # hack fast-forward
-        skip = True
-        if skip:
-            self.pos = 8
+        if os.environ.get("SKIP"):
+            # self.pos = 8
             # self.pos = 18
+            self.pos = 60
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l001"))
+                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l001"))
                 # "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l003"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l008"))
             )
+            print(f"Running in: {self.sourcetree.tempdir}")
             # vm_restore = "MANUAL_2"
 
         if DO_SERVER_COMMANDS:
@@ -46,12 +49,6 @@ class Chapter9Test(ChapterTest):
                 subprocess.check_call(["vagrant", "up"])
 
         while self.pos < len(self.listings):
-            if self.pos == 47:
-                assert "curl -iv" in self.listings[self.pos]
-                print('sleeping')
-                # breakpoint()
-                import time; time.sleep(1)
-
             listing = self.listings[self.pos]
             print(self.pos, listing.type, repr(listing))
             self.recognise_listing_and_process_it()

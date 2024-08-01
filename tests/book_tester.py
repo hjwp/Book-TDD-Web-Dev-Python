@@ -353,7 +353,7 @@ class ChapterTest(unittest.TestCase):
 
     def assertLineIn(self, line, lines):
         if "\t" in line or "\t" in "\n".join(lines):
-            print('tabz')
+            print("tabz")
         if line not in lines:
             raise AssertionError(
                 "%s not found in:\n%s" % (repr(line), "\n".join(repr(l) for l in lines))
@@ -537,7 +537,8 @@ class ChapterTest(unittest.TestCase):
     def run_js_tests(self, tests_path: Path):
         p = subprocess.run(
             ["python", str(JASMINE_RUNNER), str(tests_path)],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             # env={**os.environ, "OPENSSL_CONF": "/dev/null"},
             check=False,
         )
@@ -556,7 +557,12 @@ class ChapterTest(unittest.TestCase):
         for block in split_blocks(listing_contents):
             stripped_block = [line.strip() for line in block.strip().split("\n")]
             for line in stripped_block:
-                self.assertIn(line, stripped_actual_lines)
+                self.assertIn(
+                    line,
+                    stripped_actual_lines,
+                    f"{line!r} not found in\n"
+                    + "\n".join(repr(l) for l in stripped_actual_lines),
+                )
             self.assertTrue(
                 contains(stripped_actual_lines, stripped_block),
                 "\n{}\n\nnot found in\n\n{}".format(
@@ -726,6 +732,9 @@ class ChapterTest(unittest.TestCase):
 
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
+        if listing.pause_first:
+            print('pausing first')
+            time.sleep(2)
         if listing.dofirst:
             print("DOFIRST", listing.dofirst)
             self.sourcetree.patch_from_commit(
@@ -799,7 +808,7 @@ class ChapterTest(unittest.TestCase):
 
         elif listing.type == "docker run tty":
             self.sourcetree.run_command(
-                "docker kill $(docker ps -q)", ignore_errors=True
+                "docker kill $(docker ps -q)", ignore_errors=True, silent=True
             )
             fixed = Command(listing.replace(" -it ", " -t "))
             next_listing = self.listings[self.pos + 1]

@@ -1,54 +1,54 @@
-[[chapter_server_side_debugging]]
-Server-Side Debugging
----------------------
+[[chapter_21_server_side_debugging]]
+== Server-Side Debugging
 
-Popping a few layers off the stack of things we're working on: we have nice
-wait-for helpers; what were we using them for?  Oh yes, waiting to be logged
-in. And why was that?  Ah yes, we had just built a way of pre-authenticating
-a user.
+.Warning, Chapter Update in Progress
+*******************************************************************************
+🚧 Warning, Chapter update for 3e in progress.
 
+This chapter has only been partially updated to Django 4, Ansible+Docker, etc.
 
-
-The Proof Is in the Pudding: Using Staging to Catch Final Bugs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Following along may be tricky, but I hope to have it in better shape soon!
+*******************************************************************************
 
 
-
-((("debugging", "server-side", "using staging sites", tertiary-sortas="staging sites", id="DBserstag21")))((("staging sites", "catching final bugs with", id="SScatch21")))They're
-all very well for running the FTs locally, but how would they work
-against the staging server?  Let's try to deploy our site.  Along the way
-we'll catch an unexpected bug (that's what staging is for!), and then we'll
-have to figure out a way of managing the database on the test server:
+Popping a few layers off the stack of things we're working on:
+we have nice wait-for helpers; what were we using them for?
+Oh yes, waiting to be logged in. And why was that?
+Ah yes, we had just built a way of pre-authenticating a user.
 
 
-[role="against-server"]
+
+=== The Proof Is in the Pudding: Using Staging to Catch Final Bugs
+
+((("debugging", "server-side", "using staging sites", tertiary-sortas="staging sites", id="DBserstag21")))
+((("staging sites", "catching final bugs with", id="SScatch21")))
+They're all very well for running the FTs locally,
+but how would they work against the staging server?
+Let's try to deploy our site.
+Along the way we'll catch an unexpected bug (that's what staging is for!),
+and then we'll have to figure out a way of managing the database on the test server:
+
+[role="against-server small-code"]
 [subs="specialcharacters,quotes"]
 ----
-$ *git push*  # if you haven't already
-$ *cd deploy_tools*
-$ *fab deploy:host=elspeth@staging.ottg.co.uk*
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*]
+
+PLAYBOOK: ansible-provision.yaml ***********************************************
+1 plays in infra/ansible-provision.yaml
 [...]
 ----
 
-And restart Gunicorn...
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *sudo systemctl daemon-reload*
-elspeth@server:$ *sudo systemctl restart gunicorn-staging.ottg.co.uk*
-----
 
 Here's what happens when we run the functional tests:
 
-[role="small-code"]
+[role="against-server small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 
 ======================================================================
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists (functional_tests.test_
+my_lists.MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
   File "...goat-book/functional_tests/test_my_lists.py", line 34, in
@@ -84,49 +84,47 @@ system is crashing the server.
 Let's practice a bit of server-side debugging!
 
 
+* TODO: show we can actually repro this with Docker.
 
-Inspecting Logs on the Server
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// TODO: actually, does this obviate the whole need for running fts against the server?
 
-((("logging")))((("Gunicorn", "logging setup")))In
-order to track this problem down, we need to get some logging information
-out of Django.
+
+=== Inspecting Logs on the Server
+
+((("logging")))
+((("Gunicorn", "logging setup")))
+In order to track this problem down,
+we need to get some logging information out of Django.
 
 First, make sure your 'settings.py' still contains the `LOGGING`
 settings which will actually send stuff to the console:
 
 [role="sourcecode currentcontents"]
-.superlists/settings.py
+.src/superlists/settings.py
 ====
 [source,python]
 ----
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-        },
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
     },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-        },
+    "loggers": {
+        "root": {"handlers": ["console"], "level": "INFO"},
     },
-    'root': {'level': 'INFO'},
 }
 ----
 ====
 
-Restart Gunicorn again if necessary, and then either rerun the FT, or just try
-to log in manually.  While that happens, we watch the logs on the server with
-`journalctl -f`:
+Restart the Docker container again if necessary,
+and then either rerun the FT, or just try to log in manually.
+While that happens, we watch the logs on the server with `docker logs -f`:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *sudo journalctl -f -u gunicorn-staging.ottg.co.uk*
+elspeth@server:$ *docker logs -f superlists*
 ----
 
 You should see an error like this:
@@ -150,37 +148,35 @@ at\n5.5.1  https://support.google.com/mail/?p=WantAuthError [...]
 - gsmtp', 'noreply@superlists')
 ----
 
-Hm, Gmail is refusing to send our emails, is it?  Now why might that be?  Ah
-yes, we haven't told the server what our password is!((("", startref="SScatch21")))((("", startref="DBserstag21")))
+Hm, Gmail is refusing to send our emails, is it?  Now why might that be?
+Ah yes, we haven't told the server what our password is!
+((("", startref="SScatch21")))((("", startref="DBserstag21")))
 
 
-//TODO: consider adding a logging.info or similar here, so we can reintroduce
-//the logging stuff?
+=== Another Environment Variable
 
+((("debugging", "server-side", "setting secret environment variables")))
+((("environment variables")))
+((("secret values")))
+Just as in <<chapter_11_ansible>>,
+the place we set environment variables on the server is in the _superlists.env_ file.
+Let's change it manually, on the server, for a test:
 
-Another Environment Variable
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("debugging", "server-side", "setting secret environment variables")))((("environment variables")))((("secret values")))Just
-as in <<chapter_11_ansible>>, the place we
-set environment variables on the server is in the _.env_ file:
+* TODO: maybe use ansible straight away?  Also, need to discuss secret storage locally.
 
 [role="server-commands small-code"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *cd ~/sites/staging.ottg.co.uk/*
-elspeth@server:$ *echo EMAIL_PASSWORD=yoursekritpasswordhere >> .env*
-elspeth@server:$ *sudo systemctl daemon-reload*
-elspeth@server:$ *sudo systemctl restart gunicorn-staging.ottg.co.uk*
-elspeth@server:$ *sudo journalctl -f -u gunicorn-staging.ottg.co.uk*
+elspeth@server:$ *echo EMAIL_PASSWORD=yoursekritpasswordhere >> ~/superlists.env*
+elspeth@server:$ *docker restart superlists*
 ----
 
 Now if we rerun our FTs, we see a change:
 
-[role="small-code"]
+[role="against-server small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 
 [...]
 Traceback (most recent call last):
@@ -196,35 +192,36 @@ element: Log out
 ----
 
 
-The `my_lists` failure is still the same, but we have more information in our
-login test: the FT gets further, and the site now looks like it's sending
-emails correctly (and the server log no longer shows any errors), but we can't
-check the email in the `mail.outbox`...
+The `my_lists` failure is still the same, but we have more information in our login test:
+the FT gets further, and the site now looks like it's sending emails correctly
+(and the server log no longer shows any errors),
+but we can't check the email in the `mail.outbox`...
 
 
-Adapting Our FT to Be Able to Test Real Emails via POP3
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Adapting Our FT to Be Able to Test Real Emails via POP3
 
-((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))((("Django framework", "sending emails", id="DJFemail21")))((("emails, sending from Django", id="email21")))Ah.
-That explains it. Now that we're running against a real server rather than
-the `LiveServerTestCase`, we can no longer inspect the local
-`django.mail.outbox` to see sent emails.
+((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))
+((("Django framework", "sending emails", id="DJFemail21")))
+((("emails, sending from Django", id="email21")))
+Ah. That explains it.
+Now that we're running against a real server rather than the `LiveServerTestCase`,
+we can no longer inspect the local `django.mail.outbox` to see sent emails.
 
 
-First, we'll need to know, in our FTs, whether we're running against
-the staging server or not.  Let's save the `staging_server` variable
-on `self` in 'base.py':
+First, we'll need to know, in our FTs,
+whether we're running against the staging server or not.
+Let's save the `staging_server` variable on `self` in _base.py_:
 
 [role="sourcecode"]
-.functional_tests/base.py (ch18l009)
+.src/functional_tests/base.py (ch21l009)
 ====
 [source,python]
 ----
     def setUp(self):
         self.browser = webdriver.Firefox()
-        self.staging_server = os.environ.get('STAGING_SERVER')
-        if self.staging_server:
-            self.live_server_url = 'http://' + self.staging_server
+        self.test_server = os.environ.get("TEST_SERVER")
+        if self.test_server:
+            self.live_server_url = "http://" + self.test_server
 ----
 ====
 
@@ -233,7 +230,7 @@ email server, using the horrifically tortuous Python standard library POP3
 client:
 
 [role="sourcecode"]
-.functional_tests/test_login.py (ch18l010)
+.src/functional_tests/test_login.py (ch21l010)
 ====
 [source,python]
 ----
@@ -244,7 +241,7 @@ import time
 [...]
 
     def wait_for_email(self, test_email, subject):
-        if not self.staging_server:
+        if not self.test_server:
             email = mail.outbox[0]
             self.assertIn(test_email, email.to)
             self.assertEqual(email.subject, subject)
@@ -252,21 +249,21 @@ import time
 
         email_id = None
         start = time.time()
-        inbox = poplib.POP3_SSL('pop.mail.yahoo.com')
+        inbox = poplib.POP3_SSL("pop.mail.yahoo.com")
         try:
             inbox.user(test_email)
-            inbox.pass_(os.environ['YAHOO_PASSWORD'])
+            inbox.pass_(os.environ["YAHOO_PASSWORD"])
             while time.time() - start < 60:
                 # get 10 newest messages
                 count, _ = inbox.stat()
                 for i in reversed(range(max(1, count - 10), count + 1)):
-                    print('getting msg', i)
+                    print("getting msg", i)
                     _, lines, __ = inbox.retr(i)
-                    lines = [l.decode('utf8') for l in lines]
+                    lines = [l.decode("utf8") for l in lines]
                     print(lines)
-                    if f'Subject: {subject}' in lines:
+                    if f"Subject: {subject}" in lines:
                         email_id = i
-                        body = '\n'.join(lines)
+                        body = "\n".join(lines)
                         return body
                 time.sleep(5)
         finally:
@@ -276,15 +273,20 @@ import time
 ----
 ====
 
+* TODO: consider not using POP3, maybe
+  https://docs.djangoproject.com/en/5.0/topics/email/#file-backend[file backend] instead.
+  discuss tradeoff of testing config
+  vs not needing to test that django can actually send emails
 
-I'm using a Yahoo account for testing, but you can use any email service you
-like, as long as it offers POP3 access. You will need to set the
+I signed up for a Yahoo account for testing,
+but you can use any email service you like, as long as it offers POP3 access.
+You will need to set the
 `YAHOO_PASSWORD` environment variable in the console that's running the FT.
 
 [subs="specialcharacters,quotes"]
 ----
 $ *echo YAHOO_PASSWORD=otheremailpasswordhere >> .env*
-$ *source .env*
+$ *set -a; source .env; set +a*
 ----
 
 And then we feed through the rest of the changes to the FT that are required
@@ -294,37 +296,42 @@ local and staging tests:
 
 
 [role="sourcecode small-code"]
-.functional_tests/test_login.py (ch18l011-1)
+.src/functional_tests/test_login.py (ch21l011-1)
 ====
 [source,diff]
 ----
-@@ -7,7 +7,7 @@ from selenium.webdriver.common.keys import Keys
- 
+@@ -9,7 +9,6 @@ from selenium.webdriver.common.keys import Keys
+
  from .base import FunctionalTest
- 
--TEST_EMAIL = 'edith@example.com'
-+
- SUBJECT = 'Your login link for Superlists'
- 
- 
-@@ -33,7 +33,6 @@ class LoginTest(FunctionalTest):
-                     print('getting msg', i)
+
+-TEST_EMAIL = "edith@example.com"
+ SUBJECT = "Your login link for Superlists"
+
+
+@@ -34,7 +33,6 @@ class LoginTest(FunctionalTest):
+                     print("getting msg", i)
                      _, lines, __ = inbox.retr(i)
-                     lines = [l.decode('utf8') for l in lines]
+                     lines = [l.decode("utf8") for l in lines]
 -                    print(lines)
-                     if f'Subject: {subject}' in lines:
+                     if f"Subject: {subject}" in lines:
                          email_id = i
-                         body = '\n'.join(lines)
-@@ -49,6 +48,11 @@ class LoginTest(FunctionalTest):
+                         body = "\n".join(lines)
+@@ -49,9 +47,14 @@ class LoginTest(FunctionalTest):
          # Edith goes to the awesome superlists site
          # and notices a "Log in" section in the navbar for the first time
          # It's telling her to enter her email address, so she does
-+        if self.staging_server:
-+            test_email = 'edith.testuser@yahoo.com'
++        if self.test_server:
++            test_email = "edith.testuser@yahoo.com"
 +        else:
-+            test_email = 'edith@example.com'
++            test_email = "edith@example.com"
 +
          self.browser.get(self.live_server_url)
+         self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
+-            TEST_EMAIL
++            test_email
+         )
+         self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
+             Keys.ENTER
 ----
 ====
 
@@ -332,49 +339,41 @@ And then modifications involving using that variable and calling our new helper
 function:
 
 [role="sourcecode small-code"]
-.functional_tests/test_login.py (ch18l011-2)
+.src/functional_tests/test_login.py (ch21l011-2)
 ====
 [source,diff]
 ----
-@@ -54,7 +54,7 @@ class LoginTest(FunctionalTest):
-             test_email = 'edith@example.com'
- 
-         self.browser.get(self.live_server_url)
--        self.browser.find_element_by_name('email').send_keys(TEST_EMAIL)
-+        self.browser.find_element_by_name('email').send_keys(test_email)
-         self.browser.find_element_by_name('email').send_keys(Keys.ENTER)
- 
-         # A message appears telling her an email has been sent
-@@ -64,15 +64,13 @@ class LoginTest(FunctionalTest):
-         ))
- 
+@@ -69,15 +69,13 @@ class LoginTest(FunctionalTest):
+         )
+
          # She checks her email and finds a message
 -        email = mail.outbox[0]
 -        self.assertIn(TEST_EMAIL, email.to)
 -        self.assertEqual(email.subject, SUBJECT)
 +        body = self.wait_for_email(test_email, SUBJECT)
- 
-         # It has a url link in it
--        self.assertIn('Use this link to log in', email.body)
--        url_search = re.search(r'http://.+/.+$', email.body)
-+        self.assertIn('Use this link to log in', body)
-+        url_search = re.search(r'http://.+/.+$', body)
+
+-        # It has a URL link in it
+-        self.assertIn("Use this link to log in", email.body)
+-        url_search = re.search(r"http://.+/.+$", email.body)
++        # It has a url link in it
++        self.assertIn("Use this link to log in", body)
++        url_search = re.search(r"http://.+/.+$", body)
          if not url_search:
--            self.fail(f'Could not find url in email body:\n{email.body}')
-+            self.fail(f'Could not find url in email body:\n{body}')
+-            self.fail(f"Could not find url in email body:\n{email.body}")
++            self.fail(f"Could not find url in email body:\n{body}")
          url = url_search.group(0)
          self.assertIn(self.live_server_url, url)
- 
-@@ -80,11 +78,11 @@ class LoginTest(FunctionalTest):
+
+@@ -85,10 +83,10 @@ class LoginTest(FunctionalTest):
          self.browser.get(url)
- 
+
          # she is logged in!
 -        self.wait_to_be_logged_in(email=TEST_EMAIL)
 +        self.wait_to_be_logged_in(email=test_email)
- 
+
          # Now she logs out
-         self.browser.find_element_by_link_text('Log out').click()
- 
+         self.browser.find_element(By.LINK_TEXT, "Log out").click()
+
          # She is logged out
 -        self.wait_to_be_logged_out(email=TEST_EMAIL)
 +        self.wait_to_be_logged_out(email=test_email)
@@ -386,34 +385,40 @@ And, believe it or not, that'll actually work, and give us an FT
 that can actually check for logins that work, involving real emails!
 
 
-[role="small-code"]
+[role="against-server small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests.test_login*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests.test_login*]
 [...]
 OK
 ----
 
-NOTE: I've just hacked this email-checking code together, and it's currently
-    pretty ugly and brittle (one common problem is picking up the wrong email
-    from a previous test run).  With some cleanup and a few more retry loops it
-    could grow into something more reliable. Alternatively, services like
-    'mailinator.com' will give you throwaway email addresses and an API to
-    check them, for a small fee.((("", startref="email21")))((("", startref="DJFemail21")))((("", startref="DBservemail21")))
+NOTE: I've just hacked this email-checking code together,
+    and it's currently pretty ugly and brittle
+    (one common problem is picking up the wrong email from a previous test run).
+    With some cleanup and a few more retry loops
+    it could grow into something more reliable.
+    Alternatively, services like _mailinator.com_ will give you throwaway email addresses
+    and an API to check them, for a small fee.
+    ((("", startref="email21")))
+    ((("", startref="DJFemail21")))
+    ((("", startref="DBservemail21")))
 
 
+=== Managing the Test Database on Staging
 
-Managing the Test Database on Staging
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("debugging", "server-side", "managing test databases", id="DBservdatabase21")))((("staging sites", "managing test databases", id="SSmanag21")))((("database testing", "managing test databases", id="DTmanag21")))((("sessions, pre-creating")))Now
-we can rerun our full FT suite and get to the next failure: our attempt to
-create pre-authenticated sessions doesn't work, so the "My Lists" test fails:
+((("debugging", "server-side", "managing test databases", id="DBservdatabase21")))
+((("staging sites", "managing test databases", id="SSmanag21")))
+((("database testing", "managing test databases", id="DTmanag21")))
+((("sessions, pre-creating")))
+Now we can rerun our full FT suite and get to the next failure:
+our attempt to create pre-authenticated sessions doesn't work,
+so the "My Lists" test fails:
 
 [role="skipme small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests*]
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 
 ERROR: test_logged_in_users_lists_are_saved_as_my_lists
 (functional_tests.test_my_lists.MyListsTest)
@@ -435,17 +440,16 @@ database on the server.
 
 
 
-A Django Management Command to Create Sessions
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== A Django Management Command to Create Sessions
 
-((("scripts, building standalone")))To
-do things on the server, we'll need to build a self-contained script that
-can be run from the command line on the server, most probably via Fabric.
+((("scripts, building standalone")))
+To do things on the server, we'll need to build a self-contained script
+that can be run from the command line on the server, most probably via Fabric.
 
 When trying to build a standalone script that works with Django (i.e., can talk
 to the database and so on), there are some fiddly issues you need to get right,
 like setting the `DJANGO_SETTINGS_MODULE` environment variable, and getting
-`sys.path` correctly.  
+`sys.path` correctly.
 
 Instead of messing about with all that, Django lets you create your own
 "management commands" (commands you can run with `python manage.py`), which
@@ -454,34 +458,35 @@ will do all that path mangling for you. They live in a folder called
 
 [subs=""]
 ----
-$ <strong>mkdir -p functional_tests/management/commands</strong>
-$ <strong>touch functional_tests/management/__init__.py</strong>
-$ <strong>touch functional_tests/management/commands/__init__.py</strong>
+$ <strong>mkdir -p src/functional_tests/management/commands</strong>
+$ <strong>touch src/functional_tests/management/__init__.py</strong>
+$ <strong>touch src/functional_tests/management/commands/__init__.py</strong>
 ----
+//ch21l012-1
 
-The boilerplate in a management command is a class that inherits from 
+The boilerplate in a management command is a class that inherits from
 `django.core.management.BaseCommand`, and that defines a method called
 `handle`:
 
 [role="sourcecode"]
-.functional_tests/management/commands/create_session.py
+.src/functional_tests/management/commands/create_session.py (ch21l012)
 ====
 [source,python]
 ----
 from django.conf import settings
 from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
-User = get_user_model()
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.management.base import BaseCommand
 
+User = get_user_model()
+
 
 class Command(BaseCommand):
-
     def add_arguments(self, parser):
-        parser.add_argument('email')
+        parser.add_argument("email")
 
     def handle(self, *args, **options):
-        session_key = create_pre_authenticated_session(options['email'])
+        session_key = create_pre_authenticated_session(options["email"])
         self.stdout.write(session_key)
 
 
@@ -494,19 +499,17 @@ def create_pre_authenticated_session(email):
     return session.session_key
 ----
 ====
-//12
 
 We've taken the code for `create_pre_authenticated_session` from
-'test_my_lists.py'. `handle` will pick up an email address from the parser,  
+'test_my_lists.py'. `handle` will pick up an email address from the parser,
 and then return the session key that we'll want to add to our browser cookies,
 and the management command prints it out at the command line. Try it out:
 
-//IDEA: test commands that have return code
-[role="skipme"]
+[role="ignore-errors"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py create_session a@b.com*]
-Unknown command: 'create_session'
+$ pass:quotes[*python src/manage.py create_session a@b.com*]
+Unknown command: 'create_session'. Did you mean clearsessions?
 ----
 
 One more step: we need to add `functional_tests` to our 'settings.py'
@@ -514,15 +517,15 @@ for it to recognise it as a real app that might have management commands as
 well as tests:
 
 [role="sourcecode"]
-.superlists/settings.py
+.src/superlists/settings.py (ch21l014)
 ====
 [source,python]
 ----
 +++ b/superlists/settings.py
 @@ -42,6 +42,7 @@ INSTALLED_APPS = [
-     'lists',
-     'accounts',
-+    'functional_tests',
+     "lists",
+     "accounts",
++    "functional_tests",
  ]
 ----
 ====
@@ -533,7 +536,7 @@ Now it works:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py create_session a@b.com*]
+$ pass:quotes[*python src/manage.py create_session a@b.com*]
 qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
@@ -542,50 +545,53 @@ NOTE: If you see an error saying the `auth_user` table is missing, you may need
     _db.sqlite3_ file and run +migrate+ again, to get a clean slate.
 
 
-Getting the FT to Run the Management Command on the Server
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Getting the FT to Run the Management Command on the Server
 
 Next we need to adjust `test_my_lists` so that it runs the local function
-when we're on the local server, and make it run the management command
-on the staging server if we're on that:
+when we're on the local server,
+and make it run the management command on the staging server if we're on that:
 
 [role="sourcecode"]
-.functional_tests/test_my_lists.py (ch18l016)
+.src/functional_tests/test_my_lists.py (ch21l016)
 ====
 [source,python]
 ----
 from django.conf import settings
+
 from .base import FunctionalTest
-from .server_tools import create_session_on_server
 from .management.commands.create_session import create_pre_authenticated_session
+from .server_tools import create_session_on_server
+
 
 class MyListsTest(FunctionalTest):
-
     def create_pre_authenticated_session(self, email):
-        if self.staging_server:
-            session_key = create_session_on_server(self.staging_server, email)
+        if self.test_server:
+            session_key = create_session_on_server(self.test_server, email)
         else:
             session_key = create_pre_authenticated_session(email)
+
         ## to set a cookie we need to first visit the domain.
         ## 404 pages load the quickest!
         self.browser.get(self.live_server_url + "/404_no_such_url/")
-        self.browser.add_cookie(dict(
-            name=settings.SESSION_COOKIE_NAME,
-            value=session_key,
-            path='/',
-        ))
+        self.browser.add_cookie(
+            dict(
+                name=settings.SESSION_COOKIE_NAME,
+                value=session_key,
+                path="/",
+            )
+        )
 
     [...]
 ----
 ====
 
 
-Let's also tweak 'base.py', to gather a bit more information
-when we populate `self.against_staging`:
+Let's also tweak _base.py_, to gather a bit more information
+when we populate `self.test_server`:
 
 
 [role="sourcecode"]
-.functional_tests/base.py (ch18l017)
+.src/functional_tests/base.py (ch21l017)
 ====
 [source,python]
 ----
@@ -593,13 +599,12 @@ from .server_tools import reset_database  #<1>
 [...]
 
 class FunctionalTest(StaticLiveServerTestCase):
-
     def setUp(self):
         self.browser = webdriver.Firefox()
-        self.staging_server = os.environ.get('STAGING_SERVER')
-        if self.staging_server:
-            self.live_server_url = 'http://' + self.staging_server
-            reset_database(self.staging_server)  #<1>
+        self.test_server = os.environ.get("TEST_SERVER")
+        if self.test_server:
+            self.live_server_url = "http://" + self.test_server
+            reset_database(self.test_server)  #<1>
 ----
 ====
 
@@ -609,18 +614,19 @@ class FunctionalTest(StaticLiveServerTestCase):
 
 
 
-Using Fabric Directly from Python
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Using Fabric Directly from Python
 
-((("Fabric", "using directly from Python")))Rather
-than using the `fab` command, Fabric provides an API that lets
+* TODO: rewrite for ansible.
+
+((("Fabric", "using directly from Python")))
+Rather than using the `fab` command, Fabric provides an API that lets
 you run Fabric server commands directly inline in your Python code.  You
 just need to let it know the "host string" you're connecting to:
 
 
 
 [role="sourcecode"]
-.functional_tests/server_tools.py (ch18l018)
+.src/functional_tests/server_tools.py (ch18l018)
 ====
 [source,python]
 ----
@@ -629,15 +635,13 @@ from fabric.context_managers import settings, shell_env
 
 
 def _get_manage_dot_py(host):
-    return f'~/sites/{host}/.venv/bin/python ~/sites/{host}/manage.py'
+    return f"~/sites/{host}/.venv/bin/python ~/sites/{host}/manage.py"
 
 
 def reset_database(host):
     manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f'elspeth@{host}'):  #<1>
-        run(f'{manage_dot_py} flush --noinput')  #<2>
-
-
+    with settings(host_string=f"elspeth@{host}"):  # <1>
+        run(f"{manage_dot_py} flush --noinput")  # <2>
 ----
 ====
 
@@ -656,21 +660,21 @@ cryptographically valid for the server:
 
 
 [role="sourcecode small-code"]
-.functional_tests/server_tools.py (ch18l019)
+.src/functional_tests/server_tools.py (ch18l019)
 ====
 [source,python]
 ----
 def _get_server_env_vars(host):
-    env_lines = run(f'cat ~/sites/{host}/.env').splitlines()  #<1>
-    return dict(l.split('=') for l in env_lines if l)
+    env_lines = run(f"cat ~/sites/{host}/.env").splitlines()  # <1>
+    return dict(l.split("=") for l in env_lines if l)
 
 
 def create_session_on_server(host, email):
     manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f'elspeth@{host}'):
+    with settings(host_string=f"elspeth@{host}"):
         env_vars = _get_server_env_vars(host)
-        with shell_env(**env_vars):  #<2>
-            session_key = run(f'{manage_dot_py} create_session {email}')  #<3>
+        with shell_env(**env_vars):  # <2>
+            session_key = run(f"{manage_dot_py} create_session {email}")  # <3>
             return session_key.strip()
 ----
 ====
@@ -687,16 +691,15 @@ def create_session_on_server(host, email):
 
 
 
-Recap: Creating Sessions Locally Versus Staging
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Recap: Creating Sessions Locally Versus Staging
 
-((("staging sites", "local vs. staged sessions")))Does
-that all make sense?  Perhaps a little ascii-art diagram will help:
+((("staging sites", "local vs. staged sessions")))
+Does that all make sense?
+Perhaps a little ascii-art diagram will help:
 
 
 
-Locally:
-++++++++
+===== Locally:
 
 [role="skipme small-code"]
 ----
@@ -709,8 +712,7 @@ Locally:
 
 ----
 
-Against staging:
-++++++++++++++++
+===== Against staging:
 
 [role="skipme small-code"]
 ----
@@ -733,23 +735,22 @@ In any case, let's see if it works.  First, locally, to check that we didn't
 break anything:
 
 
+[role="dofirst-ch21l022"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests.test_my_lists*]
+$ pass:quotes[*python src/manage.py test functional_tests.test_my_lists*]
 [...]
 OK
 ----
 
 
-Next, against the server.  We push our code up first:
+Next, against the server.
 
 
 [role="against-server"]
 [subs="specialcharacters,quotes"]
 ----
-$ *git push*  # you'll need to commit changes first.
-$ *cd deploy_tools*
-$ *fab deploy --host=elspeth@staging.ottg.co.uk*
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*]
 ----
 
 And now we run the test:
@@ -758,7 +759,7 @@ And now we run the test:
 [role="against-server small-code"]
 [subs=""]
 ----
-$ <strong>STAGING_SERVER=staging.ottg.co.uk python manage.py test \
+$ <strong>TEST_SERVER=staging.ottg.co.uk python src/manage.py test \
  functional_tests.test_my_lists</strong>
 [...]
 [elspeth@staging.ottg.co.uk] run:
@@ -781,7 +782,7 @@ Looking good!  We can rerun all the tests to make sure...
 [role="against-server small-code"]
 [subs=""]
 ----
-$ <strong>STAGING_SERVER=staging.ottg.co.uk python manage.py test functional_tests</strong>
+$ <strong>TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests</strong>
 [...]
 [elspeth@staging.ottg.co.uk] run:
 ~/sites/staging.ottg.co.uk/.venv/bin/python
@@ -791,7 +792,7 @@ Ran 8 tests in 89.494s
 OK
 ----
 
-Hooray! 
+Hooray!
 
 NOTE: I've shown one way of managing the test database, but you could
     experiment with others--for example, if you were using MySQL or Postgres,
@@ -805,35 +806,36 @@ NOTE: I've shown one way of managing the test database, but you could
 [role="pagebreak-before less_space"]
 .Warning: Be Careful Not to Run Test Code Against the Live Server
 *******************************************************************************
-((("database testing", "safeguarding production databases")))((("production databases")))We're
-into dangerous territory, now that we have code that can directly
-affect a database on the server.  You want to be very, very careful that you 
-don't accidentally blow away your production database by running FTs against
-the wrong host.  
+((("database testing", "safeguarding production databases")))
+((("production databases")))
+We're into dangerous territory,
+now that we have code that can directly affect a database on the server.
+You want to be very, very careful
+that you don't accidentally blow away your production database
+by running FTs against the wrong host.
 
-You might consider putting some safeguards in place at this point. For example,
-you could put staging and production on different servers, and make it so they
-use different keypairs for authentication, with different passphrases.
+You might consider putting some safeguards in place at this point.
+For example, you could put staging and production on different servers,
+and make it so they use different keypairs for authentication, with different passphrases.
 
-This is similarly dangerous territory to running tests against clones of
-production data. I have a little story about accidentally sending
-thousands of duplicate invoices to clients in <<data-migrations-appendix>>.
-LFMF.
+This is similarly dangerous territory to running tests against clones of production data.
+I have a little story about accidentally sending thousands of duplicate invoices to clients
+in <<data-migrations-appendix>>. LFMF.
 
 *******************************************************************************
 
 
-Updating our Deploy Script
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Updating our Deploy Script
 
+* TODO: ansible.
 
-((("debugging", "server-side", "baking in logging code")))Before
-we finish, let's update our deployment fabfile so that it can
+((("debugging", "server-side", "baking in logging code")))
+Before we finish, let's update our deployment fabfile so that it can
 automatically add the `EMAIL_PASSWORD` to the _.env_ file on the server:
 
 
-[role="sourcecode"]
-.deploy_tools/fabfile.py (ch18l021)
+[role="sourcecode skipme"]
+.src/deploy_tools/fabfile.py (ch18l021)
 ====
 [source,python]
 ----
@@ -842,16 +844,16 @@ import os
 
 
 def _create_or_update_dotenv():
-    append('.env', 'DJANGO_DEBUG_FALSE=y')
-    append('.env', f'SITENAME={env.host}')
-    current_contents = run('cat .env')
-    if 'DJANGO_SECRET_KEY' not in current_contents:
-        new_secret = ''.join(random.SystemRandom().choices(
-            'abcdefghijklmnopqrstuvwxyz0123456789', k=50
-        ))
-        append('.env', f'DJANGO_SECRET_KEY={new_secret}')
-    email_password = os.environ['EMAIL_PASSWORD']  #<1>
-    append('.env', f'EMAIL_PASSWORD={email_password}')  #<1>
+    append(".env", "DJANGO_DEBUG_FALSE=y")
+    append(".env", f"SITENAME={env.host}")
+    current_contents = run("cat .env")
+    if "DJANGO_SECRET_KEY" not in current_contents:
+        new_secret = "".join(
+            random.SystemRandom().choices("abcdefghijklmnopqrstuvwxyz0123456789", k=50)
+        )
+        append(".env", f"DJANGO_SECRET_KEY={new_secret}")
+    email_password = os.environ["EMAIL_PASSWORD"]  # <1>
+    append(".env", f"EMAIL_PASSWORD={email_password}")  # <1>
 ----
 ====
 
@@ -861,8 +863,7 @@ def _create_or_update_dotenv():
 
 
 
-Wrap-Up
-~~~~~~~
+=== Wrap-Up
 
 Actually getting your new code up and running on a server always tends to
 flush out some last-minute bugs and unexpected issues.  We had to do a bit
@@ -883,26 +884,28 @@ the ability to save their lists on a "My Lists" page.
 *******************************************************************************
 
 Fixtures also have to work remotely::
-    `LiveServerTestCase`
-    ((("fixtures", "staging and")))((("staging sites", "fixtures and")))makes
-    it easy to interact with the test database 
-    using the Django ORM for tests running locally.  Interacting with the 
+    `LiveServerTestCase` makes it easy to interact with the test database
+    using the Django ORM for tests running locally.  Interacting with the
     database on the staging server is not so straightforward. One solution
     is Fabric and Django management commands, as I've shown, but you should
     explore what works for you--SSH tunnels, for example.
+    ((("fixtures", "staging and")))
+    ((("staging sites", "fixtures and")))
 
 Be very careful when resetting data on your servers::
-    ((("database testing", "safeguarding production databases")))((("production databases")))A
-    command that can remotely wipe the entire database on one of your
+    A command that can remotely wipe the entire database on one of your
     servers is a dangerous weapon, and you want to be really, really sure
     it's never accidentally going to hit your production data.
+    ((("database testing", "safeguarding production databases")))
+    ((("production databases")))
 
 Logging is critical to debugging issues on the server::
-    ((("logging")))((("debugging", "server-side", "baking in logging code")))At
-    the very least, you'll want to be able to see any error messages
+    At the very least, you'll want to be able to see any error messages
     that are being generated by the server.  For thornier bugs, you'll also
     want to be able to do the occasional "debug print", and see it end up
     in a file somewhere.
+    ((("logging")))
+    ((("debugging", "server-side", "baking in logging code")))
 
 *******************************************************************************
 

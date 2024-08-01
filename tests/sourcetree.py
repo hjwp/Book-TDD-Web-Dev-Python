@@ -136,7 +136,7 @@ class SourceTree:
         if user_input and not user_input.endswith("\n"):
             user_input += "\n"
         if user_input:
-            print("sending user input: {}".format(user_input))
+            print(f"sending user input: {user_input}")
         output, _ = process.communicate(user_input)
         if process.returncode and not ignore_errors:
             if (
