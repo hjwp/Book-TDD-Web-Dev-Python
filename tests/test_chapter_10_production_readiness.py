@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 import os
-import subprocess
 import unittest
 
-from book_tester import DO_SERVER_COMMANDS, ChapterTest
+from book_tester import ChapterTest
 
 
 class Chapter10Test(ChapterTest):

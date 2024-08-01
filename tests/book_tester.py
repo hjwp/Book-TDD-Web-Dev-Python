@@ -289,8 +289,6 @@ class ChapterTest(unittest.TestCase):
     def start_with_checkout(self):
         update_sources_for_chapter(self.chapter_name, self.previous_chapter)
         self.sourcetree.start_with_checkout(self.chapter_name, self.previous_chapter)
-        # simulate virtualenv folder
-        self.sourcetree.run_command("mkdir -p .venv/bin .venv/lib")
 
     def write_to_file(self, codelisting):
         self.assertEqual(
@@ -340,13 +338,23 @@ class ChapterTest(unittest.TestCase):
         return output
 
     def prep_virtualenv(self):
-        virtualenv_path = os.path.join(self.tempdir, ".venv")
-        if not os.path.exists(virtualenv_path):
+        virtualenv_path = self.tempdir / ".venv"
+        if not virtualenv_path.exists():
             print("preparing virtualenv")
             self.sourcetree.run_command("python -m venv .venv")
-            self.sourcetree.run_command(
-                "./.venv/bin/python -m pip install -r requirements.txt"
-            )
+            if (self.tempdir / "requirements.txt").exists():
+                self.sourcetree.run_command(
+                    ".venv/bin/python -m pip install -r requirements.txt"
+                )
+            else:
+                self.sourcetree.run_command(
+                    '.venv/bin/python -m pip install "django<5" selenium'
+                )
+
+        os.environ["VIRTUAL_ENV"] = str(virtualenv_path)
+        os.environ["PATH"] = ":".join(
+            [f"{virtualenv_path}/bin"] + os.environ["PATH"].split(":")
+        )
 
     def prep_database(self):
         self.sourcetree.run_command(f"python {self._manage_py()} migrate --noinput")
@@ -733,7 +741,7 @@ class ChapterTest(unittest.TestCase):
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
         if listing.pause_first:
-            print('pausing first')
+            print("pausing first")
             time.sleep(2)
         if listing.dofirst:
             print("DOFIRST", listing.dofirst)

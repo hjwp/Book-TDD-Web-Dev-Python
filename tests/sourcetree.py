@@ -1,11 +1,11 @@
-import getpass
-import os
 import io
+import os
 import re
-import signal
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -132,10 +132,15 @@ class SourceTree:
                 output += line
                 if "Quit the server with CONTROL-C." in output:
                     # go any further and we hang.
+                    time.sleep(1)  # sleep to allow server to be available
                     return output
                 if "Booting worker with pid" in output:
                     # gunicorn startup, also hangs:
+                    time.sleep(1)  # sleep to allow server to be available
                     return output
+                if "ERROR: failed to solve" in output:
+                    # docker build error, bail out
+                    break
 
         if user_input and not user_input.endswith("\n"):
             user_input += "\n"
