@@ -1,22 +1,22 @@
 import os
-import pytest
 import shutil
 import subprocess
 import unittest
 from textwrap import dedent
-from unittest.mock import Mock, patch, call
+from unittest.mock import Mock
 
-from book_tester import (
-    ChapterTest,
-    JASMINE_RUNNER,
-    contains,
-    wrap_long_lines,
-    split_blocks,
-)
+import pytest
 from book_parser import (
     CodeListing,
     Command,
     Output,
+)
+from book_tester import (
+    JASMINE_RUNNER,
+    ChapterTest,
+    contains,
+    split_blocks,
+    wrap_long_lines,
 )
 
 
@@ -605,6 +605,17 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
         with self.assertRaises(AssertionError):
             bad_actual = "geoff   latest    522824a399de   2 weeks ago     164MB"
+            self.assert_console_output_correct(bad_actual, expected)
+
+    def test_ignores_minor_differences_in_curl_output(self):
+        actual = "*   Trying ::1:8888..."
+        expected = Output("*   Trying [::1]:8888...")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+        with self.assertRaises(AssertionError):
+            bad_actual = "*   Trying ::1:9999..."
+            self.assert_console_output_correct(bad_actual, expected)
+            bad_actual = "*   Trying [::]1:9999..."
             self.assert_console_output_correct(bad_actual, expected)
 
     def test_ignores_screenshot_times(self):
