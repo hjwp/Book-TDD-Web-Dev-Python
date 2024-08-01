@@ -133,6 +133,9 @@ class SourceTree:
                 if "Quit the server with CONTROL-C." in output:
                     # go any further and we hang.
                     return output
+                if "Booting worker with pid" in output:
+                    # gunicorn startup, also hangs:
+                    return output
 
         if user_input and not user_input.endswith("\n"):
             user_input += "\n"

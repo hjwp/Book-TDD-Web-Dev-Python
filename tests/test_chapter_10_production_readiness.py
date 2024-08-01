@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import subprocess
 import unittest
 
@@ -17,40 +18,27 @@ class Chapter10Test(ChapterTest):
         self.assertEqual(self.listings[3].type, "docker run tty")
 
         self.start_with_checkout()
-        self.sourcetree.run_command("mkdir -p static/stuff")
+        self.prep_virtualenv()
+        self.prep_database()
+        # self.sourcetree.run_command("mkdir -p static/stuff")
 
         # skips
-        self.skip_with_check(8, "check our symlink")
-        self.skip_with_check(19, "Starting gunicorn")
-        self.skip_with_check(41, "something more secure later")
-        self.skip_with_check(70, "this command tells Systemd")
-        self.skip_with_check(72, "this command actually starts")
-        self.skip_with_check(85, "git status")
-        self.skip_with_check(86, "see three new files")
+        self.skip_with_check(43, "should show dockerfile")
+        self.skip_with_check(46, "should now be clean")
+        self.skip_with_check(51, "otherwise")
 
-        # fixes
-        self.replace_command_with_check(
-            39,
-            "git pull",
-            "git fetch"
-            " && git checkout chapter_making_deployment_production_ready"
-            " && git reset --hard origin/chapter_making_deployment_production_ready",
-        )
-
-        vm_restore = "MANUAL_END"
+        # vm_restore = "MANUAL_END"
 
         # hack fast-forward
-        skip = False
-        if skip:
+        if os.environ.get("SKIP"):
             self.pos = 42
             self.sourcetree.run_command(
                 "git checkout {0}".format(self.sourcetree.get_commit_spec("ch08l003"))
             )
 
-        if DO_SERVER_COMMANDS:
-            subprocess.check_call(["vagrant", "snapshot", "restore", vm_restore])
-
-        self.current_server_cd = "~/sites/$SITENAME"
+        # if DO_SERVER_COMMANDS:
+        #     subprocess.check_call(["vagrant", "snapshot", "restore", vm_restore])
+        # self.current_server_cd = "~/sites/$SITENAME"
 
         while self.pos < len(self.listings):
             listing = self.listings[self.pos]
@@ -59,9 +47,9 @@ class Chapter10Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(ignore=["gunicorn==19"])
-        if DO_SERVER_COMMANDS:
-            subprocess.run(["vagrant", "snapshot", "delete", "MAKING_END"], check=False)
-            subprocess.run(["vagrant", "snapshot", "save", "MAKING_END"], check=True)
+        # if DO_SERVER_COMMANDS:
+        #     subprocess.run(["vagrant", "snapshot", "delete", "MAKING_END"], check=False)
+        #     subprocess.run(["vagrant", "snapshot", "save", "MAKING_END"], check=True)
 
 
 if __name__ == "__main__":
