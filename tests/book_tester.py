@@ -851,11 +851,13 @@ class ChapterTest(unittest.TestCase):
             next_listing = self.listings[self.pos + 1]
             if next_listing.type == "output" and not next_listing.skip:
                 output = self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
                 self.assert_console_output_correct(output, next_listing)
                 next_listing.was_checked = True
                 self.pos += 2
             else:
                 self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
                 listing.was_checked = True
                 self.pos += 1
 
