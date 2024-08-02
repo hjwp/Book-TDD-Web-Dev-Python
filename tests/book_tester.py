@@ -178,20 +178,21 @@ def strip_docker_image_ids_and_creation_times(output):
     return fixed
 
 
-def strip_curl_output_brackets(output):
+def fix_curl_stuff(output):
+    fixed = re.sub(
+        r"User-Agent: curl/\d\.\d+\.\d*",
+        r"User-Agent: curl/8.6.0",
+        output,
+    )
     fixed = re.sub(
         r"Trying \[::1\]:(\d\d\d\d)...",
         r"Trying ::1:\1...",
-        output,
+        fixed,
     )
-    return fixed
-
-
-def strip_curl_output_zeroes(output):
     fixed = re.sub(
         r"Closing connection 0",
         r"Closing connection",
-        output,
+        fixed,
     )
     fixed = re.sub(
         r"Connected to localhost \(127.0.0.1\) port (\d\d\d\d) \(#0\)",
@@ -421,8 +422,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_migration_timestamps(actual_fixed)
         actual_fixed = strip_session_ids(actual_fixed)
         actual_fixed = strip_docker_image_ids_and_creation_times(actual_fixed)
-        actual_fixed = strip_curl_output_brackets(actual_fixed)
-        actual_fixed = strip_curl_output_zeroes(actual_fixed)
+        actual_fixed = fix_curl_stuff(actual_fixed)
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
@@ -440,8 +440,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_git_hashes(expected_fixed)
         expected_fixed = strip_mock_ids(expected_fixed)
         expected_fixed = strip_docker_image_ids_and_creation_times(expected_fixed)
-        expected_fixed = strip_curl_output_brackets(expected_fixed)
-        expected_fixed = strip_curl_output_zeroes(expected_fixed)
+        expected_fixed = fix_curl_stuff(expected_fixed)
         expected_fixed = strip_object_ids(expected_fixed)
         expected_fixed = strip_migration_timestamps(expected_fixed)
         expected_fixed = strip_session_ids(expected_fixed)

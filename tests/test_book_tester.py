@@ -633,6 +633,15 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
         with self.assertRaises(AssertionError):
+            bad_actual = "* Connected to localhost (127.0.0.1) port 8889 (#0)"
+            self.assert_console_output_correct(bad_actual, expected)
+
+    def test_ignores_minor_differences_in_curl_output4(self):
+        actual = "*> User-Agent: curl/7.81.0"
+        expected = Output("*> User-Agent: curl/8.6.0")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+        with self.assertRaises(AssertionError):
             bad_actual = "Closing Geoff"
             self.assert_console_output_correct(bad_actual, expected)
 
