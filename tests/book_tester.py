@@ -193,6 +193,11 @@ def strip_curl_output_zeroes(output):
         r"Closing connection",
         output,
     )
+    fixed = re.sub(
+        r"Connected to localhost \(127.0.0.1\) port (\d\d\d\d) \(#0\)",
+        r"Connected to localhost (127.0.0.1) port \1",
+        fixed,
+    )
     return fixed
 
 

@@ -627,6 +627,15 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             bad_actual = "Closing Geoff"
             self.assert_console_output_correct(bad_actual, expected)
 
+    def test_ignores_minor_differences_in_curl_output3(self):
+        actual = "* Connected to localhost (127.0.0.1) port 8888 (#0)"
+        expected = Output("* Connected to localhost (127.0.0.1) port 8888")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+        with self.assertRaises(AssertionError):
+            bad_actual = "Closing Geoff"
+            self.assert_console_output_correct(bad_actual, expected)
+
     def test_ignores_screenshot_times(self):
         actual = (
             "screenshotting to ...goat-book/functional_tests/screendumps/MyListsTes\n"
