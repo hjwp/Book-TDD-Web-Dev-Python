@@ -72,6 +72,24 @@ testall4: build
 test_%: %.html $(TMPDIR)
 	$(VENV)/bin/pytest -s --tb=short ./tests/$@.py
 
+.PHONY: docker-venv
+docker-venv:
+	docker run --rm \
+		--mount type=volume,source=rootmount,target=/root \
+		--mount type=bind,source=./,target=/app \
+		--mount type=volume,source=venvmount,target=/app/.venv \
+		-t hjwp/obeythetestinggoat-book-tester:latest \
+		bash -c "uv venv .venv && uv pip install --upgrade ."
+
+.PHONY: test_%
+docker_test_%: docker-venv %.html $(TMPDIR)
+	docker run --rm \
+		--mount type=volume,source=rootmount,target=/root \
+		--mount type=bind,source=./,target=/app \
+		--mount type=volume,source=venvmount,target=/app/.venv \
+		-t hjwp/obeythetestinggoat-book-tester:latest \
+		bash -c "make $(subst docker_,,$@)"
+
 # exhaustively list for nice tab-completion
 #
 .PHONY: test_chapter_01
