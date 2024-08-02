@@ -28,7 +28,7 @@ class Chapter9Test(ChapterTest):
         self.sourcetree.run_command("./manage.py migrate --noinput")
         self.sourcetree.run_command("./manage.py collectstatic --noinput")
 
-        vm_restore = None  # 'MANUAL_1'
+        # vm_restore = None  # 'MANUAL_1'
 
         # hack fast-forward
         if os.environ.get("SKIP"):
@@ -43,12 +43,12 @@ class Chapter9Test(ChapterTest):
             print(f"Running in: {self.sourcetree.tempdir}")
             # vm_restore = "MANUAL_2"
 
-        if DO_SERVER_COMMANDS:
-            if vm_restore:
-                subprocess.check_call(["vagrant", "snapshot", "restore", vm_restore])
-            else:
-                subprocess.check_call(["vagrant", "destroy", "-f"])
-                subprocess.check_call(["vagrant", "up"])
+        # if DO_SERVER_COMMANDS:
+        #     if vm_restore:
+        #         subprocess.check_call(["vagrant", "snapshot", "restore", vm_restore])
+        #     else:
+        #         subprocess.check_call(["vagrant", "destroy", "-f"])
+        #         subprocess.check_call(["vagrant", "up"])
 
         while self.pos < len(self.listings):
             listing = self.listings[self.pos]
@@ -57,9 +57,9 @@ class Chapter9Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff()
-        if DO_SERVER_COMMANDS:
-            subprocess.run(["vagrant", "snapshot", "delete", "MANUAL_END"])
-            subprocess.run(["vagrant", "snapshot", "save", "MANUAL_END"], check=True)
+        # if DO_SERVER_COMMANDS:
+        #     subprocess.run(["vagrant", "snapshot", "delete", "MANUAL_END"])
+        #     subprocess.run(["vagrant", "snapshot", "save", "MANUAL_END"], check=True)
 
 
 if __name__ == "__main__":

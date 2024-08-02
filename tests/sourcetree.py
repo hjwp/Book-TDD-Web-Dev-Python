@@ -132,11 +132,13 @@ class SourceTree:
                 output += line
                 if "Quit the server with CONTROL-C." in output:
                     # go any further and we hang.
-                    time.sleep(2)  # sleep to allow server to be available
+                    print("brief sleep to allow docker server to become available")
+                    time.sleep(2)
                     return output
                 if "Booting worker with pid" in output:
                     # gunicorn startup, also hangs:
-                    time.sleep(2)  # sleep to allow server to be available
+                    print("brief sleep to allow docker server to become available")
+                    time.sleep(2)
                     return output
                 if "ERROR: failed to solve" in output:
                     # docker build error, bail out
