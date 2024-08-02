@@ -365,20 +365,23 @@ class ChapterTest(unittest.TestCase):
         virtualenv_path = self.tempdir / ".venv"
         if not virtualenv_path.exists():
             print("preparing virtualenv")
-            self.sourcetree.run_command("python -m venv .venv")
-            if (self.tempdir / "requirements.txt").exists():
-                self.sourcetree.run_command(
-                    ".venv/bin/python -m pip install -r requirements.txt"
-                )
-            else:
-                self.sourcetree.run_command(
-                    '.venv/bin/python -m pip install "django<5" selenium'
-                )
-
+            self.sourcetree.run_command("uv venv .venv")
         os.environ["VIRTUAL_ENV"] = str(virtualenv_path)
         os.environ["PATH"] = ":".join(
             [f"{virtualenv_path}/bin"] + os.environ["PATH"].split(":")
         )
+        if (self.tempdir / "requirements.txt").exists():
+            self.sourcetree.run_command(
+                "uv pip install -r requirements.txt"
+            )
+        else:
+            self.sourcetree.run_command(
+                'uv pip install "django<5" selenium'
+            )
+        self.sourcetree.run_command(
+            'uv pip install pip'
+        )
+
 
     def prep_database(self):
         self.sourcetree.run_command(f"python {self._manage_py()} migrate --noinput")

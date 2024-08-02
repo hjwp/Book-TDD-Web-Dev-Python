@@ -31,7 +31,7 @@ class Chapter10Test(ChapterTest):
         # hack fast-forward
         if os.environ.get("SKIP"):
             self.pos = 29
-            self.sourcetree.run_command("pip install gunicorn whitenoise")
+            self.sourcetree.run_command("uv pip install gunicorn whitenoise")
             self.sourcetree.run_command(
                 "git checkout {}".format(self.sourcetree.get_commit_spec("ch10l007"))
             )
