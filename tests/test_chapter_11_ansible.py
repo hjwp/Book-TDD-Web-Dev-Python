@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import unittest
 import subprocess
+import unittest
 
-from book_tester import ChapterTest, DO_SERVER_COMMANDS
-
+from book_tester import DO_SERVER_COMMANDS, ChapterTest
 
 
 class Chapter9bTest(ChapterTest):
@@ -63,7 +61,7 @@ class Chapter9bTest(ChapterTest):
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(ignore=["gunicorn==19"])
         if DO_SERVER_COMMANDS:
-            subprocess.run(['vagrant', 'snapshot', 'delete', 'MAKING_END'])
+            subprocess.run(['vagrant', 'snapshot', 'delete', 'MAKING_END'], check=False)
             subprocess.run(['vagrant', 'snapshot', 'save', 'MAKING_END'], check=True)
 
 
