@@ -1,11 +1,11 @@
-import getpass
-import os
 import io
+import os
 import re
-import signal
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,7 +89,7 @@ class SourceTree:
                 os.killpg(process.pid, signal.SIGTERM)
             except OSError:
                 pass
-        if os.environ.get("TMPDIR_CLEANUP") not in  ("0", "false"):
+        if os.environ.get("TMPDIR_CLEANUP") not in ("0", "false"):
             shutil.rmtree(self.tempdir)
 
     def run_command(
@@ -127,11 +127,22 @@ class SourceTree:
         if "docker run" in command and "superlists" in command and not ignore_errors:
             output = ""
             while True:
-                output += process.stdout.readline()
+                line = process.stdout.readline()
+                print(f"\t{line}", end="")
+                output += line
                 if "Quit the server with CONTROL-C." in output:
                     # go any further and we hang.
-                    print("docker run out:\n", output)
+                    print("brief sleep to allow docker server to become available")
+                    time.sleep(2)
                     return output
+                if "Booting worker with pid" in output:
+                    # gunicorn startup, also hangs:
+                    print("brief sleep to allow docker server to become available")
+                    time.sleep(2)
+                    return output
+                if "ERROR: failed to solve" in output:
+                    # docker build error, bail out
+                    break
 
         if user_input and not user_input.endswith("\n"):
             user_input += "\n"
