@@ -167,3 +167,30 @@ unit-test: chapter_01.html $(VENV)/bin
 clean:
 	rm -rf $(TMPDIR)
 	rm -v $(HTML_PAGES)
+
+.PHONY: docker-build
+docker-build:
+	docker build --platform=linux/amd64 -t hjwp/obeythetestinggoat-book-tester:latest .
+
+.PHONY: docker-push
+docker-push:
+	docker push hjwp/obeythetestinggoat-book-tester:latest
+
+.PHONY: docker-venv
+docker-venv:
+	docker run --rm \
+		--mount type=volume,source=rootmount,target=/root \
+		--mount type=bind,source=./,target=/app \
+		--mount type=volume,source=venvmount,target=/app/.venv \
+		-t hjwp/obeythetestinggoat-book-tester:latest \
+		bash -c "uv venv .venv && uv pip install --upgrade ."
+
+.PHONY: docker-test_%
+docker-test_%: docker-venv %.html $(TMPDIR)
+	docker run --rm \
+		--mount type=volume,source=rootmount,target=/root \
+		--mount type=bind,source=./,target=/app \
+		--mount type=volume,source=venvmount,target=/app/.venv \
+		-t hjwp/obeythetestinggoat-book-tester:latest \
+		bash -c "make $(subst docker-,,$@)"
+
