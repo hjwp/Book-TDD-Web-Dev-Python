@@ -178,6 +178,30 @@ def strip_docker_image_ids_and_creation_times(output):
     return fixed
 
 
+def fix_curl_stuff(output):
+    fixed = re.sub(
+        r"User-Agent: curl/\d\.\d+\.\d*",
+        r"User-Agent: curl/8.6.0",
+        output,
+    )
+    fixed = re.sub(
+        r"Trying \[::1\]:(\d\d\d\d)...",
+        r"Trying ::1:\1...",
+        fixed,
+    )
+    fixed = re.sub(
+        r"Closing connection 0",
+        r"Closing connection",
+        fixed,
+    )
+    fixed = re.sub(
+        r"Connected to localhost \(127.0.0.1\) port (\d\d\d\d) \(#0\)",
+        r"Connected to localhost (127.0.0.1) port \1",
+        fixed,
+    )
+    return fixed
+
+
 SQLITE_MESSAGES = {
     "django.db.utils.IntegrityError: lists_item.list_id may not be NULL": "django.db.utils.IntegrityError: NOT NULL constraint failed: lists_item.list_id",
     "django.db.utils.IntegrityError: columns list_id, text are not unique": "django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,\nlists_item.text",
@@ -289,8 +313,6 @@ class ChapterTest(unittest.TestCase):
     def start_with_checkout(self):
         update_sources_for_chapter(self.chapter_name, self.previous_chapter)
         self.sourcetree.start_with_checkout(self.chapter_name, self.previous_chapter)
-        # simulate virtualenv folder
-        self.sourcetree.run_command("mkdir -p .venv/bin .venv/lib")
 
     def write_to_file(self, codelisting):
         self.assertEqual(
@@ -340,13 +362,26 @@ class ChapterTest(unittest.TestCase):
         return output
 
     def prep_virtualenv(self):
-        virtualenv_path = os.path.join(self.tempdir, ".venv")
-        if not os.path.exists(virtualenv_path):
+        virtualenv_path = self.tempdir / ".venv"
+        if not virtualenv_path.exists():
             print("preparing virtualenv")
-            self.sourcetree.run_command("python -m venv .venv")
+            self.sourcetree.run_command("uv venv .venv")
+        os.environ["VIRTUAL_ENV"] = str(virtualenv_path)
+        os.environ["PATH"] = ":".join(
+            [f"{virtualenv_path}/bin"] + os.environ["PATH"].split(":")
+        )
+        if (self.tempdir / "requirements.txt").exists():
             self.sourcetree.run_command(
-                "./.venv/bin/python -m pip install -r requirements.txt"
+                "uv pip install -r requirements.txt"
             )
+        else:
+            self.sourcetree.run_command(
+                'uv pip install "django<5" selenium'
+            )
+        self.sourcetree.run_command(
+            'uv pip install pip'
+        )
+
 
     def prep_database(self):
         self.sourcetree.run_command(f"python {self._manage_py()} migrate --noinput")
@@ -390,6 +425,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_migration_timestamps(actual_fixed)
         actual_fixed = strip_session_ids(actual_fixed)
         actual_fixed = strip_docker_image_ids_and_creation_times(actual_fixed)
+        actual_fixed = fix_curl_stuff(actual_fixed)
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
@@ -407,6 +443,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_git_hashes(expected_fixed)
         expected_fixed = strip_mock_ids(expected_fixed)
         expected_fixed = strip_docker_image_ids_and_creation_times(expected_fixed)
+        expected_fixed = fix_curl_stuff(expected_fixed)
         expected_fixed = strip_object_ids(expected_fixed)
         expected_fixed = strip_migration_timestamps(expected_fixed)
         expected_fixed = strip_session_ids(expected_fixed)
@@ -733,7 +770,7 @@ class ChapterTest(unittest.TestCase):
     def recognise_listing_and_process_it(self):
         listing = self.listings[self.pos]
         if listing.pause_first:
-            print('pausing first')
+            print("pausing first")
             time.sleep(2)
         if listing.dofirst:
             print("DOFIRST", listing.dofirst)
@@ -814,11 +851,13 @@ class ChapterTest(unittest.TestCase):
             next_listing = self.listings[self.pos + 1]
             if next_listing.type == "output" and not next_listing.skip:
                 output = self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
                 self.assert_console_output_correct(output, next_listing)
                 next_listing.was_checked = True
                 self.pos += 2
             else:
                 self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
                 listing.was_checked = True
                 self.pos += 1
 
