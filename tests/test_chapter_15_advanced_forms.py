@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import unittest
 
 from book_tester import ChapterTest
@@ -24,11 +25,10 @@ class Chapter15Test(ChapterTest):
         self.skip_with_check(28, "# should show changes")  # diff
 
         # hack fast-forward
-        skip = False
-        if skip:
-            self.pos = 68
+        if os.environ.get("SKIP"):
+            self.pos = 53
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch13l054"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch15l018"))
             )
 
         while self.pos < len(self.listings):
