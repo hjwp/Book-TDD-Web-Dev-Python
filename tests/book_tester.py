@@ -284,10 +284,10 @@ class ChapterTest(unittest.TestCase):
     def check_final_diff(self, ignore=None, diff=None):
         if diff is None:
             diff = self.run_command(Command(f"git diff -w repo/{self.chapter_name}"))
-        try:
-            print("checking final diff", diff)
-        except io.BlockingIOError:
-            pass
+        # try:
+        print("checking final diff", diff)
+        # except io.BlockingIOError:
+        # pass
         self.assertNotIn("fatal:", diff)
         start_marker = "diff --git a/\n"
         commit = Commit.from_diff(start_marker + diff)
