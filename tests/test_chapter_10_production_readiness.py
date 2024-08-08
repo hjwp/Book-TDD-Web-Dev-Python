@@ -46,7 +46,7 @@ class Chapter10Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(ignore=["gunicorn==21", "Django==4.2"])
+        self.check_final_diff(ignore=["gunicorn==22", "Django==4.2"])
         # if DO_SERVER_COMMANDS:
         #     subprocess.run(["vagrant", "snapshot", "delete", "MAKING_END"], check=False)
         #     subprocess.run(["vagrant", "snapshot", "save", "MAKING_END"], check=True)
