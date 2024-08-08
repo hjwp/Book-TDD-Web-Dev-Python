@@ -22,13 +22,13 @@ class Chapter15Test(ChapterTest):
         self.prep_database()
 
         # skips
-        self.skip_with_check(28, "# should show changes")  # diff
+        self.skip_with_check(27, "# should show changes")  # diff
 
         # hack fast-forward
         if os.environ.get("SKIP"):
-            self.pos = 53
+            self.pos = 60
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch15l018"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch15l020"))
             )
 
         while self.pos < len(self.listings):
