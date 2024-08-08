@@ -48,7 +48,7 @@ class Chapter10Test(ChapterTest):
         self.assert_all_listings_checked(self.listings)
         self.check_final_diff(
             ignore=[
-                "Django==4.2",
+                "django==4.2",
                 "gunicorn==22",
                 "whitenoise==6",
             ]
