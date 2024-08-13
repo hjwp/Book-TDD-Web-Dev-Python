@@ -13,7 +13,7 @@ class Chapter18Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, "other command")
+        self.assertEqual(self.listings[0].type, "against staging")
         self.assertEqual(self.listings[1].type, "output")
 
         # skips

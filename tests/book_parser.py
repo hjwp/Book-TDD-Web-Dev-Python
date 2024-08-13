@@ -24,6 +24,7 @@ class CodeListing:
         self.skip = False
         self.currentcontents = False
         self.against_server = False
+        self.pause_first = False
 
     def is_diff(self):
         lines = self.contents.split("\n")
@@ -56,6 +57,7 @@ class Command(str):
         self.ignore_errors = False
         self.server_command = False
         self.against_server = False
+        self.pause_first = False
         self.dofirst = None
         str.__init__(a_string)
 
@@ -78,12 +80,12 @@ class Command(str):
             return "interactive manage.py"
         if "docker run" in self and "-it" in self:
             return "docker run tty"
-        if self.startswith("STAGING_SERVER="):
+        if "ottg.co.uk" in self:
             return "against staging"
         return "other command"
 
     def __repr__(self):
-        return "<Command %s>" % (str.__repr__(self),)
+        return f"<Command {str.__repr__(self)}>"
 
 
 class Output(str):
@@ -93,6 +95,7 @@ class Output(str):
         self.dofirst = None
         self.jasmine_output = False
         self.against_server = False
+        self.pause_first = False
         str.__init__(a_string)
 
     @property
@@ -215,6 +218,10 @@ def parse_listing(listing):  # noqa: PLR0912
     if "against-server" in classes:
         for listing in outputs:
             listing.against_server = True
+
+    if "pause-first" in classes:
+        for listing in outputs:
+            listing.pause_first = True
 
     return outputs
 

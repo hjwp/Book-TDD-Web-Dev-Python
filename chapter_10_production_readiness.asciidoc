@@ -79,14 +79,13 @@ which I guess is what you'd want next if you already had a pony...
 We'll need to first install Gunicorn into our container,
 and then use it instead of `runserver`:
 
-//001
 
 [subs="specialcharacters,quotes"]
 ----
-$ *pip install gunicorn*
+$ *python -m pip install gunicorn*
 Collecting gunicorn
 [...]
-Successfully installed gunicorn-21.2.0
+Successfully installed gunicorn-22.[...]
 ----
 
 [[what-is-wsgi]]
@@ -126,13 +125,13 @@ Let's change the command our image runs:
 [source,dockerfile]
 ----
 [...]
-RUN pip install "django<5" gunicorn  <1>
+RUN pip install "django<5" gunicorn  # <1>
 
 COPY src /src
 
 WORKDIR /src
 
-CMD gunicorn --bind :8888 superlists.wsgi:application  <2>
+CMD gunicorn --bind :8888 superlists.wsgi:application  # <2>
 ----
 ====
 // CSANAD:  shouldn't we try it out before adding this to the Dockerfile?
@@ -212,7 +211,15 @@ Believe it or not, this pun didn't actually hit me until I was rewriting this ch
 For 10 years it was right under my nose. I think that makes it funnier actually.]
 files from Python.
 
-This is how we tell Django to enable it, in _settings.py_:
+First we install Whitenoise into our local environment:
+
+
+[subs="specialcharacters,quotes"]
+----
+*pip install whitenoise*
+----
+
+Then we tell Django to enable it, in _settings.py_:
 
 [role="sourcecode"]
 .src/superlists/settings.py (ch10l002)
@@ -230,11 +237,9 @@ MIDDLEWARE = [
 // CSANAD:  I would add a few thoughts on the significance of the order of
 //          middlewares.
 
-And if you take another manual look at your site after rebuilding the
-container, things should look much healthier.
-
 And then we need to add it to our pip installs in the Dockerfile:
 
+[role="sourcecode"]
 .Dockerfile (ch10l003)
 ====
 [source,dockerfile]
@@ -258,13 +263,6 @@ $ *docker build -t superlists . && docker run \
 And if you take another manual look at your site, things should look much healthier.
 Let's rerun our FTs to confirm:
 
-// DAVID: Incidentally as per your suggestion Harry I have just been skipping
-// the requirements.txt and instead just amending the pip install in the Dockerfile.
-// If we do that, however, we'll need to make sure readers rebuild the image each time
-// we add a requirement - such as at this point.
-
-
-// JAN: That doesn't work until you install whitenoise to venv on local machine
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -314,8 +312,9 @@ I'm sure you'll come across many others.]
 
 The `pip freeze` command will show us everything that's installed in our virtualenv at the moment:
 
-// JAN: This is true only if one installs the libraries locally. So far when following the book we installed them only inside Docker image
 
+// version numbers change too much
+[role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
 $ *pip freeze*
@@ -350,7 +349,7 @@ Django, Gunicorn and Whitenoise:
 [subs="specialcharacters,quotes"]
 ----
 $ *pip freeze | grep -i django*
-Django==4.2.11
+Django==4.2.[...]
 
 $ *pip freeze | grep -i django >> requirements.txt*
 $ *pip freeze | grep -i gunicorn >> requirements.txt*
@@ -360,7 +359,7 @@ $ *pip freeze | grep -i whitenoise >> requirements.txt*
 That should give us a requirements.txt file that looks like this:
 
 
-[role="sourcecode"]
+[role="sourcecode skipme"]
 .requirements.txt (ch10l004)
 ====
 [source,python]
@@ -374,15 +373,13 @@ whitenoise==6.6.0
 
 That's a good first cut, let's commit it:
 
-// SEBASTIAN I am not very fond of freezing just "top-level" dependencies of the project,
-// . This is not guaranteeing the reproducible builds and I failed to build & deploy because of that more than once.
-// But I understand it's a trade-off so the reader does get bogged down.
-// TODO: add a note about this and a link to some more reading
 
+[subs="specialcharacters,quotes"]
 ----
 $ *git add requirements.txt*
 $ *git commit -m "Add a requirements.txt with Django, gunicorn and whitenoise"*
 ----
+
 
 You may be wondering why we didn't add our other dependency,
 Selenium, to our requirements,
@@ -411,6 +408,7 @@ TIP: Itamar Turner-Traurig has a great guide to
 
 Now let's see how we use that requirements file in our Dockerfile:
 
+[role="sourcecode"]
 .Dockerfile (ch10l005)
 ====
 [source,dockerfile]
@@ -420,14 +418,14 @@ FROM python:slim
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-COPY requirements.txt requirements.txt  <1>
-RUN pip install -r requirements.txt  <2>
+COPY requirements.txt requirements.txt  # <1>
+RUN pip install -r requirements.txt  # <2>
 
 COPY src /src
 
 WORKDIR /src
 
-CMD python manage.py runserver
+CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
 ====
 
@@ -444,15 +442,8 @@ TIP: Forgetting the `-r` and running `pip install requirements.txt`
     It's a mistake I still make, _all the time_.
 
 
-// CSANAD:  It's fine for now, but I would definitely put the requirements under
-//          /tmp and then `rm` it after `pip install`. Also, using a non-privileged
-// user is important, something like:
-//     `adduser --no-create-home --disabled-password todoapp`
-// and then setting the user in the Dockerfile with `USER todoapp`.
-// But we can cover this in a later chapter (the next one looks like a good fit,
-// since it's related to the app being production ready).
 
-Let's do a build & run & test to check everything still works:
+Let's build & run: 
 
 [subs="specialcharacters,quotes"]
 ----
@@ -460,6 +451,18 @@ $ *docker build -t superlists . && docker run \
   -p 8888:8888 \
   --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
   -it superlists*
+----
+
+And then test to check everything still works:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
+  --failfast*]
+[...]
+
+OK
 ----
 
 === Using Environment Variables to Adjust Settings for Production
@@ -500,12 +503,13 @@ Environment variables also have the advantage of working for non-Django stuff to
 There are lots of ways you might do this.
 
 Here's what I propose; it may seem a little fiddly,
-but I'll provide a little justification for each choice.
+but I'll provide a little justification for each choice.   
 Let them be an inspiration (but not a template) for your own choices!
 
+Note that this if statement replaces the DEBUG and SECRET_KEY lines that are included by default in the settings.py file:
 
 [role="sourcecode"]
-.superlists/settings.py (ch10l006)
+.src/superlists/settings.py (ch10l006)
 ====
 [source,python]
 ----
@@ -552,6 +556,7 @@ TIP: Better to fail hard than allow a typo in an environment variable name to
 // in a development environment relying on containerization, programmers usually
 // mount the whole /src minimizing the time-consuming rebuilding of their images.
 
+
 ==== Setting environment variables inside the Dockerfile
 
 Now let's set that environment variable in our Dockerfile using the `ENV` directive:
@@ -572,6 +577,7 @@ And try it out...
 
 
 
+[role="ignore-errors"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:specialcharacters,quotes[*docker build -t superlists . && docker run \
@@ -583,7 +589,7 @@ $ pass:specialcharacters,quotes[*docker build -t superlists . && docker run \
   File "/src/superlists/settings.py", line 22, in <module>
     SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen os>", line 685, in __getitem__
+[...]
 KeyError: 'DJANGO_SECRET_KEY'
 ----
 
@@ -667,7 +673,7 @@ Let's use another environment variable for that:
 
 
 [role="sourcecode"]
-.superlists/settings.py (ch10l008)
+.src/superlists/settings.py (ch10l008)
 ====
 [source,python]
 ----
@@ -738,7 +744,7 @@ ENV DJANGO_DEBUG_FALSE=1
 CMD gunicorn --bind :8888 superlists.wsgi:application
 ----
 ====
-// CSANAD: I think it would be important to use a non-privileged user in Docker
+
 
 // DAVID: It would be nice to explain the difference between RUN and CMD.
 
@@ -747,10 +753,20 @@ CMD gunicorn --bind :8888 superlists.wsgi:application
 // Might be worth calling out that we're running collectstatic in debug mode.
 
 
-// TODO: gitignore src/static
 
-Well, it was fiddly, but that should get us to passing tests!
+Well, it was fiddly, but that should get us to passing tests after we build & run the docker container!
 
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -it superlists*
+----
+
+and...
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -779,24 +795,29 @@ $ *git status*
 $ *git commit -am "Add collectstatic to dockerfile, and new location to gitignore"*
 ----
 
-// CSANAD: now would be a good time to check our changes and notice git marked
-//         src/static as unstaged, so we should update .gitignore accordingly:
-// from `static` to `src/static`.
-// Or we could add this step to Chapter 09 at "Move all our code into a src
-// folder"
 
 
 === Switching to a nonroot user
 
-TODO: WIP, this is definitely a good idea for security, needs writing up.
+// CSANAD:  It's fine for now, but I would definitely put the requirements under
+//          /tmp and then `rm` it after `pip install`. Also, using a non-privileged
+// user is important, something like:
+//     `adduser --no-create-home --disabled-password todoapp`
+// and then setting the user in the Dockerfile with `USER todoapp`.
+// But we can cover this in a later chapter (the next one looks like a good fit,
+// since it's related to the app being production ready).
+// TODO yep let's definitely do this.
+
+TODO: apologies, WIP, this is definitely a good idea for security, needs writing up.
 
 Dockerfile should gain some lines a bit like this:
 
+[role="sourcecode skipme"]
 .Dockerfile (ch10l0XX)
 ====
 [source,dockerfile]
 ----
-RUN addgroup --system nonroot && adduser --system --group nonroot
+RUN addgroup --system nonroot && adduser --system --no-create-home --disabled-password --group nonroot
 
 USER nonroot
 ----
@@ -824,7 +845,9 @@ $ *touch src/db.sqlite3*  # otherwise the --mount type=bind will complain
 
 Now if you run the tests, you'll see they fail;
 
-[role="small-code"]
+// TODO: for some reason this wont repro in CI
+
+[role="small-code pause-first skipme"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests \
@@ -849,6 +872,7 @@ image::images/server_error_500.png["A minimal error page saying just Server erro
 
 But if you look in your docker terminal, you'll see there is no traceback:
 
+[role="skipme"]
 ----
 [2024-02-28 10:41:53 +0000] [7] [INFO] Starting gunicorn 21.2.0
 [2024-02-28 10:41:53 +0000] [7] [INFO] Listening at: http://0.0.0.0:8888 (7)
@@ -865,7 +889,7 @@ If you're like me you might find yourself wondering if we really _did_ see them 
 and starting to doubt your own sanity.
 But the explanation is that Django's
 https://docs.djangoproject.com/en/4.2/ref/logging/#default-logging-configuration[default logging configuration]
-changes when DEBUG is turned off:
+changes when DEBUG is turned off.
 
 This means we need to interact with the standard library's `logging` module,
 unfortunately one of the most fiddly parts of the Python standard libraryfootnote:[
@@ -878,6 +902,7 @@ and you wish that configuring the simplest thing was a little easier.].
 
 Here's pretty much the simplest possible logging config
 which just prints everything to the console (i.e. standard out).
+I've added this code to the very end of the settings.py file. 
 
 
 [role="sourcecode"]
@@ -898,10 +923,23 @@ LOGGING = {
 ----
 ====
 
-Rebuild and restart our container,
-try the FT again (or submitting a new list item manually)
+Rebuild and restart our container...
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -it superlists*
+----
+
+Then try the FT again (or submitting a new list item manually)
 and we now should see a clear error message:
 
+// TODO: test get from docker logs
+[role="skipme"]
 ----
 Internal Server Error: /lists/new
 Traceback (most recent call last):
@@ -926,7 +964,7 @@ when considering production-readiness,
 we've worked in small steps and used our tests all the way along,
 and we're now ready to deploy our container to a real server!
 
-Find out how, in our next exciting installment...
+Find out how, in our next exciting instalment...
 
 
 [role="pagebreak-before less_space"]

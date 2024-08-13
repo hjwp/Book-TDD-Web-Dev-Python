@@ -243,11 +243,6 @@ https://docs.djangoproject.com/en/4.2/ref/models/options/[Django docs on model
 `Meta` attributes] at this point.
 
 
-Our unit tests are passing. Great!
-----
-OK
-----
-// TODO: in theory we should do a migration now.
 
 [[rewrite-model-test]]
 ==== Rewriting the Old Model Test
@@ -338,6 +333,7 @@ Migrations for 'lists':
   src/lists/migrations/0005_alter_item_unique_together.py
     - Alter unique_together for item (1 constraint(s))
 ----
+//ch15l005-1
 
 Now let's run the migration:
 
@@ -347,6 +343,7 @@ $ pass:quotes[*python src/manage.py migrate*]
 ----
 
 When you run the migration, you may encounter the following error:
+
 [role="skipme"]
 [subs="specialcharacters,macros"]
 ----
@@ -378,7 +375,7 @@ Now if we change our duplicates test to do a `.save` instead of a
 // the premise (some errors show up upon save() and actually trying it out.
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py
+.src/lists/tests/test_models.py (ch15l008)
 ====
 [source,python]
 ----
@@ -410,7 +407,7 @@ error from the one we want, an `IntegrityError` instead of a `ValidationError`.
 
 Let's revert our changes to the test, and see them all passing again:
 
-[role="dofirst-ch15l008"]
+[role="dofirst-ch15l008-1"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test lists*]
@@ -422,7 +419,7 @@ OK
 ((("", startref="FTduplicate15")))((("", startref="DITfunctional15")))And
 now it's time to commit our model-layer changes:
 
-[role="small-code skipme"]
+[role="small-code"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:[<strong>git status</strong>] # should show changes to tests + models and new migration
@@ -430,6 +427,7 @@ $ pass:[<strong>git add src/lists</strong>]
 $ pass:[<strong>git diff --staged</strong>]
 $ pass:[<strong>git commit -m "Implement duplicate item validation at model layer"</strong>]
 ----
+
 // CSANAD we manually added src/lists I'm guessing, not to commit the currently
 // failing FT. Or, we could commit the FT too, but in that case adding src/lists
 // is unnecessary because we would be doing `commit -a` anyway. I removed the
@@ -813,56 +811,54 @@ use Django instead, it seems like we need to bring back our custom
 `<input>` and add a few attributes manually:
 
 [role="sourcecode"]
-.src/lists/templates/base.html
+.src/lists/templates/base.html (ch15l019)
 ====
 [source,diff]
 ----
-@@ -14,12 +14,25 @@
-       <div class="row justify-content-center p-5 bg-body-tertiary rounded-3">
-         <div class="col-lg-6 text-center">
+@@ -16,10 +16,22 @@
            <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
--
--          <form method="POST" action="{% block form_action %}{% endblock %}" >
+
+           <form method="POST" action="{% block form_action %}{% endblock %}" >
 -            {{ form.text }}
--            {% csrf_token %}
-+          <form
-+            class="was-validated"  <1>
-+            method="POST"
-+            action="{% block form_action %}{% endblock %}"
-+          >
-+            {% csrf_token %}
-+            <input   <2>
+             {% csrf_token %}
++            <input  <1>
 +              id="id_text"
 +              name="text"
-+              class="form-control
++              class="form-control  <2>
 +                     form-control-lg
-+                     {% if form.errors %}is-invalid{% endif %}"  <2>
++                     {% if form.errors %}is-invalid{% endif %}"
 +              placeholder="Enter a to-do item"
 +              value="{{ form.text.value }}"
-+              aria-describedby="id_text_feedback"
++              aria-describedby="id_text_feedback"  <3>
 +              required
 +            />
              {% if form.errors %}
 -              <div class="invalid-feedback">{{ form.errors.text }}</div>
-+              <div class="invalid-feedback">{{ form.errors.text.0 }}</div>   <3>
++              <div id="id_text_feedback" class="invalid-feedback">  <3>
++                {{ form.errors.text.0 }}  <4>
++              </div>
              {% endif %}
            </form>
          </div>
 ----
 ====
 
-<1> We give `.was-validated` to the `<form>`
-<2> We provide an `<input>` and the most important custom setting will be its
-    `class`. As you can see, we can use conditionals even for providing
-    additional `class` -es.footnote:[
-We've split the form tag across three lines so it fits nicely in the book.
-If you've not seen that before, it may look a little weird to you,
-but I promise it is valid HTML.
-You don't have to use it if you don't like it though.]
+<1> We hand-craft the `<input>` and the most important custom setting will be its
+    `class`. 
 
-<3> If you try to just simply display `form.errors.text` you'll see it ends up
-    as a list item in an unordered list. To avoid that, let's just
-    select `form.errors.text.0`.
+<2> As you can see, we can use conditionals even for providing additional `class` -es.footnote:[
+    We've split the input tag across multiple lines so it fits nicely on the screen.
+    If you've not seen that before, it may look a little weird to you,
+    but I promise it is valid HTML.
+    You don't have to use it if you don't like it though.]
+
+<3> We add an `id` to the error message, to be able to use `aria-describedby` on the input,
+    as recommended in the Bootstrap docs;
+    it makes the error message more accessible to screen readers.
+
+<4> If you just try to use `form.errors.text` you'll that Django injects a `<ul>`
+    list, because the forms framework can report multiple errors for each field.
+    We know we've only got one, so we can use use `form.errors.text.0`.
 
 NOTE:  Another flip-flop!
   We spent most of the last chapter switching from handcrafted HTML
@@ -876,19 +872,193 @@ NOTE:  Another flip-flop!
   and it's time to go back to doing the work yourself.
   It doesn't mean you should always reinvent the wheel!
 
-Now when we run the FT for validation again:
+Now let's run the FT for validation again:
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test functional_tests.test_list_item_validation*]
 [...]
+======================================================================
+FAIL: test_cannot_add_empty_list_items (functional_tests.test_list_item_validat
+ion.ItemValidationTest.test_cannot_add_empty_list_items)
  ---------------------------------------------------------------------
-Ran 2 tests in 12.048s
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/test_list_item_validation.py", line
+48, in test_cannot_add_empty_list_items
+    self.wait_for_row_in_list_table("2: Make tea")
+  File "...goat-book/src/functional_tests/base.py", line 37, in
+wait_for_row_in_list_table
+    self.assertIn(row_text, [row.text for row in rows])
+AssertionError: '2: Make tea' not found in ['1: Make tea', '2: Purchase milk']
+----
+
+Ooops what happened here?
+
+
+==== A Little Digression on Queryset Ordering and String Representations
+
+((("queryset ordering", id="queryset15")))
+((("string representations", id="triprep15")))
+Something seems to be going wrong with the ordering of our list items.
+Debugging this with an FT is going to be slow,
+so let's work at the unit test level.
+
+We'll add a test that checks that list items are ordered
+in the order they are inserted.
+You'll have to forgive me if I jump straight to the right answer,
+using intuition borne of long experience,
+but I suspect that it might be sorting alphabetically based on list text instead
+(what else wouold it sort by after all?),
+so I'll pick some text values designed to test that hypothesis:
+
+[role="sourcecode"]
+.src/lists/tests/test_models.py (ch15l020)
+====
+[source,python]
+----
+class ItemModelTest(TestCase):
+    [...]
+
+    def test_list_ordering(self):
+        list1 = List.objects.create()
+        item1 = Item.objects.create(list=list1, text="i1")
+        item2 = Item.objects.create(list=list1, text="item 2")
+        item3 = Item.objects.create(list=list1, text="3")
+        self.assertEqual(
+            Item.objects.all(),
+            [item1, item2, item3],
+        )
+----
+====
+
+TIP: FTs are a slow feedback loop.
+    Switch to unit tests when you want to drill down on edge case bugs.
+
+
+That gives us a new failure, but it's not a very readable one:
+
+----
+AssertionError: <QuerySet [<Item: Item object (1)>, <Item[40 chars]3)>]> !=
+[<Item: Item object (1)>, <Item: Item obj[29 chars](3)>]
+----
+
+
+We need a better string representation for our objects.  Let's add another
+unit test:
+
+
+NOTE: Ordinarily you would be wary of adding more failing tests when you
+    already have some--it makes reading test output that much more complicated,
+    and just generally makes you nervous. Will we ever get back to a working
+    state? In this case, they're all quite simple tests, so I'm not worried.
+
+
+[role="sourcecode"]
+.src/lists/tests/test_models.py (ch15l021)
+====
+[source,python]
+----
+def test_string_representation(self):
+    item = Item(text="some text")
+    self.assertEqual(str(item), "some text")
+----
+====
+
+That gives us:
+
+----
+AssertionError: 'Item object (None)' != 'some text'
+----
+
+As well as the other two failures.  Let's start fixing them all now:
+
+
+[role="sourcecode"]
+.src/lists/models.py (ch15l022)
+====
+[source,python]
+----
+class Item(models.Model):
+    [...]
+
+    def __str__(self):
+        return self.text
+----
+====
+
+Now we're down to one failure, and the ordering test has a more readable
+failure message:
+
+----
+AssertionError: <QuerySet [<Item: i1>, <Item: item 2>, <Item: 3>]> != [<Item:
+i1>, <Item: item 2>, <Item: 3>]
+
+----
+
+That confirms our suspicion that the ordering was alphabetical.
+We can fix that in the `class Meta`:
+
+[role="sourcecode"]
+.src/lists/models.py (ch15l023)
+====
+[source,python]
+----
+    class Meta:
+        ordering = ("id",)
+        unique_together = ("list", "text")
+----
+====
+
+Does that work?
+
+----
+AssertionError: <QuerySet [<Item: i1>, <Item: item 2>, <Item: 3>]> != [<Item:
+i1>, <Item: item 2>, <Item: 3>]
+----
+
+Urp?  It has worked; you can see the items 'are' in the same order, but the
+tests are confused.  I keep running into this problem actually--Django
+querysets don't compare well with lists.  We can fix it by converting the
+queryset to a listfootnote:[You could also check out `assertSequenceEqual` from `unittest`, and
+`assertQuerysetEqual` from Django's test tools, although I confess when I last
+looked at `assertQuerysetEqual` I was quite baffled...]
+in our test:
+
+[role="sourcecode"]
+.src/lists/tests/test_models.py (ch15l024)
+====
+[source,python]
+----
+    self.assertEqual(
+        list(Item.objects.all()),
+        [item1, item2, item3],
+    )
+----
+====
+
+That works; we get a fully passing unit test suite:
+
+----
+Ran 32 tests in 0.034s
 
 OK
 ----
 
-As a final check, we rerun 'all' the FTs:
+((("", startref="triprep15")))
+((("", startref="queryset15")))
+
+We do need a migration for that ordering change though:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py makemigrations*]
+Migrations for 'lists':
+  src/lists/migrations/0006_alter_item_options.py
+    - Change Meta options on item
+----
+//ch15l025
+
+And as a final check, we rerun 'all' the FTs:
 
 [subs="specialcharacters,macros"]
 ----
@@ -901,7 +1071,16 @@ OK
 ----
 
 Hooray! Time for a final commit, and a wrap-up of what we've learned about
-testing views over the last few chapters.((("", startref="DITlist15")))
+testing views over the last few chapters.
+
+
+
+[subs="specialcharacters,quotes"]
+----
+*git add src*
+*git commit -m "Fix list item ordering, go back to html5 in FT"*
+----
+((("", startref="DITlist15")))
 
 
 === Wrapping Up: What We've Learned About Testing Django

@@ -35,11 +35,11 @@ tion.ItemValidationTest.test_cannot_add_empty_list_items)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
   File "...goat-book/src/functional_tests/test_list_item_validation.py", line
-15, in test_cannot_add_empty_list_items
+16, in test_cannot_add_empty_list_items
     self.wait_for(
 [...]
   File "...goat-book/src/functional_tests/test_list_item_validation.py", line
-17, in <lambda>
+18, in <lambda>
     self.browser.find_element(By.CSS_SELECTOR, ".invalid-feedback").text,
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 [...]
@@ -102,6 +102,9 @@ class ListAndItemModelsTest(TestCase):
 ----
 ====
 
+// DAVID: Catching ValidationError is a bit too much of a catch-all, could
+// we assert what's on the ValidationError for the correct error?
+
 This is a new unit testing technique: when we want to check that doing
 something will raise an error, we can use the `self.assertRaises` context
 manager.  We could have used something like this instead:
@@ -116,10 +119,21 @@ except ValidationError:
     pass
 ----
 
-But the `with` formulation is neater.  Now, we can try running the test,
-and see its expected failure:
-// CSANAD: I would highlight we are running the unit test here
-// python src/manage.py test lists
+But the `with` formulation is neater.
+
+TIP: If you're new to Python, you may never have seen the `with` statement.
+    It's used with what are called "context managers", which wrap a block of code,
+    usually with some kind of setup, cleanup, or error-handling code.
+    There's a good write-up on
+    https://www.pythonmorsels.com/what-is-a-context-manager/[Python Morsels].
+    ((("with statements")))
+    ((("Python 3", "with statements")))
+
+
+
+==== A Django Quirk: Model Save Doesn't Run Validation
+
+Now, we can try running the unit test, and see its expected failure:
 
 ----
     with self.assertRaises(ValidationError):
@@ -127,40 +141,26 @@ AssertionError: ValidationError not raised
 ----
 
 
-TIP: If you're new to Python, you may never have seen the `with` statement.
-    It's used with what are called "context managers", which wrap a block of code,
-    usually with some kind of setup, cleanup, or error-handling code.
-    There's a good write-up in the
-    https://docs.python.org/release/2.5/whatsnew/pep-343.html[Python 2.5 release notes].
-    ((("with statements")))
-    ((("Python 3", "with statements")))
-
-
-A Django Quirk: Model Save Doesn't Run Validation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
 ((("model-layer validation", "running full validation")))
-And now we discover one of Django's little quirks.
+We've discovered one of Django's little quirks.
 _This test should already pass_.
 If you take a look at the
 https://docs.djangoproject.com/en/4.2/ref/models/fields/#blank[docs for the Django model fields],
-you'll see under _Field options_ that the default setting for `blank` is `False`. Which means,
-since TextField is a type of Field, it 'should' disallow empty values.
-// CSANAD: I rephrased this a little, because `blank` is False for all `Field`s.
+you'll see under _Field options_ that the default setting for `blank` is `False`.
+Which means, since TextField is a type of Field, it _should_ disallow empty values.
+
 
 ((("data integrity errors")))
 So why is the test still failing?
 Well, for
 http://bit.ly/2v3SfRq[slightly counterintuitive historical reasons],
 Django models don't run full validation on save.
-// CSANAD: I'd argue against the use of shortened URLs.
 As we'll see later,
-any constraints that are actually implemented in the database
-will raise errors on save,
+any constraints that are actually implemented in the database will raise errors on save,
 but SQLite doesn't support enforcing emptiness constraints on text columns,
 and so our save method is letting this invalid value through silently.
 
+// TODO: this next bit doesnt make sense.  could add an explicit blank=False, null=False?
 There's a way of checking whether the constraint will happen at the database level or not:
 if it was at the database level, we would need a migration to apply the constraint.
 But Django knows that SQLite doesn't support this type of constraint,
@@ -176,10 +176,18 @@ $ pass:quotes[*python src/manage.py makemigrations*]
 No changes detected
 ----
 
+// TODO: consider trying this:
+////
+    def test_cannot_save_empty_list_items(self):
+        mylist = List.objects.create()
+        item = Item(list=mylist, text=None)
+        item.save()
+////
 
-((("full_clean method")))Django
-does have a method to manually run full validation, however, called
-`full_clean` (more info in
+
+((("full_clean method")))
+Django does have a method to manually run full validation, however,
+called `full_clean` (more info in
 https://docs.djangoproject.com/en/4.2/ref/models/instances/#django.db.models.Model.full_clean[the docs]).
 Let's hack it in to see it work:
 
@@ -195,14 +203,17 @@ Let's hack it in to see it work:
 ----
 ====
 //19
+
 // CSANAD: full_clean() should be executed before save() is called. It doesn't
 //         make a difference here since the test DB is destroyed anyway, but
 // we are actually saving an invalid item and only then calling full_clean().
 // Which results in raising the correct error. But I think we should always
 // show the correct order even when it doesn't matter: validation first and
 // only then attempting save().
+// DAVID: A bit like Csanad, why bother calling item.save() at all?
 
 That gets the unit test to pass:
+
 
 ----
 OK
@@ -266,7 +277,7 @@ TIP: However, ignore the Bootstrap docs' advice to prefer client-side
     https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html#client-side-vs-server-side-validation[it is not a security measure.]
     Server-side validation is indispensable for handling any input
     that gets processed by the server--and it will also provide albeit slower,
-    feedback for the client side.]
+    feedback for the client side.
 
 
 // CSANAD: these are the new docs for Bootstrap, but for some reason they begin
@@ -522,6 +533,9 @@ class NewListTest(TestCase):
 ----
 ====
 
+// DAVID: Suggest using self.assertFalse(List.objects.exists()), etc.
+// HARRY: or assertEqual(Item.objects.all(), [])?
+
 That gives:
 
 
@@ -563,7 +577,7 @@ Do the FTs pass?
 $ pass:quotes[*python src/manage.py test functional_tests.test_list_item_validation*]
 [...]
 File "...goat-book/src/functional_tests/test_list_item_validation.py", line
-31, in test_cannot_add_empty_list_items
+32, in test_cannot_add_empty_list_items
     self.wait_for(
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
@@ -571,14 +585,14 @@ element: .invalid-feedback; [...]
 ----
 
 
-Not quite, but they did get a little further.  Checking the line in which the
-error occurred -- 'line 31' in my case -- , we can
-// CSANAD: I think emphasizing what to look for in the error log is helpful.
-see that we've got past the first part of the test, and are now onto the second
-check--that submitting a second empty item also shows an error.
+Not quite, but they did get a little further.
+Checking the line in which the error occurred&mdash;_line 31_ in my case--we
+can see that we've got past the first part of the test,
+and are now onto the second check--that
+submitting a second empty item also shows an error.
 
-((("", startref="MLVsurfac13")))We've
-got some working code though, so let's have a commit:
+((("", startref="MLVsurfac13")))
+We've got some working code though, so let's have a commit:
 
 
 [subs="specialcharacters,quotes"]
@@ -586,7 +600,9 @@ got some working code though, so let's have a commit:
 $ *git commit -am "Adjust new list view to do model validation"*
 ----
 
+==== Adding an Early Return to our FT to Let us Refactor Against Green
 
+((("Early return")))
 Let's put an early return in the FT to separate
 what we got working from those that still need to be dealt with:
 
@@ -599,7 +615,7 @@ class ItemValidationTest(FunctionalTest):
     def test_cannot_add_empty_list_items(self):
         [...]
         self.browser.find_element(By.ID, "id_new_item").send_keys(Keys.ENTER)
-        self.wait_for_row_in_list_table("1: Buy milk")
+        self.wait_for_row_in_list_table("1: Purchase milk")
 
         return  # TODO re-enable the rest of this test.
 
@@ -637,8 +653,8 @@ TIP: When working on a new feature, it's common to realise partway through that
 This time we'll use a slightly different approach,
 one that's actually a very common pattern in Django,
 which is to use the same view to process POST requests
-to also to render the form that they come from.
-Whilst this doesn't fit the REST-ful URL model quite as well,
+to also render the form that they come from.
+Whilst this doesn't fit the RESTful URL model quite as well,
 it has the important advantage that the same URL can display a form,
 and display any errors encountered in processing the user's input.
 
@@ -646,6 +662,8 @@ The current situation is that we have one view and URL for displaying a list,
 and one view and URL for processing additions to that list.  We're going to
 combine them into one. So, in 'list.html', our form will have a different
 target:
+
+// DAVID: this could do with a diagram, I think people might skim this.
 // CSANAD: Since we are working in a not completely working state, I would
 // already mention or move the NOTE here from the end of the subsection:
 //   "Refactor: Transferring the new_item Functionality into view_list".
@@ -758,8 +776,9 @@ class ListViewTest(TestCase):
 <1> This is where we need to make that url change.
 
 Note that the `NewItemTest` class disappears completely.
-I've also changed the name of the redirect test to make it explicit that it only applies to POST
-requests.
+I've also changed the name of the redirect test
+to make it explicit that it only applies to POST requests.
+
 
 That gives:
 
@@ -775,6 +794,11 @@ ListViewTest.test_can_save_a_POST_request_to_an_existing_list)
 [...]
 AssertionError: 0 != 1
 ----
+
+// DAVID: mine come in the opposite order (when running python3 src/manage.py test src/lists/tests/).
+// Might confuse people if they are just checking the last line.
+// HARRY mine are consistently as above.  shrug!
+
 
 We change the `view_list` function to handle two types of request:
 
@@ -840,6 +864,8 @@ Ran 4 tests in 9.951s
 OK
 ----
 
+// DAVID: I get four "Not Found: /favicon.ico" messages when running the FTs, just FYI.
+
 Our refactor of the `add_item` functionality is complete.
 We should commit there:
 
@@ -859,7 +885,7 @@ We can remove the early return now.
 ----
 @@ -24,8 +24,6 @@ class ItemValidationTest(FunctionalTest):
          self.browser.find_element(By.ID, "id_new_item").send_keys(Keys.ENTER)
-         self.wait_for_row_in_list_table("1: Buy milk")
+         self.wait_for_row_in_list_table("1: Purchase milk")
 
 -        return  # TODO re-enable the rest of this test.
 -
@@ -925,6 +951,7 @@ class ListViewTest(TestCase):
 
 That should fail, because our view currently does not do any validation, and
 just redirects for all POSTs:
+
 
 ----
     self.assertEqual(response.status_code, 200)
@@ -1141,6 +1168,10 @@ All it takes is a super-simple unit test in 'test_models.py':
 ----
 ====
 
+// DAVID: Arguably this test is too coupled to the URL.
+// Might be better to check it against reverse("view_list", args=[mylist.id])
+// or just assert it's url that can be passed to `resolve`,
+// or even just a string.
 
 Which gives:
 
@@ -1249,8 +1280,11 @@ That final scratchpad item will be the subject of the next chapter.
 .On Database-Layer Validation
 *******************************************************************************
 
+Although, as we saw, the specific "not empty" constraint we're trying to apply here
+isn't enforceable by SQLite, and so it was actually Django that ended up enforcing it for us,
 I always like to push my validation logic down as low as possible.
 ((("model-layer validation", "benefits and drawbacks of")))
+
 
 Validation at the database layer is the ultimate guarantee of data integrity::
     It can ensure that, no matter how complex your code at the layers
@@ -1269,6 +1303,8 @@ And it's not designed for user-friendliness::
     Trying to store invalid data will cause a nasty `IntegrityError` to come
     back from your database, and possibly the user will see a confusing 500
     error page.
+    // DAVID: We haven't seen any IntegrityErrors here? This feels like it doesn't
+    // apply to this chapter.
     As we'll see in later chapters, forms-layer validation is designed with the
     user in mind, anticipating the kinds of helpful error messages we want to
     send them.
