@@ -80,12 +80,12 @@ class Command(str):
             return "interactive manage.py"
         if "docker run" in self and "-it" in self:
             return "docker run tty"
-        if self.startswith("STAGING_SERVER="):
+        if "ottg.co.uk" in self:
             return "against staging"
         return "other command"
 
     def __repr__(self):
-        return "<Command %s>" % (str.__repr__(self),)
+        return f"<Command {str.__repr__(self)}>"
 
 
 class Output(str):
