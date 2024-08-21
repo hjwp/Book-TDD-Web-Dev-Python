@@ -1,6 +1,5 @@
 [[chapter_purist_unit_tests]]
-Test Isolation, and "Listening to Your Tests"
----------------------------------------------
+== Test Isolation, and "Listening to Your Tests"
 
 .Warning, Chapter Not Updated
 *******************************************************************************
@@ -42,8 +41,7 @@ NOTE: I revisited some of the tradeoffs outlined in this chapter in my
     my https://www.cosmicpython.com[second book on architecture patterns].
 
 
-Revisiting Our Decision Point: The Views Layer Depends on Unwritten Models Code
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== Revisiting Our Decision Point: The Views Layer Depends on Unwritten Models Code
 
 
 ((("isolation, ensuring", "failed test example")))
@@ -51,9 +49,11 @@ Let's revisit the point we were at halfway through the last chapter, when we
 couldn't get the `new_list` view to work because lists didn't have the `.owner`
 attribute yet.
 
-We'll actually go back in time and check out the old codebase using the tag we
-saved earlier, so that we can see how things would have worked if we'd used
-more isolated tests:
+We'll actually go back in time and check out the old codebase
+using the tag we saved earlier, so that we can see
+how things would have worked if we'd used more isolated tests:
+
+// TODO: change tag name to be less leading
 
 
 [subs="specialcharacters,quotes"]
@@ -74,11 +74,11 @@ class NewListTest(TestCase):
     [...]
 
     def test_list_owner_is_saved_if_user_is_authenticated(self):
-        user = User.objects.create(email='a@b.com')
+        user = User.objects.create(email="a@b.com")
         self.client.force_login(user)
-        self.client.post('/lists/new', data={'text': 'new item'})
-        list_ = List.objects.first()
-        self.assertEqual(list_.owner, user)
+        self.client.post("/lists/new", data={"text": "new item"})
+        new_list = List.objects.get()
+        self.assertEqual(new_list.owner, user)
 ----
 ====
 
@@ -92,13 +92,13 @@ And here's what our attempted solution looked like:
 def new_list(request):
     form = ItemForm(data=request.POST)
     if form.is_valid():
-        list_ = List()
-        list_.owner = request.user
-        list_.save()
-        form.save(for_list=list_)
-        return redirect(list_)
+        nulist = List.objects.create()
+        nulist.owner = request.user
+        nulist.save()
+        form.save(for_list=nulist)
+        return redirect(nulist)
     else:
-        return render(request, 'home.html', {"form": form})
+        return render(request, "home.html", {"form": form})
 ----
 ====
 
@@ -106,49 +106,52 @@ And at this point, the view test is failing because we don't have the model
 layer yet:
 
 ----
-    self.assertEqual(list_.owner, user)
+    self.assertEqual(new_list.owner, user)
+                     ^^^^^^^^^^^^^^
 AttributeError: 'List' object has no attribute 'owner'
 ----
 
 NOTE: You won't see this error unless you actually check out the old code
-    and revert 'lists/models.py'.  You should definitely do this; part of
-    the objective of this chapter is to see whether we really can write
-    tests for a models layer that doesn't exist yet.
-
-
-A First Attempt at Using Mocks for Isolation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+    and revert _lists/models.py_.
+    You should definitely do this;
+    part of the objective of this chapter is to see
+    whether we really can write tests for a models layer
+    that doesn't exist yet.
 
 
 
+=== A First Attempt at Using Mocks for Isolation
 
-((("isolation, ensuring", "using mocks for", secondary-sortas="mocks for", id="IEmock23")))((("mocks", "isolating tests using", id="Misolate23")))Lists
-don't have owners yet, but we can let the views layer tests pretend they
-do by using a bit of mocking:
 
-//IDEA: rename all "mockList" to "mockListClass"...
+((("isolation, ensuring", "using mocks for", secondary-sortas="mocks for", id="IEmock23")))
+((("mocks", "isolating tests using", id="Misolate23")))
+Lists don't have owners yet,
+but we can let the views layer tests pretend they do
+by using a bit of mocking:
+
 
 [role="sourcecode"]
 .lists/tests/test_views.py (ch20l003)
 ====
 [source,python]
 ----
-from unittest.mock import patch
+from unittest import mock
 [...]
 
-    @patch('lists.views.List')  #<1>
-    @patch('lists.views.ItemForm')  #<2>
+    @mock.patch("lists.views.List")  # <1>
+    @mock.patch("lists.views.ItemForm")  # <2>
     def test_list_owner_is_saved_if_user_is_authenticated(
-        self, mockItemFormClass, mockListClass  #<3>
+        self, mockItemFormClass, mockListClass  # <3>
     ):
-        user = User.objects.create(email='a@b.com')
+        mock_list = mockListClass.objects.create.return_value
+        mock_list.get_absolute_url.return_value = "/fake-url"  # <3>
+
+        user = User.objects.create(email="a@b.com")
         self.client.force_login(user)
 
-        self.client.post('/lists/new', data={'text': 'new item'})
+        self.client.post("/lists/new", data={"text": "new item"})
 
-        mock_list = mockListClass.return_value  #<4>
-        self.assertEqual(mock_list.owner, user)  #<5>
+        self.assertEqual(mock_list.owner, user)
 ----
 ====
 
@@ -166,10 +169,17 @@ from unittest.mock import patch
     used to it!
 
 <4> The list instance that the view will have access to
-    will be the return value of the mocked `List` class.
+    will be the return value of the mocked `List` class's
+    `objects.create` method.
 
-<5> And we can make assertions about whether the `.owner` attribute is set on
-    it.
+<5> We also need to provide a url-like value
+    for our mock list's `get_absolute_url()` method,
+    otherwise the call to `redirect()` later in the view will crash.
+    Did I mention that once you start mocking, it can be hard to stop?
+
+
+<5> Finally, we can make assertions about whether the `.owner` attribute
+    is set on it on our mock list, after the view has been called.
 
 If we try to run this test now, it should pass:
 
@@ -177,21 +187,22 @@ If we try to run this test now, it should pass:
 ----
 $ pass:quotes[*python manage.py test lists*]
 [...]
-Ran 37 tests in 0.145s
+Ran 35 tests in 0.145s
 OK
 ----
 
 If you don't see a pass, make sure that your views code in 'views.py' is
-exactly as I've shown it, using `List()`, not `List.objects.create`.
+exactly as I've shown it, using `List.objects.create()`, not `List()`.
+This is an illustration of the way that
+mocks/monkeypatching leaves you tightly coupled to your implementations.
 
 
-NOTE: Using mocks does tie you to specific ways of using an API.  This is one
-    of the many trade-offs involved in the use of mock objects.
+NOTE: Using mocks does tie you to specific ways of using an API.
+      This is one of the many trade-offs involved in the use of mock objects.
 
 
 Using Mock side_effects to Check the Sequence of Events
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 
 The trouble with this test is that it can still let us get away with writing
 the wrong code by mistake.  Imagine if we accidentally call +save+ before we
@@ -313,7 +324,9 @@ We can get it passing again like this:
 OK
 ----
 
-((("", startref="IEmock23")))((("", startref="Misolate23")))But, boy, that's getting to be an ugly test!
+((("", startref="IEmock23")))
+((("", startref="Misolate23")))
+But, boy, that's getting to be an ugly test!
 
 
 
