@@ -479,9 +479,9 @@ We pass in our nonroot username with `--user`,
 and the `-i` flag points at the server we want to talk to.
 `-vv` says to print out medium-verbose output.
 
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*]
 ansible-playbook [core 2.16.3]
   config file = None
   [...]
@@ -665,8 +665,8 @@ In Ansible config, it looks like this:
         name: superlists
         load_path: /tmp/superlists-img.tar
         source: load
-        state: present
         force_source: true  # <4>
+        state: present
       become: true
 
     - name: Run container
@@ -723,9 +723,9 @@ and build the image locally
 Let's run the new version of our playbook,
 and see if we can upload a docker image to our server and get it running:
 
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -vv*]
 [...]
 
 PLAYBOOK: ansible-provision.yaml **********************************************
@@ -822,6 +822,7 @@ Now let's see if it works!
 
 // TODO: run fts instead?  or try manually?
 
+[role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
 $ *ssh elspeth@staging.superlists.ottg.co.uk*
@@ -833,7 +834,8 @@ CONTAINER ID   IMAGE     COMMAND              CREATED      STATUS
 PORTS     NAMES
 3a2e600fbe77   busybox   "echo hello world"   2 days ago   Exited (0) 10
 minutes ago             testcontainer
-129e36a42190   superlists   "/bin/sh -c \'gunicor…"   About a minute ago   Exited (3) About a minute ago             superlists
+129e36a42190   superlists   "/bin/sh -c \'gunicor…"   About a minute ago
+Exited (3) About a minute ago             superlists
 
 elspeth@server:$ *docker logs superlists*
 [2024-02-26 22:19:15 +0000] [1] [INFO] Starting gunicorn 21.2.0
@@ -903,7 +905,7 @@ Here's what our template for the env file will look like:
 ----
 DJANGO_DEBUG_FALSE=1
 DJANGO_SECRET_KEY={{ secret_key }}
-DJANGO_ALLOWED_HOSTS={{ host }}
+DJANGO_ALLOWED_HOST={{ host }}
 ----
 ====
 
@@ -1008,9 +1010,9 @@ but I wanted to keep this (already long) chapter as simple as possible.
 Let's run the latest version of our playbook and see how our tests get on:
 
 
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*]
 [...]
 PLAYBOOK: ansible-provision.yaml **********************************************
 1 plays in infra/ansible-provision.yaml
@@ -1059,6 +1061,7 @@ Looks good!  What do our tests think?
 
 We run our tests as usual and run into a new problem:
 
+[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
@@ -1081,6 +1084,7 @@ Let's try our standard debugging technique, of using `curl`
 both locally and then from inside the container on the server.
 First, on our own machine:
 
+[role="skipme"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*curl -iv staging.ottg.co.uk*]
@@ -1104,6 +1108,9 @@ NOTE: Similarly, depending on your domain/hosting provider,
 
 Now let's ssh in to our server and take a look at the docker logs:
 
+// TODO: rework server-commands book parser to detect "elsepth@server" instead of manual skips (or role=)
+
+[role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server$ *docker logs superlists*
@@ -1115,6 +1122,7 @@ elspeth@server$ *docker logs superlists*
 
 No errors there.  Let's try our `curl`:
 
+[role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
 elspeth@server$ *curl -iv localhost*
@@ -1136,9 +1144,10 @@ Let's check `docker ps`:
 // would not get through.
 
 
+[role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-$ *docker ps*
+elspeth@server:$ *docker ps*
 CONTAINER ID   IMAGE        COMMAND                  CREATED         STATUS
 PORTS     NAMES
 1dd87cbfa874   superlists   "/bin/sh -c 'gunicor…"   9 minutes ago   Up 9
@@ -1170,6 +1179,7 @@ on the server:
 
 That gets us to:
 
+[role="skipme"]
 ----
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: [id="id_list_table"]; [...]
@@ -1182,6 +1192,7 @@ Taking a look at the logs from the server,
 we can see that the database is not initialised:
 
 
+[role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
 $ *ssh elspeth@server docker logs superlists*
@@ -1207,11 +1218,6 @@ Here's how to do that in our playbook:
         path: /home/elspeth/db.sqlite3
         state: touch  # <1>
 
-    - name: Run migration inside container
-      community.docker.docker_container_exec:  # <2>
-        container: superlists
-        command: ./manage.py migrate
-
     - name: Run container
       community.docker.docker_container:
         name: superlists
@@ -1219,29 +1225,36 @@ Here's how to do that in our playbook:
         state: started
         recreate: true
         env_file: ~/superlists.env
-        mounts:  # <3>
+        mounts:  # <2>
           - type: bind
             source: /home/elspeth/db.sqlite3
             target: /src/db.sqlite3
         ports: 80:8888
+
+    - name: Run migration inside container
+      community.docker.docker_container_exec:  # <3>
+        container: superlists
+        command: ./manage.py migrate
+
 ----
 ====
 
 <1> We use `file` with `state=touch` to make sure a placeholder file exists
     before we try and mount it in
 
-<2> And we use the API for `docker exec` to run the migration command inside
+<2> Here is the `mounts` config, which works a lot like the `--mount` flag to
+    `docker run`.
+
+<3> And we use the API for `docker exec` to run the migration command inside
     the container.
 
-<3> Here is the `mounts` config, which works a lot like the `--mount` flag to
-    `docker run`.
 
 
 Let's give that playbook a run and...
 
-[subs="specialcharacters,quotes"]
+[subs="specialcharacters,macros"]
 ----
-$ *ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/ansible-provision.yaml -v*]
 [...]
 TASK [Run migration inside container] *****************************************
 changed: [staging.ottg.co.uk] => {"changed": true, "rc": 0, "stderr": "",
@@ -1435,7 +1448,7 @@ Here are some resources I used for inspiration:
 //         instead, they list all their books at
 // https://www.feldroy.com/two-scoops-press
 
-
+]
 
 
 [role="pagebreak-before less_space"]
