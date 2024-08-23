@@ -5,7 +5,7 @@ from book_tester import ChapterTest
 
 
 class Chapter21Test(ChapterTest):
-    chapter_name = 'chapter_CI'
+    chapter_name = 'chapter_23_CI'
     previous_chapter = 'appendix_purist_unit_tests'
 
     def test_listings_and_commands_and_output(self):

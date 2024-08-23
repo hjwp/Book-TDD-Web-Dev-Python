@@ -143,9 +143,9 @@ test_chapter_22_outside_in: chapter_22_outside_in.html $(TMPDIR) $(VENV)/bin
 .PHONY: test_appendix_purist_unit_tests
 test_appendix_purist_unit_tests: appendix_purist_unit_tests.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_appendix_purist_unit_tests.py
-.PHONY: test_chapter_CI
-test_chapter_CI: chapter_CI.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_CI.py
+.PHONY: test_chapter_23_CI
+test_chapter_23_CI: chapter_23_CI.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_23_CI.py
 .PHONY: test_chapter_page_pattern
 test_chapter_page_pattern: chapter_page_pattern.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_page_pattern.py
