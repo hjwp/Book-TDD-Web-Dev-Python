@@ -140,9 +140,9 @@ test_chapter_21_server_side_debugging: chapter_21_server_side_debugging.html $(T
 .PHONY: test_chapter_22_outside_in
 test_chapter_22_outside_in: chapter_22_outside_in.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_22_outside_in.py
-.PHONY: test_chapter_purist_unit_tests
-test_chapter_purist_unit_tests: chapter_purist_unit_tests.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_purist_unit_tests.py
+.PHONY: test_appendix_purist_unit_tests
+test_appendix_purist_unit_tests: appendix_purist_unit_tests.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_appendix_purist_unit_tests.py
 .PHONY: test_chapter_CI
 test_chapter_CI: chapter_CI.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_CI.py
