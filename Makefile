@@ -146,9 +146,9 @@ test_appendix_purist_unit_tests: appendix_purist_unit_tests.html $(TMPDIR) $(VEN
 .PHONY: test_chapter_23_CI
 test_chapter_23_CI: chapter_23_CI.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_23_CI.py
-.PHONY: test_chapter_page_pattern
-test_chapter_page_pattern: chapter_page_pattern.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_page_pattern.py
+.PHONY: test_chapter_24_page_pattern
+test_chapter_24_page_pattern: chapter_24_page_pattern.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_24_page_pattern.py
 
 
 

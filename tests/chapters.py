@@ -26,6 +26,6 @@ CHAPTERS = [
     "chapter_22_outside_in",
     "appendix_purist_unit_tests",
     "chapter_23_CI",
-    "chapter_page_pattern",
+    "chapter_24_page_pattern",
     "chapter_hot_lava",
 ]
