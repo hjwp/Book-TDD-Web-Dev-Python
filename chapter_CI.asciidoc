@@ -1,6 +1,5 @@
 [[chapter_CI]]
-Continuous Integration (CI)
----------------------------
+== Continuous Integration (CI)
 
 .Warning, Chapter Not Updated
 *******************************************************************************
@@ -11,28 +10,32 @@ you may find it's a little out of date.
 *******************************************************************************
 
 
-((("Continuous Integration (CI)", id="CI24")))((("Continuous Integration (CI)", "benefits of")))As
-our site grows, it takes longer and longer to run all of our functional
-tests.  If this continues, the danger is that we're going to stop bothering.
+((("Continuous Integration (CI)", id="CI24")))
+((("Continuous Integration (CI)", "benefits of")))
+As our site grows, it takes longer and longer to run all of our functional tests.
+If this continues, the danger is that we're going to stop bothering.
 
 Rather than let that happen, we can automate the running of functional tests
-by setting up a "Continuous Integration" or CI server.  That way, in day-to-day
-development, we can just run the FT that we're working on at that time, and
-rely on the CI server to run all the tests automatically and let us know if
-we've broken anything accidentally.  The unit tests should stay fast enough
-that we can keep running them every few seconds.
+by setting up a "Continuous Integration" or CI server.
+That way, in day-to-day development,
+we can just run the FT that we're working on at that time,
+and rely on the CI server to run all the other tests automatically
+and let us know if we've broken anything accidentally.
+The unit tests should stay fast enough that we can keep running them every few seconds.
 
-((("Continuous Integration (CI)", "server of choice")))The
-CI server of choice these days is called Jenkins. It's a bit Java, a bit
-crashy, a bit ugly, but it's what everyone uses, and it has a great plugin
-ecosystem, so let's get it up and running.
+((("Continuous Integration (CI)", "server of choice")))
+The CI server of choice these days is called Jenkins.
+It's a bit Java, a bit crashy, a bit ugly, but it's what everyone uses,
+and it has a great plugin ecosystem, so let's get it up and running.
 
 
-Installing Jenkins
-~~~~~~~~~~~~~~~~~~
+=== Installing Jenkins
 
-((("Continuous Integration (CI)", "Jenkins installation")))((("Jenkins", "installation")))There
-are several hosted-CI services out there that essentially provide you
+* TODO: update to mention github actions, gitlab etc.
+
+((("Continuous Integration (CI)", "Jenkins installation")))
+((("Jenkins", "installation")))
+There are several hosted-CI services out there that essentially provide you
 with a Jenkins server, ready to go.  I've come across Sauce Labs, Travis,
 Circle-CI, ShiningPanda, and there are probably lots more.  But I'm going to
 assume we're installing everything on a server we control.
@@ -49,15 +52,20 @@ and it also doesn't set itself up to listen on the public internet by default:
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-root@server:$ *wget -q -O - https://pkg.jenkins.io/debian/jenkins-ci.org.key |\
-     apt-key add -*
-root@server:$ *echo deb http://pkg.jenkins.io/debian-stable binary/ | tee \
-    /etc/apt/sources.list.d/jenkins.list*
-root@server:$ *apt update*
-root@server:$ *apt install jenkins*
+# add jenkins repo to our apt sources
+root@server:$ *wget -O /usr/share/keyrings/jenkins-keyring.asc \
+  https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key*
+
+root@server:$ *echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]" \
+  https://pkg.jenkins.io/debian-stable binary/ > \
+  /etc/apt/sources.list.d/jenkins.list*
+
+# update and install jenkins
+root@server:$ *apt-get update*
+root@server:$ *apt-get install jenkins*
 ----
 
-(Instructions lifted from the https://wiki.jenkins-ci.org/display/JENKINS/Installing+Jenkins+on+Ubuntu[Jenkins site].)
+(Instructions lifted from the https://www.jenkins.io/doc/book/installing/linux/#debianubuntu[Jenkins site].)
 
 
 While we're at it, we'll install a few other dependencies:
@@ -65,26 +73,17 @@ While we're at it, we'll install a few other dependencies:
 [role="skipme small-code"]
 [subs="specialcharacters,quotes"]
 ----
-root@server:$ *add-apt-repository ppa:deadsnakes/ppa*
+# remove the default Firefox installed via snap,
+# add more reliable "extended support release" version:
+root@server:$ *snap remove firefox*
+root@server:$ *add-apt-repository ppa:mozillateam/ppa*
 root@server:$ *apt update*
-root@server:$ *apt install firefox python3.7-venv python3.7-dev xvfb*
-# and, to build fabric3:
-root@server:$ *apt install build-essential libssl-dev libffi-dev* 
+root@server:$ *apt install firefox-esr*
+
+# install the venv modules for the otherwise-broken default system python:
+root@server:$ *apt install python3-venv*
 ----
 
-And we'll download, unzip, and install geckodriver too (it was v0.17 at
-the time of writing, but substitute the latest version as you read this):
-
-[role="skipme"]
-[subs="specialcharacters,quotes"]
-----
-root@server:$ *wget https://github.com/mozilla/geckodriver/releases\
-/download/v0.17.0/geckodriver-v0.17.0-linux64.tar.gz*
-root@server:$ *tar -xvzf geckodriver-v0.17.0-linux64.tar.gz*
-root@server:$ *mv geckodriver /usr/local/bin*
-root@server:$ *geckodriver --version*
-geckodriver 0.17.0
-----
 
 
 .Adding Some Swap
@@ -96,10 +95,11 @@ OOM-killed unless you add some swap:
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-$ *fallocate -l 4G /swapfile*
-$ *mkswap /swapfile*
-$ *chmod 600 /swapfile*
-$ *swapon /swapfile*
+root@server:$ *fallocate -l 4G /swapfile*
+root@server:$ *mkswap /swapfile*
+root@server:$ *chmod 600 /swapfile*
+root@server:$ *swapon /swapfile*
+root@server:$ *echo "LABEL=swap  /swap.img  swap  defaults 0 0" >> /etc/fstab*
 ----
 
 That should be plenty.
@@ -107,26 +107,24 @@ That should be plenty.
 *******************************************************************************
 
 
-Configuring Jenkins
-~~~~~~~~~~~~~~~~~~~
+=== Configuring Jenkins
 
-((("Continuous Integration (CI)", "Jenkins configuration")))((("Jenkins", "configuration")))You
-should now be able to visit Jenkins at the URL/IP for your server on port
-`8080`, and see something like <<jenkin-unlock>>.
+((("Continuous Integration (CI)", "Jenkins configuration")))
+((("Jenkins", "configuration")))
+You should now be able to visit Jenkins at the URL/IP for your server on port `8080`,
+and see something like <<jenkin-unlock>>.
 
 [[jenkin-unlock]]
 [role="width-75"]
 .Jenkins unlock screen 
-image::images/twp2_2401.png["Jenkins' default unlock screen"]
+image::images/jenkins-unlock.png["Jenkins' default unlock screen"]
 
 
-Initial Unlock
-^^^^^^^^^^^^^^
 
+==== Initial Unlock
 
-The unlock screen is telling us to read a file from disk to unlock
-the server for first-time use.  I jumped over to a terminal and printed
-it like this:
+The unlock screen is telling us to read a file from disk to unlock the server for first-time use.
+I jumped over to a terminal and printed it like this:
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
@@ -135,25 +133,22 @@ root@server$ *cat /var/lib/jenkins/secrets/initialAdminPassword*
 ----
 
 
-Suggested Plugins for Now
-^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Suggested Plugins for Now
 
-Next we're offered the choice to choose "suggested" plugins. Suggested
-ones are fine for now. (As a self-respecting nerd, our instinct
-is to hit "customize" immediately, and that's what I did first time round,
-but it turns out that screen won't give us what we want. Don't worry, we'll add
-some more plugins later.)
+Next we're offered the choice to choose "suggested" plugins.
+Suggested ones are fine for now.
+(As a self-respecting nerd, our instinct is to hit "customize" immediately,
+but I don't think it really bought me anything.)
 
 
-Configuring the Admin User
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Configuring the Admin User
 
 Next we set up a username and password to log in to Jenkins with; see <<jenkins-user>>.
 
 [[jenkins-user]]
 [role="width-75"]
 .Jenkins admin user config
-image::images/twp2_2402.png["Jenkins screen asking for username and password"]
+image::images/jenkins-admin-user.png["Jenkins screen asking for username and password"]
 
 
 And once we log in, we should see a welcome screen (<<jenkin-welcome>>).
@@ -161,9 +156,10 @@ And once we log in, we should see a welcome screen (<<jenkin-welcome>>).
 [[jenkin-welcome]]
 [role="width-75"]
 .A butler--how quaint
-image::images/twp2_2403.png["Jenkins welcome screen with invitation to create new job"]
+image::images/jenkins-welcome.png["Jenkins welcome screen with invitation to create new job"]
 
 
+////
 [role="pagebreak-before"]
 Adding Plugins
 ^^^^^^^^^^^^^^
@@ -203,11 +199,14 @@ We need to tell the ShiningPanda plugin where Python 3 is installed
 image::images/twp2_2405.png["Adding Python 3"]
 
 
+////
 
 
 
 Finishing Off with HTTPS
 ^^^^^^^^^^^^^^^^^^^^^^^^
+
+* TODO: review and update this section
 
 To finish off securing your Jenkins instance, you'll want to set up HTTPS, by
 getting nginx HTTPS to use a self-signed cert, and proxy requests from port 443
