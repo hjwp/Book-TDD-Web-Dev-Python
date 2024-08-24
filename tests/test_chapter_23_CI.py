@@ -4,30 +4,30 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter21Test(ChapterTest):
-    chapter_name = 'chapter_23_CI'
-    previous_chapter = 'appendix_purist_unit_tests'
+class Chapter23Test(ChapterTest):
+    chapter_name = "chapter_23_CI"
+    previous_chapter = "chapter_22_outside_in"
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
         self.start_with_checkout()
-        #self.prep_virtualenv()
+        # self.prep_virtualenv()
 
         # sanity checks
         self.assertEqual(self.listings[0].skip, True)
         self.assertEqual(self.listings[1].skip, True)
-        self.assertEqual(self.listings[24].type, 'code listing with git ref')
+        self.assertEqual(self.listings[24].type, "code listing with git ref")
 
         # skips
-        #self.skip_with_check(22, 'switch back to master') # comment
+        # self.skip_with_check(22, 'switch back to master') # comment
 
         # hack fast-forward
         skip = False
         if skip:
             self.pos = 27
-            self.sourcetree.run_command('git checkout {0}'.format(
-                self.sourcetree.get_commit_spec('ch20l015')
-            ))
+            self.sourcetree.run_command(
+                "git checkout {0}".format(self.sourcetree.get_commit_spec("ch20l015"))
+            )
 
         while self.pos < len(self.listings):
             print(self.pos)
@@ -37,5 +37,5 @@ class Chapter21Test(ChapterTest):
         self.check_final_diff(ignore=["moves"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

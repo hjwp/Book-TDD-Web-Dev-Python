@@ -474,35 +474,32 @@ custom logic in our FT class `tearDown`. We have to do a bit of introspection of
 this will work:
 
 [role="sourcecode"]
-.functional_tests/base.py (ch21l006)
+.src/functional_tests/base.py (ch23l006)
 ====
 [source,python]
 ----
 import os
+import time
 from datetime import datetime
+from pathlib import Path
 [...]
+MAX_WAIT = 5
 
-SCREEN_DUMP_LOCATION = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), 'screendumps'
-)
+SCREEN_DUMP_LOCATION = Path(__file__).absolute().parent / "screendumps"
 [...]
 
     def tearDown(self):
         if self._test_has_failed():
-            if not os.path.exists(SCREEN_DUMP_LOCATION):
-                os.makedirs(SCREEN_DUMP_LOCATION)
-            for ix, handle in enumerate(self.browser.window_handles):
-                self._windowid = ix
-                self.browser.switch_to_window(handle)
-                self.take_screenshot()
-                self.dump_html()
+            if not SCREEN_DUMP_LOCATION.exists():
+                SCREEN_DUMP_LOCATION.mkdir(parents=True)
+            self.take_screenshot()
+            self.dump_html()
         self.browser.quit()
         super().tearDown()
 
-
     def _test_has_failed(self):
         # slightly obscure but couldn't find a better way!
-        return any(error for (method, error) in self._outcome.errors)
+        return self._outcome.result.failures or self._outcome.result.errors
 ----
 ====
 
@@ -513,21 +510,19 @@ methods, `get_screenshot_as_file` and `browser.page_source`, for our image and
 HTML dumps:
 
 [role="sourcecode"]
-.functional_tests/base.py (ch21l007)
+.src/functional_tests/base.py (ch23l007)
 ====
 [source,python]
 ----
     def take_screenshot(self):
-        filename = self._get_filename() + '.png'
-        print('screenshotting to', filename)
-        self.browser.get_screenshot_as_file(filename)
-
+        path = SCREEN_DUMP_LOCATION / self._get_filename("png")
+        print("screenshotting to", path)
+        self.browser.get_screenshot_as_file(str(path))
 
     def dump_html(self):
-        filename = self._get_filename() + '.html'
-        print('dumping page HTML to', filename)
-        with open(filename, 'w') as f:
-            f.write(self.browser.page_source)
+        path = SCREEN_DUMP_LOCATION / self._get_filename("html")
+        print("dumping page HTML to", path)
+        path.write_text(self.browser.page_source)
 ----
 ====
 
@@ -536,18 +531,14 @@ And finally here's a way of generating a unique filename identifier, which
 includes the name of the test and its class, as well as a timestamp:
 
 [role="sourcecode small-code"]
-.functional_tests/base.py (ch21l008)
+.src/functional_tests/base.py (ch23l008)
 ====
 [source,python]
 ----
-    def _get_filename(self):
-        timestamp = datetime.now().isoformat().replace(':', '.')[:19]
-        return '{folder}/{classname}.{method}-window{windowid}-{timestamp}'.format(
-            folder=SCREEN_DUMP_LOCATION,
-            classname=self.__class__.__name__,
-            method=self._testMethodName,
-            windowid=self._windowid,
-            timestamp=timestamp
+    def _get_filename(self, extension):
+        timestamp = datetime.now().isoformat().replace(":", ".")[:19]
+        return (
+            f"{self.__class__.__name__}.{self._testMethodName}-{timestamp}.{extension}"
         )
 ----
 ====
@@ -570,7 +561,7 @@ Revert the `self.fail()`, then commit and push:
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff*  # changes in base.py
-$ *echo "functional_tests/screendumps" >> .gitignore*
+$ *echo "src/functional_tests/screendumps" >> .gitignore*
 $ *git commit -am "add screenshot on failure to FT runner"*
 $ *git push*
 ----
@@ -610,7 +601,7 @@ If in Doubt, Try Bumping the Timeout!
 old adage goes:
 
 [role="sourcecode skipme"]
-.functional_tests/base.py
+.src/functional_tests/base.py
 ====
 [source,python]
 ----
@@ -676,8 +667,8 @@ You should end up with this:
 [role="dofirst-ch21l017"]
 [subs="specialcharacters,quotes"]
 ----
-$ *tree lists/static/tests/*
-lists/static/tests/
+$ *tree src/lists/static/tests/*
+src/lists/static/tests/
 ├── qunit-2.0.1.css
 ├── qunit-2.0.1.js
 ├── runner.js
@@ -690,19 +681,19 @@ Let's try it out:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *phantomjs lists/static/tests/runner.js lists/static/tests/tests.html*
+$ *phantomjs src/lists/static/tests/runner.js src/lists/static/tests/tests.html*
 Took 24ms to run 2 tests. 2 passed, 0 failed.
 ----
 
 Just to be sure, let's deliberately break something:
 
 [role="sourcecode"]
-.lists/static/list.js (ch21l019)
+.src/lists/static/list.js (ch23l019)
 ====
 [source,javascript]
 ----
-  $('input[name="text"]').on('keypress', function () {
-    // $('.has-error').hide();
+  it("sense-check our html fixture", () => {
+    expect(errorMsg.checkVisibility()).toBe(false);
   });
 ----
 ====
@@ -723,7 +714,7 @@ Took 27ms to run 2 tests. 1 passed, 1 failed.
 All right!  Let's unbreak that, commit and push the runner, and then add it to
 our [keep-together]#Jenkins# build:
 
-[role="dofirst-ch21l020"]
+[role="dofirst-ch23l020"]
 [subs="specialcharacters,quotes"]
 ----
 $ *git checkout lists/static/list.js*
