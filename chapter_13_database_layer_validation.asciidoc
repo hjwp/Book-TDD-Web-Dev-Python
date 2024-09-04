@@ -81,28 +81,31 @@ This test is interesting
 because it's testing that the code under test should raise an exception:
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch11l018)
+.src/lists/tests/test_models.py (ch13l001)
 ====
 [source,python]
 ----
-from django.core.exceptions import ValidationError
+from django.db.utils import IntegrityError
 [...]
 
 class ListAndItemModelsTest(TestCase):
-    [...]
+    def test_saving_and_retrieving_items(self):
+        [...]
 
     def test_cannot_save_empty_list_items(self):
         mylist = List.objects.create()
         item = Item(list=mylist, text="")
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(IntegrityError):
             item.save()
 ----
 ====
 
 
-This is a new unit testing technique: when we want to check that doing
-something will raise an error, we can use the `self.assertRaises` context
-manager.  We could have used something like this instead:
+This is a new unit testing technique:
+when we want to check that doing something will raise an error,
+we can use the `self.assertRaises` context manager.
+
+We could have used something like this instead:
 
 [role="skipme"]
 [source,python]
@@ -110,14 +113,15 @@ manager.  We could have used something like this instead:
 try:
     item.save()
     self.fail('The save should have raised an exception')
-except ValidationError:
+except IntegrityError:
     pass
 ----
 
 But the `with` formulation is neater.
 
 TIP: If you're new to Python, you may never have seen the `with` statement.
-    It's used with what are called "context managers", which wrap a block of code,
+    It's the special keyword to use with what are called "context managers".
+    Together, they wrap a block of code,
     usually with some kind of setup, cleanup, or error-handling code.
     There's a good write-up on
     https://www.pythonmorsels.com/what-is-a-context-manager/[Python Morsels].
@@ -125,111 +129,222 @@ TIP: If you're new to Python, you may never have seen the `with` statement.
     ((("Python 3", "with statements")))
 
 
+==== Django Model Constraints and Their Interaction With Databases
+
+When we run this new unit test, we see the failure we expected:
+
+----
+    with self.assertRaises(IntegrityError):
+AssertionError: IntegrityError not raised
+----
+
+But all is not quite as it seems,
+because _this test should already pass_.
+
+If you take a look at the
+https://docs.djangoproject.com/en/4.2/ref/models/fields/#blank[docs for the Django model fields],
+you'll see under _Field options_ that the default setting for _all_ fields is
+`blank=False`.
+Since TextField is a type of Field, it _should_ already disallow empty values.
+
+
+((("data integrity errors")))
+So why is the test still failing?
+Why is our database not raising an IntegrityError when we try to save an empty string
+into the `text` column?
+
+The answer is a combination of Django's design and the database we're using.
+
+
+==== Inspecting Our Constraints at the Database Level
+
+Let's have a look directly at the database using the `dbshell` command:
+
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *./src/manage.py dbshell*  # (this is equivalent to running sqlite3 src/db.sqlite3)
+SQLite version 3.[...]
+Enter ".help" for usage hints.
+sqlite> *.schema lists_item*
+CREATE TABLE IF NOT EXISTS "lists_item" ("id" integer NOT NULL PRIMARY KEY
+AUTOINCREMENT, "text" text NOT NULL, "list_id" bigint NOT NULL REFERENCES
+"lists_list" ("id") DEFERRABLE INITIALLY DEFERRED);
+----
+
+The `text` column only has the `NOT NULL` constraint.
+This means that the database would not allow `None` as a value,
+but it will actually allow the empty string.
+
+
+Whilst it is
+https://stackoverflow.com/questions/10371077/not-empty-string-constraint-in-sqlite[technically possible]
+to implement a "not empty string" constraint on a Text column in SQLite,
+the Django developers have chosen not to do this.
+
+This is because Django distinguishes between what they call "database-related"
+and "validation-related" constraints.
+As well as `empyt=False`, all fields get `null=False` setting,
+which translates into the database-level `NOT NULL` constraint we saw earlier.
+
+Let's see if we can verify that using our test, instead.
+We'll pass in `text=None` instead of `text=""`
+(and change the test name):
+
+
+[role="sourcecode"]
+.src/lists/tests/test_models.py (ch13l002)
+====
+[source,python]
+----
+    def test_cannot_save_null_list_items(self):
+        mylist = List.objects.create()
+        item = Item(list=mylist, text=None)
+        with self.assertRaises(IntegrityError):
+            item.save()
+----
+====
+
+You'll see that _this_ test now passes.
+
+----
+Ran 10 tests in 0.030s
+
+OK
+----
+
+
+==== Testing Django Model Validation:
+
+That's all vaguely interesting, but it's not actually what we set out to do.
+How do we make sure that the "validation-related" constraint is being enforced?
+The answer is that, while `IntegrityError` comes from the database,
+Django uses `ValidationError` to signal errors that come from its own validation.
+
+Let's write a second test that checks on that:
+
+
+[role="sourcecode"]
+.src/lists/tests/test_models.py (ch13l003)
+====
+[source,python]
+----
+from django.core.exceptions import ValidationError
+from django.db.utils import IntegrityError
+[...]
+
+class ListAndItemModelsTest(TestCase):
+    def test_saving_and_retrieving_items(self):
+        [...]
+
+    def test_cannot_save_null_list_items(self):
+        mylist = List.objects.create()
+        item = Item(list=mylist, text=None)
+        with self.assertRaises(IntegrityError):
+            item.save()
+
+    def test_cannot_save_empty_list_items(self):
+        mylist = List.objects.create()
+        item = Item(list=mylist, text="")  # <1>
+        with self.assertRaises(ValidationError):  # <2>
+            item.save()
+----
+====
+
+<1> This time we pass `text=""`
+<2> And we're expecting a `ValidationError` instead of an `IntegrityError`:
+
+
+
 ==== A Django Quirk: Model Save Doesn't Run Validation
 
-Now, we can try running the unit test, and see its expected failure:
+We can try running _this_ new unit test,
+and we'll see its expected failure...
 
 ----
     with self.assertRaises(ValidationError):
 AssertionError: ValidationError not raised
 ----
 
+Wait a minute!  We expected this to _pass_ actually!
+We just got through learning that Django should be enforcing the `blank=False`
+constraint by default.  Why doesn't this work?
 
 ((("model-layer validation", "running full validation")))
 We've discovered one of Django's little quirks.
-_This test should already pass_.
-If you take a look at the
-https://docs.djangoproject.com/en/4.2/ref/models/fields/#blank[docs for the Django model fields],
-you'll see under _Field options_ that the default setting for `blank` is `False`.
-Which means, since TextField is a type of Field, it _should_ disallow empty values.
-
-
-((("data integrity errors")))
-So why is the test still failing?
-Well, for
+For
 https://groups.google.com/g/django-developers/c/uIhzSwWHj4c[slightly
 counterintuitive historical reasons],
 Django models don't run full validation on save.
-As we'll see later,
-any constraints that are actually implemented in the database will raise errors on save,
-but SQLite doesn't support enforcing emptiness constraints on text columns,
-and so our save method is letting this invalid value through silently.
-
-// TODO: this next bit doesnt make sense.  could add an explicit blank=False, null=False?
-
-// There's a way of checking whether the constraint will happen at the database level or not:
-// if it was at the database level, we would need a migration to apply the constraint.
-// But Django knows that SQLite doesn't support this type of constraint,
-// so if we try to run `makemigrations`, it will report there's nothing to do:
-//
-// CSANAD: maybe I'm missing something here but I don't think there would have
-//         been any changes detected here even with another DB. I don't remember
-// changing the model since the last migration.
-// Update: Checked and last time we touched models.py was in chapter 07 where we did
-// run makemigrations and then `migrate` in chapter 08. No changes to the model since.
-// Can I delete this part "There's a way of checking whether the constraint..."?
-// CSANAD, update#2: after discussing this at
-// https://github.com/hjwp/Book-TDD-Web-Dev-Python/pull/302#discussion_r1717026832
-// I'm commenting the paragraph out.
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python src/manage.py makemigrations*]
-No changes detected
-----
-
-// TODO: consider trying this:
-////
-    def test_cannot_save_empty_list_items(self):
-        mylist = List.objects.create()
-        item = Item(list=mylist, text=None)
-        item.save()
-////
-
 
 ((("full_clean method")))
 Django does have a method to manually run full validation, however,
 called `full_clean` (more info in
 https://docs.djangoproject.com/en/4.2/ref/models/instances/#django.db.models.Model.full_clean[the docs]).
-Let's hack it in to see it work:
+Let's swap that for the `.save()` and see if it works:
 
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py
+.src/lists/tests/test_models.py (ch13l004)
 ====
 [source,python]
 ----
     with self.assertRaises(ValidationError):
         item.full_clean()
-        item.save()
 ----
 ====
-//19
 
 
 That gets the unit test to pass:
 
 
 ----
+Ran 11 tests in 0.030s
+
 OK
 ----
 
-Good. That taught us a little about Django validation, and the test is there to
-warn us if we ever forget our requirement and set `blank=True` on the `text`
-field (try it!).
-
-The FTs will still fail though, because we're not actually forcing these errors
-to appear in our actual app, outside of this one unit test.
+Good. That taught us a little about Django validation,
+and the test is there to warn us if we ever forget our requirement
+and set `blank=True` on the `text` field (try it!).
 
 
-Surfacing Model Validation Errors in the View
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Recap: Database-level and Model-level Validation in Django
+**********************************************************************
+Django distinguishes two types of validation for models:
+
+1. Database-level constraints like `null=False` or `unique=True`.
+  (We'll see an example of the latter in in <<chapter_15_advanced_forms>>).
+  These are enforced by the database itself,
+  using things like `NOT NULL` or `UNIQUE` constraints.
+  These bubble up as `IntegrityError`s if you try to save an invalid object.
+
+2. Model-level validation like `blank=False`,
+  which is only enforced by Django, when you call `full_clean()`,
+  and they raise a `ValidationError`.
+
+The subtlety is that Django _also_ enforces database-level constraints
+when you call `full_clean()`.
+So you'll only see `IntegrityError` if you forget to call `full_clean()`
+before doing a `.save()`.
+
+**********************************************************************
+
+The FTs are still failing,
+because we're not actually forcing these errors to appear in our actual app,
+outside of this one unit test.
+
+
+
+=== Surfacing Model Validation Errors in the View
 
 ((("model-layer validation", "surfacing errors in the view", id="MLVsurfac13")))
 Let's try to enforce our model validation in the views layer
 and bring it up through into our templates, so the user can see them.
-Here's how we can optionally display an error in our HTML--we check whether the template has
-been passed an error variable, and if so, we do this:
+Here's how we can optionally display an error in our HTML--we check
+whether the template has been passed an error variable,
+and if so, we do this:
 
 [role="sourcecode"]
 .src/lists/templates/base.html (ch11l020)
@@ -318,7 +433,7 @@ AssertionError: 302 != 200
 Let's try calling `full_clean()` in the view:
 
 [role="sourcecode"]
-.src/lists/views.py
+.src/lists/views.py (ch11l022)
 ====
 [source,python]
 ----
@@ -425,7 +540,7 @@ item' in response
 A little print-based debug...
 
 [role="sourcecode"]
-.src/lists/tests/test_views.py
+.src/lists/tests/test_views.py (ch11l028)
 ====
 [source,python]
 ----
@@ -439,7 +554,9 @@ self.assertContains(response, expected_error)
 https://docs.djangoproject.com/en/4.2/ref/templates/builtins/#autoescape[HTML-escaped]
 the apostrophe:
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python src/manage.py test lists*]
 [...]
               <div class="invalid-feedback">You can&#x27;t have an empty list
 item</div>
@@ -472,7 +589,7 @@ from django.utils.html import escape
 That passes!
 
 ----
-Ran 11 tests in 0.047s
+Ran 12 tests in 0.047s
 
 OK
 ----
@@ -649,7 +766,7 @@ and display any errors encountered in processing the user's input.
 
 The current situation is that we have one view and URL for displaying a list,
 and one view and URL for processing additions to that list.  We're going to
-combine them into one. So, in 'list.html', our form will have a different
+combine them into one. So, in _list.html_, our form will have a different
 target:
 
 // DAVID: this could do with a diagram, I think people might skim this.
@@ -677,7 +794,7 @@ target:
 ====
 
 Incidentally, that's another hardcoded URL.  Let's add it to our to-do list,
-and while we're thinking about it, there's one in 'home.html' too:
+and while we're thinking about it, there's one in _home.html_ too:
 
 [role="scratchpad"]
 *****
@@ -812,7 +929,7 @@ def view_list(request, list_id):
 That gets us passing tests:
 
 ----
-Ran 12 tests in 0.047s
+Ran 13 tests in 0.047s
 
 OK
 ----
@@ -827,7 +944,7 @@ AttributeError: module 'lists.views' has no attribute 'add_item'
 ----
 
 It's because we've deleted the view, but it's still being referred to in
-'urls.py'.  We remove it from there:
+_urls.py_.  We remove it from there:
 
 [role="sourcecode"]
 .src/lists/urls.py (ch11l033)
@@ -950,7 +1067,7 @@ just redirects for all POSTs:
 AssertionError: 302 != 200
 ----
 
-[role="pagebreak-before"]
+
 Here's an implementation:
 
 
@@ -965,9 +1082,9 @@ def view_list(request, list_id):
 
     if request.method == "POST":
         try:
-            item = Item(text=request.POST["item_text"], list=our_list)
-            item.full_clean()
-            item.save()
+            item = Item(text=request.POST["item_text"], list=our_list)  # <1>
+            item.full_clean()  # <2>
+            item.save()  # <2>
             return redirect(f"/lists/{our_list.id}/")
         except ValidationError:
             error = "You can't have an empty list item"
@@ -976,16 +1093,22 @@ def view_list(request, list_id):
 ----
 ====
 
-It's not deeply satisfying, is it?
-There's definitely some duplication of code here;
-that `try/except` occurs twice in _views.py_, and in general things are feeling clunky.
-//TODO: draw attention to change from Item.objects.create() to Item()
+<1> Notice we do `Item()` instead of `Item.objects.create()`
+<2> Then we call `full_clean()` before we call `save()`
+
+
+It works:
 
 ----
-Ran 13 tests in 0.047s
+Ran 14 tests in 0.047s
 
 OK
 ----
+
+But it's not deeply satisfying, is it?
+There's definitely some duplication of code here;
+that `try/except` occurs twice in _views.py_,
+and in general things are feeling clunky.
 
 Let's wait a bit before we do more refactoring though,
 because we know we're about to do
@@ -1021,12 +1144,11 @@ $ *python src/manage.py test functional_tests*
 OK
 ----
 
-We're back to a working state, so we can take a look at some of the items on
-our scratchpad.  This would be a good time for a commit. And possibly a
-tea break.((("", startref="MLVpost13")))((("", startref="HTMLpostdjango13")))((("", startref="POSTdjango13")))
-
-
-
+We're back to a working state,
+so we can take a look at some of the items on our scratchpad.
+This would be a good time for a commit.
+And possibly a tea break.
+((("", startref="MLVpost13")))((("", startref="HTMLpostdjango13")))((("", startref="POSTdjango13")))
 
 
 
@@ -1039,10 +1161,14 @@ $ *git commit -am "enforce model validation in list view"*
 === Refactor: Removing Hardcoded URLs
 
 
-((("{% url %}")))((("templates", "tags", "{% url %}")))((("model-layer validation", "removing hardcoded URLs", id="MLVhard13")))((("URL mappings", id="url13")))Do
-you remember those `name=` parameters in 'urls.py'? We just copied
-them across from the default example Django gave us, and I've been giving
-them some reasonably descriptive names. Now we find out what they're for:
+((("{% url %}")))
+((("templates", "tags", "{% url %}")))
+((("model-layer validation", "removing hardcoded URLs", id="MLVhard13")))
+((("URL mappings", id="url13")))
+Do you remember those `name=` parameters in _urls.py_?
+We just copied them across from the default example Django gave us,
+and I've been giving them some reasonably descriptive names.
+Now we find out what they're for:
 
 [role="sourcecode currentcontents"]
 .src/lists/urls.py
@@ -1057,7 +1183,7 @@ them some reasonably descriptive names. Now we find out what they're for:
 
 ==== The {% url %} Template Tag
 
-We can replace the hardcoded URL in 'home.html' with a Django template tag
+We can replace the hardcoded URL in _home.html_ with a Django template tag
 which refers to the URL's "name":
 
 [role="sourcecode"]
@@ -1125,7 +1251,7 @@ Using get_absolute_url for Redirects
 
 
 ((("get_absolute_url")))Now
-let's tackle 'views.py'. One way of doing it is just like in the
+let's tackle _views.py_. One way of doing it is just like in the
 template, passing in the name of the URL and a positional argument:
 
 [role="sourcecode"]
@@ -1174,7 +1300,7 @@ AttributeError: 'List' object has no attribute 'get_absolute_url'
 ----
 
 The implementation is to use Django's `reverse` function, which
-essentially does the reverse of what Django normally does with 'urls.py'
+essentially does the reverse of what Django normally does with _urls.py_
 (see the
 https://docs.djangoproject.com/en/4.2/topics/http/urls/#reverse-resolution-of-urls[docs]):
 
