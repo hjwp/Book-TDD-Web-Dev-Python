@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import unittest
 
 from book_tester import ChapterTest
@@ -23,8 +24,7 @@ class Chapter16Test(ChapterTest):
         self.skip_with_check(15, "delete all the other stuff")
 
         # hack fast-forward
-        skip = False
-        if skip:
+        if os.environ.get("SKIP"):
             self.pos = 10
             self.sourcetree.run_command(
                 "git checkout {}".format(self.sourcetree.get_commit_spec("ch16l004"))
