@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import unittest
 from textwrap import dedent
 from unittest.mock import Mock
@@ -643,6 +644,20 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
         with self.assertRaises(AssertionError):
             bad_actual = "Closing Geoff"
+            self.assert_console_output_correct(bad_actual, expected)
+
+    def test_standardises_weird_macos_tree_dir_count_problem(self):
+        if sys.platform == "darwin":
+            actual = "3 directories, 9 files"
+        else:
+            actual = "2 directories, 9 files"
+        expected = Output("2 directories, 9 files")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+        with self.assertRaises(AssertionError):
+            bad_actual = "3 directories, 10 files"
+            self.assert_console_output_correct(bad_actual, expected)
+            bad_actual = "4 directories, 9 files"
             self.assert_console_output_correct(bad_actual, expected)
 
     def test_ignores_screenshot_times(self):

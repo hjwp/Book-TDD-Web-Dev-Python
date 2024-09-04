@@ -2,6 +2,7 @@ import io
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -83,6 +84,18 @@ def strip_session_ids(output):
 
 def standardise_assertionerror_none(output):
     return output.replace("AssertionError: None", "AssertionError")
+
+
+def standardise_tree_dir_count(output):
+    regex = r"(\d+) directories, (\d+) files"
+    if sys.platform == "darwin":
+        if match := re.search(regex, output):
+            return re.sub(
+                regex,
+                f"{int(match.group(1)) -1} directories, {match.group(2)} files",
+                output,
+            )
+    return output
 
 
 def strip_git_hashes(output):
@@ -371,17 +384,10 @@ class ChapterTest(unittest.TestCase):
             [f"{virtualenv_path}/bin"] + os.environ["PATH"].split(":")
         )
         if (self.tempdir / "requirements.txt").exists():
-            self.sourcetree.run_command(
-                "uv pip install -r requirements.txt"
-            )
+            self.sourcetree.run_command("uv pip install -r requirements.txt")
         else:
-            self.sourcetree.run_command(
-                'uv pip install "django<5" selenium'
-            )
-        self.sourcetree.run_command(
-            'uv pip install pip'
-        )
-
+            self.sourcetree.run_command('uv pip install "django<5" selenium')
+        self.sourcetree.run_command("uv pip install pip")
 
     def prep_database(self):
         self.sourcetree.run_command(f"python {self._manage_py()} migrate --noinput")
@@ -432,6 +438,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
         actual_fixed = standardise_assertionerror_none(actual_fixed)
+        actual_fixed = standardise_tree_dir_count(actual_fixed)
         actual_fixed = wrap_long_lines(actual_fixed)
 
         expected_fixed = standardise_library_paths(expected)
