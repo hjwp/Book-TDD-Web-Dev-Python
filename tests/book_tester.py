@@ -386,7 +386,7 @@ class ChapterTest(unittest.TestCase):
         if (self.tempdir / "requirements.txt").exists():
             self.sourcetree.run_command("uv pip install -r requirements.txt")
         else:
-            self.sourcetree.run_command('uv pip install "django<5" selenium')
+            self.sourcetree.run_command('uv pip install "django<6" selenium')
         self.sourcetree.run_command("uv pip install pip")
 
     def prep_database(self):
