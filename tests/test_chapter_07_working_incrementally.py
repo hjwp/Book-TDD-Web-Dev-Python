@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+import os
 import unittest
 
 from book_tester import (
@@ -34,11 +34,12 @@ class Chapter7Test(ChapterTest):
         self.run_command(Command("python3 manage.py migrate --noinput"))
 
         # hack fast-forward
-        skip = False
-        if skip:
-            self.pos = 93
+        if os.environ.get("SKIP"):
+            # self.pos = 93
+            self.pos = 113
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l035"))
+                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l035"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l041"))
             )
 
         while self.pos < touch_pos:
