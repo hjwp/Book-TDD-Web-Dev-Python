@@ -98,6 +98,12 @@ def standardise_tree_dir_count(output):
     return output
 
 
+def standardise_git_init_msg(output):
+    return output.replace(
+        "Initialized empty Git repository", "Initialised empty Git repository"
+    )
+
+
 def strip_git_hashes(output):
     fixed_indexes = re.sub(
         r"index .......\.\........ 100644",
@@ -439,6 +445,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
         actual_fixed = standardise_assertionerror_none(actual_fixed)
         actual_fixed = standardise_tree_dir_count(actual_fixed)
+        actual_fixed = standardise_git_init_msg(actual_fixed)
         actual_fixed = wrap_long_lines(actual_fixed)
 
         expected_fixed = standardise_library_paths(expected)

@@ -51,26 +51,23 @@ def update_sources_for_chapter(chapter, previous_chapter=None):
             BASE_FOLDER, "source", previous_chapter, "superlists"
         )
         subprocess.check_output(["git", "checkout", previous_chapter], cwd=source_dir)
-        if os.environ.get("CI"):
-            # in CI, we use the submodule commit,
-            # as specfified in the previous chapter source/x dir
-            prev_chap_commit_specified_by_submodule = (
-                subprocess.check_output(
-                    ["git", "log", "-n 1", "--format=%H"], cwd=prev_chap_source_dir
-                )
-                .decode()
-                .strip()
-            )
-            print(
-                f"resetting {previous_chapter} branch to {prev_chap_commit_specified_by_submodule}"
-            )
+        # we use the submodule commit,
+        # as specfified in the previous chapter source/x dir
+        prev_chap_commit_specified_by_submodule = (
             subprocess.check_output(
-                ["git", "checkout", previous_chapter], cwd=source_dir
+                ["git", "log", "-n 1", "--format=%H"], cwd=prev_chap_source_dir
             )
-            subprocess.check_output(
-                ["git", "reset", "--hard", prev_chap_commit_specified_by_submodule],
-                cwd=source_dir,
-            )
+            .decode()
+            .strip()
+        )
+        print(
+            f"resetting {previous_chapter} branch to {prev_chap_commit_specified_by_submodule}"
+        )
+        subprocess.check_output(["git", "checkout", previous_chapter], cwd=source_dir)
+        subprocess.check_output(
+            ["git", "reset", "--hard", prev_chap_commit_specified_by_submodule],
+            cwd=source_dir,
+        )
 
     # check out current branch, local version, for final diff
     subprocess.check_output(["git", "checkout", chapter], cwd=source_dir)
