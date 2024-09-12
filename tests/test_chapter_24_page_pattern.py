@@ -39,10 +39,9 @@ class Chapter22Test(ChapterTest):
         self.sourcetree.tidy_up_after_patches()
         # final branch includes a suggested implementation...
         # so just check diff up to the last listing
-        commit = self.sourcetree.get_commit_spec("ch22l013")
+        commit = self.sourcetree.get_commit_spec("ch24l013")
         diff = self.sourcetree.run_command(f"git diff -b {commit}")
-        # TODO
-        # self.check_final_diff(ignore=["moves"], diff=diff)
+        self.check_final_diff(ignore=["moves"], diff=diff)
 
 
 if __name__ == "__main__":
