@@ -646,6 +646,15 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             bad_actual = "Closing Geoff"
             self.assert_console_output_correct(bad_actual, expected)
 
+    def test_ignores_git_localisation_uk_vs_usa(self):
+        actual = "Initialized empty Git repository in somewhere/.git/"
+        expected = Output("Initialised empty Git repository in somewhere/.git/")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+        with self.assertRaises(AssertionError):
+            bad_actual = "Error initializing Git repo"
+            self.assert_console_output_correct(bad_actual, expected)
+
     def test_standardises_weird_macos_tree_dir_count_problem(self):
         if sys.platform == "darwin":
             actual = "3 directories, 9 files"
