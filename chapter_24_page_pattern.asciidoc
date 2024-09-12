@@ -33,7 +33,7 @@ I'll give an outline of the steps to take, as well as some hints and tips.
 Let's get started--we'll need two users for this FT:
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch22l001)
+.src/functional_tests/test_sharing.py (ch24l001)
 ====
 [source,python]
 ----
@@ -58,9 +58,9 @@ class SharingTest(FunctionalTest):
         self.addCleanup(lambda: quit_if_possible(edith_browser))
 
         # Her friend Onesiphorus is also hanging out on the lists site
-        onesi_browser = webdriver.Firefox()
-        self.addCleanup(lambda: quit_if_possible(onesi_browser))
-        self.browser = onesi_browser
+        oni_browser = webdriver.Firefox()
+        self.addCleanup(lambda: quit_if_possible(oni_browser))
+        self.browser = oni_browser
         self.create_pre_authenticated_session("onesiphorus@example.com")
 
         # Edith goes to the home page and starts a list
@@ -71,13 +71,11 @@ class SharingTest(FunctionalTest):
         # She notices a "Share this list" option
         share_box = self.browser.find_element(By.CSS_SELECTOR, 'input[name="sharee"]')
         self.assertEqual(
-            share_box.get_attribute("placeholder"), "your-friend@example.com"
+            share_box.get_attribute("placeholder"),
+            "your-friend@example.com",
         )
 ----
 ====
-//IDEA: rename Oni to Francis, as per ch. 6?
-
-// TODO: Onesiphorus -> Onesiphorus
 
 
 The interesting feature to note about this section is the `addCleanup`
@@ -90,7 +88,7 @@ is only allocated halfway through a test, so you don't have to spend time in
 
 `addCleanup` is run after `tearDown`, which is why we need that
 `try/except` formulation for `quit_if_possible`; whichever of `edith_browser`
-and `onesi_browser` is also assigned to `self.browser` at the point at which the 
+and `oni_browser` is also assigned to `self.browser` at the point at which the 
 test ends will already have been quit by the `tearDown` function.
 
 We'll also need to move `create_pre_authenticated_session` from
@@ -98,17 +96,17 @@ We'll also need to move `create_pre_authenticated_session` from
 
 OK, let's see if that all works:
 
-[role="dofirst-ch22l002"]
+[role="dofirst-ch24l002"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests.test_sharing*]
+$ pass:quotes[*python src/manage.py test functional_tests.test_sharing*]
 [...]
 Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_sharing.py", line 31, in
+  File "...goat-book/src/functional_tests/test_sharing.py", line 33, in
 test_can_share_a_list_with_another_user
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: input[name="sharee"]
+element: input[name="sharee"]; [...]
 ----
 
 Great! It seems to have got through creating the two user sessions, and
@@ -122,16 +120,13 @@ a bit of an FT refactor:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add functional_tests*
+$ *git add src/functional_tests*
 $ *git commit -m "New FT for sharing, move session creation stuff to base"*
 ----
 
 
 
-The Page Pattern
-~~~~~~~~~~~~~~~~
-
-
+=== The Page Pattern
 
 ((("Page pattern", "reducing duplication with", id="POPduplic25")))
 ((("duplication, eliminating", id="dup25")))
@@ -139,18 +134,21 @@ Before we go any further,
 I want to show an alternative method for reducing duplication in your FTs,
 called https://www.selenium.dev/documentation/test_practices/encouraged/page_object_models/["Page objects"].
 
-We've already built several helper methods for our FTs, including
-`add_list_item`, which we've used here, but if we just keep adding more and
-more, it's going to get very crowded. I've worked on a base FT class that was
-over 1,500 lines long, and that got pretty unwieldy.
+We've already built several helper methods for our FTs,
+including `add_list_item` which we've used here,
+but if we just keep adding more and more, it's going to get very crowded.
+I've worked on a base FT class that was over 1,500 lines long,
+and that got pretty unwieldy.
 
-Page objects are an alternative which encourage us to store all the information
-and helper methods about the different types of pages on our site in a single place.
-Let's see how that might look for our site, starting with a class to represent any
-lists page:
+Page objects are an alternative which encourage us
+to store all the information and helper methods
+about the different types of pages on our site
+in a single place.
+Let's see how that might look for our site,
+starting with a class to represent any lists page:
 
 [role="sourcecode small-code"]
-.functional_tests/list_page.py
+.src/functional_tests/list_page.py
 ====
 [source,python]
 ----
@@ -165,8 +163,7 @@ class ListPage:
         self.test = test  # <1>
 
     def get_table_rows(self):  # <3>
-        table = self.test.browser.find_element(By.ID, "id_list_table")
-        return table.find_elements(By.TAG_NAME, "tr")
+        return self.test.browser.find_elements(By.CSS_SELECTOR, "#id_list_table tr")
 
     @wait
     def wait_for_row_in_list_table(self, item_text, item_number):  # <2>
@@ -207,7 +204,7 @@ Let's see how to use it in our test:
 
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch22l004)
+.src/functional_tests/test_sharing.py (ch24l004)
 ====
 [source,python]
 ----
@@ -225,7 +222,7 @@ Let's continue rewriting our test, using the Page object whenever
 we want to access elements from the lists page:
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch24l008)
+.src/functional_tests/test_sharing.py (ch24l008)
 ====
 [source,python]
 ----
@@ -246,29 +243,31 @@ We add the following three functions to our `ListPage`:
 
 
 [role="sourcecode"]
-.functional_tests/list_page.py (ch22l009)
+.src/functional_tests/list_page.py (ch24l009)
 ====
 [source,python]
 ----
     def get_share_box(self):
-        return self.test.browser.find_element_by_css_selector(
-            'input[name="sharee"]'
+        return self.test.browser.find_element(
+            By.CSS_SELECTOR,
+            'input[name="sharee"]',
         )
-
 
     def get_shared_with_list(self):
-        return self.test.browser.find_elements_by_css_selector(
-            '.list-sharee'
+        return self.test.browser.find_elements(
+            By.CSS_SELECTOR,
+            ".list-sharee",
         )
-
 
     def share_list_with(self, email):
         self.get_share_box().send_keys(email)
         self.get_share_box().send_keys(Keys.ENTER)
-        self.test.wait_for(lambda: self.test.assertIn(
-            email,
-            [item.text for item in self.get_shared_with_list()]
-        ))
+        self.test.wait_for(
+            lambda: self.test.assertIn(
+                email, [item.text for item in self.get_shared_with_list()]
+            )
+        )
+
 ----
 ====
 
@@ -300,28 +299,28 @@ and then we can have Oni log in and see the list on his "My Lists" page,
 maybe in a section called "lists shared with me":
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch22l010)
+.src/functional_tests/test_sharing.py (ch24l010)
 ====
 [source,python]
 ----
 from .my_lists_page import MyListsPage
 [...]
 
-        list_page.share_list_with('onesiphorus@example.com')
+        list_page.share_list_with("onesiphorus@example.com")
 
         # Onesiphorus now goes to the lists page with his browser
-        self.browser = onesi_browser
+        self.browser = oni_browser
         MyListsPage(self).go_to_my_lists_page()
 
         # He sees Edith's list in there!
-        self.browser.find_element_by_link_text('Get help').click()
+        self.browser.find_element(By.LINK_TEXT, "Get help").click()
 ----
 ====
 
 That means another function in our `MyListsPage` class:
 
 [role="sourcecode"]
-.functional_tests/my_lists_page.py (ch22l011)
+.src/functional_tests/my_lists_page.py (ch24l011)
 ====
 [source,python]
 ----
@@ -337,7 +336,7 @@ class MyListsPage:
         self.test.browser.find_element(By.LINK_TEXT, "My lists").click()
         self.test.wait_for(
             lambda: self.test.assertEqual(
-                self.test.browser.find_element_by_tag_name("h1").text,
+                self.test.browser.find_element(By.TAG_NAME, "h1").text,
                 "My Lists",
             )
         )
@@ -351,23 +350,22 @@ Once again, this is a function that would be good to carry across into
 In the meantime, Onesiphorus can also add things to the list:
 
 [role="sourcecode"]
-.functional_tests/test_sharing.py (ch22l012)
+.src/functional_tests/test_sharing.py (ch24l012)
 ====
 [source,python]
 ----
     # On the list page, Onesiphorus can see says that it's Edith's list
-    self.wait_for(lambda: self.assertEqual(
-        list_page.get_list_owner(),
-        'edith@example.com'
-    ))
+    self.wait_for(
+        lambda: self.assertEqual(list_page.get_list_owner(), "edith@example.com")
+    )
 
     # He adds an item to the list
-    list_page.add_list_item('Hi Edith!')
+    list_page.add_list_item("Hi Edith!")
 
     # When Edith refreshes the page, she sees Onesiphorus's addition
     self.browser = edith_browser
     self.browser.refresh()
-    list_page.wait_for_row_in_list_table('Hi Edith!', 2)
+    list_page.wait_for_row_in_list_table("Hi Edith!", 2)
 ----
 ====
 
@@ -375,15 +373,15 @@ In the meantime, Onesiphorus can also add things to the list:
 That's another addition to our `ListPage` object:
 
 [role="sourcecode"]
-.functional_tests/list_page.py (ch22l013)
+.src/functional_tests/list_page.py (ch24l013)
 ====
 [source,python]
 ----
-class ListPage(object):
+class ListPage:
     [...]
 
     def get_list_owner(self):
-        return self.test.browser.find_element_by_id('id_list_owner').text
+        return self.test.browser.find_element(By.ID, "id_list_owner").text
 ----
 ====
 
@@ -391,12 +389,12 @@ It's long past time to run the FT and check if all of this works!
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python manage.py test functional_tests.test_sharing*]
+$ pass:quotes[*python src/manage.py test functional_tests.test_sharing*]
 
     share_box = list_page.get_share_box()
     [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: input[name="sharee"]
+element: input[name="sharee"]; [...]
 ----
 
 That's the expected failure; we don't have an input for email addresses
@@ -405,14 +403,13 @@ of people to share with. Let's do a commit:
 
 [subs="specialcharacters,quotes"]
 ----
-$ *git add functional_tests*
+$ *git add src/functional_tests*
 $ *git commit -m "Create Page objects for list pages, use in sharing FT"*
 ----
 
 
 
-An Exercise for the Reader
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+=== An Exercise for the Reader
 
 [quote, Iain H. (reader)]
 ______________________________________________________________
@@ -442,7 +439,7 @@ Here's an outline of the steps you could take:
 
 5. We can then write a new unit test which creates a user and a list,
   does a POST with their email address, and checks that the user is added to
-  `list_.shared_with.all()` (a similar ORM usage to "My Lists").  That
+  `mylist.shared_with.all()` (a similar ORM usage to "My Lists").  That
   `shared_with` attribute won't exist yet; we're going outside-in.
 
 6. So before we can get this test to pass, we have to move down to the model
