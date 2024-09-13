@@ -19,7 +19,7 @@ So let me know what you think of the chapter, via obeythetestinggoat@gmail.com
 In this chapter we'll start testing the parts of our code that send emails.
 In the FT, you saw that Django gives us a way of retrieving
 any emails it sends by using the `mail.outbox` attribute.
-But in this chapter, I want to demonstrate a very important testing technique called _mocking_,
+But in this chapter, I want to demonstrate a widespread testing technique called _mocking_,
 so for the purpose of these unit tests, we'll pretend that this nice Django shortcut doesn't exist.
 ((("mocks", "benefits and drawbacks of")))
 
@@ -28,8 +28,8 @@ No; use it, it's a neat shortcut.
 But I want to teach mocks because they're a useful general-purpose tool
 for unit testing external dependencies.
 You may not always be using Django!
-And even if you are, you may not be sending
-email--any interaction with a third-party API
+And even if you are, you may not be sending email--any
+interaction with a third-party API
 is a place you might find yourself wanting to test with mocks.
 ((("external dependencies")))
 
@@ -42,10 +42,10 @@ https://www.youtube.com/watch?v=rk-f3B-eMkI["Stop Using Mocks!"];
 it's entirely possible to find ways to write tests for external dependencies
 without using mocks at all.
 
-I'm teaching mocks in this book because it's such a common technique,
-but mocks do come with some downsides, as we'll see.
+I'm covering mocking in this book because it's such a common technique,
+but it does come with some downsides, as we'll see.
 Other techniques, including dependency injection,
-and the use of custom Fake objects, are well worth exploring,
+and the use of custom fake objects, are well worth exploring,
 but they're a more advanced topic.
 
 My second book, https://www.cosmicpython.com[Architecture Patterns with Python],
@@ -80,8 +80,9 @@ class SendLoginEmailViewTest(TestCase):
 ====
 
 
-Wire up the `include` in 'superlists/urls.py', plus the `url` in
-_accounts/urls.py_, and get the test passing with something a bit like this:
+Wire up the `include` in _superlists/urls.py_,
+plus the `url` in _accounts/urls.py_,
+and get the test passing with something a bit like this:
 
 
 [role="sourcecode dofirst-ch19l003"]
@@ -89,7 +90,7 @@ _accounts/urls.py_, and get the test passing with something a bit like this:
 ====
 [source,python]
 ----
-from django.core.mail import send_mail
+from django.core.mail import send_mail  # <1>
 from django.shortcuts import redirect
 
 
@@ -99,7 +100,9 @@ def send_login_email(request):
 ====
 
 
-I've added the import of the `send_mail` function as a placeholder for now:
+<1> I've added the import of the `send_mail` function as a placeholder for now.
+
+That'll get the test passing:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -117,29 +120,32 @@ OK, now we have a starting point, so let's get mocking!
 
 ((("mocks", "manual", id="Mmanual19")))
 ((("monkeypatching", id="monkey19")))
-When we call `send_mail` in real life we expect Django to be making a
-connection to our email provider, and sending an actual email across the public
-internet.  That's not something we want to happen in our tests. It's a similar
-problem whenever you have code that has external side effects—calling an
-API, sending out a tweet or an SMS or whatever it may be. In our unit tests, we
-don't want to be sending out real tweets or API calls across the internet.  But
-we would still like a way of testing that our code is correct.
+When we call `send_mail` in real life
+we expect Django to be making a connection to our email provider,
+and sending an actual email across the public internet.
+That's not something we want to happen in our tests.
+It's a similar problem whenever you have code that has external side effects—calling
+an API, sending out an SMS, integrating with a payment provider, whatever it may be.
+
+When running our unit tests,
+we don't want to be sending out real payments or making API calls across the internet.
+But we would still like a way of testing that our code is correct.
 Mocksfootnote:[I'm using the generic term "mock", but testing enthusiasts like
 to distinguish other types of a general class of test tools called "Test
 Doubles", including spies, fakes, and stubs.  The differences don't really
 matter for this book, but if you want to get into the nitty-gritty, check out
 this https://github.com/testdouble/contributing-tests/wiki/Test-Double[amazing
 wiki by Justin Searls]. Warning: absolutely chock full of great testing content.]
- are the answer.
+are the answer.
 
 
-
-Actually, one of the great things about Python is that its dynamic nature makes
-it very easy to do things like mocking, or what's sometimes called
-https://en.wikipedia.org/wiki/Monkey_patch[monkeypatching].  Let's suppose
-that, as a first step, we want to get to some code that invokes `send_mail`
-with the right subject line, from address, and to address.  That would look
-something like this:
+Actually, one of the great things about Python is that its dynamic nature
+makes it very easy to do things like mocking,
+or what's sometimes called https://en.wikipedia.org/wiki/Monkey_patch[monkeypatching].
+Let's suppose that, as a first step,
+we want to get to some code that invokes `send_mail`
+with the right subject line, from address, and to address.
+That would look something like this:
 
 
 [role="sourcecode skipme"]
@@ -160,9 +166,10 @@ def send_login_email(request):
 ====
 
 
-How can we test this, without calling the _real_ `send_mail` function?  The
-answer is that our test can ask Python to replace the `send_mail` function with
-a fake version, at runtime, before we invoke the `send_login_email` view.
+How can we test this, without calling the _real_ `send_mail` function?
+The answer is that our test can ask Python to swap out the `send_mail` function
+for a fake version, at runtime, just before we invoke the `send_login_email` view.
+
 Check this out:
 
 
@@ -202,42 +209,45 @@ class SendLoginEmailViewTest(TestCase):
 ----
 ====
 
-<1> We define a `fake_send_mail` function, which looks like the real
-    `send_mail` function, but all it does is save some information
-    about how it was called, using some variables on `self`.
+<1> We define a `fake_send_mail` function,
+    which looks like the real `send_mail` function,
+    but all it does is save some information about how it was called,
+    using some variables on `self`.
 
 
 <2> Then, before we execute the code under test by doing the `self.client.post`,
-    we swap out the real `accounts.views.send_mail` with our fake version—it's as simple as just assigning it.
+    we swap out the real `accounts.views.send_mail`
+    with our fake version—it's as simple as just assigning it.
 
 
-It's important to realise that there isn't really anything magical going on here; we're just taking advantage of Python's dynamic nature and scoping rules.
+It's important to realise that there isn't really anything magical going on here;
+we're just taking advantage of Python's dynamic nature and scoping rules.
 
-Up until we actually invoke a function, we can modify the variables it has
-access to, as long as we get into the right namespace (that's why we import the
-top-level accounts module, to be able to get down to the `accounts.views` module,
-which is the scope that the `accounts.views.send_login_email` function will run
-in).
+Up until we actually invoke a function, we can modify the variables it has access to,
+as long as we get into the right namespace.
+That's why we import the top-level accounts module:
+to be able to get down to the `accounts.views` module,
+which is the scope that the `accounts.views.send_login_email` function will run in.
 
-This isn't even something that only works inside unit tests.  You can do this
-kind of "monkeypatching" in any kind of Python code!
+This isn't even something that only works inside unit tests.
+You can do this kind of "monkeypatching" in any kind of Python code!
 
+That may take a little time to sink in.
+See if you can convince yourself that it's not all totally crazy,
+before reading a couple of bits of further detail.
 
-That may take a little time to sink in.  See if you can convince yourself that
-it's not all totally crazy, before reading a couple of bits of further detail.
-
-* Why do we use `self` as a way of passing information around? It's just a
-  convenient variable that's available both inside the scope of the
-  `fake_send_mail` function and outside of it.   We could use any mutable
-  object, like a list or a dictionary, as long as we are making in-place
-  changes to an existing variable that exists outside our fake function.
+* Why do we use `self` as a way of passing information around?
+  It's just a convenient variable that's available
+  both inside the scope of the `fake_send_mail` function and outside of it.
+  We could use any mutable object, like a list or a dictionary,
+  as long as we are making in-place changes to an existing variable
+  that exists outside our fake function.
   (Feel free to have a play around with different ways of doing this, if
   you're curious, and see what works and doesn't work.)
 
-* The "before" is critical! I can't tell you how many times I've sat
-  there, wondering why a mock isn't working, only to realise that I didn't
-  mock _before_ I called the code under test.
-
+* The "before" is critical! I can't tell you how many times I've sat there,
+  wondering why a mock isn't working,
+  only to realise that I didn't mock _before_ I called the code under test.
 
 
 Let's see if our hand-rolled mock object will let us test-drive some code:
@@ -273,7 +283,7 @@ TypeError: SendLoginEmailViewTest.test_sends_mail_to_address_from_post.<locals>
 'from_email', and 'to_list'
 ----
 
-Looks like our monkeypatch is working!
+It looks like our monkeypatch is working!
 We've called `send_mail`, and it's gone into our `fake_send_mail` function,
 which wants more arguments.
 Let's try this:
@@ -297,8 +307,8 @@ That gives:
 AssertionError: 'subject' != 'Your login link for Superlists'
 ----
 
-That's working pretty well.  And now we can work all the way through to
-something like this:
+That's working pretty well!
+Now we can work step-by-step, all the way through to something like this:
 
 
 [role="sourcecode"]
@@ -317,8 +327,6 @@ def send_login_email(request):
     return redirect("/")
 ----
 ====
-//006
-
 
 and passing tests!
 
@@ -334,16 +342,16 @@ OK
 
 
 Brilliant!  We've managed to write tests for some code, that
-ordinarilyfootnote:[Yes, I know Django already mocks out emails
-using `mail.outbox` for us, but, again, let's pretend it doesn't.
-What if you were using Flask?  Or what if this was an API call, not
-an email?] would go out and try to send real emails across the internet,
-and by "mocking out" the `send_email` function, we're able to write
-the tests and code all the same.((("", startref="monkey19")))((("", startref="Mmanual19")))
+ordinarilyfootnote:[Yes, I know Django already mocks out emails using `mail.outbox` for us,
+but, again, let's pretend it doesn't. What if you were using Flask?
+Or what if this was an API call, not an email?]
+would go out and try to send real emails across the internet,
+and by "mocking out" the `send_email` function,
+we're able to write the tests and code all the same.
+((("", startref="monkey19")))((("", startref="Mmanual19")))
 
 
-The Python Mock Library
-~~~~~~~~~~~~~~~~~~~~~~~
+=== The Python Mock Library
 
 ((("mocks", "Python Mock library", id="Mpythong19")))
 ((("Python 3", "Mock library", id="Pmock19")))
@@ -375,19 +383,21 @@ True
 call(42, var='thing')
 ----
 
-A magical object that responds to any request for an attribute or method call
-with other mocks, that you can configure to return specific values for its
-calls, and that allows you to inspect what it was called with?  Sounds like a
-useful thing to be able to use in our unit tests!
+A magical object that:
+
+* responds to any request for an attribute or method call with other mocks,
+* which you can configure in turn to return specific values when called,
+* and that allows you to inspect what it was called with?
+
+Sounds like a useful thing to be able to use in our unit tests!
 
 
-Using unittest.patch
-^^^^^^^^^^^^^^^^^^^^
+==== Using unittest.patch
 
-((("unittest module", "mock module and")))And
-as if that weren't enough, the `mock` module also provides a helper
-function called `patch`, which we can use to do the monkeypatching we did
-by hand earlier.
+((("unittest module", "mock module and")))
+And as if that weren't enough,
+the `mock` module also provides a helper function called `patch`,
+which we can use to do the monkeypatching we did by hand earlier.
 
 I'll explain how it all works shortly, but let's see it in action first:
 
@@ -418,10 +428,9 @@ from django.test import TestCase
 ====
 
 
-If you rerun the tests, you'll see they still pass.  And since we're always
-suspicious of any test that still passes after a big change, let's deliberately
-break it just to see:
-
+If you rerun the tests, you'll see they still pass.
+And since we're always suspicious of any test that still passes after a big change,
+let's deliberately break it just to see:
 
 
 [role="sourcecode"]
@@ -433,7 +442,8 @@ break it just to see:
 ----
 ====
 
-And let's add a little debug print to our view:
+And let's add a little debug print to our view as well,
+to see the effects of the `mock.patch`:
 
 [role="sourcecode"]
 .src/accounts/views.py (ch17l009)
@@ -448,7 +458,7 @@ def send_login_email(request):
 ----
 ====
 
-And run the tests again:
+Let's run the tests again:
 
 [subs="macros"]
 ----
@@ -467,10 +477,11 @@ FAILED (failures=1)
 ----
 
 
-Sure enough, the tests fail.  And we can see just before the failure
-message that when we print the `type` of the `send_mail` function,
-in the first unit test it's a normal function, but in the second unit
-test we're seeing a mock object.
+Sure enough, the tests fail.
+And we can see just before the failure message
+that when we print the `type` of the `send_mail` function,
+in the first unit test it's a normal function,
+but in the second unit test we're seeing a mock object.
 
 Let's remove the deliberate mistake and dive into exactly what's going on:
 
@@ -494,34 +505,35 @@ def test_sends_mail_to_address_from_post(self, mock_send_mail):  # <2>
 ====
 
 <1> The `mock.patch()` decorator takes a dot-notation name of an object to monkeypatch.
-    That's the equivalent of manually replacing the `send_mail` in
-    `accounts.views`.  The advantage of the decorator is that, firstly, it
-    automatically replaces the target with a mock.  And secondly, it
-    automatically puts the original object back at the end!  (Otherwise, the
-    object stays monkeypatched for the rest of the test run, which might cause
-    problems in other tests.)
+    That's the equivalent of manually replacing the `send_mail` in `accounts.views`.
+    The advantage of the decorator is that,
+    firstly, it automatically replaces the target with a mock.
+    And secondly, it automatically puts the original object back at the end!
+    (Otherwise, the object stays monkeypatched for the rest of the test run,
+    which might cause problems in other tests.)
 
 
-<2> `patch` then injects the mocked object into the test as an argument to
-    the test method.  We can choose whatever name we want for it, but I
-    usually use a convention of `mock_` plus the original name of the
-    object.
+<2> `patch` then injects the mocked object into the test
+    as an argument to the test method.
+    We can choose whatever name we want for it,
+    but I usually use a convention of `mock_` plus the original name of the object.
 
 
-<3> We call our view under test as usual, but everything inside this
-    test method has our mock applied to it, so the view won't call the
-    real `send_mail` object; it'll be seeing `mock_send_mail` instead.
+<3> We call our view under test as usual,
+    but everything inside this test method has our mock applied to it,
+    so the view won't call the real `send_mail` object;
+    it'll be seeing `mock_send_mail` instead.
 
 <4> And we can now make assertions about what happened to that mock object
     during the test.  We can see it was called...
 
 <5> ...and we can also unpack its various positional and keyword call arguments,
-    and examine what it was called with. (We'll discuss `call_args` in a bit
-    more detail later.)
+    to examine what it was called with.
+    (We'll discuss `call_args` in a bit more detail later.)
 
 
-All crystal-clear? No? Don't worry, we'll do a couple more tests with mocks, to
-see if they start to make more sense as we use them more.
+All crystal-clear? No? Don't worry, we'll do a couple more tests with mocks,
+to see if they start to make more sense as we use them more.
 
 
 
@@ -551,8 +563,7 @@ Let's wire it up in _base.html_:
 ====
 
 Does that help?  Nope, same error.  Why?
-Because we're not actually displaying a success message
-after we send the user an email.
+Because we're not actually displaying a success message after we send the user an email.
 Let's add a test for that.
 
 
@@ -566,10 +577,11 @@ Have a look at the
 https://docs.djangoproject.com/en/1.11/ref/contrib/messages/[django messages docs]
 if you haven't come across it already.
 
-Testing Django messages is a bit contorted--we have to pass `follow=True` to
-the test client to tell it to get the page after the 302-redirect, and examine
-its context for a list of messages (which we have to listify before it'll
-play nicely).  Here's what it looks like:
+Testing Django messages is a bit contorted--we have to pass `follow=True`
+to the test client to tell it to get the page after the 302-redirect,
+and examine its context for a list of messages
+(which we have to listify before it'll play nicely).
+Here's what it looks like:
 
 
 [role="sourcecode"]
@@ -631,8 +643,9 @@ def send_login_email(request):
 
 TIP: This sidebar is an intermediate-level testing tip.
     If it goes over your head the first time around,
-    come back and take another look when you've finished this chapter
-    and <<appendix_purist_unit_tests>>.
+    come back and take another look when you've finished this chapter.
+    Consider also going through <<appendix_purist_unit_tests>>
+    for lots more mocking practice.
 
 I said testing messages is a bit contorted;
 it took me several goes to get it right.
@@ -695,11 +708,12 @@ There's more detailed discussion of the pros and cons of mocks in
 *******************************************************************************
 
 
-Adding Messages to Our HTML
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Adding Messages to Our HTML
 
-What happens next in the functional test?  Ah.  Still nothing.  We
-need to actually add the messages to the page.  Something like this:
+What happens next in the functional test?
+Ah.  Still nothing.
+We need to actually add the messages to the page.
+Something like this:
 
 
 [role="sourcecode dofirst-ch19l014-4"]
@@ -743,8 +757,8 @@ AssertionError: 'Use this link to log in' not found in 'body text tbc'
 ----
 
 
-We need to fill out the body text of the email, with a link that the
-user can use to log in.
+We need to fill out the body text of the email,
+with a link that the user can use to log in.
 
 
 Let's just cheat for now though, by changing the value in the view:
@@ -776,11 +790,10 @@ Use this link to log in
 ----
 
 
-Starting on the Login URL
-^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Starting on the Login URL
 
-We're going to have to build some kind of URL!  Let's build one that, again,
-just cheats:
+We're going to have to build some kind of URL!
+Let's build one that, again, just cheats:
 
 
 [role="sourcecode"]
@@ -798,8 +811,8 @@ class LoginViewTest(TestCase):
 We're imagining we'll pass the token in as a GET parameter, after the `?`.
 It doesn't need to do anything for now.
 
-I'm sure you can find your way through to getting the boilerplate in for a basic
-URL and view, via errors like these:
+I'm sure you can find your way through to getting the boilerplate in
+for a basic URL and view, via errors like these:
 
 [role="pagebreak-before"]
 * No URL:
@@ -840,18 +853,18 @@ OK
 ----
 
 
-And now we can give them a link to use.  It still won't do much though, because
-we still don't have a token to give to the user.
+And now we can give them a link to use.
+It still won't do much though,
+because we still don't have a token to give to the user.
 
 
 
-Checking That We Send the User a Link with a Token
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+==== Checking That We Send the User a Link with a Token
 
-Back in our `send_login_email` view, we've tested the email subject, from, and
-to fields.  The body is the part that will have to include a token or URL they
-can use to log in.  Let's spec out two tests for that:
-
+Back in our `send_login_email` view,
+we've tested the email subject, from, and to fields.
+The body is the part that will have to include a token or URL they can use to log in.
+Let's spec out two tests for that:
 
 
 [role="sourcecode"]
@@ -886,9 +899,9 @@ The first test is fairly straightforward;
 it checks that the token we create in the database
 is associated with the email address from the post request.
 
-The second one is our second test using mocks.  We mock out the `send_mail`
-function again using the `patch` decorator, but this time we're interested
-in the `body` argument from the call arguments.
+The second one is our second test using mocks.
+We mock out the `send_mail` function again using the `patch` decorator,
+but this time we're interested in the `body` argument from the call arguments.
 
 Running them now will fail because we're not creating any kind of token:
 
@@ -968,6 +981,10 @@ def send_login_email(request):
     framework, and that gets overcomplicated pretty quickly.  You can find
     lots more discussion on this if you're curious by doing a bit of googling.
 
+
+// TODO: investigate kwards for reverse() call
+// reverse("login", token=str(token.uid))
+
 Two more pieces in the puzzle.
 We need an authentication backend,
 whose job it will be to examine tokens for validity
@@ -978,6 +995,7 @@ if they can authenticate.
 
 
 
+// TODO: resume review here
 
 === De-spiking Our Custom Authentication Backend
 
