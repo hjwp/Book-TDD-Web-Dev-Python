@@ -1416,7 +1416,7 @@ def login(request):
 ----
 ====
 
-We need the view to call `django.contrib.auth.authenticate`, and then,
+We call `django.contrib.auth.authenticate`, and then,
 if it returns a user, we call `django.contrib.auth.login`.
 
 TIP: This is a good time to check out the
@@ -1426,8 +1426,142 @@ TIP: This is a good time to check out the
     ((("", startref="Mdespike19")))((("", startref="SDdesp19")))
 
 
+==== Straightforward Non-Mocky Test for our View
+
+Here's the most obvious test we might want to write:
+we think in terms of the _behaviour_ we want:
+
+1. If someone has a valid Token, they should get logged in
+2. If someone tries to use an invalid Token (or none), it should not log them in.
+
+
+Here's how we might add the happy-path test for (1):
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l037)
+====
+[source,python]
+----
+from django.contrib import auth
+[...]
+
+class LoginViewTest(TestCase):
+    def test_redirects_to_home_page(self):
+        [...]
+
+    def test_logs_in_if_given_valid_token(self):
+        anon_user = auth.get_user(self.client)  # <1>
+        self.assertEqual(anon_user.is_authenticated, False)  # <2>
+
+        token = Token.objects.create(email="edith@example.com")
+        self.client.get(f"/accounts/login?token={token.uid}")
+
+        user = auth.get_user(self.client)
+        self.assertEqual(user.is_authenticated, True)  # <3>
+        self.assertEqual(user.email, "edith@example.com")  # <3>
+----
+====
+
+<1> We use Django's `auth.get_user()` to extract the current user from the Test Client.
+<2> We verify we're not logged in before we start
+    (this isn't strictly necessary, but it's always nice to know you're on firm ground).
+<3> And here's where we check that we've been logged,
+    with a user with the right email address:
+
+
+And that will fail as expected:
+
+----
+    self.assertEqual(user.is_authenticated, True)
+AssertionError: False != True
+----
+
+We can get it to pass by "cheating", like this:
+
+
+[role="sourcecode"]
+src/accounts/views.py (ch19l038)
+====
+[source,python]
+----
+from django.contrib import auth
+[...]
+
+
+def login(request):
+    user = User.objects.create(email="edith@example.com")
+    auth.login(request, user)
+    return redirect("/")
+----
+====
+
+
+Which forces us to write another test:
+
+
+
+[role="sourcecode"]
+src/accounts/tests/test_views.py (ch19l039)
+====
+[source,python]
+----
+    def test_shows_login_error_if_token_invalid(self):
+        response = self.client.get("/accounts/login?token=invalid-token", follow=True)
+        user = auth.get_user(self.client)
+        self.assertEqual(user.is_authenticated, False)
+        message = list(response.context["messages"])[0]
+        self.assertEqual(
+            message.message,
+            "Invalid login link, please request a new one",
+        )
+        self.assertEqual(message.tags, "error")
+----
+====
+
+And now we get that passing using the most straightforward implementation...
+
+
+
+[role="sourcecode"]
+.lists.tests.py (ch04l004)
+====
+[source,python]
+----
+def login(request):
+    if Token.objects.filter(uid=request.GET["token"]).exists():  # <1>
+        user = User.objects.create(email="edith@example.com")  # <3>
+        auth.login(request, user)
+    else:
+        messages.error(request, "Invalid login link, please request a new one")  # <4>
+    return redirect("/")
+----
+====
+
+<1> Oh wait, we forgot about our authentication backend
+    and just did the query directly from the Token model?
+    Well that's arguably more straightforward,
+    but how do we force ourselves to write the code the way we want it to,
+    ie using the Django's auth API?
+
+<2> Oh dear and the email address is still hardcoded.
+    We might have to think about writing an extra test to force ourselves to fix that.
+
+
+<3> Wait actually--also, we're hardcoding the creation of a user every time,
+    but actually, we want to have the get-or-create logic
+    that we implemented in our backend
+
+<4> This bit is OK at least! 😅 
+
+
+Is this starting to feel a bit familiar?
+We've already written all the tests for the various permutations of our authentication logic,
+and we're thinking about writing equivalent tests at the views layer.
+
+
 === An Alternative Reason to Use Mocks: Reducing Duplication
 
+>>>>>>> b019a496 (Wip on alternative flow thru the remove duplication bit)
 ((("mocks", "reducing duplication with", id="Mreduce19")))
 ((("duplication, eliminating", id="dupel19")))
 So far we've used mocks to test external dependencies,
