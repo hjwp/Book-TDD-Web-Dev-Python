@@ -1780,22 +1780,72 @@ because we've decided to use a particular, specific interface to implement our a
 which is something we might want to document and verify in our tests,
 and mocks are one way to enable that.
 
-Let's see how it might look.  We'll work by adding the mocky tests first,
-get them all passing, and then deleting the nonmocky ones
-(`test_logs_in_if_given_valid_token()` and `test_shows_login_error_if_token_invalid()`):
+
+=== Starting Again, Test-Driving our Implementation With Mocks
+
+Let's see how things would look if we had made this decision in the first place.
+We'll start by reverting all the authentication stuff,
+both from our test and from our view.
+
+Let's disable the test first (we can re-enable them later to sense-check things):
 
 [role="sourcecode small-code"]
-.src/accounts/tests/test_views.py (ch19l044)
+.src/accounts/tests/test_views.py (ch19l041)
 ====
 [source,python]
 ----
 class LoginViewTest(TestCase):
-    def test_redirects_to_home_page(self):
+    def test_redirects_to_home_page(self):  <1>
         [...]
-    def test_logs_in_if_given_valid_token(self):
+    def DONT_test_logs_in_if_given_valid_token(self):  <2>
         [...]
-    def test_shows_login_error_if_token_invalid(self):
+    def DONT_test_shows_login_error_if_token_invalid(self):  <2>
         [...]
+----
+====
+
+<1> We can leave the test for the redirect, since that doesn't involve the auth framework.
+<2> I call this "dontifying" tests :)
+
+
+Now let's revert the view, and replace our hacky code with some TODOs:
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l042)
+====
+[source,python]
+----
+def login(request):
+    # TODO: call authenticate(),
+    # then auth.login() with the user if we get one,
+    # or messages.error() if we get None.
+    return redirect("/")
+----
+====
+
+Let's check all our tests pass:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+Ran 14 tests in 0.021s
+
+OK
+----
+
+
+Now let's start again with mock-based tests.
+First we can write a test that checks we call `authenticate()` correctly:
+
+[role="sourcecode small-code"]
+.src/accounts/tests/test_views.py (ch19l043)
+====
+[source,python]
+----
+class LoginViewTest(TestCase):
+    [...]
 
     @mock.patch("accounts.views.auth")  # <1>
     def test_calls_authenticate_with_uid_from_get_request(self, mock_auth):  # <2>
@@ -1930,15 +1980,16 @@ Let's fix that, but get it deliberately wrong, just to see:
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch19l047)
+.src/accounts/views.py (ch19l044)
 ====
 [source,python]
 ----
 def login(request):
+    # TODO: call authenticate(),
     auth.authenticate("bang!")
-    if Token.objects.filter(uid=request.GET["token"]).exists():
-        user = User.objects.create(email="edith@example.com")
-        [...]
+    # then auth.login() with the user if we get one,
+    # or messages.error() if we get None.
+    return redirect("/")
 ----
 ====
 
@@ -1958,116 +2009,29 @@ Let's give `authenticate` the arguments it expects then:
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch19l048)
+.src/accounts/views.py (ch19l045)
 ====
 [source,python]
 ----
 def login(request):
+    # TODO: call authenticate(),
     auth.authenticate(uid=request.GET["token"])
-    if Token.objects.filter(uid=request.GET["token"]).exists():
-        user = User.objects.create(email="edith@example.com")
-        [...]
+    # then auth.login() with the user if we get one,
+    # or messages.error() if we get None.
     return redirect("/")
 ----
 ====
 
-That gets us an unexpected failure!
+That gets us to passing tests:
 
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test accounts*]
-[...]
-E.......
-======================================================================
-ERROR: test_logs_in_if_given_valid_token  <2>
-  File "...goat-book/src/accounts/tests/test_views.py", line 71, in
-test_logs_in_if_given_valid_token
-    self.client.get(f"/accounts/login?token={token.uid}")  <3>
-[...]
-  File "...goat-book/src/accounts/views.py", line 34, in login
-    user = User.objects.create(email="edith@example.com")  <4>
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File
-"...goat-book/.venv/lib/python3.12/site-packages/django/db/models/manager.py",
-line 87, in manager_method
-    return getattr(self.get_queryset(), name)(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-[...]
-django.db.utils.IntegrityError: UNIQUE constraint failed: accounts_user.email  <1>
-----
+Ran 15 tests in 0.023s
 
-We apply our usual traceback-reading heuristics.
-<1> The error is about unique constraints, that's not immediately obvious.
-<2> Aha, this isn't the test we just wrote, it's another test,
-    one of our non-mocky ones
-<3> Here's the line in our tests that caused the error, no surprise here
-<4> And here's the line in our own code.
-    If we look back in our view, we can see it's _after_ we call `auth.authenticate()`,
-    in our pre-existing code where we manually create a user.
-
-Aha!  `authenticate()` itself already creates a user for us,
-so we can't create a second one with the same email address.
-Thanks, database constraint!
-
-
-Fixing that step-by-step, I went through this stage,
-where we get the user from `authenticate()` (which by itself doesn't fix the error)
-and then remove the `User.objecs.create()` line (which does):
-
-
-[role="sourcecode"]
-.src/accounts/views.py (ch19l049)
-====
-[source,diff]
-----
-@@ -29,9 +29,8 @@ def send_login_email(request):
-
-
- def login(request):
--    auth.authenticate(uid=request.GET["token"])
-+    user = auth.authenticate(uid=request.GET["token"])
-     if Token.objects.filter(uid=request.GET["token"]).exists():
--        user = User.objects.create(email="edith@example.com")
-         auth.login(request, user)
-     else:
-         messages.error(request, "Invalid login link, please request a new one")
-----
-====
-
-That gives us passing tests:
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python src/manage.py test accounts*]
-[...]
 OK
 ----
-
-And now we've been through Red and Green, let's do a little refactor!
-This is one of those places where it's actually nice to use the Walrus operator:
-
-
-[role="sourcecode"]
-.src/accounts/views.py (ch19l050)
-====
-[source,python]
-----
-def login(request):
-    if user := auth.authenticate(uid=request.GET["token"]):
-        auth.login(request, user)
-    else:
-        messages.error(request, "Invalid login link, please request a new one")
-    return redirect("/")
-----
-====
-
-
-We've now got a mixture of mocky and non-mocky tests.
-Since we decided to go all in on mocks here, let's keep going,
-until our tests at the views layer are properly isolated from the auth backend.
-
 
 ==== Using mock.return_value
 
@@ -2077,7 +2041,7 @@ we pass that into `auth.login`.  Let's see how that test looks:
 
 
 [role="sourcecode"]
-.src/accounts/tests/test_views.py (ch19l049)
+.src/accounts/tests/test_views.py (ch19l046)
 ====
 [source,python]
 ----
@@ -2086,7 +2050,10 @@ def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):
     response = self.client.get("/accounts/login?token=abcd123")
     self.assertEqual(
         mock_auth.login.call_args,  # <2>
-        mock.call(response.wsgi_request, mock_auth.authenticate.return_value),  # <3>
+        mock.call(
+            response.wsgi_request,  # <3>
+            mock_auth.authenticate.return_value,  # <4>
+        ),
     )
 ----
 ====
@@ -2096,14 +2063,15 @@ def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):
 <2> This time we examine the call args for the `auth.login` function.
 
 <3> We check that it's called with the request object that the view sees,
-    and the "user" object that the `authenticate` function returns.  Because
-    `authenticate` is also mocked out, we can use its special "return_value"
-    attribute.
 
-When you call a mock, you get another mock.  But you can also get a copy
-of that returned mock from the original mock that you called.  Boy, it
-sure is hard to explain this stuff without saying "mock" a lot! Another little
-console illustration might help here:
+<4> and the "user" object that the `authenticate()` function returns.
+    Because `authenticate()` is also mocked out,
+    we can use its special `.return_value` attribute.
+
+When you call a mock, you get another mock.
+But you can also get a copy of that returned mock from the original mock that you called.
+Boy, it sure is hard to explain this stuff without saying "mock" a lot!
+Another little console illustration might help here:
 
 [role="skipme"]
 [source,python]
@@ -2124,37 +2092,51 @@ In any case, what do we get from running the test?
 ----
 $ pass:quotes[*python src/manage.py test accounts*]
 [...]
-AssertionError: None != call(<WSGIRequest: GET '/accounts/login?t[...]
+AssertionError: None != call(<WSGIRequest: GET '/accounts/login?t[66 chars]04'>)
 ----
 
-Sure enough, it's telling us that we're not calling `auth.login` at all yet.
+Sure enough, it's telling us that we're not calling `auth.login()` at all yet.
 Let's try doing that.  Deliberately wrong as usual first!
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch19l042)
+.src/accounts/views.py (ch19l047)
 ====
 [source,python]
 ----
 def login(request):
-    auth.authenticate(uid=request.GET.get("token"))
+    # TODO: call authenticate(),
+    auth.authenticate(uid=request.GET["token"])
+    # then auth.login() with the user if we get one,
     auth.login("ack!")
+    # or messages.error() if we get None.
     return redirect("/")
 ----
 ====
-
 
 Ack indeed!
 
 [subs="specialcharacters,macros"]
 ----
+ERROR: test_redirects_to_home_page
+[...]
 TypeError: login() missing 1 required positional argument: 'user'
+
+FAIL: test_calls_auth_login_with_user_if_there_is_one
 [...]
 AssertionError: call('ack!') != call(<WSGIRequest: GET
-'/accounts/login?token=[...]
+'/accounts/login?token=[61 chars]52'>)
+[...]
+
+Ran 16 tests in 0.026s
+
+FAILED (failures=1, errors=1)
 ----
 
-Let's fix that:
+That's one expected failure from our mocky test,
+and one (more) unexpected one from the nonmocky one.
+
+Let's see if we can fix them:
 
 [role="sourcecode"]
 .src/accounts/views.py (ch19l043)
@@ -2162,19 +2144,26 @@ Let's fix that:
 [source,python]
 ----
 def login(request):
-    user = auth.authenticate(uid=request.GET.get("token"))
+    # TODO: call authenticate(),
+    user = auth.authenticate(uid=request.GET["token"])
+    # then auth.login() with the user if we get one,
     auth.login(request, user)
+    # or messages.error() if we get None.
     return redirect("/")
 ----
 ====
 
 
-Now we get this unexpected complaint:
+Well, that does fix our mocky test, but not the other one;
+it now has a slightly different complaint:
 
 [subs="specialcharacters,macros"]
 ----
 ERROR: test_redirects_to_home_page
 (accounts.tests.test_views.LoginViewTest.test_redirects_to_home_page)
+[...]
+  File "...goat-book/src/accounts/views.py", line 35, in login
+    auth.login(request, user)
 [...]
 AttributeError: 'AnonymousUser' object has no attribute '_meta'
 ----
@@ -2182,8 +2171,16 @@ AttributeError: 'AnonymousUser' object has no attribute '_meta'
 It's because we're still calling `auth.login` indiscriminately on any kind of user,
 and that's causing problems back in our original test for the redirect,
 which _isn't_ currently mocking out `auth.login`.
-We need to add an `if` (and therefore another test),
-and while we're at it we'll learn about patching at the class level.
+
+
+////
+OLD CONTENT
+
+We need to add an `if` (and therefore another test).
+
+But the fact that the nonmocky test is giving us these
+unexpected failures is (perhaps) a problem.
+Let's see how we can deal with that.
 
 
 ==== Patching at the Class Level
@@ -2238,6 +2235,12 @@ class LoginViewTest(TestCase):
     call `auth.login` at all.
 
 
+Other than removing the duplication of the `@mock.patch()` decorator,
+you can argue that it's valid to say, if we're mocking out a collaborator,
+that it makes sense to mock it out for _every_ test of that object.
+
+
+
 That cleans up the spurious failure, and gives us a specific, expected failure
 to work on:
 
@@ -2246,34 +2249,178 @@ to work on:
     self.assertEqual(mock_auth.login.called, False)
 AssertionError: True != False
 ----
+////
 
-And we get it passing like this:
+
+We can get back to passing like this:
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch19l045)
+.src/accounts/views.py (ch19l049)
 ====
 [source,python]
 ----
 def login(request):
-    user = auth.authenticate(uid=request.GET.get("token"))
-    if user:
+    # TODO: call authenticate(),
+    if user := auth.authenticate(uid=request.GET["token"]):  # <1>
+        # then auth.login() with the user if we get one,
         auth.login(request, user)
-    return redirect("/")
 ----
 ====
 
 
-// TODO: add a failure messages.message?  will help ppl with debugging login failures
+<1> If you haven't seen this before, the `:=` is known as the "walrus operator"
+    (more formally, it's the operator for an "assignment expression"),
+    which was a controversial new feature from Python 3.8
+    (Guido pretty much burned out over it),
+    and it's not often useful, but it is quite neat for cases like this,
+    where you have a variable and want to do a conditional on it straight away.
+    See https://www.pythonmorsels.com/using-walrus-operator/[this article]
+    for more explanation.
 
-The unit tests pass...
 
+
+This gets our unit test passing:
+
+[subs="specialcharacters,quotes"]
 ----
+$ *python src/manage.py test accounts*
+[...]
+
 OK
 ----
 
 
-So are we there yet?
+==== Using .return_value during test setup
+
+I'm a little nervous that we've introduced an `if` without an _explicit_ test for it.
+Testing the unhappy path will reassure me.
+We can use our existing test for the error case to crib from.
+
+We want to be able to set up our mocks to say:
+`auth.authenticate()` should return `None`.
+We can do that by _setting_ the `.return_value` on the mock:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l050)
+====
+[source,python]
+----
+    @mock.patch("accounts.views.auth")
+    def test_adds_error_message_if_auth_user_is_None(self, mock_auth):
+        mock_auth.authenticate.return_value = None  # <1>
+
+        response = self.client.get("/accounts/login?token=abcd123", follow=True)
+
+        message = list(response.context["messages"])[0]
+        self.assertEqual(  # <2>
+            message.message,
+            "Invalid login link, please request a new one",
+        )
+        self.assertEqual(message.tags, "error")
+----
+====
+
+<1> We use `.return_value` on our mock once again,
+    but this time, we _assign_ to it, before it's used,
+    (in the setup part of the test, aka the "arrange" or "given" phase).
+    rather than reading from it (in the assert/when part)
+    as we did earlier.
+
+<2> Our asserts are copied across from
+    `DONT_test_shows_login_error_if_token_invalid()`
+
+
+That gives us this somewhat cryptic, but expected failure:
+
+----
+ERROR: test_adds_error_message_if_auth_user_is_None
+[...]
+    message = list(response.context["messages"])[0]
+                   ~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+----
+
+Essentially that's saying there _are_ no messages in our response.
+
+
+We can get it passing like this, starting with a deliberate mistake as always:
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l051)
+====
+[source,python]
+----
+def login(request):
+    # TODO: call authenticate(),
+    if user := auth.authenticate(uid=request.GET["token"]):
+        # then auth.login() with the user if we get one,
+        auth.login(request, user)
+    else:
+        # or messages.error() if we get None.
+        messages.error(request, "boo")
+    return redirect("/")
+----
+====
+
+Which gives us
+
+----
+AssertionError: 'boo' != 'Invalid login link, please request a new one'
+----
+
+And so:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l052)
+====
+[source,python]
+----
+def login(request):
+    # TODO: call authenticate(),
+    if user := auth.authenticate(uid=request.GET["token"]):
+        # then auth.login() with the user if we get one,
+        auth.login(request, user)
+    else:
+        # or messages.error() if we get None.
+        messages.error(request, "Invalid login link, please request a new one")
+    return redirect("/")
+----
+====
+
+Now our tests pass:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python src/manage.py test accounts*
+Ran 17 tests in 0.025s
+
+OK
+----
+
+
+And we can do a final refactor to remove those comments:
+
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l053)
+====
+[source,python]
+----
+def login(request):
+    if user := auth.authenticate(uid=request.GET["token"]):
+        auth.login(request, user)
+    else:
+        messages.error(request, "Invalid login link, please request a new one")
+    return redirect("/")
+----
+====
+
+Lovely!  So are we there yet?
+
 ((("", startref="Mreduce19")))((("", startref="dupel19")))
 
 
