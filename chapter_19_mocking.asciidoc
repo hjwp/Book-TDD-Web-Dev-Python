@@ -1480,11 +1480,14 @@ We can get it to pass by "cheating", like this:
 
 
 [role="sourcecode"]
-src/accounts/views.py (ch19l038)
+.src/accounts/views.py (ch19l038)
 ====
 [source,python]
 ----
-from django.contrib import auth
+from django.contrib import auth, messages
+[...]
+
+User = auth.get_user_model()
 [...]
 
 
@@ -1679,7 +1682,6 @@ and 3 that check that each body type can be painted.
 
 === Using Mocks to Test Parts of Our System in Isolation
 
-
 To recap, so far we have some minimal tests at the models layer,
 and we have comprehensive tests of our authentication backend,
 and we're now wondering how many tests we need at the views layer.
@@ -1705,7 +1707,6 @@ def login(request):
 We know we want to transform it to something like this:
 
 
-
 [role="sourcecode skipme"]
 .src/accounts/views.py
 ====
@@ -1713,9 +1714,9 @@ We know we want to transform it to something like this:
 ----
 def login(request):
     if user := auth.authenticate(uid=request.GET.get("token"))  # <1>
-        auth.login(request, user)  # <1>
+        auth.login(request, user)  # <2>
     else:
-        messages.error(request, "Invalid login link, please request a new one")  # <2>
+        messages.error(request, "Invalid login link, please request a new one")  # <3>
 
     return redirect("/")
 ----
@@ -2443,6 +2444,8 @@ Now our tests pass:
 [subs="specialcharacters,quotes"]
 ----
 $ *python src/manage.py test accounts*
+[...]
+
 Ran 17 tests in 0.025s
 
 OK
@@ -2467,10 +2470,141 @@ def login(request):
 ----
 ====
 
-Lovely!  So are we there yet?
-
+Lovely!  What's next?
 ((("", startref="Mreduce19")))((("", startref="dupel19")))
 
+
+==== UnDONTifying
+
+Remember we still have the DONTified, nonmocky tests?
+Let's re-enable now to sense-check that our mocky tests have driven
+us to the right place:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l054)
+====
+[source,python]
+----
+@@ -63,7 +63,7 @@ class LoginViewTest(TestCase):
+         response = self.client.get("/accounts/login?token=abcd123")
+         self.assertRedirects(response, "/")
+
+-    def DONT_test_logs_in_if_given_valid_token(self):
++    def test_logs_in_if_given_valid_token(self):
+         anon_user = auth.get_user(self.client)
+         self.assertEqual(anon_user.is_authenticated, False)
+
+@@ -74,7 +74,7 @@ class LoginViewTest(TestCase):
+         self.assertEqual(user.is_authenticated, True)
+         self.assertEqual(user.email, "edith@example.com")
+
+-    def DONT_test_shows_login_error_if_token_invalid(self):
++    def test_shows_login_error_if_token_invalid(self):
+         response = self.client.get("/accounts/login?token=invalid-token", follow=True)
+----
+====
+
+
+Sure enough they both pass:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *python src/manage.py test accounts*
+[...]
+Ran 19 tests in 0.025s
+
+OK
+----
+
+
+=== Deciding Which Tests To Keep
+
+
+We now definitely have duplicate tests:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py
+====
+[source,python]
+----
+class LoginViewTest(TestCase):
+    def test_redirects_to_home_page(self):
+        [...]
+
+    def test_logs_in_if_given_valid_token(self):
+        [...]
+
+    def test_shows_login_error_if_token_invalid(self):
+        [...]
+
+    @mock.patch("accounts.views.auth")
+    def test_calls_authenticate_with_uid_from_get_request(self, mock_auth):
+        [...]
+
+    @mock.patch("accounts.views.auth")
+    def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):
+        [...]
+
+    @mock.patch("accounts.views.auth")
+    def test_adds_error_message_if_auth_user_is_None(self, mock_auth):
+        [...]
+----
+====
+
+The redirect test could stay the same whether we're using mocks or not.
+We then have two non-mocky tests for the happy and unhappy paths,
+and three mocky tests:
+
+* One checks that we are integrated with our auth backend correctly
+* One checks that we call the built-in `auth.login` function correctly,
+  which tests the happy path.
+* And one that checks we set an error message in the unhappy path.
+
+I think there are lots of ways to justify different choices here,
+but my instinct tends to be to avoid using mocks if you can.
+So, I propose we delete the two mocky tests for the happy and unhappy paths,
+since they are reasonably covered by the non-mocky ones,
+but I think we can justify keeping the first mocky test,
+because it adds value by checking that we're doing our authentication
+the "right" way, ie by calling into Dango's `auth.authenticate()` function
+(instead of, eg, instantiating and calling our auth backend ourselves,
+or even just implementing authentication inline in the view).
+
+TIP: "Test behaviour, not implementation" is a GREAT rule of thumb for tests.
+    But sometimes, the fact that you're using one implementation rather than another
+    really is important.  In these cases, a mocky test can be useful.
+
+
+So let's delete our last two mocky tests.
+I'm also going to rename the remaining one to make our intention clear,
+we want to check we are using the Django auth library:
+
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l055)
+====
+[source,python]
+----
+    @mock.patch("accounts.views.auth")
+    def test_calls_django_auth_authenticate(self, mock_auth):
+        [...]
+----
+====
+
+And we're down to 17 tests:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python src/manage.py test accounts*
+[...]
+Ran 4 tests in 0.015s
+
+OK
+----
 
 
 === The Moment of Truth:  Will the FT Pass?
@@ -2483,7 +2617,7 @@ Let's just make sure our base template shows a different nav bar for logged-in
 and non–logged-in users (which our FT relies on):
 
 [role="sourcecode small-code"]
-.src/lists/templates/base.html (ch19l046)
+.src/lists/templates/base.html (ch19l056)
 ====
 [source,html]
 ----
@@ -2586,12 +2720,15 @@ $ *export EMAIL_PASSWORD="yoursekritpasswordhere"*
 .Using a Local .env File for Development
 *******************************************************************************
 
-Until now we've only used the _.env_ file on the server, because all the
-other settings have sensible defaults for dev, but there's just no way
-to get a working login system without this one.
+Until now we've only used a _.env_ file on the server,
+(where we called it _superlists/.env_).
+That's because we've made sure all the other settings have sensible defaults for dev,
+but there's just no way to get a working login system without this one!
 
 Just as we do on the server, you can also use a _.env_ file to save
-project-specific environment variables:
+project-specific environment variables.
+We'll call this one literally just _.env_;
+that's a convention which makes it a hidden file, on Unix-like systems at least:
 
 // TODO: did we call the file on the server ".env"?
 
@@ -2663,7 +2800,7 @@ The last thing we need to do before we call it a day is to test the logout butto
 We extend the FT with a couple more steps:
 
 [role="sourcecode"]
-.src/functional_tests/test_login.py (ch19l048)
+.src/functional_tests/test_login.py (ch19l058)
 ====
 [source,python]
 ----
@@ -2702,7 +2839,7 @@ element: input[name=email]; [...]
 So let's tell the base template that we want a new url named "logout":
 
 [role="sourcecode small-code"]
-.src/lists/templates/base.html (ch19l049)
+.src/lists/templates/base.html (ch19l059)
 ====
 [source,html]
 ----
@@ -2744,7 +2881,7 @@ https://docs.djangoproject.com/en/5.1/topics/auth/default/#module-django.contrib
 which clears down the user's session and redirects them to a page of our choice:
 
 [role="sourcecode small-code"]
-.src/accounts/urls.py (ch19l050)
+.src/accounts/urls.py (ch19l060)
 ====
 [source,python]
 ----
@@ -2836,13 +2973,18 @@ Mocks can leave you tightly coupled to the implementation::
   mocks can leave you tightly coupled to your implementation.
   For that reason, you shouldn't use them unless you have a good reason.
 
-
 Mocks can be a way to avoid duplication in your tests::
-  With that said, there is an argument for using mocks to remove duplication;
+  With that said, there can be an argument for using mocks to remove duplication;
   used extensively, this approach leads to "London-style" TDD,
-  a variation on the style I mostly follow and show in this book.
+  but that's quite different from the style I mostly follow and show in this book.
   ((("mocks", "reducing duplication with")))
   ((("duplication, eliminating")))
+
+Mocks can allow you to verify implementation details::
+  Most tests should test behaviour, not implementation.
+  At some point though, we decided that the fact that we used a particular implementation
+  _was_ important, and so we used a mock as a way to verify that,
+  and document it for our future selves.
 
 There are alternatives to mocks, but they require rethinking how your code is structured::
   In a way, mocks make it "too easy".
