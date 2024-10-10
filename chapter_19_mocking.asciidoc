@@ -1,14 +1,14 @@
 [[chapter_19_mocking]]
-== Using Mocks to Test External Dependencies or Reduce Duplication
+== Mocks and Mocking: Where and How To Use Them
 
-.Warning, Chapter Under Construction.
+.Warning, Recently Updated
 *******************************************************************************
-🚧 Warning, this Chapter is freshly updated for Django 5 + Python 3.12.
+🚧 Warning, chapter in progress! 🚧
 
-The code listings should have valid syntax,
-and I've been through and sense-checked the chapter text,
-but a few things might still be off!
-So let me know what you think of the chapter, via obeythetestinggoat@gmail.com
+I've recently updated this chapter, and there are some new discussions
+of the pros and cons of mocking, which I'd love your feedback on!
+
+obeythetestinggoat@gmail.com
 
 *******************************************************************************
 
@@ -434,7 +434,7 @@ let's deliberately break it just to see:
 
 
 [role="sourcecode"]
-.src/accounts/tests/test_views.py (ch17l008)
+.src/accounts/tests/test_views.py (ch19l008)
 ====
 [source,python]
 ----
@@ -446,7 +446,7 @@ And let's add a little debug print to our view as well,
 to see the effects of the `mock.patch`:
 
 [role="sourcecode"]
-.src/accounts/views.py (ch17l009)
+.src/accounts/views.py (ch19l009)
 ====
 [source,python]
 ----
@@ -485,8 +485,8 @@ but in the second unit test we're seeing a mock object.
 
 Let's remove the deliberate mistake and dive into exactly what's going on:
 
-[role="sourcecode dofirst-ch17l010"]
-.src/accounts/tests/test_views.py (ch17l011)
+[role="sourcecode dofirst-ch19l010"]
+.src/accounts/tests/test_views.py (ch19l011)
 ====
 [source,python]
 ----
@@ -680,7 +680,7 @@ the problem though:  the messages framework gives you more than one way
 to achieve the same result.  I could write the code like this:
 
 [role="sourcecode"]
-.src/accounts/views.py (ch17l014-3)
+.src/accounts/views.py (ch19l014-3)
 ====
 [source,python]
 ----
@@ -836,7 +836,7 @@ AttributeError: module 'accounts.views' has no attribute 'login'
 
 * Broken view:
 +
-[role="dofirst-ch17l019 small-code"]
+[role="dofirst-ch19l019 small-code"]
 ----
 ValueError: The view accounts.views.login didn't return an HttpResponse object.
 It returned None instead.
@@ -844,7 +844,7 @@ It returned None instead.
 
 * OK!
 +
-[role="dofirst-ch17l020 small-code"]
+[role="dofirst-ch19l020 small-code"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test accounts*]
@@ -921,7 +921,7 @@ We can get the first one to pass by creating a token:
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch17l022)
+.src/accounts/views.py (ch19l022)
 ====
 [source,python]
 ----
@@ -1217,7 +1217,7 @@ FAILED (errors=1)
 And we can handle the final case like this:
 
 [role="sourcecode"]
-.src/accounts/authentication.py (ch17l028)
+.src/accounts/authentication.py (ch19l028)
 ====
 [source,python]
 ----
@@ -1251,7 +1251,7 @@ Here are a couple of tests for those two requirements:
 
 
 [role="sourcecode"]
-.src/accounts/tests/test_authentication.py (ch17l030)
+.src/accounts/tests/test_authentication.py (ch19l030)
 ====
 [source,python]
 ----
@@ -1280,7 +1280,7 @@ Let's create a placeholder one then:
 
 
 [role="sourcecode"]
-.src/accounts/authentication.py (ch17l031)
+.src/accounts/authentication.py (ch19l031)
 ====
 [source,python]
 ----
@@ -1305,7 +1305,7 @@ AssertionError: None != pass:specialcharacters[<User: User object (edith@example
 And (step by step, just to see if our test fails the way we think it will):
 
 [role="sourcecode"]
-.src/accounts/authentication.py (ch17l033)
+.src/accounts/authentication.py (ch19l033)
 ====
 [source,python]
 ----
@@ -1327,7 +1327,7 @@ And so we call `get` with the email as an argument:
 
 
 [role="sourcecode"]
-.src/accounts/authentication.py (ch17l034)
+.src/accounts/authentication.py (ch19l034)
 ====
 [source,python]
 ----
@@ -1350,7 +1350,7 @@ Which prompts us to finish the method like this:
 
 
 [role="sourcecode"]
-.src/accounts/authentication.py (ch17l035)
+.src/accounts/authentication.py (ch19l035)
 ====
 [source,python]
 ----
@@ -1384,7 +1384,7 @@ First we add it to _settings.py_:
 
 
 [role="sourcecode"]
-.src/superlists/settings.py (ch17l036)
+.src/superlists/settings.py (ch19l036)
 ====
 [source,python]
 ----
@@ -1416,7 +1416,7 @@ def login(request):
 ----
 ====
 
-We need the view to call `django.contrib.auth.authenticate`, and then,
+We call `django.contrib.auth.authenticate`, and then,
 if it returns a user, we call `django.contrib.auth.login`.
 
 TIP: This is a good time to check out the
@@ -1426,7 +1426,330 @@ TIP: This is a good time to check out the
     ((("", startref="Mdespike19")))((("", startref="SDdesp19")))
 
 
-=== An Alternative Reason to Use Mocks: Reducing Duplication
+==== Straightforward Non-Mocky Test for our View
+
+Here's the most obvious test we might want to write:
+we think in terms of the _behaviour_ we want:
+
+1. If someone has a valid Token, they should get logged in
+2. If someone tries to use an invalid Token (or none), it should not log them in.
+
+
+Here's how we might add the happy-path test for (1):
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l037)
+====
+[source,python]
+----
+from django.contrib import auth
+[...]
+
+class LoginViewTest(TestCase):
+    def test_redirects_to_home_page(self):
+        [...]
+
+    def test_logs_in_if_given_valid_token(self):
+        anon_user = auth.get_user(self.client)  # <1>
+        self.assertEqual(anon_user.is_authenticated, False)  # <2>
+
+        token = Token.objects.create(email="edith@example.com")
+        self.client.get(f"/accounts/login?token={token.uid}")
+
+        user = auth.get_user(self.client)
+        self.assertEqual(user.is_authenticated, True)  # <3>
+        self.assertEqual(user.email, "edith@example.com")  # <3>
+----
+====
+
+<1> We use Django's `auth.get_user()` to extract the current user from the Test Client.
+<2> We verify we're not logged in before we start
+    (this isn't strictly necessary, but it's always nice to know you're on firm ground).
+<3> And here's where we check that we've been logged,
+    with a user with the right email address:
+
+
+And that will fail as expected:
+
+----
+    self.assertEqual(user.is_authenticated, True)
+AssertionError: False != True
+----
+
+We can get it to pass by "cheating", like this:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l038)
+====
+[source,python]
+----
+from django.contrib import auth, messages
+[...]
+
+User = auth.get_user_model()
+[...]
+
+
+def login(request):
+    user = User.objects.create(email="edith@example.com")
+    auth.login(request, user)
+    return redirect("/")
+----
+====
+
+
+Which forces us to write another test:
+
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l039)
+====
+[source,python]
+----
+def test_shows_login_error_if_token_invalid(self):
+    response = self.client.get("/accounts/login?token=invalid-token", follow=True)
+    user = auth.get_user(self.client)
+    self.assertEqual(user.is_authenticated, False)
+    message = list(response.context["messages"])[0]
+    self.assertEqual(
+        message.message,
+        "Invalid login link, please request a new one",
+    )
+    self.assertEqual(message.tags, "error")
+----
+====
+
+And now we get that passing using the most straightforward implementation...
+
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l040)
+====
+[source,python]
+----
+def login(request):
+    if Token.objects.filter(uid=request.GET["token"]).exists():  # <1> <2>
+        user = User.objects.create(email="edith@example.com")  # <3>
+        auth.login(request, user)
+    else:
+        messages.error(request, "Invalid login link, please request a new one")  # <4>
+    return redirect("/")
+----
+====
+
+<1> Oh wait, we forgot about our authentication backend
+    and just did the query directly from the Token model?
+    Well that's arguably more straightforward,
+    but how do we force ourselves to write the code the way we want it to,
+    ie using the Django's auth API?
+
+<2> Oh dear and the email address is still hardcoded.
+    We might have to think about writing an extra test to force ourselves to fix that.
+
+
+<3> Oh--also, we're hardcoding the creation of a user every time,
+    but actually, we want to have the get-or-create logic
+    that we implemented in our backend
+
+<4> This bit is OK at least! 😅 
+
+
+Is this starting to feel a bit familiar?
+We've already written all the tests for the various permutations of our authentication logic,
+and we're thinking about writing equivalent tests at the views layer.
+
+
+=== Another Possible Reason to Use Mocks: Avoiding Combinatorial Explosion
+
+Let's recap the tests we might want to write at each layer in our application:
+((("combinatorial explosion")))
+
+.What We Want to Test in Each Layer
+[cols="1,1,1"]
+|=======
+|Views Layer| Authentication Backend | Models Layer
+
+a| * Valid Token means user is logged in
+  * Invalid Token means user is not logged in
+
+a| * Returns correct existing user for a valid token
+  * Creates a new user for a new email address
+  * Returns None for an invalid token
+
+a| * Token associates email and uid
+  * User can be retrieved from token UID
+|=======
+
+We already have 3 tests in the models layer, and 5 in the authentication layer.
+We started off writing the tests in the views layer,
+where, _conceptually_, we only really want two test cases,
+and we're finding ourselves wondering if we need to write
+a whole bunch of tests that essentially duplicate the authentication layer tests.
+
+This is an example of the _combinatorial explosion_ problem.
+
+
+==== The Car Factory Example
+
+Imagine we're testing a car factory, where:
+* First we choose the car type: normal, station-wagon, or convertible
+* Then we choose the engine type: petrol, diesel, or electric
+* And then we choose the colour: red, white, or hot pink.
+
+How many tests do we need?  Well, the upper bound to test every possible combination
+is 3 x 3 x 3 = 27 tests.  That's a lot!
+
+[role="skipme"]
+[source,python]
+----
+def build_car(car_type, engine_type, colour):
+    engine = _create_engine(engine_type)
+    naked_car = _assemble_car(engine, car_type)
+    finished_car = _paint_car(naked_car, colour)
+    return finished_car
+----
+
+How many tests do we _actually_ need to write?
+Well, it depends on how we're testing, how the different parts of the factory are integrated,
+and what we know about the system.
+
+Do we need to test every single colour? Maybe!
+Or, maybe, if we're happy that we can do 2 different colours, then we're happy we can do any number,
+whether it's 2, 3, or hundreds.  Perhaps we need 2 tests, perhaps 3.
+
+OK, but do we need to test that painting woks for all the different engine types?
+Well, the painting process is probably independent of engine type:
+if we can paint a diesel in red, we can paint it in pink or white too.
+
+But, perhaps it _is_ affected by the car type:
+painting a convertible with a fabric roof
+might be a very different technological process to painting a hard-bodied car.
+
+So we'd probably want to test that painting _in general_ works for each car type (3 tests)
+but we don't need to test that painting works for every engine type.
+
+What we're analysing here is the level of "coupling" between the different parts of the system.
+Painting is tightly coupled to car type, but not to engine type.
+Painting "needs to know" about car types, but it does not "need to know" about engine types.
+
+
+TIP: The more tightly coupled two parts of the system are,
+    the more tests you'll need to write to cover all the combinations of their behaviour.
+
+Another way of thinking about it is, what level are we writing tests at?
+You can choose to write low-level tests that cover only one part of the assembly process,
+or higher-level ones that test several steps together, or perhaps all of them end-to-end.
+See <<car-factory-illustration>>.
+
+[[car-factory-illustration]]
+.Analysing how many tests are needed at different levels
+image::images/car-factory-illustration.png["An illustration of the car factory, with boxes for each step in the process (build engine, assemble, paint), and descriptions of testing each step separately vs testing them in combination."]
+
+Analysing things in these terms,
+we think about the inputs and outputs that apply to each type of test,
+as well as which attributes of the inputs matter, and which don't.
+
+Testing the first stage of the process, building the engine,
+is straightforward.  The "engine type" input has three possible values,
+as inputs, so we need three tests of the output, which is the engine.
+If we're testing at the end-to-end level, no matter how many tests we have in total,
+we know we'll need at least 3 of to be the tests
+that check we can produce a car with a working engine of each type.
+
+Testing the painting needs a bit more thought.
+If we test at the low level, the inputs are a naked car, and a paint colour.
+There are theoretically 9 types of naked car, do we need to test all of them?
+No, the engine type doesn't matter; we only need to test 1 of each body type.
+Does that mean 3 x 3 = 9 tests?  No.  The colour and body type are independent.
+We can just test that all 3 colours work, and that all three body types work,
+so that's 6 tests.
+
+What about at the end-to-end level?
+It depends if we're being rigorous about "black box" testing,
+where we're not supposed to know anything about how the production process works.
+In that case maybe we do need 27 tests.
+But if we allow that we know about the internals,
+then we can apply similar reasoning to what we used at the lower level.
+However many tests we end up with,
+we need 3 of them to be checking on each colour,
+and 3 that check that each body type can be painted.
+
+
+=== Using Mocks to Test Parts of Our System in Isolation
+
+To recap, so far we have some minimal tests at the models layer,
+and we have comprehensive tests of our authentication backend,
+and we're now wondering how many tests we need at the views layer.
+
+
+Here's the current state of our view:
+
+[role="sourcecode currentcontents"]
+.src/accounts/views.py
+====
+[source,python]
+----
+def login(request):
+    if Token.objects.filter(uid=request.GET["token"]).exists():
+        user = User.objects.create(email="edith@example.com")
+        auth.login(request, user)
+    else:
+        messages.error(request, "Invalid login link, please request a new one")
+    return redirect("/")
+----
+====
+
+We know we want to transform it to something like this:
+
+
+[role="sourcecode skipme"]
+.src/accounts/views.py
+====
+[source,python]
+----
+def login(request):
+    if user := auth.authenticate(uid=request.GET.get("token"))  # <1>
+        auth.login(request, user)  # <2>
+    else:
+        messages.error(request, "Invalid login link, please request a new one")  # <3>
+
+    return redirect("/")
+----
+====
+
+<1> We want to refactor our logic to use the `authenticate()` function
+    from our backend
+<2> We have the "happy path" branch where the user gets logged in
+<3> We have the "unhappy" path where the user gets an error message instead.
+
+But currently our tests are letting us "get away" with
+the cheating/wrong implementation.
+
+Here are three possible options for getting ourselves to the right state:
+
+1. Add more tests for all possible combinations at the views level
+  (token exists but no user, token exists for existing user, invalid token,
+  etc) until we end up duplicating all the logic in the auth backend in our view,
+  and then feel justified in refactoring across to just calling the auth backend.
+
+2. Stick with our current two tests, and decide it's OK to refactor already.
+
+3. Test the view in isolation, using mocks to verify that we call the auth backend.
+
+
+Each option has pros and cons!  If I was going for option (1),
+essentially going all in on test coverage at the views layer,
+I'd probably think about deleting all the tests at the auth layer afterwards.
+
+If you were to ask me what my personal preference or instinctive choice would be,
+I'd say at this point it might be to go with (2),
+and say with one happy path and one unhappy path test,
+we're OK to refactor and switch across already.
+
+But since this chapter is about mocks, let's investigate option (3) instead.
 
 ((("mocks", "reducing duplication with", id="Mreduce19")))
 ((("duplication, eliminating", id="dupel19")))
@@ -1435,26 +1758,18 @@ like Django's mail-sending function.
 The main reason to use a mock was to isolate ourselves from external side effects,
 in this case, to avoid sending out actual emails during our tests.
 
-In this section we'll look at a different possible rationale for using mocks.
-Here we don't have any side effects we're worried about,
-but there are still potentially some reasons you might want to use a mock here.
+In this section we'll look at a different possible use case for mocks,
+which are around testing parts of our _own_ code in isolation from each other,
+as a way of reducing duplication and avoiding combinatorial explosion in our tests.
 
-The nonmocky way of testing this login view would be
-to see whether it does actually log the user in, by checking whether
-the user gets assigned an authenticated session cookie in the right circumstances.
+NOTE: This next section starts to drift towards what's called "London-school TDD",
+    which is a variant on the "Classical" or "Detroit" style of TDD
+    that I mostly show in the book.
+    We won't get into the details now,
+    but London school TDD places more emphasis on mocking and isolating parts of the system.
+    As always there are pros and cons!
+    Check out <<appendix_purist_unit_tests>> for a longer exploration of the London-style approach.
 
-But our authentication backend does have a few different code paths:
-it returns `None` for invalid tokens, existing users if they already exist,
-and creates new users for valid tokens if they don't exist yet.
-So, to fully test this view,
-you might need to think about writing tests for all three of those cases.
-
-TIP: One possible justification for using mocks is
-    when they will reduce duplication between tests.
-    It's one way of avoiding _combinatorial explosion_.
-    ((("combinatorial explosion")))
-
-// TODO: not on london-style tdd and how i personally just don't do this.
 
 On top of that, the fact that we're using the Django `auth.authenticate` function
 rather than calling our own code directly is relevant.
@@ -1465,17 +1780,78 @@ This makes it easier for us to add further backends in future.
 
 So in this case
 (in contrast to the example in  <<mocks-tightly-coupled-sidebar>>)
-the implementation does matter,
-because we've decided to use a _particular_ interface to our authentication backend,
-which means we're more justified in using mocks to verify that we use that specific interface.
+the implementation _does_ matter,
+because we've decided to use a particular, specific interface to implement our authentication system,
+which is something we might want to document and verify in our tests,
+and mocks are one way to enable that.
 
-Let's see how it might look:
+
+=== Starting Again, Test-Driving our Implementation With Mocks
+
+Let's see how things would look if we had made this decision in the first place.
+We'll start by reverting all the authentication stuff,
+both from our test and from our view.
+
+Let's disable the test first (we can re-enable them later to sense-check things):
 
 [role="sourcecode small-code"]
-.src/accounts/tests/test_views.py (ch19l037)
+.src/accounts/tests/test_views.py (ch19l041)
 ====
 [source,python]
 ----
+class LoginViewTest(TestCase):
+    def test_redirects_to_home_page(self):  <1>
+        [...]
+    def DONT_test_logs_in_if_given_valid_token(self):  <2>
+        [...]
+    def DONT_test_shows_login_error_if_token_invalid(self):  <2>
+        [...]
+----
+====
+
+<1> We can leave the test for the redirect, since that doesn't involve the auth framework.
+<2> I call this "dontifying" tests :)
+
+
+Now let's revert the view, and replace our hacky code with some TODOs:
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l042)
+====
+[source,python]
+----
+def login(request):
+    # TODO: call authenticate(),
+    # then auth.login() with the user if we get one,
+    # or messages.error() if we get None.
+    return redirect("/")
+----
+====
+
+Let's check all our tests pass:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+Ran 14 tests in 0.021s
+
+OK
+----
+
+
+Now let's start again with mock-based tests.
+First we can write a test that checks we call `authenticate()` correctly:
+
+[role="sourcecode small-code"]
+.src/accounts/tests/test_views.py (ch19l043)
+====
+[source,python]
+----
+class LoginViewTest(TestCase):
+    [...]
+
     @mock.patch("accounts.views.auth")  # <1>
     def test_calls_authenticate_with_uid_from_get_request(self, mock_auth):  # <2>
         self.client.get("/accounts/login?token=abcd123")
@@ -1501,9 +1877,11 @@ Let's see how it might look:
 
 <4> Now, instead of "unpacking" the call args, we use the `call` function
     for a neater way of saying what it should have been called with--that is,
-    the token from the GET request. (See the following sidebar.)
+    the token from the GET request. (See <<mock-call-args-sidebar>>.)
+
 
 [role="less_space pagebreak-before"]
+[[mock-call-args-sidebar]]
 .On Mock call_args
 *******************************************************************************
 
@@ -1558,6 +1936,11 @@ But you can see how using the `call` helper is nicer.
 
 What happens when we run the test?   The first error is this:
 
+////
+
+TODO it's a shame we lost this 'module foo does not have bar' worked example.
+be nice if we could work it back in.
+
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test accounts*]
@@ -1571,6 +1954,7 @@ TIP: `module foo does not have the attribute bar`
     It's telling you that you're trying to mock out something
     that doesn't yet exist (or isn't yet imported)
     in the target module.
+
 
 Once we import `django.contrib.auth`, the error changes:
 
@@ -1586,24 +1970,30 @@ from django.contrib import auth, messages
 ====
 
 Now we get:
+////
 
 
 [subs="specialcharacters,macros"]
 ----
+FAIL: test_calls_authenticate_with_uid_from_get_request [...]
+[...]
 AssertionError: None != call(uid='abcd123')
 ----
 
-Now it's telling us that the view doesn't call the `auth.authenticate`
-function at all.  Let's fix that, but get it deliberately wrong, just to see:
+It's telling us that the view doesn't call the `auth.authenticate` function at all.
+Let's fix that, but get it deliberately wrong, just to see:
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch17l039)
+.src/accounts/views.py (ch19l044)
 ====
 [source,python]
 ----
 def login(request):
+    # TODO: call authenticate(),
     auth.authenticate("bang!")
+    # then auth.login() with the user if we get one,
+    # or messages.error() if we get None.
     return redirect("/")
 ----
 ====
@@ -1624,27 +2014,29 @@ Let's give `authenticate` the arguments it expects then:
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch19l040)
+.src/accounts/views.py (ch19l045)
 ====
 [source,python]
 ----
 def login(request):
-    auth.authenticate(uid=request.GET.get("token"))
+    # TODO: call authenticate(),
+    auth.authenticate(uid=request.GET["token"])
+    # then auth.login() with the user if we get one,
+    # or messages.error() if we get None.
     return redirect("/")
 ----
 ====
 
 That gets us to passing tests:
 
+
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test accounts*]
-[...]
-Ran 15 tests in 0.041s
+Ran 15 tests in 0.023s
 
 OK
 ----
-
 
 ==== Using mock.return_value
 
@@ -1654,7 +2046,7 @@ we pass that into `auth.login`.  Let's see how that test looks:
 
 
 [role="sourcecode"]
-.src/accounts/tests/test_views.py (ch19l041)
+.src/accounts/tests/test_views.py (ch19l046)
 ====
 [source,python]
 ----
@@ -1663,7 +2055,10 @@ def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):
     response = self.client.get("/accounts/login?token=abcd123")
     self.assertEqual(
         mock_auth.login.call_args,  # <2>
-        mock.call(response.wsgi_request, mock_auth.authenticate.return_value),  # <3>
+        mock.call(
+            response.wsgi_request,  # <3>
+            mock_auth.authenticate.return_value,  # <4>
+        ),
     )
 ----
 ====
@@ -1673,14 +2068,15 @@ def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):
 <2> This time we examine the call args for the `auth.login` function.
 
 <3> We check that it's called with the request object that the view sees,
-    and the "user" object that the `authenticate` function returns.  Because
-    `authenticate` is also mocked out, we can use its special "return_value"
-    attribute.
 
-When you call a mock, you get another mock.  But you can also get a copy
-of that returned mock from the original mock that you called.  Boy, it
-sure is hard to explain this stuff without saying "mock" a lot! Another little
-console illustration might help here:
+<4> and the "user" object that the `authenticate()` function returns.
+    Because `authenticate()` is also mocked out,
+    we can use its special `.return_value` attribute.
+
+When you call a mock, you get another mock.
+But you can also get a copy of that returned mock from the original mock that you called.
+Boy, it sure is hard to explain this stuff without saying "mock" a lot!
+Another little console illustration might help here:
 
 [role="skipme"]
 [source,python]
@@ -1695,6 +2091,54 @@ console illustration might help here:
 True
 ----
 
+
+[role="pagebreak-before less_space"]
+.Avoid Mock's Magic assert_called... Methods?
+*******************************************************************************
+
+// TODO is this the best spot for this aside?
+// there's already a lot to take on with the `.return_value` stuff
+If you've used `unittest.mock` before, you may have come across its special
+`assert_called...`
+http://bit.ly/2F9AEMY[methods], and you may be wondering why I didn't use them.
+For example, instead of doing:
+
+[role="skipme"]
+[source,python]
+----
+self.assertEqual(a_mock.call_args, call(foo, bar))
+----
+
+You can just do:
+
+[role="skipme"]
+[source,python]
+----
+a_mock.assert_called_with(foo, bar)
+----
+
+And the _mock_ library will raise an `AssertionError` for you if there is a
+mismatch.
+
+Why not use that?  For me, the problem with these magic methods is that
+it's too easy to make a silly typo and end up with a test that always passes:
+
+[role="skipme"]
+[source,python]
+----
+a_mock.asssert_called_with(foo, bar)  # will always pass
+----
+
+Unless you get the magic method name exactly right,
+then you will just get a "normal" mock method,
+which just silently return another mock,
+and you may not realise that you've written a test that tests nothing at all.
+
+That's why I prefer to always have an explicit `unittest` method in there.
+
+*******************************************************************************
+
+
 In any case, what do we get from running the test?
 
 [subs="specialcharacters,macros"]
@@ -1704,54 +2148,78 @@ $ pass:quotes[*python src/manage.py test accounts*]
 AssertionError: None != call(<WSGIRequest: GET '/accounts/login?t[...]
 ----
 
-Sure enough, it's telling us that we're not calling `auth.login` at all yet.
+Sure enough, it's telling us that we're not calling `auth.login()` at all yet.
 Let's try doing that.  Deliberately wrong as usual first!
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch19l042)
+.src/accounts/views.py (ch19l047)
 ====
 [source,python]
 ----
 def login(request):
-    auth.authenticate(uid=request.GET.get("token"))
+    # TODO: call authenticate(),
+    auth.authenticate(uid=request.GET["token"])
+    # then auth.login() with the user if we get one,
     auth.login("ack!")
+    # or messages.error() if we get None.
     return redirect("/")
 ----
 ====
-
 
 Ack indeed!
 
 [subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+
+ERROR: test_redirects_to_home_page
+[...]
 TypeError: login() missing 1 required positional argument: 'user'
+
+FAIL: test_calls_auth_login_with_user_if_there_is_one [...]
 [...]
 AssertionError: call('ack!') != call(<WSGIRequest: GET
 '/accounts/login?token=[...]
+[...]
+
+Ran 16 tests in 0.026s
+
+FAILED (failures=1, errors=1)
 ----
 
-Let's fix that:
+That's one expected failure from our mocky test,
+and one (more) unexpected one from the nonmocky one.
+
+Let's see if we can fix them:
 
 [role="sourcecode"]
-.src/accounts/views.py (ch19l043)
+.src/accounts/views.py (ch19l048)
 ====
 [source,python]
 ----
 def login(request):
-    user = auth.authenticate(uid=request.GET.get("token"))
+    # TODO: call authenticate(),
+    user = auth.authenticate(uid=request.GET["token"])
+    # then auth.login() with the user if we get one,
     auth.login(request, user)
+    # or messages.error() if we get None.
     return redirect("/")
 ----
 ====
 
 
-Now we get this unexpected complaint:
+Well, that does fix our mocky test, but not the other one;
+it now has a slightly different complaint:
 
 [subs="specialcharacters,macros"]
 ----
 ERROR: test_redirects_to_home_page
 (accounts.tests.test_views.LoginViewTest.test_redirects_to_home_page)
+[...]
+  File "...goat-book/src/accounts/views.py", line 35, in login
+    auth.login(request, user)
 [...]
 AttributeError: 'AnonymousUser' object has no attribute '_meta'
 ----
@@ -1759,8 +2227,16 @@ AttributeError: 'AnonymousUser' object has no attribute '_meta'
 It's because we're still calling `auth.login` indiscriminately on any kind of user,
 and that's causing problems back in our original test for the redirect,
 which _isn't_ currently mocking out `auth.login`.
-We need to add an `if` (and therefore another test),
-and while we're at it we'll learn about patching at the class level.
+
+
+////
+OLD CONTENT
+
+We need to add an `if` (and therefore another test).
+
+But the fact that the nonmocky test is giving us these
+unexpected failures is (perhaps) a problem.
+Let's see how we can deal with that.
 
 
 ==== Patching at the Class Level
@@ -1815,6 +2291,12 @@ class LoginViewTest(TestCase):
     call `auth.login` at all.
 
 
+Other than removing the duplication of the `@mock.patch()` decorator,
+you can argue that it's valid to say, if we're mocking out a collaborator,
+that it makes sense to mock it out for _every_ test of that object.
+
+
+
 That cleans up the spurious failure, and gives us a specific, expected failure
 to work on:
 
@@ -1823,79 +2305,313 @@ to work on:
     self.assertEqual(mock_auth.login.called, False)
 AssertionError: True != False
 ----
+////
 
-And we get it passing like this:
+
+We can get back to passing like this:
 
 
 [role="sourcecode"]
-.src/accounts/views.py (ch19l045)
+.src/accounts/views.py (ch19l049)
 ====
 [source,python]
 ----
 def login(request):
-    user = auth.authenticate(uid=request.GET.get("token"))
-    if user:
+    # TODO: call authenticate(),
+    if user := auth.authenticate(uid=request.GET["token"]):  # <1>
+        # then auth.login() with the user if we get one,
         auth.login(request, user)
-    return redirect("/")
 ----
 ====
 
 
-// TODO: add a failure messages.message?  will help ppl with debugging login failures
+<1> If you haven't seen this before, the `:=` is known as the "walrus operator"
+    (more formally, it's the operator for an "assignment expression"),
+    which was a controversial new feature from Python 3.8
+    (Guido pretty much burned out over it),
+    and it's not often useful, but it is quite neat for cases like this,
+    where you have a variable and want to do a conditional on it straight away.
+    See https://www.pythonmorsels.com/using-walrus-operator/[this article]
+    for more explanation.
 
-The unit tests pass...
 
+
+This gets our unit test passing:
+
+[subs="specialcharacters,quotes"]
 ----
+$ *python src/manage.py test accounts*
+[...]
+
 OK
 ----
 
 
-So are we there yet?
+==== Using .return_value during test setup
+
+I'm a little nervous that we've introduced an `if` without an _explicit_ test for it.
+Testing the unhappy path will reassure me.
+We can use our existing test for the error case to crib from.
+
+We want to be able to set up our mocks to say:
+`auth.authenticate()` should return `None`.
+We can do that by _setting_ the `.return_value` on the mock:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l050)
+====
+[source,python]
+----
+    @mock.patch("accounts.views.auth")
+    def test_adds_error_message_if_auth_user_is_None(self, mock_auth):
+        mock_auth.authenticate.return_value = None  # <1>
+
+        response = self.client.get("/accounts/login?token=abcd123", follow=True)
+
+        message = list(response.context["messages"])[0]
+        self.assertEqual(  # <2>
+            message.message,
+            "Invalid login link, please request a new one",
+        )
+        self.assertEqual(message.tags, "error")
+----
+====
+
+<1> We use `.return_value` on our mock once again,
+    but this time, we _assign_ to it, before it's used,
+    (in the setup part of the test, aka the "arrange" or "given" phase).
+    rather than reading from it (in the assert/when part)
+    as we did earlier.
+
+<2> Our asserts are copied across from
+    `DONT_test_shows_login_error_if_token_invalid()`
+
+
+That gives us this somewhat cryptic, but expected failure:
+
+----
+ERROR: test_adds_error_message_if_auth_user_is_None [...]
+[...]
+    message = list(response.context["messages"])[0]
+              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range
+----
+
+Essentially that's saying there _are_ no messages in our response.
+
+
+We can get it passing like this, starting with a deliberate mistake as always:
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l051)
+====
+[source,python]
+----
+def login(request):
+    # TODO: call authenticate(),
+    if user := auth.authenticate(uid=request.GET["token"]):
+        # then auth.login() with the user if we get one,
+        auth.login(request, user)
+    else:
+        # or messages.error() if we get None.
+        messages.error(request, "boo")
+    return redirect("/")
+----
+====
+
+Which gives us
+
+----
+AssertionError: 'boo' != 'Invalid login link, please request a new one'
+----
+
+And so:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l052)
+====
+[source,python]
+----
+def login(request):
+    # TODO: call authenticate(),
+    if user := auth.authenticate(uid=request.GET["token"]):
+        # then auth.login() with the user if we get one,
+        auth.login(request, user)
+    else:
+        # or messages.error() if we get None.
+        messages.error(request, "Invalid login link, please request a new one")
+    return redirect("/")
+----
+====
+
+Now our tests pass:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python src/manage.py test accounts*
+[...]
+
+Ran 17 tests in 0.025s
+
+OK
+----
+
+
+And we can do a final refactor to remove those comments:
+
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l053)
+====
+[source,python]
+----
+def login(request):
+    if user := auth.authenticate(uid=request.GET["token"]):
+        auth.login(request, user)
+    else:
+        messages.error(request, "Invalid login link, please request a new one")
+    return redirect("/")
+----
+====
+
+Lovely!  What's next?
 ((("", startref="Mreduce19")))((("", startref="dupel19")))
 
 
-[role="pagebreak-before less_space"]
-.Avoid Mock's Magic assert_called... Methods?
-*******************************************************************************
-If you've used `unittest.mock` before, you may have come across its special
-`assert_called...`
-http://bit.ly/2F9AEMY[methods], and you may be wondering why I didn't use them.
-For example, instead of doing:
+==== UnDONTifying
 
-[role="skipme"]
+Remember we still have the DONTified, nonmocky tests?
+Let's re-enable now to sense-check that our mocky tests have driven
+us to the right place:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l054)
+====
+[source,diff]
+----
+@@ -63,7 +63,7 @@ class LoginViewTest(TestCase):
+         response = self.client.get("/accounts/login?token=abcd123")
+         self.assertRedirects(response, "/")
+
+-    def DONT_test_logs_in_if_given_valid_token(self):
++    def test_logs_in_if_given_valid_token(self):
+         anon_user = auth.get_user(self.client)
+         self.assertEqual(anon_user.is_authenticated, False)
+
+@@ -74,7 +74,7 @@ class LoginViewTest(TestCase):
+         self.assertEqual(user.is_authenticated, True)
+         self.assertEqual(user.email, "edith@example.com")
+
+-    def DONT_test_shows_login_error_if_token_invalid(self):
++    def test_shows_login_error_if_token_invalid(self):
+         response = self.client.get("/accounts/login?token=invalid-token", follow=True)
+----
+====
+
+
+Sure enough they both pass:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *python src/manage.py test accounts*
+[...]
+Ran 19 tests in 0.025s
+
+OK
+----
+
+
+=== Deciding Which Tests To Keep
+
+
+We now definitely have duplicate tests:
+
+
+[role="sourcecode skipme"]
+.src/accounts/tests/test_views.py
+====
 [source,python]
 ----
-self.assertEqual(a_mock.call_args, call(foo, bar))
+class LoginViewTest(TestCase):
+    def test_redirects_to_home_page(self):
+        [...]
+
+    def test_logs_in_if_given_valid_token(self):
+        [...]
+
+    def test_shows_login_error_if_token_invalid(self):
+        [...]
+
+    @mock.patch("accounts.views.auth")
+    def test_calls_authenticate_with_uid_from_get_request(self, mock_auth):
+        [...]
+
+    @mock.patch("accounts.views.auth")
+    def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):
+        [...]
+
+    @mock.patch("accounts.views.auth")
+    def test_adds_error_message_if_auth_user_is_None(self, mock_auth):
+        [...]
 ----
+====
 
-You can just do:
+The redirect test could stay the same whether we're using mocks or not.
+We then have two non-mocky tests for the happy and unhappy paths,
+and three mocky tests:
 
-[role="skipme"]
+* One checks that we are integrated with our auth backend correctly
+* One checks that we call the built-in `auth.login` function correctly,
+  which tests the happy path.
+* And one that checks we set an error message in the unhappy path.
+
+I think there are lots of ways to justify different choices here,
+but my instinct tends to be to avoid using mocks if you can.
+So, I propose we delete the two mocky tests for the happy and unhappy paths,
+since they are reasonably covered by the non-mocky ones,
+but I think we can justify keeping the first mocky test,
+because it adds value by checking that we're doing our authentication
+the "right" way, ie by calling into Dango's `auth.authenticate()` function
+(instead of, eg, instantiating and calling our auth backend ourselves,
+or even just implementing authentication inline in the view).
+
+TIP: "Test behaviour, not implementation" is a GREAT rule of thumb for tests.
+    But sometimes, the fact that you're using one implementation rather than another
+    really is important.  In these cases, a mocky test can be useful.
+
+
+So let's delete our last two mocky tests.
+I'm also going to rename the remaining one to make our intention clear,
+we want to check we are using the Django auth library:
+
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l055)
+====
 [source,python]
 ----
-a_mock.assert_called_with(foo, bar)
+    @mock.patch("accounts.views.auth")
+    def test_calls_django_auth_authenticate(self, mock_auth):
+        [...]
 ----
+====
 
-And the _mock_ library will raise an `AssertionError` for you if there is a
-mismatch.
+And we're down to 17 tests:
 
-Why not use that?  For me, the problem with these magic methods is that
-it's too easy to make a silly typo and end up with a test that always passes:
-
-[role="skipme"]
-[source,python]
+[subs="specialcharacters,quotes"]
 ----
-a_mock.asssert_called_with(foo, bar)  # will always pass
+$ *python src/manage.py test accounts*
+[...]
+Ran 17 tests in 0.015s
+
+OK
 ----
-
-Unless you get the magic method name exactly right,
-then you will just get a "normal" mock method,
-which just silently return another mock,
-and you may not realise that you've written a test that tests nothing at all.
-
-That's why I prefer to always have an explicit `unittest` method in there.
-
-*******************************************************************************
 
 
 === The Moment of Truth:  Will the FT Pass?
@@ -1908,7 +2624,7 @@ Let's just make sure our base template shows a different nav bar for logged-in
 and non–logged-in users (which our FT relies on):
 
 [role="sourcecode small-code"]
-.src/lists/templates/base.html (ch19l046)
+.src/lists/templates/base.html (ch19l056)
 ====
 [source,html]
 ----
@@ -1989,7 +2705,7 @@ It's because of two things:
 * Firstly, we need to re-add the email configuration to _settings.py_.
 
 [role="sourcecode"]
-.src/superlists/settings.py (ch19l047)
+.src/superlists/settings.py (ch19l057)
 ====
 [source,python]
 ----
@@ -2011,12 +2727,15 @@ $ *export EMAIL_PASSWORD="yoursekritpasswordhere"*
 .Using a Local .env File for Development
 *******************************************************************************
 
-Until now we've only used the _.env_ file on the server, because all the
-other settings have sensible defaults for dev, but there's just no way
-to get a working login system without this one.
+Until now we've only used a _.env_ file on the server,
+(where we called it _superlists/.env_).
+That's because we've made sure all the other settings have sensible defaults for dev,
+but there's just no way to get a working login system without this one!
 
 Just as we do on the server, you can also use a _.env_ file to save
-project-specific environment variables:
+project-specific environment variables.
+We'll call this one literally just _.env_;
+that's a convention which makes it a hidden file, on Unix-like systems at least:
 
 // TODO: did we call the file on the server ".env"?
 
@@ -2088,7 +2807,7 @@ The last thing we need to do before we call it a day is to test the logout butto
 We extend the FT with a couple more steps:
 
 [role="sourcecode"]
-.src/functional_tests/test_login.py (ch19l048)
+.src/functional_tests/test_login.py (ch19l058)
 ====
 [source,python]
 ----
@@ -2127,7 +2846,7 @@ element: input[name=email]; [...]
 So let's tell the base template that we want a new url named "logout":
 
 [role="sourcecode small-code"]
-.src/lists/templates/base.html (ch19l049)
+.src/lists/templates/base.html (ch19l059)
 ====
 [source,html]
 ----
@@ -2169,7 +2888,7 @@ https://docs.djangoproject.com/en/5.1/topics/auth/default/#module-django.contrib
 which clears down the user's session and redirects them to a page of our choice:
 
 [role="sourcecode small-code"]
-.src/accounts/urls.py (ch19l050)
+.src/accounts/urls.py (ch19l060)
 ====
 [source,python]
 ----
@@ -2261,13 +2980,18 @@ Mocks can leave you tightly coupled to the implementation::
   mocks can leave you tightly coupled to your implementation.
   For that reason, you shouldn't use them unless you have a good reason.
 
-
 Mocks can be a way to avoid duplication in your tests::
-  With that said, there is an argument for using mocks to remove duplication;
+  With that said, there can be an argument for using mocks to remove duplication;
   used extensively, this approach leads to "London-style" TDD,
-  a variation on the style I mostly follow and show in this book.
+  but that's quite different from the style I mostly follow and show in this book.
   ((("mocks", "reducing duplication with")))
   ((("duplication, eliminating")))
+
+Mocks can allow you to verify implementation details::
+  Most tests should test behaviour, not implementation.
+  At some point though, we decided that the fact that we used a particular implementation
+  _was_ important, and so we used a mock as a way to verify that,
+  and document it for our future selves.
 
 There are alternatives to mocks, but they require rethinking how your code is structured::
   In a way, mocks make it "too easy".
