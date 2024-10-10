@@ -5,7 +5,7 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter17Test(ChapterTest):
+class Chapter19Test(ChapterTest):
     chapter_name = "chapter_19_mocking"
     previous_chapter = "chapter_18_spiking_custom_auth"
 
