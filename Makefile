@@ -72,8 +72,14 @@ testall4: build
 test_%: %.html $(TMPDIR)
 	$(VENV)/bin/pytest -s --tb=short ./tests/$@.py
 
-# exhaustively list for nice tab-completion
-#
+.PHONY: clean-docker
+clean-docker:
+	docker ps -q || docker kill $$(docker ps -q)
+	docker rmi -f busybox 
+	docker rmi -f superlists 
+	# env PATH=misc:$PATH
+
+# exhaustively list all test targets for nice tab-completion
 .PHONY: test_chapter_01
 test_chapter_01: chapter_01.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_01.py
@@ -99,10 +105,10 @@ test_chapter_07_working_incrementally: chapter_07_working_incrementally.html $(T
 test_chapter_08_prettification: chapter_08_prettification.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_08_prettification.py
 .PHONY: test_chapter_09_docker
-test_chapter_09_docker: chapter_09_docker.html $(TMPDIR) $(VENV)/bin
+test_chapter_09_docker: chapter_09_docker.html $(TMPDIR) $(VENV)/bin clean-docker
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_09_docker.py
 .PHONY: test_chapter_10_production_readiness
-test_chapter_10_production_readiness: chapter_10_production_readiness.html $(TMPDIR) $(VENV)/bin
+test_chapter_10_production_readiness: chapter_10_production_readiness.html $(TMPDIR) $(VENV)/bin clean-docker
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_10_production_readiness.py
 .PHONY: test_chapter_11_ansible
 test_chapter_11_ansible: chapter_11_ansible.html $(TMPDIR) $(VENV)/bin
