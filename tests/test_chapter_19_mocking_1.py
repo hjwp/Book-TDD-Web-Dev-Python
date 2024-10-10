@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 
 class Chapter19Test(ChapterTest):
-    chapter_name = "chapter_19_mocking"
+    chapter_name = "chapter_19_mocking_1"
     previous_chapter = "chapter_18_spiking_custom_auth"
 
     def test_listings_and_commands_and_output(self):
