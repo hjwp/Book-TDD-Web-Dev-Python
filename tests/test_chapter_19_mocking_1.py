@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 
 class Chapter19Test(ChapterTest):
-    chapter_name = "chapter_19_mocking"
+    chapter_name = "chapter_19_mocking_1"
     previous_chapter = "chapter_18_spiking_custom_auth"
 
     def test_listings_and_commands_and_output(self):
@@ -38,7 +38,9 @@ class Chapter19Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
 
-        # tidy up any .origs from patches
+        self.sourcetree.run_command(
+            'git add . && git commit -m"final commit in chap 19"'
+        )
         self.check_final_diff(ignore=["moves"])
 
 

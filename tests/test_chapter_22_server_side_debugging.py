@@ -6,8 +6,8 @@ from book_tester import DO_SERVER_COMMANDS, ChapterTest
 
 
 class Chapter18Test(ChapterTest):
-    chapter_name = "chapter_21_server_side_debugging"
-    previous_chapter = "chapter_20_fixtures_and_wait_decorator"
+    chapter_name = "chapter_22_server_side_debugging"
+    previous_chapter = "chapter_21_fixtures_and_wait_decorator"
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -50,8 +50,8 @@ class Chapter18Test(ChapterTest):
             #     print("hacking in code update on server")
             #     self.run_server_command(
             #         "cd /home/elspeth/sites/staging.ottg.co.uk"
-            #         " && git checkout chapter_21_server_side_debugging"
-            #         " && git reset --hard origin/chapter_21_server_side_debugging",
+            #         " && git checkout chapter_22_server_side_debugging"
+            #         " && git reset --hard origin/chapter_22_server_side_debugging",
             #     )
             #     self.run_server_command(
             #         "sudo systemctl restart gunicorn-staging.ottg.co.uk"
