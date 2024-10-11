@@ -5,9 +5,9 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter19Test(ChapterTest):
-    chapter_name = "chapter_19_mocking_1"
-    previous_chapter = "chapter_18_spiking_custom_auth"
+class Chapter20Test(ChapterTest):
+    chapter_name = "chapter_20_mocking_2"
+    previous_chapter = "chapter_19_mocking_1"
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -15,8 +15,9 @@ class Chapter19Test(ChapterTest):
 
         # sanity checks
         self.assertEqual(self.listings[0].type, "code listing with git ref")
-        self.assertEqual(self.listings[1].type, "code listing with git ref")
-        self.assertEqual(self.listings[2].type, "test")
+        self.assertEqual(self.listings[1].type, "code listing")
+        self.assertEqual(self.listings[1].skip, True)
+        self.assertEqual(self.listings[2].type, "code listing with git ref")
 
         # skips
         # self.skip_with_check(22, 'switch back to master') # comment
@@ -38,7 +39,9 @@ class Chapter19Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
 
-        # tidy up any .origs from patches
+        self.sourcetree.run_command(
+            'git add . && git commit -m"final commit in chap 20"'
+        )
         self.check_final_diff(ignore=["moves"])
 
 
