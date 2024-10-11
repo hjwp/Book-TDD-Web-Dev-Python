@@ -140,9 +140,9 @@ test_chapter_19_mocking_1: chapter_19_mocking_1.html $(TMPDIR) $(VENV)/bin
 .PHONY: test_chapter_20_mocking_2
 test_chapter_20_mocking_2: chapter_20_mocking_2.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_20_mocking_2.py
-.PHONY: test_chapter_20_fixtures_and_wait_decorator
-test_chapter_20_fixtures_and_wait_decorator: chapter_20_fixtures_and_wait_decorator.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_20_fixtures_and_wait_decorator.py
+.PHONY: test_chapter_21_fixtures_and_wait_decorator
+test_chapter_21_fixtures_and_wait_decorator: chapter_21_fixtures_and_wait_decorator.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_21_fixtures_and_wait_decorator.py
 .PHONY: test_chapter_21_server_side_debugging
 test_chapter_21_server_side_debugging: chapter_21_server_side_debugging.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_21_server_side_debugging.py

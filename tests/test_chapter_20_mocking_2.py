@@ -38,10 +38,6 @@ class Chapter20Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-
-        self.sourcetree.run_command(
-            'git add . && git commit -m"final commit in chap 20"'
-        )
         self.check_final_diff(ignore=["moves"])
 
 
