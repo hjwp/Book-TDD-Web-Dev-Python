@@ -38,7 +38,9 @@ class Chapter19Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
 
-        # tidy up any .origs from patches
+        self.sourcetree.run_command(
+            'git add . && git commit -m"final commit in chap 19"'
+        )
         self.check_final_diff(ignore=["moves"])
 
 
