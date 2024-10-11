@@ -74,7 +74,7 @@ test_%: %.html $(TMPDIR)
 
 .PHONY: clean-docker
 clean-docker:
-	docker ps -q || docker kill $$(docker ps -q)
+	-docker kill $$(docker ps -q)
 	docker rmi -f busybox 
 	docker rmi -f superlists 
 	# env PATH=misc:$PATH
