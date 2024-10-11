@@ -23,6 +23,6 @@ cd ../../..
 
 git grep -l "$OLD_CHAPTER" | xargs sed -i '' "s/$OLD_CHAPTER/$NEW_NAME/g"
 
-make "test_$NEW_NAME" || echo -e "\a"
+# make "test_$NEW_NAME" || echo -e "\a"
 
 echo git commit -am \'rename "$OLD_CHAPTER" to "$NEW_NAME".\'

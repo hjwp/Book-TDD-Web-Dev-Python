@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 class Chapter23Test(ChapterTest):
     chapter_name = "chapter_23_CI"
-    previous_chapter = "chapter_22_outside_in"
+    previous_chapter = "chapter_23_outside_in"
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
