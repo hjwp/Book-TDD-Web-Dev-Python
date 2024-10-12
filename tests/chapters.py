@@ -11,7 +11,7 @@ CHAPTERS = [
     "chapter_08_prettification",
     "chapter_09_docker",
     "chapter_10_production_readiness",
-    "chapter_11_ansible",
+    "chapter_11_server_prep",
     "chapter_12_organising_test_files",
     "chapter_13_database_layer_validation",
     "chapter_14_simple_form",

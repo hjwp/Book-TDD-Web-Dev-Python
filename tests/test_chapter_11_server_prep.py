@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 
 class Chapter11Test(ChapterTest):
-    chapter_name = "chapter_11_ansible"
+    chapter_name = "chapter_11_server_prep"
     previous_chapter = "chapter_10_production_readiness"
 
     def test_listings_and_commands_and_output(self):
