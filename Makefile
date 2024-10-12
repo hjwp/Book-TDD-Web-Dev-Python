@@ -114,6 +114,10 @@ test_chapter_10_production_readiness: chapter_10_production_readiness.html $(TMP
 test_chapter_11_ansible: chapter_11_ansible.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_11_ansible.py
 .PHONY: test_chapter_12_organising_test_files
+.PHONY: test_chapter_12_ansible
+test_chapter_12_ansible: chapter_12_ansible.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_12_ansible.py
+.PHONY: test_chapter_12_organising_test_files
 test_chapter_12_organising_test_files: chapter_12_organising_test_files.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_12_organising_test_files.py
 .PHONY: test_chapter_13_database_layer_validation
