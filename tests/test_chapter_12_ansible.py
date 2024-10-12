@@ -7,14 +7,14 @@ from book_tester import ChapterTest
 
 class Chapter12Test(ChapterTest):
     chapter_name = "chapter_12_ansible"
-    previous_chapter = "chapter_10_production_readiness"
+    previous_chapter = "chapter_11_server_prep"
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, "other command")
-        self.assertEqual(self.listings[4].type, "against staging")
+        self.assertEqual(self.listings[0].type, "code listing with git ref")
+        self.assertEqual(self.listings[1].type, "against staging")
 
         self.start_with_checkout()
         self.prep_virtualenv()
@@ -22,7 +22,7 @@ class Chapter12Test(ChapterTest):
         # self.sourcetree.run_command('mkdir -p static/stuff')
 
         # skips
-        self.skip_with_check(1, "we also need the Docker")
+        # self.skip_with_check(13, "we also need the Docker")
 
         # vm_restore = 'MANUAL_END'
 

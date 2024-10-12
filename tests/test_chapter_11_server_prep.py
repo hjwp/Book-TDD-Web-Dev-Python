@@ -13,14 +13,16 @@ class Chapter11Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, "other command")
-        self.assertEqual(self.listings[4].type, "against staging")
+        self.assertEqual(self.listings[0].type, "server command")
+        self.assertEqual(self.listings[1].type, "server command")
+        self.assertEqual(self.listings[2].type, "output")
 
         self.start_with_checkout()
+        self.prep_virtualenv()
         # self.sourcetree.run_command('mkdir -p static/stuff')
 
         # skips
-        self.skip_with_check(1, "we also need the Docker")
+        # self.skip_with_check(13, "we also need the Docker")
 
         # vm_restore = 'MANUAL_END'
 
@@ -28,7 +30,7 @@ class Chapter11Test(ChapterTest):
         if os.environ.get("SKIP"):
             self.pos = 42
             self.sourcetree.run_command(
-                "git checkout {0}".format(self.sourcetree.get_commit_spec("ch08l003"))
+                f"git checkout {self.sourcetree.get_commit_spec('ch08l003')}"
             )
 
         # if DO_SERVER_COMMANDS:
