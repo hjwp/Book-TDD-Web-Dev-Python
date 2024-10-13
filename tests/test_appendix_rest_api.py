@@ -6,7 +6,7 @@ from book_tester import ChapterTest
 
 class AppendixVITest(ChapterTest):
     chapter_name = 'appendix_rest_api'
-    previous_chapter = 'chapter_25_page_pattern'
+    previous_chapter = 'chapter_26_page_pattern'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
