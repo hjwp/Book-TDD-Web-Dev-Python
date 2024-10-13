@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import unittest
 
 from book_tester import ChapterTest
 
-class Chapter11Test(ChapterTest):
+
+class Chapter13Test(ChapterTest):
     chapter_name = 'chapter_13_organising_test_files'
-    previous_chapter = 'chapter_11_server_prep'
+    previous_chapter = 'chapter_12_ansible'
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
