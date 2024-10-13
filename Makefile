@@ -132,12 +132,12 @@ test_chapter_16_advanced_forms: chapter_16_advanced_forms.html $(TMPDIR) $(VENV)
 .PHONY: test_chapter_17_javascript
 test_chapter_17_javascript: chapter_17_javascript.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_17_javascript.py
-.PHONY: test_chapter_17_second_deploy
-test_chapter_17_second_deploy: chapter_17_second_deploy.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_17_second_deploy.py
-.PHONY: test_chapter_18_spiking_custom_auth
-test_chapter_18_spiking_custom_auth: chapter_18_spiking_custom_auth.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_18_spiking_custom_auth.py
+.PHONY: test_chapter_18_second_deploy
+test_chapter_18_second_deploy: chapter_18_second_deploy.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_18_second_deploy.py
+.PHONY: test_chapter_19_spiking_custom_auth
+test_chapter_19_spiking_custom_auth: chapter_19_spiking_custom_auth.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_19_spiking_custom_auth.py
 .PHONY: test_chapter_19_mocking_1
 test_chapter_19_mocking_1: chapter_19_mocking_1.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_19_mocking_1.py

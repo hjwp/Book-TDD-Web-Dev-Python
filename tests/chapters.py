@@ -23,8 +23,8 @@ CHAPTERS = [
 
     # part 4: spiking and mocking
     "chapter_17_javascript",
-    "chapter_17_second_deploy",
-    "chapter_18_spiking_custom_auth",
+    "chapter_18_second_deploy",
+    "chapter_19_spiking_custom_auth",
     "chapter_19_mocking_1",
     "chapter_20_mocking_2",
     "chapter_21_fixtures_and_wait_decorator",

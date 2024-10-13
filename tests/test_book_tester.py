@@ -1073,7 +1073,7 @@ class CheckQunitOuptutTest(ChapterTest):
     def test_partial_listing_passes(self):
         self.chapter_name = "chapter_17_javascript"
         self.sourcetree.start_with_checkout(
-            "chapter_17_second_deploy", "chapter_17_javascript"
+            "chapter_18_second_deploy", "chapter_17_javascript"
         )
         expected = Output("2 assertions of 2 passed, 0 failed.")
         self.check_qunit_output(expected)  # should pass
@@ -1082,7 +1082,7 @@ class CheckQunitOuptutTest(ChapterTest):
     def test_fails_if_lists_fail_and_no_accounts(self):
         self.chapter_name = "chapter_17_javascript"
         self.sourcetree.start_with_checkout(
-            "chapter_17_second_deploy", "chapter_17_javascript"
+            "chapter_18_second_deploy", "chapter_17_javascript"
         )
         with self.assertRaises(AssertionError):
             self.check_qunit_output(Output("arg"))
@@ -1090,7 +1090,7 @@ class CheckQunitOuptutTest(ChapterTest):
     def TODOtest_runs_phantomjs_runner_against_lists_tests(self):
         self.chapter_name = "chapter_17_javascript"
         self.sourcetree.start_with_checkout(
-            "chapter_17_second_deploy", "chapter_17_javascript"
+            "chapter_18_second_deploy", "chapter_17_javascript"
         )
         lists_tests = os.path.join(
             os.path.abspath(os.path.dirname(__file__)),
