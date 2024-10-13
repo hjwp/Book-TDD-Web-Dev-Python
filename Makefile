@@ -123,9 +123,9 @@ test_chapter_13_organising_test_files: chapter_13_organising_test_files.html $(T
 .PHONY: test_chapter_14_database_layer_validation
 test_chapter_14_database_layer_validation: chapter_14_database_layer_validation.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_14_database_layer_validation.py
-.PHONY: test_chapter_14_simple_form
-test_chapter_14_simple_form: chapter_14_simple_form.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_14_simple_form.py
+.PHONY: test_chapter_15_simple_form
+test_chapter_15_simple_form: chapter_15_simple_form.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_15_simple_form.py
 .PHONY: test_chapter_15_advanced_forms
 test_chapter_15_advanced_forms: chapter_15_advanced_forms.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_15_advanced_forms.py
