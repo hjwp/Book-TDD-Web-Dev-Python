@@ -150,9 +150,9 @@ test_chapter_22_fixtures_and_wait_decorator: chapter_22_fixtures_and_wait_decora
 .PHONY: test_chapter_23_debugging_prod
 test_chapter_23_debugging_prod: chapter_23_debugging_prod.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_23_debugging_prod.py
-.PHONY: test_chapter_23_outside_in
-test_chapter_23_outside_in: chapter_23_outside_in.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_23_outside_in.py
+.PHONY: test_chapter_24_outside_in
+test_chapter_24_outside_in: chapter_24_outside_in.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_24_outside_in.py
 .PHONY: test_chapter_24_CI
 test_chapter_24_CI: chapter_24_CI.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_24_CI.py
