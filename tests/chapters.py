@@ -19,7 +19,7 @@ CHAPTERS = [
     "chapter_13_organising_test_files",
     "chapter_14_database_layer_validation",
     "chapter_15_simple_form",
-    "chapter_15_advanced_forms",
+    "chapter_16_advanced_forms",
 
     # part 4: spiking and mocking
     "chapter_16_javascript",
