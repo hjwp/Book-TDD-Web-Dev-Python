@@ -120,9 +120,9 @@ test_chapter_12_ansible: chapter_12_ansible.html $(TMPDIR) $(VENV)/bin
 .PHONY: test_chapter_13_organising_test_files
 test_chapter_13_organising_test_files: chapter_13_organising_test_files.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_13_organising_test_files.py
-.PHONY: test_chapter_13_database_layer_validation
-test_chapter_13_database_layer_validation: chapter_13_database_layer_validation.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_13_database_layer_validation.py
+.PHONY: test_chapter_14_database_layer_validation
+test_chapter_14_database_layer_validation: chapter_14_database_layer_validation.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_14_database_layer_validation.py
 .PHONY: test_chapter_14_simple_form
 test_chapter_14_simple_form: chapter_14_simple_form.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_14_simple_form.py
