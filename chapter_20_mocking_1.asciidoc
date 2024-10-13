@@ -1,0 +1,1431 @@
+[[chapter_20_mocking_1]]
+== Mocks and Mocking 1: Using Mocks to Test External Dependencies
+
+.Warning, Recently Updated
+*******************************************************************************
+🚧 Warning, chapter in progress! 🚧
+
+I've recently updated this chapter, and there are some new discussions
+of the pros and cons of mocking, which I'd love your feedback on!
+
+obeythetestinggoat@gmail.com
+
+*******************************************************************************
+
+
+((("Django framework", "sending emails")))
+((("emails, sending from Django")))
+((("mail.out box attribute")))
+In this chapter we'll start testing the parts of our code that send emails.
+In the FT, you saw that Django gives us a way of retrieving
+any emails it sends by using the `mail.outbox` attribute.
+But in this chapter, I want to demonstrate a widespread testing technique called _mocking_,
+so for the purpose of these unit tests, we'll pretend that this nice Django shortcut doesn't exist.
+((("mocks", "benefits and drawbacks of")))
+
+Am I telling you _not_ to use Django's `mail.outbox`?
+No; use it, it's a neat shortcut.
+But I want to teach mocks because they're a useful general-purpose tool
+for unit testing external dependencies.
+You may not always be using Django!
+And even if you are, you may not be sending email--any
+interaction with a third-party API
+is a place you might find yourself wanting to test with mocks.
+((("external dependencies")))
+
+[role="pagebreak-before"]
+.To Mock or Not to Mock?
+*******************************************************************************
+
+I once gave a talk called
+https://www.youtube.com/watch?v=rk-f3B-eMkI["Stop Using Mocks!"];
+it's entirely possible to find ways to write tests for external dependencies
+without using mocks at all.
+
+I'm covering mocking in this book because it's such a common technique,
+but it does come with some downsides, as we'll see.
+Other techniques, including dependency injection,
+and the use of custom fake objects, are well worth exploring,
+but they're a more advanced topic.
+
+My second book, https://www.cosmicpython.com[Architecture Patterns with Python],
+goes in to some detail on these alternatives.
+*******************************************************************************
+
+
+=== Before We Start: Getting the Basic Plumbing In
+
+((("mocks", "preparing for")))
+Let's just get a basic view and URL set up first.
+We can do so with a simple test
+that our new URL for sending the login email should eventually redirect
+back to the home page:
+
+
+[role="sourcecode dofirst-ch19l002"]
+.src/accounts/tests/test_views.py (ch19l001)
+====
+[source,python]
+----
+from django.test import TestCase
+
+
+class SendLoginEmailViewTest(TestCase):
+    def test_redirects_to_home_page(self):
+        response = self.client.post(
+            "/accounts/send_login_email", data={"email": "edith@example.com"}
+        )
+        self.assertRedirects(response, "/")
+----
+====
+
+
+Wire up the `include` in _superlists/urls.py_,
+plus the `url` in _accounts/urls.py_,
+and get the test passing with something a bit like this:
+
+
+[role="sourcecode dofirst-ch19l003"]
+.src/accounts/views.py (ch19l004)
+====
+[source,python]
+----
+from django.core.mail import send_mail  # <1>
+from django.shortcuts import redirect
+
+
+def send_login_email(request):
+    return redirect("/")
+----
+====
+
+
+<1> I've added the import of the `send_mail` function as a placeholder for now.
+
+That'll get the test passing:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python src/manage.py test accounts*
+[...]
+Ran 4 tests in 0.015s
+
+OK
+----
+
+OK, now we have a starting point, so let's get mocking!
+
+
+=== Mocking Manually, aka Monkeypatching
+
+((("mocks", "manual", id="Mmanual19")))
+((("monkeypatching", id="monkey19")))
+When we call `send_mail` in real life
+we expect Django to be making a connection to our email provider,
+and sending an actual email across the public internet.
+That's not something we want to happen in our tests.
+It's a similar problem whenever you have code that has external side effects—calling
+an API, sending out an SMS, integrating with a payment provider, whatever it may be.
+
+When running our unit tests,
+we don't want to be sending out real payments or making API calls across the internet.
+But we would still like a way of testing that our code is correct.
+Mocksfootnote:[I'm using the generic term "mock", but testing enthusiasts like
+to distinguish other types of a general class of test tools called "Test
+Doubles", including spies, fakes, and stubs.  The differences don't really
+matter for this book, but if you want to get into the nitty-gritty, check out
+this https://github.com/testdouble/contributing-tests/wiki/Test-Double[amazing
+wiki by Justin Searls]. Warning: absolutely chock full of great testing content.]
+are the answer.
+
+
+Actually, one of the great things about Python is that its dynamic nature
+makes it very easy to do things like mocking,
+or what's sometimes called https://en.wikipedia.org/wiki/Monkey_patch[monkeypatching].
+Let's suppose that, as a first step,
+we want to get to some code that invokes `send_mail`
+with the right subject line, from address, and to address.
+That would look something like this:
+
+
+[role="sourcecode skipme"]
+.src/accounts/views.py
+====
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST['email']
+    # send_mail(
+    #     'Your login link for Superlists',
+    #     'body text tbc',
+    #     'noreply@superlists',
+    #     [email],
+    # )
+    return redirect('/')
+----
+====
+
+
+How can we test this, without calling the _real_ `send_mail` function?
+The answer is that our test can ask Python to swap out the `send_mail` function
+for a fake version, at runtime, just before we invoke the `send_login_email` view.
+
+Check this out:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l005)
+====
+[source,python]
+----
+from django.test import TestCase
+
+import accounts.views  # <2>
+
+
+class SendLoginEmailViewTest(TestCase):
+    [...]
+
+    def test_sends_mail_to_address_from_post(self):
+        self.send_mail_called = False
+
+        def fake_send_mail(subject, body, from_email, to_list):  # <1>
+            self.send_mail_called = True
+            self.subject = subject
+            self.body = body
+            self.from_email = from_email
+            self.to_list = to_list
+
+        accounts.views.send_mail = fake_send_mail  # <2>
+
+        self.client.post(
+            "/accounts/send_login_email", data={"email": "edith@example.com"}
+        )
+
+        self.assertTrue(self.send_mail_called)
+        self.assertEqual(self.subject, "Your login link for Superlists")
+        self.assertEqual(self.from_email, "noreply@superlists")
+        self.assertEqual(self.to_list, ["edith@example.com"])
+----
+====
+
+<1> We define a `fake_send_mail` function,
+    which looks like the real `send_mail` function,
+    but all it does is save some information about how it was called,
+    using some variables on `self`.
+
+
+<2> Then, before we execute the code under test by doing the `self.client.post`,
+    we swap out the real `accounts.views.send_mail`
+    with our fake version—it's as simple as just assigning it.
+
+
+It's important to realise that there isn't really anything magical going on here;
+we're just taking advantage of Python's dynamic nature and scoping rules.
+
+Up until we actually invoke a function, we can modify the variables it has access to,
+as long as we get into the right namespace.
+That's why we import the top-level accounts module:
+to be able to get down to the `accounts.views` module,
+which is the scope that the `accounts.views.send_login_email` function will run in.
+
+This isn't even something that only works inside unit tests.
+You can do this kind of "monkeypatching" in any kind of Python code!
+
+That may take a little time to sink in.
+See if you can convince yourself that it's not all totally crazy,
+before reading a couple of bits of further detail.
+
+* Why do we use `self` as a way of passing information around?
+  It's just a convenient variable that's available
+  both inside the scope of the `fake_send_mail` function and outside of it.
+  We could use any mutable object, like a list or a dictionary,
+  as long as we are making in-place changes to an existing variable
+  that exists outside our fake function.
+  (Feel free to have a play around with different ways of doing this, if
+  you're curious, and see what works and doesn't work.)
+
+* The "before" is critical! I can't tell you how many times I've sat there,
+  wondering why a mock isn't working,
+  only to realise that I didn't mock _before_ I called the code under test.
+
+
+Let's see if our hand-rolled mock object will let us test-drive some code:
+
+[subs="specialcharacters,quotes"]
+----
+$ *python src/manage.py test accounts*
+[...]
+    self.assertTrue(self.send_mail_called)
+AssertionError: False is not true
+----
+
+So let's call `send_mail`, naively:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l006-1)
+====
+[source,python]
+----
+def send_login_email(request):
+    send_mail()
+    return redirect("/")
+----
+====
+
+That gives:
+
+[subs="specialcharacters,macros"]
+----
+TypeError: SendLoginEmailViewTest.test_sends_mail_to_address_from_post.<locals>
+.fake_send_mail() missing 4 required positional arguments: 'subject', 'body',
+'from_email', and 'to_list'
+----
+
+It looks like our monkeypatch is working!
+We've called `send_mail`, and it's gone into our `fake_send_mail` function,
+which wants more arguments.
+Let's try this:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l006-2)
+====
+[source,python]
+----
+def send_login_email(request):
+    send_mail("subject", "body", "from_email", ["to email"])
+    return redirect("/")
+----
+====
+
+That gives:
+
+----
+    self.assertEqual(self.subject, "Your login link for Superlists")
+AssertionError: 'subject' != 'Your login link for Superlists'
+----
+
+That's working pretty well!
+Now we can work step-by-step, all the way through to something like this:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l006)
+====
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST["email"]
+    send_mail(
+        "Your login link for Superlists",
+        "body text tbc",
+        "noreply@superlists",
+        [email],
+    )
+    return redirect("/")
+----
+====
+
+and passing tests!
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+
+Ran 5 tests in 0.016s
+
+OK
+----
+
+
+Brilliant!  We've managed to write tests for some code, that
+ordinarilyfootnote:[Yes, I know Django already mocks out emails using `mail.outbox` for us,
+but, again, let's pretend it doesn't. What if you were using Flask?
+Or what if this was an API call, not an email?]
+would go out and try to send real emails across the internet,
+and by "mocking out" the `send_email` function,
+we're able to write the tests and code all the same.
+((("", startref="monkey19")))((("", startref="Mmanual19")))
+
+
+=== The Python Mock Library
+
+((("mocks", "Python Mock library", id="Mpythong19")))
+((("Python 3", "Mock library", id="Pmock19")))
+The `mock` package was added to the standard library as part of Python 3.3.
+It provides a magical object called a `Mock`; try this out in a Python shell:
+
+
+[role='skipme']
+[source,python]
+----
+>>> from unittest.mock import Mock
+>>> m = Mock()
+>>> m.any_attribute
+<Mock name='mock.any_attribute' id='140716305179152'>
+>>> type(m.any_attribute)
+<class 'unittest.mock.Mock'>
+>>> m.any_method()
+<Mock name='mock.any_method()' id='140716331211856'>
+>>> m.foo()
+<Mock name='mock.foo()' id='140716331251600'>
+>>> m.called
+False
+>>> m.foo.called
+True
+>>> m.bar.return_value = 1
+>>> m.bar(42, var='thing')
+1
+>>> m.bar.call_args
+call(42, var='thing')
+----
+
+A magical object that:
+
+* responds to any request for an attribute or method call with other mocks,
+* which you can configure in turn to return specific values when called,
+* and that allows you to inspect what it was called with?
+
+Sounds like a useful thing to be able to use in our unit tests!
+
+
+==== Using unittest.patch
+
+((("unittest module", "mock module and")))
+And as if that weren't enough,
+the `mock` module also provides a helper function called `patch`,
+which we can use to do the monkeypatching we did by hand earlier.
+
+I'll explain how it all works shortly, but let's see it in action first:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l007)
+====
+[source,python]
+----
+from unittest import mock
+
+from django.test import TestCase
+[...]
+
+    @mock.patch("accounts.views.send_mail")
+    def test_sends_mail_to_address_from_post(self, mock_send_mail):
+        self.client.post(
+            "/accounts/send_login_email", data={"email": "edith@example.com"}
+        )
+
+        self.assertEqual(mock_send_mail.called, True)
+        (subject, body, from_email, to_list), kwargs = mock_send_mail.call_args
+        self.assertEqual(subject, "Your login link for Superlists")
+        self.assertEqual(from_email, "noreply@superlists")
+        self.assertEqual(to_list, ["edith@example.com"])
+
+----
+====
+
+
+If you rerun the tests, you'll see they still pass.
+And since we're always suspicious of any test that still passes after a big change,
+let's deliberately break it just to see:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l008)
+====
+[source,python]
+----
+        self.assertEqual(to_list, ["schmedith@example.com"])
+----
+====
+
+And let's add a little debug print to our view as well,
+to see the effects of the `mock.patch`:
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l009)
+====
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST["email"]
+    print(type(send_mail))
+    send_mail(
+        [...]
+----
+====
+
+Let's run the tests again:
+
+[subs="macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]pass:specialcharacters[
+<class 'function'>
+<class 'unittest.mock.MagicMock'>
+][...]pass:[
+AssertionError: Lists differ: ['edith@example.com'\] !=
+['schmedith@example.com'\]
+][...]
+
+Ran 5 tests in 0.024s
+
+FAILED (failures=1)
+----
+
+
+Sure enough, the tests fail.
+And we can see just before the failure message
+that when we print the `type` of the `send_mail` function,
+in the first unit test it's a normal function,
+but in the second unit test we're seeing a mock object.
+
+Let's remove the deliberate mistake and dive into exactly what's going on:
+
+[role="sourcecode dofirst-ch19l010"]
+.src/accounts/tests/test_views.py (ch19l011)
+====
+[source,python]
+----
+@mock.patch("accounts.views.send_mail")  # <1>
+def test_sends_mail_to_address_from_post(self, mock_send_mail):  # <2>
+    self.client.post(  # <3>
+        "/accounts/send_login_email", data={"email": "edith@example.com"}
+    )
+
+    self.assertEqual(mock_send_mail.called, True)  # <4>
+    (subject, body, from_email, to_list), kwargs = mock_send_mail.call_args  # <5>
+    self.assertEqual(subject, "Your login link for Superlists")
+    self.assertEqual(from_email, "noreply@superlists")
+    self.assertEqual(to_list, ["edith@example.com"])
+----
+====
+
+<1> The `mock.patch()` decorator takes a dot-notation name of an object to monkeypatch.
+    That's the equivalent of manually replacing the `send_mail` in `accounts.views`.
+    The advantage of the decorator is that,
+    firstly, it automatically replaces the target with a mock.
+    And secondly, it automatically puts the original object back at the end!
+    (Otherwise, the object stays monkeypatched for the rest of the test run,
+    which might cause problems in other tests.)
+
+
+<2> `patch` then injects the mocked object into the test
+    as an argument to the test method.
+    We can choose whatever name we want for it,
+    but I usually use a convention of `mock_` plus the original name of the object.
+
+
+<3> We call our view under test as usual,
+    but everything inside this test method has our mock applied to it,
+    so the view won't call the real `send_mail` object;
+    it'll be seeing `mock_send_mail` instead.
+
+<4> And we can now make assertions about what happened to that mock object
+    during the test.  We can see it was called...
+
+<5> ...and we can also unpack its various positional and keyword call arguments,
+    to examine what it was called with.
+    (See <<mock-call-args-sidebar>> in the next chapter for a longer
+    explanation of `.call_args`).
+
+
+All crystal-clear? No? Don't worry, we'll do a couple more tests with mocks,
+to see if they start to make more sense as we use them more.
+
+
+
+==== Getting the FT a Little Further Along
+
+First let's get back to our FT and see where it's failing:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test functional_tests.test_login*]
+[...]
+AssertionError: 'Check your email' not found in 'Superlists\nEnter your email
+to log in\nStart a new To-Do list'
+----
+
+Submitting the email address currently has no effect,
+because the form isn't sending the data anywhere.
+Let's wire it up in _base.html_:
+
+[role="sourcecode small-code"]
+.src/lists/templates/base.html (ch19l012)
+====
+[source,html]
+----
+<form method="POST" action="{% url 'send_login_email' %}">
+----
+====
+
+Does that help?  Nope, same error.  Why?
+Because we're not actually displaying a success message after we send the user an email.
+Let's add a test for that.
+
+
+==== Testing the Django Messages Framework
+
+((("Django framework", "messages framework")))
+We'll use Django's "messages framework",
+which is often used to display ephemeral "success" or "warning" messages
+to show the results of an action.
+Have a look at the
+https://docs.djangoproject.com/en/1.11/ref/contrib/messages/[django messages docs]
+if you haven't come across it already.
+
+Testing Django messages is a bit contorted--we have to pass `follow=True`
+to the test client to tell it to get the page after the 302-redirect,
+and examine its context for a list of messages
+(which we have to listify before it'll play nicely).
+Here's what it looks like:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l013)
+====
+[source,python]
+----
+    def test_adds_success_message(self):
+        response = self.client.post(
+            "/accounts/send_login_email",
+            data={"email": "edith@example.com"},
+            follow=True,
+        )
+
+        message = list(response.context["messages"])[0]
+        self.assertEqual(
+            message.message,
+            "Check your email, we've sent you a link you can use to log in.",
+        )
+        self.assertEqual(message.tags, "success")
+----
+====
+
+That gives:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+    message = list(response.context["messages"])[0]
+IndexError: list index out of range
+----
+
+And we can get it passing with:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l014)
+====
+[source,python]
+----
+from django.contrib import messages
+[...]
+
+def send_login_email(request):
+    [...]
+    messages.success(
+        request,
+        "Check your email, we've sent you a link you can use to log in.",
+    )
+    return redirect("/")
+----
+====
+
+
+[[mocks-tightly-coupled-sidebar]]
+.Mocks Can Leave You Tightly Coupled to the Implementation
+*******************************************************************************
+
+TIP: This sidebar is an intermediate-level testing tip.
+    If it goes over your head the first time around,
+    come back and take another look when you've finished this chapter.
+    Consider also going through <<appendix_purist_unit_tests>>
+    for lots more mocking practice.
+
+I said testing messages is a bit contorted;
+it took me several goes to get it right.
+In fact, at a previous employer,
+we gave up on testing them like this and decided to just use mocks.
+Let's see what that would look like in this case:
+
+[role="sourcecode small-code"]
+.src/accounts/tests/test_views.py (ch19l014-2)
+====
+[source,python]
+----
+    @mock.patch("accounts.views.messages")
+    def test_adds_success_message_with_mocks(self, mock_messages):
+        response = self.client.post(
+            "/accounts/send_login_email", data={"email": "edith@example.com"}
+        )
+
+        expected = "Check your email, we've sent you a link you can use to log in."
+        self.assertEqual(
+            mock_messages.success.call_args,
+            mock.call(response.wsgi_request, expected),
+        )
+----
+====
+
+We mock out the `messages` module, and check that `messages.success` was
+called with the right args: the original request, and the message we want.
+
+And you could get it passing by using the exact same code as earlier.  Here's
+the problem though:  the messages framework gives you more than one way
+to achieve the same result.  I could write the code like this:
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l014-3)
+====
+[source,python]
+----
+    messages.add_message(
+        request,
+        messages.SUCCESS,
+        "Check your email, we've sent you a link you can use to log in.",
+    )
+----
+====
+
+And the original, nonmocky test would still pass.
+But our mocky test will fail,
+because we're no longer calling `messages.success`,
+we're calling `messages.add_message`.
+Even though the end result is the same and our code is "correct,"
+the test is broken.
+
+This is what it means to say that using mocks leave you
+"tightly coupled with the implementation".
+We usually say it's better to test behaviour, not implementation details;
+test what happens, not how you do it.
+Mocks often end up erring too much on the side of the "how" rather than the "what".
+
+TIP: Test should be about behaviour, not implementation.
+
+*******************************************************************************
+
+
+==== Adding Messages to Our HTML
+
+What happens next in the functional test?
+Ah.  Still nothing.
+We need to actually add the messages to the page.
+Something like this:
+
+
+[role="sourcecode dofirst-ch19l014-4"]
+.src/lists/templates/base.html (ch19l015)
+====
+[source,html]
+----
+      [...]
+      </nav>
+
+      {% if messages %}
+        <div class="row">
+          <div class="col-md-8">
+            {% for message in messages %}
+              {% if message.level_tag == 'success' %}
+                <div class="alert alert-success">{{ message }}</div>
+              {% else %}
+                <div class="alert alert-warning">{{ message }}</div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+----
+====
+
+
+Now do we get a little further?  Yes!
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+Ran 6 tests in 0.023s
+
+OK
+
+$ pass:quotes[*python src/manage.py test functional_tests.test_login*]
+[...]
+AssertionError: 'Use this link to log in' not found in 'body text tbc'
+----
+
+
+We need to fill out the body text of the email,
+with a link that the user can use to log in.
+
+
+Let's just cheat for now though, by changing the value in the view:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l016)
+====
+[source,python]
+----
+    send_mail(
+        "Your login link for Superlists",
+        "Use this link to log in",
+        "noreply@superlists",
+        [email],
+    )
+----
+====
+
+That gets the FT a little further:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test functional_tests.test_login*]
+[...]
+AssertionError: Could not find url in email body:
+Use this link to log in
+----
+
+
+==== Starting on the Login URL
+
+We're going to have to build some kind of URL!
+Let's build one that, again, just cheats:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l017)
+====
+[source,python]
+----
+class LoginViewTest(TestCase):
+    def test_redirects_to_home_page(self):
+        response = self.client.get("/accounts/login?token=abcd123")
+        self.assertRedirects(response, "/")
+----
+====
+
+We're imagining we'll pass the token in as a GET parameter, after the `?`.
+It doesn't need to do anything for now.
+
+I'm sure you can find your way through to getting the boilerplate in
+for a basic URL and view, via errors like these:
+
+[role="pagebreak-before"]
+* No URL:
++
+[role="small-code"]
+----
+AssertionError: 404 != 302 : Response didn't redirect as expected: Response
+code was 404 (expected 302)
+----
+
+
+* No view:
++
+[role="dofirst-ch19l018 small-code"]
+----
+AttributeError: module 'accounts.views' has no attribute 'login'
+----
+
+
+* Broken view:
++
+[role="dofirst-ch19l019 small-code"]
+----
+ValueError: The view accounts.views.login didn't return an HttpResponse object.
+It returned None instead.
+----
+
+* OK!
++
+[role="dofirst-ch19l020 small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+
+Ran 7 tests in 0.029s
+OK
+----
+
+
+And now we can give people a link to use.
+It still won't do much though,
+because we still don't have a token to give to the user.
+
+
+
+==== Checking That We Send the User a Link with a Token
+
+Back in our `send_login_email` view,
+we've tested the email subject, from, and to fields.
+The body is the part that will have to include a token or URL they can use to log in.
+Let's spec out two tests for that:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_views.py (ch19l021)
+====
+[source,python]
+----
+from accounts.models import Token
+[...]
+
+    def test_creates_token_associated_with_email(self):
+        self.client.post(
+            "/accounts/send_login_email", data={"email": "edith@example.com"}
+        )
+        token = Token.objects.get()
+        self.assertEqual(token.email, "edith@example.com")
+
+    @mock.patch("accounts.views.send_mail")
+    def test_sends_link_to_login_using_token_uid(self, mock_send_mail):
+        self.client.post(
+            "/accounts/send_login_email", data={"email": "edith@example.com"}
+        )
+
+        token = Token.objects.get()
+        expected_url = f"http://testserver/accounts/login?token={token.uid}"
+        (subject, body, from_email, to_list), kwargs = mock_send_mail.call_args
+        self.assertIn(expected_url, body)
+----
+====
+
+The first test is fairly straightforward;
+it checks that the token we create in the database
+is associated with the email address from the post request.
+
+The second one is our second test using mocks.
+We mock out the `send_mail` function again using the `patch` decorator,
+but this time we're interested in the `body` argument from the call arguments.
+
+Running them now will fail because we're not creating any kind of token:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+accounts.models.Token.DoesNotExist: Token matching query does not exist.
+[...]
+accounts.models.Token.DoesNotExist: Token matching query does not exist.
+----
+
+We can get the first one to pass by creating a token:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l022)
+====
+[source,python]
+----
+from accounts.models import Token
+[...]
+
+def send_login_email(request):
+    email = request.POST["email"]
+    token = Token.objects.create(email=email)
+    send_mail(
+        [...]
+----
+====
+
+And now the second test prompts us to actually use the token in the body
+of our email:
+
+[subs=""]
+----
+[...]
+AssertionError:
+'http://testserver/accounts/login?token=[...]
+not found in 'Use this link to log in'
+
+FAILED (failures=1)
+----
+
+So we can insert the token into our email like this:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch19l023)
+====
+[source,python]
+----
+from django.urls import reverse
+[...]
+
+def send_login_email(request):
+    email = request.POST["email"]
+    token = Token.objects.create(email=email)
+    url = request.build_absolute_uri(  # <1>
+        reverse("login") + "?token=" + str(token.uid),
+    )
+    message_body = f"Use this link to log in:\n\n{url}"
+    send_mail(
+        "Your login link for Superlists",
+        message_body,
+        "noreply@superlists",
+        [email],
+    )
+    [...]
+----
+====
+
+<1> `request.build_absolute_uri` deserves a mention--it's
+    one way to build a "full" URL,
+    including the domain name and the http(s) part, in Django.
+    There are other ways,
+    but they usually involve getting into the "sites" framework,
+    and that gets complicated pretty quickly.
+    You can find lots more discussion on this if you're curious
+    by doing a bit of googling.
+
+
+// TODO: investigate kwards for reverse() call
+// reverse("login", token=str(token.uid))
+
+Two more pieces in the puzzle.
+We need an authentication backend,
+whose job it will be to examine tokens for validity
+and then return the corresponding users;
+then we need to get our login view to actually log users in,
+if they can authenticate.
+((("", startref="Mpythong19")))((("", startref="Pmock19")))
+
+
+
+=== De-spiking Our Custom Authentication Backend
+
+((("mocks", "de-spiking custom authentication")))
+((("spiking and de-spiking", "de-spiking")))
+Our custom authentication backend is next.
+Here's how it looked in the spike:
+
+
+[[spike-reminder]]
+[role="skipme small-code"]
+[source,python]
+----
+class PasswordlessAuthenticationBackend(BaseBackend):
+    def authenticate(self, request, uid):
+        print("uid", uid, file=sys.stderr)
+        if not Token.objects.filter(uid=uid).exists():
+            print("no token found", file=sys.stderr)
+            return None
+        token = Token.objects.get(uid=uid)
+        print("got token", file=sys.stderr)
+        try:
+            user = ListUser.objects.get(email=token.email)
+            print("got user", file=sys.stderr)
+            return user
+        except ListUser.DoesNotExist:
+            print("new user", file=sys.stderr)
+            return ListUser.objects.create(email=token.email)
+
+    def get_user(self, email):
+        return ListUser.objects.get(email=email)
+----
+
+Decoding this:
+
+* We take a UID and check if it exists in the database.
+* We return `None` if it doesn't.
+* If it does exist, we extract an email address,
+  and either find an existing user with that address, or create a new one.
+
+
+
+==== 1 if = 1 More Test
+
+A rule of thumb for these sorts of tests:
+any `if` means an extra test, and any `try/except` means an extra test,
+so this should be about three tests.
+How about something like this?
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_authentication.py (ch19l024)
+====
+[source,python]
+----
+from django.contrib.auth import get_user_model
+from django.http import HttpRequest
+from django.test import TestCase
+
+from accounts.authentication import PasswordlessAuthenticationBackend
+from accounts.models import Token
+
+User = get_user_model()
+
+
+class AuthenticateTest(TestCase):
+    def test_returns_None_if_no_such_token(self):
+        result = PasswordlessAuthenticationBackend().authenticate(
+            HttpRequest(), "no-such-token"
+        )
+        self.assertIsNone(result)
+
+    def test_returns_new_user_with_correct_email_if_token_exists(self):
+        email = "edith@example.com"
+        token = Token.objects.create(email=email)
+        user = PasswordlessAuthenticationBackend().authenticate(
+            HttpRequest(), token.uid
+        )
+        new_user = User.objects.get(email=email)
+        self.assertEqual(user, new_user)
+
+    def test_returns_existing_user_with_correct_email_if_token_exists(self):
+        email = "edith@example.com"
+        existing_user = User.objects.create(email=email)
+        token = Token.objects.create(email=email)
+        user = PasswordlessAuthenticationBackend().authenticate(
+            HttpRequest(), token.uid
+        )
+        self.assertEqual(user, existing_user)
+----
+====
+
+
+In _authenticate.py_ we'll just have a little placeholder:
+
+[role="sourcecode"]
+.src/accounts/authentication.py (ch19l025)
+====
+[source,python]
+----
+class PasswordlessAuthenticationBackend:
+    def authenticate(self, request, uid):
+        pass
+----
+====
+
+
+How do we get on?
+
+[subs="macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+
+.FE.........
+======================================================================
+ERROR: test_returns_new_user_with_correct_email_if_token_exists (accounts.tests
+.test_authentication.AuthenticateTest.test_returns_new_user_with_correct_email_
+if_token_exists)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/accounts/tests/test_authentication.py", line 24, in
+test_returns_new_user_with_correct_email_if_token_exists
+    new_user = User.objects.get(email=email)
+[...]
+accounts.models.User.DoesNotExist: User matching query does not exist.
+
+
+======================================================================
+FAIL: test_returns_existing_user_with_correct_email_if_token_exists (accounts.t
+ests.test_authentication.AuthenticateTest.test_returns_existing_user_with_corre
+ct_email_if_token_exists)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/accounts/tests/test_authentication.py", line 34, in
+test_returns_existing_user_with_correct_email_if_token_exists
+    self.assertEqual(user, existing_user)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: None != pass:specialcharacters[<User: User object (edith@example.com)>]
+
+ ---------------------------------------------------------------------
+Ran 12 tests in 0.038s
+
+FAILED (failures=1, errors=1)
+----
+
+//TODO: do we need that inline pass:specialcharacters?
+
+Here's a first cut:
+
+[role="sourcecode"]
+.src/accounts/authentication.py (ch19l026)
+====
+[source,python]
+----
+from accounts.models import Token, User
+
+
+class PasswordlessAuthenticationBackend:
+    def authenticate(self, request, uid):
+        token = Token.objects.get(uid=uid)
+        return User.objects.get(email=token.email)
+----
+====
+
+
+That gets one test passing but breaks another one:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+
+ERROR: test_returns_None_if_no_such_token (accounts.tests.test_authentication.A
+uthenticateTest.test_returns_None_if_no_such_token)
+[...]
+accounts.models.Token.DoesNotExist: Token matching query does not exist.
+
+ERROR: test_returns_new_user_with_correct_email_if_token_exists (accounts.tests
+.test_authentication.AuthenticateTest.test_returns_new_user_with_correct_email_
+if_token_exists)
+[...]
+accounts.models.User.DoesNotExist: User matching query does not exist.
+----
+
+Let's fix each of those in turn:
+
+
+[role="sourcecode"]
+.src/accounts/authentication.py (ch19l027)
+====
+[source,python]
+----
+    def authenticate(self, request, uid):
+        try:
+            token = Token.objects.get(uid=uid)
+            return User.objects.get(email=token.email)
+        except Token.DoesNotExist:
+            return None
+----
+====
+
+That gets us down to one failure:
+
+[subs="specialcharacters,macros"]
+----
+ERROR: test_returns_new_user_with_correct_email_if_token_exists (accounts.tests
+.test_authentication.AuthenticateTest.test_returns_new_user_with_correct_email_
+if_token_exists)
+[...]
+accounts.models.User.DoesNotExist: User matching query does not exist.
+
+FAILED (errors=1)
+----
+
+
+And we can handle the final case like this:
+
+[role="sourcecode"]
+.src/accounts/authentication.py (ch19l028)
+====
+[source,python]
+----
+    def authenticate(self, request, uid):
+        try:
+            token = Token.objects.get(uid=uid)
+            return User.objects.get(email=token.email)
+        except User.DoesNotExist:
+            return User.objects.create(email=token.email)
+        except Token.DoesNotExist:
+            return None
+----
+====
+
+That's turned out neater than our spike!
+
+
+==== The get_user Method
+
+
+((("get_user method")))
+We've handled the `authenticate` function which Django will use to log new users in.
+The second part of the protocol we have to implement is the `get_user` method,
+whose job is to retrieve a user based on their unique identifier (the email address),
+or to return `None` if it can't find one
+(have another look at <<spike-reminder,the spiked code>> if you need a
+reminder).
+
+
+Here are a couple of tests for those two requirements:
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_authentication.py (ch19l030)
+====
+[source,python]
+----
+class GetUserTest(TestCase):
+    def test_gets_user_by_email(self):
+        User.objects.create(email="another@example.com")
+        desired_user = User.objects.create(email="edith@example.com")
+        found_user = PasswordlessAuthenticationBackend().get_user("edith@example.com")
+        self.assertEqual(found_user, desired_user)
+
+    def test_returns_None_if_no_user_with_that_email(self):
+        self.assertIsNone(
+            PasswordlessAuthenticationBackend().get_user("edith@example.com")
+        )
+----
+====
+
+And our first failure:
+
+----
+AttributeError: 'PasswordlessAuthenticationBackend' object has no attribute
+'get_user'
+----
+
+Let's create a placeholder one then:
+
+
+[role="sourcecode"]
+.src/accounts/authentication.py (ch19l031)
+====
+[source,python]
+----
+class PasswordlessAuthenticationBackend:
+    def authenticate(self, request, uid):
+        [...]
+
+    def get_user(self, email):
+        pass
+----
+====
+
+Now we get:
+
+
+[subs="macros"]
+----
+    self.assertEqual(found_user, desired_user)
+AssertionError: None != pass:specialcharacters[<User: User object (edith@example.com)>]
+----
+
+And (step by step, just to see if our test fails the way we think it will):
+
+[role="sourcecode"]
+.src/accounts/authentication.py (ch19l033)
+====
+[source,python]
+----
+    def get_user(self, email):
+        return User.objects.first()
+----
+====
+
+That gets us past the first assertion, and onto:
+
+[subs="macros"]
+----
+    self.assertEqual(found_user, desired_user)
+AssertionError: pass:specialcharacters[<User: User object (another@example.com)>] != pass:specialcharacters[<User: User object
+(edith@example.com)>]
+----
+
+And so we call `get` with the email as an argument:
+
+
+[role="sourcecode"]
+.src/accounts/authentication.py (ch19l034)
+====
+[source,python]
+----
+    def get_user(self, email):
+        return User.objects.get(email=email)
+----
+====
+
+
+Now our test for the `None` case fails:
+
+----
+ERROR: test_returns_None_if_no_user_with_that_email (accounts.tests.test_authen
+tication.GetUserTest.test_returns_None_if_no_user_with_that_email)
+[...]
+accounts.models.User.DoesNotExist: User matching query does not exist.
+----
+
+Which prompts us to finish the method like this:
+
+
+[role="sourcecode"]
+.src/accounts/authentication.py (ch19l035)
+====
+[source,python]
+----
+    def get_user(self, email):
+        try:
+            return User.objects.get(email=email)
+        except User.DoesNotExist:
+            return None  # <1>
+----
+====
+
+<1> You could just use `pass` here, and the function would return `None` by default.
+    However, because we specifically need the function to return `None`,
+    the "explicit is better than implicit" rule applies here.
+
+That gets us to passing tests:
+
+----
+OK
+----
+
+
+And we have a working authentication backend!
+
+
+Let's call that a win, and in the next chapter
+we'll work on integrating it into our login view,
+and getting our FT passing.
+
+
+[[mocking-py-sidebar-1]]
+.On Mocking in Python
+*******************************************************************************
+
+Mocking and external dependencies::
+  One place to consider using mocking is when we have an external dependency
+  that we don't want to actually use in our tests.
+  A mock can be used to simulate the third-party API.
+  Whilst it is possible to "roll your own" mocks in Python,
+  a mocking framework like the +unittest.mock+ module provides a lot of helpful shortcuts
+  which will make it easier to write (and more importantly, read) your tests.
+  ((("external dependencies")))
+
+The Mock library::
+  Michael Foord (who used to work for the company that spawned PythonAnywhere,
+  just before I joined) wrote the excellent "Mock" library
+  that's now been integrated into the standard library of Python 3.
+  It contains most everything you might need for mocking in Python.
+  ((("mocks", "Python Mock library")))
+  ((("Python 3", "Mock library")))
+// todo do we nee this?
+
+
+Monkeypatching::
+  Replacing an object in a namespace at runtime.
+  We use it in our unit tests to replace a real function
+  which has undesirable side effects
+  with a mock object, using the `mock.patch` decorator.
+  ((("monkeypatching")))
+
+
+
+The mock.patch decorator::
+  `unittest.mock` ((("patch decorator")))provides a function called `patch`,
+  which can be used to "mock out" (monkeypatch)
+  any object from the module you're testing.
+  It's commonly used as a decorator on a test method.
+  Importantly, it "undoes" the mocking at the end of the test for you,
+  to avoid contamination between tests.
+
+
+Mocks can leave you tightly coupled to the implementation::
+  As we saw in <<mocks-tightly-coupled-sidebar>>,
+  mocks can leave you tightly coupled to your implementation.
+  For that reason, you shouldn't use them unless you have a good reason.
+
+*******************************************************************************

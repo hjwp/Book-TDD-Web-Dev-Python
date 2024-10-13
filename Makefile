@@ -110,51 +110,55 @@ test_chapter_09_docker: chapter_09_docker.html $(TMPDIR) $(VENV)/bin clean-docke
 .PHONY: test_chapter_10_production_readiness
 test_chapter_10_production_readiness: chapter_10_production_readiness.html $(TMPDIR) $(VENV)/bin clean-docker
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_10_production_readiness.py
-.PHONY: test_chapter_11_ansible
-test_chapter_11_ansible: chapter_11_ansible.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_11_ansible.py
-.PHONY: test_chapter_12_organising_test_files
-test_chapter_12_organising_test_files: chapter_12_organising_test_files.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_12_organising_test_files.py
-.PHONY: test_chapter_13_database_layer_validation
-test_chapter_13_database_layer_validation: chapter_13_database_layer_validation.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_13_database_layer_validation.py
-.PHONY: test_chapter_14_simple_form
-test_chapter_14_simple_form: chapter_14_simple_form.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_14_simple_form.py
-.PHONY: test_chapter_15_advanced_forms
-test_chapter_15_advanced_forms: chapter_15_advanced_forms.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_15_advanced_forms.py
-.PHONY: test_chapter_16_javascript
-test_chapter_16_javascript: chapter_16_javascript.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_16_javascript.py
-.PHONY: test_chapter_17_second_deploy
-test_chapter_17_second_deploy: chapter_17_second_deploy.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_17_second_deploy.py
-.PHONY: test_chapter_18_spiking_custom_auth
-test_chapter_18_spiking_custom_auth: chapter_18_spiking_custom_auth.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_18_spiking_custom_auth.py
-.PHONY: test_chapter_19_mocking_1
-test_chapter_19_mocking_1: chapter_19_mocking_1.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_19_mocking_1.py
-.PHONY: test_chapter_20_mocking_2
-test_chapter_20_mocking_2: chapter_20_mocking_2.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_20_mocking_2.py
-.PHONY: test_chapter_21_fixtures_and_wait_decorator
-test_chapter_21_fixtures_and_wait_decorator: chapter_21_fixtures_and_wait_decorator.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_21_fixtures_and_wait_decorator.py
-.PHONY: test_chapter_22_server_side_debugging
-test_chapter_22_server_side_debugging: chapter_22_server_side_debugging.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_22_server_side_debugging.py
-.PHONY: test_chapter_23_outside_in
-test_chapter_23_outside_in: chapter_23_outside_in.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_23_outside_in.py
-.PHONY: test_chapter_24_CI
-test_chapter_24_CI: chapter_24_CI.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_24_CI.py
-.PHONY: test_chapter_25_page_pattern
-test_chapter_25_page_pattern: chapter_25_page_pattern.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_25_page_pattern.py
+.PHONY: test_chapter_11_server_prep
+test_chapter_11_server_prep: chapter_11_server_prep.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_11_server_prep.py
+.PHONY: test_chapter_13_organising_test_files
+.PHONY: test_chapter_12_ansible
+test_chapter_12_ansible: chapter_12_ansible.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_12_ansible.py
+.PHONY: test_chapter_13_organising_test_files
+test_chapter_13_organising_test_files: chapter_13_organising_test_files.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_13_organising_test_files.py
+.PHONY: test_chapter_14_database_layer_validation
+test_chapter_14_database_layer_validation: chapter_14_database_layer_validation.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_14_database_layer_validation.py
+.PHONY: test_chapter_15_simple_form
+test_chapter_15_simple_form: chapter_15_simple_form.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_15_simple_form.py
+.PHONY: test_chapter_16_advanced_forms
+test_chapter_16_advanced_forms: chapter_16_advanced_forms.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_16_advanced_forms.py
+.PHONY: test_chapter_17_javascript
+test_chapter_17_javascript: chapter_17_javascript.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_17_javascript.py
+.PHONY: test_chapter_18_second_deploy
+test_chapter_18_second_deploy: chapter_18_second_deploy.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_18_second_deploy.py
+.PHONY: test_chapter_19_spiking_custom_auth
+test_chapter_19_spiking_custom_auth: chapter_19_spiking_custom_auth.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_19_spiking_custom_auth.py
+.PHONY: test_chapter_20_mocking_1
+test_chapter_20_mocking_1: chapter_20_mocking_1.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_20_mocking_1.py
+.PHONY: test_chapter_21_mocking_2
+test_chapter_21_mocking_2: chapter_21_mocking_2.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_21_mocking_2.py
+.PHONY: test_chapter_22_fixtures_and_wait_decorator
+test_chapter_22_fixtures_and_wait_decorator: chapter_22_fixtures_and_wait_decorator.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_22_fixtures_and_wait_decorator.py
+.PHONY: test_chapter_23_debugging_prod
+test_chapter_23_debugging_prod: chapter_23_debugging_prod.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_23_debugging_prod.py
+.PHONY: test_chapter_24_outside_in
+test_chapter_24_outside_in: chapter_24_outside_in.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_24_outside_in.py
+.PHONY: test_chapter_25_CI
+test_chapter_25_CI: chapter_25_CI.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_25_CI.py
+.PHONY: test_chapter_26_page_pattern
+test_chapter_26_page_pattern: chapter_26_page_pattern.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_26_page_pattern.py
 
 
 .PHONY: test_appendix_purist_unit_tests

@@ -1,0 +1,694 @@
+[[chapter_11_server_prep]]
+== Getting A Server Ready For Deployment
+
+.A Note for Early Release Readers
+****
+With Early Release ebooks, you get books in their earliest form—the author's raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.
+
+This will be the 11th chapter of the final book. The GitHub repo is available at https://github.com/hjwp/book-example.
+
+If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the author at obeythetestinggoat@gmail.com.
+****
+
+((("deployment", "automating with Ansible", id="Dfarbric11")))
+((("infrastructure as code")))
+This chapter is all about getting ready for our deployment.
+We're going to spin up an actual server,
+make it accessible on the Internet with a real domain name,
+and setup the authentication and credentials we need
+to be able to control it remotely with SSH and Ansible.
+
+////
+DAVID overall notes
+
+The main challenge is that I found that when I ran into problems I lacked the
+mental model to troubleshoot - it's possible that others who don't have access
+to Harry(TM) will give up. I think talking through what Ansible is doing, maybe
+even a diagram at the beginning of the chapter to show what we're aiming for?
+In particular, it's difficult to understand where the Ansible error logs are
+coming from (i.e. local, server, container...)
+
+I also think we're missing some stuff at the end about how all this might look
+as a development workflow. Maybe talk about setting up scripts (so we don't
+have to remember the ansible command?) And what about releasing to production?
+It doesn't need much, it just feels unfinished to me.
+
+A few small things:
+
+*  I think you should make more of the fact that our functional tests can be
+  run against a real website hosted elsewhere. The fact that we can do that
+  was not obvious to me when we wrote those tests. Worth talking about a bit
+  more?
+
+* Shouldn't we commit our changes to Git at some point, as per the
+  other chapters?
+
+* Will we be returning to this again in the book? I'd like to
+  know whether I can destroy my Digital Ocean droplet yet, don't want to get
+  billed needlessly.
+////
+
+////
+SEBASTIAN overall notes
+All in all, I am not very fond of the current shape of this chapter.
+
+The summary is great and the choice of technologies is the best I can imagine.
+
+However, I got lost several times while reading through the chapter.
+There are too many open loops.
+For example, SSH is mentioned but then we jump into all other technologies
+without seeing what SSH is and how it will play with the rest.
+
+
+I think (my opinion) the chapter needs reorganizing
+so that readers can more quickly see a given piece of tech in action.
+I'd cut some content.
+
+If you like some more specific suggestions,
+I can spend more time and provide them.
+
+Also, it's mentioned that the server will be provisioned manually without automation,
+but then we get ansible infra/ansible-provision.yaml.
+I must say I'm not following when provisioning starts and where it ends.
+In my book (figuratively speaking),
+installing docker falls under the definition of provisioning
+(which was meant NOT to be automated)
+while the remaining steps, like exporting and reimporting docker image,
+are something different (deployment?).
+////
+
+
+.Warning, chapter under construction
+****
+As part of my work on the third edition of the book,
+I'm making big changes to the deployment chapters.
+This chapter is still a little "bare bones"
+and could do with a bit more explanatory content and guidance,
+but the core steps are all there, so I hope you'll be able to follow along.
+
+So as always I really, really need feedback.
+So please hit me up at obeythetestinggoat@gmail.com, or via
+https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues[GitHub Issues]
+and Pull Requests.
+
+I hope you enjoy the new version!
+****
+
+
+=== Getting a Domain Name
+
+((("domain names")))
+We're going to need a couple of domain names at this point in the book--they
+can both be subdomains of a single domain.
+I'm going to use _superlists.ottg.co.uk_ and _staging.ottg.co.uk_.
+If you don't already own a domain, this is the time to register one!
+Again, this is something I really want you to _actually_ do.
+If you've never registered a domain before,
+just pick any old registrar and buy a cheap one--it
+should only cost you $5 or so, and you can even find free ones.
+I promise seeing your site on a "real" website will be a thrill.
+
+// DAVID: just wondering if it's worth giving them the option to cheat and
+// specify a domain name in a hosts file?
+
+
+=== Manually Provisioning a Server to Host Our Site
+
+// TODO: revise this section?  I used to assume provisioning included installing dependencies,
+// but now we have docker, so at least some of that job is part of deployment after all.
+
+
+// HP: ok taking on suggestion from earlier,
+// maybe get rid of the provisioning/deployment distinction,
+// and instead talk about "spinning up" aka "starting" a server being the only manual step
+
+
+((("staging sites", "manual server provisioning", id="SSserver09")))
+((("server provisioning", id="seerver09")))
+We can separate out "deployment" into two tasks:
+
+- _Provisioning_ a new server to be able to host the code
+- _Deploying_ a new version of the code to an existing server
+
+Infrastructure-as-code tools can let you automate both of these,
+but the provisioning parts tend to be quite vendor-specific,
+so for the purposes of this book, we can live with manual provisioning.
+
+NOTE: I should probably stress once more that deployment is something that varies a lot,
+  and that as a result there are few universal best practices for how to do it.
+  So, rather than trying to remember the specifics of what I'm doing here,
+  you should be trying to understand the rationale,
+  so that you can apply the same kind of thinking in the specific future circumstances you encounter.
+
+
+==== Choosing Where to Host Our Site
+
+((("hosting services")))
+There are loads of different solutions out there these days,
+but they broadly fall into two camps:
+
+- Running your own (probably virtual) server, aka VPS (Virtual Private Server)
+- Using a ((("Platform-As-A-Service (PaaS)")))Platform-As-A-Service (PaaS)
+  offering like Heroku or my old employers, PythonAnywhere.
+
+((("PythonAnywhere")))
+With a PaaS, you don't get your own server,
+instead you're renting a "service" at a higher level of abstraction.
+Particularly for small sites,
+a PaaS offers a lot of advantages over running your own server,
+and I would definitely recommend looking into them.
+We're not going to use a PaaS in this book however, for several reasons.
+The main reason is that I want to avoid endorsing specific commercial providers.
+Secondly, all the PaaS offerings are quite different,
+and the procedures to deploy to each vary a lot--learning about one
+doesn't necessarily tell you about the others.
+Any one of them might radically change their process or business model by the time you get to read this book.
+
+Instead, we'll learn just a tiny bit of good old-fashioned server admin,
+including SSH and manual debugging.
+They're unlikely to ever go away,
+and knowing a bit about them will get you some respect
+from all the grizzled dinosaurs out there.
+
+// SEBASTIAN: Nice, and seem-to-be timeless choice!
+
+
+==== Spinning Up Our Own Server
+
+I'm not going to dictate how you spin up a server--whether
+you choose Amazon AWS, Rackspace, Digital Ocean, your own server in a data centre,
+or a Raspberry Pi in a cupboard under the stairs,
+any solution should be fine, as long as:
+
+* Your server is running Ubuntu 22.04 (aka "Jammy/LTS").
+
+* You have root access to it.
+
+* It's on the public internet (ie, it has a public IP address).
+
+* You can SSH into it.
+
+I'm recommending Ubuntu as a distro:footnote[
+Linux as an operating system comes in lots of different flavours,
+called "distros" or "distributions".
+The differences between them and their relative pros and cons are,
+like any seemingly minor detail, of tremendous interest to the right kind of nerd.
+We don't need to care about them for this book. As I say, Ubuntu is fine.]
+because it's popular and I'm used to it.
+If you know what you're doing, you can probably get away with using
+something else, but I won't be able to help you as much if you get stuck.
+
+* TODO: explictly recommend passwordless / public key auth.
+
+
+////
+TODO: feedback from stephanie g:
+I'm a little unclear if Digital Ocean is a PaaS like Heroku or not.
+I think no because you wrote that we wouldn't use PaaS
+but I don't really understand the distinction of "spinning up a server with PaaS"
+vs "spinning up a server without a PaaS"
+
+I didn't (still don't really) know what a "distro" is, [done]
+what Ubuntu's alternatives are, [done]
+or how to tell "what a server is running,"
+how to make sure I have root access to it and can SSH into it.
+Or why we make a non root user.
+
+Generally, I'm having trouble mapping all these things
+(PaaS, hosting a server, Digital Ocean, Ubuntu, Linux, Ansible, etc.)
+and their relationship to each other
+////
+
+[[step-by-step-guide]]
+.Step-by-step Instructions for Spinning up a Server
+*******************************************************************************
+((("Linux servers")))
+I appreciate that, if you've never started a Linux server before
+and you have absolutely no idea where to start,
+this is a big ask, especially when I'm refusing to "dictate"
+exactly how to do it.
+
+With that in mind, I wrote a
+https://github.com/hjwp/Book-TDD-Web-Dev-Python/blob/main/server-quickstart.md[very brief guide on GitHub].
+
+I didn't want to include it in the book itself because,
+inevitably, I do end up specifying a specific commercial provider in there.
+
+*******************************************************************************
+
+NOTE: Some people get to this chapter, and are tempted to skip the domain bit,
+    and the "getting a real server" bit, and just use a VM on their own PC.
+    Don't do this.
+    It's _not_ the same, and you'll have more difficulty following the instructions,
+    which are complicated enough as it is.
+    If you're worried about cost, have a look at the guide I wrote for free options.
+    ((("getting help")))
+
+
+
+////
+
+TODO: good advice but not quite sure it's phrased quite right for the new version of the chapter.
+
+.General Server Debugging Tips
+*******************************************************************************
+
+The most important lesson to remember from this chapter is,
+as always but more than ever, to work incrementally,
+make one change at a time, and run your tests frequently.
+
+When things (inevitably) go wrong, resist the temptation to flail about
+and make other unrelated changes in the hope that things will start working again;
+instead, stop, go backward if necessary to get to a working state,
+and figure out what went wrong before moving forward again.
+
+It's just as easy to fall into the Refactoring-Cat trap on the server!
+
+*******************************************************************************
+////
+
+// JAN: It would also be beneficial to state at least some range of server size (e.g., 2GB of memory). e.g., the smallest EC2 instances can have quite some troubles when running Django in Docker
+
+
+=== Configuring DNS for Staging and Live Domains
+
+We don't want to be messing about with IP addresses all the time,
+so we should point our staging and live domains to the server.
+At my registrar, the control screens looked a bit like <<registrar-control-screens>>.
+
+[[registrar-control-screens]]
+.Domain setup
+image::images/gandi_add_dns_a_record.png["Registrar control screen for adding a DNS record"]
+
+
+((("A-Records")))
+In the DNS system, pointing a domain at a specific IP address is called an "A-Record".footnote:[
+Strictly speaking, A-records are for IPv4,
+and you can also use AAAA-records for IPv6.
+Some cheap providers only support IPv6,
+and there's nothing wrong with that.]
+All registrars are slightly different,
+but a bit of clicking around should get you to the right screen in yours.
+You'll need two A-records:
+one for the staging address and one for the live one.
+No need to worry about any other type of record.
+
+DNS records take some time to "propagate" around the world
+(it's controlled by a setting called "TTL", Time To Live),
+so once you've set up your A-record,
+you can check its progress on a "propagation checking" service like this one:
+https://www.whatsmydns.net/#A/staging.ottg.co.uk.
+
+I'm planning to host my staging server at _staging.ottg.co.uk_
+
+
+=== Ansible
+
+Infrastructure-as-code tools, also called "configuration management" tools,
+come in lots of shapes and sizes.
+Chef and Puppet were two of the original ones,
+and you'll probably come across Terraform,
+which is particularly strong on managing cloud services like AWS.
+
+// SEBASTIAN: mentioning of too many technologies (e.g. Puppet/Chef - IMHO not necessary in 2024).
+
+We're going to use Ansible, because it's relatively popular,
+because it can do everything we need it to,
+because I'm biased that it happens to be written in Python,
+and because it's probably the one I'm personally most familiar with.
+
+Another tool could probably have worked just as well!
+The main thing to remember is the _concept_, which is that,
+as much as possible we want to manage our server configuration _declaratively_,
+by expressing the desired state of the server in a particular configuration syntax,
+rather than specifying a procedural series of steps to be followed one by one.
+
+==== Ansible vs SSH: How we'll Talk to our Server
+
+See <<ansible-and-ssh>>.
+
+[[ansible-and-ssh]]
+.Ansible and SSH
+image::images/ansible-and-ssh.png["Diagram "]
+
+Our objective is to use Ansible to automate the process of deploying to our server:
+making sure that the server has everything it needs to run our app
+(mostly, Docker and our container image),
+and then telling it to start or restart our container.
+
+Now and again, we'll want to "log on" to the server and have a look around manually:
+for that, we'll use the `ssh` command-line on our computer,
+which can let us open up an interactive console on the server.
+
+Finally, we'll run our functional tests against the server, once it's running our app,
+to make sure it's all working correctly.
+
+
+=== Start by Making Sure We Can SSH In
+
+At this point and for the rest of the book,
+I'm assuming that you have a nonroot user account set up,
+and that it has "sudo" privileges,
+so whenever we need to do something that requires root access, we use sudo,
+(or "become" in Ansible terminology);
+I'll be explicit about that in the various instructions that follow.
+
+My user is called "elspeth", but you can call yours whatever you like!
+Just remember to substitute it in all the places I've hardcoded it.
+See the guide I wrote (<<step-by-step-guide>>)
+if you need tips on creating a sudo user.
+
+
+Ansible uses SSH under the hood to talk to the server,
+so checking we can log in "manually" is a good first step:
+
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+$ *ssh elspeth@staging.ottg.co.uk*
+elspeth@server$: *echo "hello world"*
+hello world
+----
+
+
+* TODO: suggest passwordless login with keypairs?
+
+
+TIP: Look out for that `elspeth@server`
+    in the command-line listings in this chapter.
+    It indicates commands that must be run on the server,
+    as opposed to commands you run on your own PC.
+
+
+==== Debugging Issues with SSH
+
+Here's a few things to try if you can't SSH in:
+
+===== Debugging Network Connectivity
+
+First, check network connectivity:  can we even reach the server?
+
+[role="skipme"]
+[subs="quotes"]
+----
+$ *ping staging.ottg.co.uk*
+
+# if that doesn't work, try the IP address
+$ *ping 193.184.215.14*  # or whatever your IP is
+
+# also see if the domain name resolves
+$ *nslookup staging.ottg.co.uk*
+----
+
+If the IP works and the domain name doesn't,
+and/or if the `nslookup` doesn't work,
+you should go check your DNS config at your registrar.
+You may just need to wait!
+Try a DNS propagation checker like https://www.whatsmydns.net/#A/staging.ottg.co.uk.
+
+
+===== Debugging SSH Auth Issues
+
+Next, let's try and debug any possible issues with authentication.
+
+First, your hosting provider might have the option to open
+a console directly from within their web UI.
+That's worth trying, and if there are any problems there,
+then you probably need to restart your server,
+or perhaps kill it and create a new one.
+
+TIP: It's worth double-checking your IP address at this point,
+    in your provider's server control panel pages.
+
+Next we can try debugging our SSH connection
+
+[role="skipme"]
+[subs="quotes"]
+----
+# try the -v flag which turn on verbose/debug output
+$ *ssh -v elspeth@staging.ottg.uk*
+OpenSSH_9.7p1, LibreSSL 3.3.6
+debug1: Reading configuration data ~/.ssh/config
+debug1: Reading configuration data ~/.colima/ssh_config
+debug1: Reading configuration data /etc/ssh/ssh_config
+debug1: /etc/ssh/ssh_config line 21: include /etc/ssh/ssh_config.d/* matched no files
+debug1: /etc/ssh/ssh_config line 54: Applying options for *
+debug1: Authenticator provider $SSH_SK_PROVIDER did not resolve; disabling
+debug1: Connecting to staging.ottg.uk port 22.
+ssh: Could not resolve hostname staging.ottg.uk: nodename nor servname provided, or not known
+# oops I made a typo!  it should be ottg.co.uk not ottg.uk
+----
+
+If that doesn't help, try switching to the root user instead:
+
+[role="skipme"]
+[subs="quotes"]
+----
+$ *ssh -v root@staging.ottg.co.uk*
+[...]
+debug1: Authentications that can continue: publickey
+debug1: Next authentication method: publickey
+debug1: get_agent_identities: bound agent to hostkey
+debug1: get_agent_identities: agent returned 1 keys
+debug1: Will attempt key: ~/.ssh/id_ed25519 ED25519 SHA256:gZLxb9zCuGVT1Dm8vB4RRnPMThe27dRzxCSYeiSzn0E agent
+debug1: Will attempt key: ~/.ssh/id_rsa
+debug1: Will attempt key: ~/.ssh/id_ecdsa
+debug1: Will attempt key: ~/.ssh/id_ecdsa_sk
+debug1: Will attempt key: ~/.ssh/id_ed25519_sk
+debug1: Will attempt key: ~/.ssh/id_xmss
+debug1: Will attempt key: ~/.ssh/id_dsa
+debug1: Offering public key: ~/.ssh/id_ed25519 [...]
+debug1: Server accepts key: ~/.ssh/id_ed25519 [...]
+Authenticated to staging.ottg.co.uk ([165.232.110.81]:22) using "publickey".
+----
+
+That one actually worked, but in the verbose output,
+you can watch to make sure it find the right SSH keys,
+for example.
+
+TIP: If root works but your nonroot user doesn't,
+    you may need to add your public key to
+    `/home/yournonrootuser/.ssh/authorized_keys`
+
+
+If root doesn't work either,
+you may need to add your public SSH key to your account settings page,
+via your provider's web UI.
+That may or may not take effect immediately,
+you might need to delete your old server and create a new one.
+
+Remember, that probably means a new IP address!
+
+
+.Security
+*******************************************************************************
+A serious discussion of server security is beyond the scope of this book,
+and I'd warn against running your own servers
+without learning a good bit more about it.
+(One reason people choose to use a PaaS to host their code
+is that it means a slightly fewer security issues to worry about.)
+If you'd like a place to start, here's as good a place as any:
+https://blog.codelitt.com/my-first-10-minutes-on-a-server-primer-for-securing-ubuntu/
+
+I can definitely recommend the eye-opening experience of installing
+fail2ban and watching its logfiles to see just how quickly it picks up on
+random drive-by attempts to brute force your SSH login.  The internet is a
+wild place!
+((("security issues and settings", "server security")))
+((("Platform-As-A-Service (PaaS)")))
+*******************************************************************************
+
+
+
+==== Installing Ansible
+
+Assuming we can reliably SSH into the server,
+it's time to install Ansible and make sure it can talk to our server as well.
+
+Take a look at the
+https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html[Ansible installation guide]
+for all the various options,
+but probably the simplest thing to do is to install Ansible into the virtualenv
+on our local machine (Ansible doesn't need to be installed on the server):
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *pip install ansible*
+# we also need the Docker SDK for the ansible/docker integration to work:
+$ *pip install docker*
+----
+
+// TODO: consider introducing an explicit requirements.dev.txt here,
+// with -r requirements.txt and put ansible, docker, and selenium in there.
+// or, maybe get that in place in the previous chapter, keep this one shorter.
+
+
+==== Checking Ansible can Talk To Our Server
+
+This is the last step in making sure we're ready,
+making sure Ansible can talk to our server.
+
+At the core of ansible is what's called a "playbook",
+which describes what we want to happen on our server.
+
+Let's create one now.
+It's probably a good idea to keep it in a folder of its own:
+
+[subs="quotes"]
+----
+*mkdir infra*
+----
+
+And here's a minimal playbook whose job is just to "ping"
+the server, to check we can talk to it.
+It's in a format called YAML (Yet Another Markup Language),
+which, if you've never come across before,
+you will soon develop a love-hate relationshipfootnote:[
+The "love" part is that YAML is very easy to _read_ and scan through at a glance.
+The "hate" part is that the actual syntax is surprisingly fiddly to get right:
+the difference between lists and key/value maps is subtle
+and I can never quite remember it honestly.]
+for.
+
+
+[role="sourcecode"]
+.infra/deploy-playbook.yaml (ch11l001)
+====
+[source,yaml]
+----
+- hosts: all
+  tasks:
+    - name: Ping to make sure we can talk to our server
+      ansible.builtin.ping:
+----
+====
+
+
+We won't worry too much about the syntax or how it works at the moment,
+let's just use it to make sure everything works.
+
+To invoke ansible, we use the command `ansible-playbook`,
+which will have been installed into your virutalenv when we did
+the `pip install ansible` earlier.
+
+Here's the full command we'll use, with an explanation of each part:
+
+[role="small-code skipme"]
+----
+ansible-playbook \
+  --user=elspeth \ <1>
+  -i staging.ottg.co.uk, \ <2><3>
+  infra/deploy-playbook.yaml.yaml \ <4>
+  -vv <5>
+----
+
+<1> The `--user=` flag lets us specify the user to use to authenticate
+    with the server.  This should be the same user you can SSH with.
+
+<2> The `-i` flag specifies what server to run against.
+
+<3> Note the trailing comma after the server hostname.
+    Without this it won't work
+    (it's there because Ansible is designed to work against multiple servers
+    at the same time).footnote:[
+    The "i" stands for "inventory".
+    Using the -i flag is actually a little unconventional.
+    If you read the Ansible docs, you'll find they usually
+    recommend having an "inventory file" which lists all your servers,
+    along with various bits of qualifying metadata.
+    That's overkill for our usecase tho!]
+
+<4> Next comes the path to our playbook, as a positional argument
+
+<5> Finally the `-v` or `-vv` flags control how verbose the output will be.
+    Useful for debugging!
+
+
+Here's some example output when I run it:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/deploy-playbook.yaml.yaml -vv*]
+ansible-playbook [core 2.17.5]
+  config file = None
+  configured module search path = ['~/.ansible/plugins/modules', '/usr/share/ansible/plugins/modules']
+  ansible python module location = ...goat-book/.venv/lib/python3.13/site-packages/ansible
+  ansible collection location = ~/.ansible/collections:/usr/share/ansible/collections
+  executable location = ...goat-book/.venv/bin/ansible-playbook
+  python version = 3.13.0 (main, Oct 11 2024, 22:59:05) [Clang 15.0.0 (clang-1500.3.9.4)] (...goat-book/.venv/bin/python)
+  jinja version = 3.1.4
+  libyaml = True
+No config file found; using defaults
+Skipping callback 'default', as we already have a stdout callback.
+Skipping callback 'minimal', as we already have a stdout callback.
+Skipping callback 'oneline', as we already have a stdout callback.
+
+PLAYBOOK: deploy-playbook.yaml **************************************************************************************************************
+1 plays in infra/deploy-playbook.yaml
+
+PLAY [all] **********************************************************************************************************************************
+
+TASK [Gathering Facts] **********************************************************************************************************************
+task path: ...goat-book/source/chapter_11_server_prep/superlists/infra/deploy-playbook.yaml:1
+[WARNING]: Platform linux on host staging.ottg.co.uk is using the discovered Python interpreter at /usr/bin/python3.10, but future
+installation of another Python interpreter could change the meaning of that path. See https://docs.ansible.com/ansible-
+core/2.17/reference_appendices/interpreter_discovery.html for more information.
+ok: [staging.ottg.co.uk]
+
+TASK [Ping to make sure we can talk to our server] ******************************************************************************************
+task path: ...goat-book/source/chapter_11_server_prep/superlists/infra/deploy-playbook.yaml:3
+ok: [staging.ottg.co.uk] => {"changed": false, "ping": "pong"}
+
+PLAY RECAP **********************************************************************************************************************************
+staging.ottg.co.uk         : ok=2    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+----
+
+////
+TODO: add user to docker group:
+
+
+#
+- name: Add our user to the docker group, so we don't need sudo/become
+  ansible.builtin.user:
+    name: '{{ ansible_user }}'
+    groups: docker
+
+- name: Reset ssh connection to allow the user/group change to take effect
+  ansible.builtin.meta: reset_connection
+////
+
+
+Looking good!
+In the next chapter, we'll use Ansible to get our app up and running
+on our server.  It'll be a thrill I promise!
+
+
+
+
+[role="pagebreak-before less_space"]
+.Server prep recap
+*******************************************************************************
+
+VPS vs PaaS::
+  We discussed the tradeoffs of running your own server vs opting for a PaaS.
+  A VPS is great for learning, but you might find the lower admin overhead
+  of a PaaS makes sense for real projects.
+
+Domain Name Registration and DNS::
+  This tends to be something you only do once,
+  but buying a domain name and pointing it at your server
+  is an unavoidable part of hosting a web app.
+  Now you know your TTLs from your A-Records!
+
+SSH::
+  SSH is the swiss army knife of server admin.
+  The dream is that everything is automated,
+  but now and again you just gotta open up a shell on that box!
+  
+Ansible::
+  We've had the barest of teasers,
+  but we have Ansible and we're ready to learn how to use it.
+
+*******************************************************************************
