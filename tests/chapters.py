@@ -22,7 +22,7 @@ CHAPTERS = [
     "chapter_16_advanced_forms",
 
     # part 4: spiking and mocking
-    "chapter_16_javascript",
+    "chapter_17_javascript",
     "chapter_17_second_deploy",
     "chapter_18_spiking_custom_auth",
     "chapter_19_mocking_1",

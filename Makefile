@@ -129,9 +129,9 @@ test_chapter_15_simple_form: chapter_15_simple_form.html $(TMPDIR) $(VENV)/bin
 .PHONY: test_chapter_16_advanced_forms
 test_chapter_16_advanced_forms: chapter_16_advanced_forms.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_16_advanced_forms.py
-.PHONY: test_chapter_16_javascript
-test_chapter_16_javascript: chapter_16_javascript.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_16_javascript.py
+.PHONY: test_chapter_17_javascript
+test_chapter_17_javascript: chapter_17_javascript.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_17_javascript.py
 .PHONY: test_chapter_17_second_deploy
 test_chapter_17_second_deploy: chapter_17_second_deploy.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_17_second_deploy.py
