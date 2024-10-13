@@ -153,9 +153,9 @@ test_chapter_23_debugging_prod: chapter_23_debugging_prod.html $(TMPDIR) $(VENV)
 .PHONY: test_chapter_24_outside_in
 test_chapter_24_outside_in: chapter_24_outside_in.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_24_outside_in.py
-.PHONY: test_chapter_24_CI
-test_chapter_24_CI: chapter_24_CI.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_24_CI.py
+.PHONY: test_chapter_25_CI
+test_chapter_25_CI: chapter_25_CI.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_25_CI.py
 .PHONY: test_chapter_25_page_pattern
 test_chapter_25_page_pattern: chapter_25_page_pattern.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_25_page_pattern.py

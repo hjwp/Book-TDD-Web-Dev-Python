@@ -30,7 +30,7 @@ CHAPTERS = [
     "chapter_22_fixtures_and_wait_decorator",
     "chapter_23_debugging_prod",
     "chapter_24_outside_in",
-    "chapter_24_CI",
+    "chapter_25_CI",
     "chapter_25_page_pattern",
 
     "chapter_26_hot_lava",
