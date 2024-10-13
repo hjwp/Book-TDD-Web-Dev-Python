@@ -138,9 +138,9 @@ test_chapter_18_second_deploy: chapter_18_second_deploy.html $(TMPDIR) $(VENV)/b
 .PHONY: test_chapter_19_spiking_custom_auth
 test_chapter_19_spiking_custom_auth: chapter_19_spiking_custom_auth.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_19_spiking_custom_auth.py
-.PHONY: test_chapter_19_mocking_1
-test_chapter_19_mocking_1: chapter_19_mocking_1.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_19_mocking_1.py
+.PHONY: test_chapter_20_mocking_1
+test_chapter_20_mocking_1: chapter_20_mocking_1.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_20_mocking_1.py
 .PHONY: test_chapter_20_mocking_2
 test_chapter_20_mocking_2: chapter_20_mocking_2.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_20_mocking_2.py
