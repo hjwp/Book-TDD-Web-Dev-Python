@@ -113,13 +113,13 @@ test_chapter_10_production_readiness: chapter_10_production_readiness.html $(TMP
 .PHONY: test_chapter_11_server_prep
 test_chapter_11_server_prep: chapter_11_server_prep.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_11_server_prep.py
-.PHONY: test_chapter_12_organising_test_files
+.PHONY: test_chapter_13_organising_test_files
 .PHONY: test_chapter_12_ansible
 test_chapter_12_ansible: chapter_12_ansible.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_12_ansible.py
-.PHONY: test_chapter_12_organising_test_files
-test_chapter_12_organising_test_files: chapter_12_organising_test_files.html $(TMPDIR) $(VENV)/bin
-	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_12_organising_test_files.py
+.PHONY: test_chapter_13_organising_test_files
+test_chapter_13_organising_test_files: chapter_13_organising_test_files.html $(TMPDIR) $(VENV)/bin
+	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_13_organising_test_files.py
 .PHONY: test_chapter_13_database_layer_validation
 test_chapter_13_database_layer_validation: chapter_13_database_layer_validation.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s --tb=short ./tests/test_chapter_13_database_layer_validation.py

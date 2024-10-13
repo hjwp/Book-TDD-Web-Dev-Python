@@ -7,7 +7,7 @@ from book_tester import ChapterTest
 
 class Chapter13Test(ChapterTest):
     chapter_name = "chapter_13_database_layer_validation"
-    previous_chapter = "chapter_12_organising_test_files"
+    previous_chapter = "chapter_13_organising_test_files"
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
