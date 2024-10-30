@@ -1,5 +1,5 @@
 [[chapter_23_debugging_prod]]
-== Server-Side Debugging
+== Debugging Production Issues
 
 .Warning, Chapter Update in Progress
 *******************************************************************************
@@ -76,28 +76,66 @@ FAILED (failures=1, errors=1)
 
 ----
 
-We can't log in--either with the real email system or with our
-pre-authenticated session.  Looks like our nice new authentication
-system is crashing the server.
+We can't log in--either with the real email system or with our pre-authenticated session.
+Looks like our nice new authentication system is crashing the server.
 
 
-Let's practice a bit of server-side debugging!
+Let's practice a bit of production debugging!
 
 
-* TODO: show we can actually repro this with Docker.
+=== Trying to Repro in Docker
+
+One of the reasons we went to the trouble of building a Docker image,
+was to have a way of simulating what's on the server as closely as possible, locally.
+So let's see whether we get the same error if we test against Docker.
+
+Let's rebuild and start our Docker container locally,
+on port 8888:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -it superlists*
+----
+
+And now let's see if our errors repro against Docker:
+
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*]
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate element: #id_logout; [...]
+[...]
+AssertionError: 'Check your email' not found in 'Server Error (500)'
+[...]
+FAILED (failures=1, errors=1)
+----
+
+Sure enough, same two errors!
 
 // TODO: actually, does this obviate the whole need for running fts against the server?
 
 
-=== Inspecting Logs on the Server
+=== Inspecting the Docker Container Logs
 
 ((("logging")))
 ((("Gunicorn", "logging setup")))
-In order to track this problem down,
-we need to get some logging information out of Django.
+When Django fails with a 500 or "Unhandled Exception" and DEBUG is off,
+it doesn't print the tracebacks to your web browser.
+But it will send them to your logs instead.
 
-First, make sure your 'settings.py' still contains the `LOGGING`
-settings which will actually send stuff to the console:
+.Check our Django LOGGING settings
+*******************************************************************************
+
+It's worth double checking at this point that your _settings.py_
+still contains the `LOGGING` settings which will actually send stuff
+to the console:
 
 [role="sourcecode currentcontents"]
 .src/superlists/settings.py
@@ -117,43 +155,173 @@ LOGGING = {
 ----
 ====
 
-Restart the Docker container again if necessary,
+Restart the Docker container if necessary,
 and then either rerun the FT, or just try to log in manually.
-While that happens, we watch the logs on the server with `docker logs -f`:
+*******************************************************************************
+
+If you switch to the terminal that's running your Docker image,
+you should see the traceback printed out in there:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+Internal Server Error: /accounts/send_login_email
+Traceback (most recent call last):
+[...]
+  File "/src/accounts/views.py", line 16, in send_login_email
+    send_mail(
+    ~~~~~~~~~^
+        "Your login link for Superlists",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        [email],
+        ^^^^^^^^
+    )
+    ^
+[...]
+    self.connection.sendmail(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        from_email, recipients, message.as_bytes(linesep="\r\n")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/smtplib.py", line 876, in sendmail
+    raise SMTPSenderRefused(code, resp, from_addr)
+smtplib.SMTPSenderRefused: (530, b'5.7.0 Authentication Required. [...]
+----
+
+That looks like a pretty good clue to what's going on.
+
+Before we go further, it's worth confirming that the error on the actual server
+is the same as the one we see in Docker.
+
+SSH in to your server and run `docker logs`:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *docker logs -f superlists*
+elspeth@server:$ *docker logs superlists*
 ----
 
 You should see an error like this:
 [role="skipme small-code"]
 [subs="specialcharacters,quotes"]
 ----
+❯ ssh elspeth@staging.ottg.co.uk docker logs superlists
+[2024-10-30 09:55:08 +0000] [6] [INFO] Starting gunicorn 22.0.0
+[2024-10-30 09:55:08 +0000] [6] [INFO] Listening at: http://0.0.0.0:8888 (6)
+[2024-10-30 09:55:08 +0000] [6] [INFO] Using worker: sync
+[2024-10-30 09:55:08 +0000] [7] [INFO] Booting worker with pid: 7
+Not Found: /favicon.ico
+Not Found: /favicon.ico
+Not Found: /favicon.ico
+Not Found: /favicon.ico
+Not Found: /favicon.ico
 Internal Server Error: /accounts/send_login_email
 Traceback (most recent call last):
-  File "/home/elspeth/sites/staging.ottg.co.uk/.venv/lib/python3.7/[...]
+  File "/venv/lib/python3.13/site-packages/django/core/handlers/exception.py",
+  line 55, in inner
+    response = get_response(request)
+  File "/venv/lib/python3.13/site-packages/django/core/handlers/base.py", line
+  197, in _get_response
     response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File
-"/home/elspeth/sites/staging.ottg.co.uk/accounts/views.py", line
-20, in send_login_email
-    [email]
+  File "/src/accounts/views.py", line 16, in send_login_email
+    send_mail(
+    ~~~~~~~~~^
+        "Your login link for Superlists",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 [...]
-    self.connection.sendmail(from_email, recipients, message.as_bytes(linesep='\r\n'))
-  File "/usr/lib/python3.7/smtplib.py", line 862, in sendmail
     raise SMTPSenderRefused(code, resp, from_addr)
-smtplib.SMTPSenderRefused: (530, b'5.5.1 Authentication Required. Learn more
-at\n5.5.1  https://support.google.com/mail/?p=WantAuthError [...]
-- gsmtp', 'noreply@superlists')
+smtplib.SMTPSenderRefused: (530, b'5.7.0 Authentication Required. [...]
 ----
 
-Hm, Gmail is refusing to send our emails, is it?  Now why might that be?
-Ah yes, we haven't told the server what our password is!
+
+Sure enough!  Good to know our local Docker setup can repro the error on the server.
 ((("", startref="SScatch21")))((("", startref="DBserstag21")))
 
 
 === Another Environment Variable
+
+Hm, Gmail is refusing to send our emails, is it?  Now why might that be?
+Ah yes, we haven't told the server what our password is!
+
+Let's add this new environment variable to our local Docker container `run`
+command:
+
+First, set your email password in your terminal if you need to:
+
+[subs="specialcharacters,quotes"]
+----
+$ *export EMAIL_PASSWORD="yoursekritpasswordhere"*
+----
+
+Now, rebuild and re-run our container, with an extra `-e` flag:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD="$EMAIL_PASSWORD" \
+    -it superlists*
+----
+
+And now we can rerun our FT again.
+We'll narrow it down to just the `test_login` test since that's the main one that has a problem:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests.test_login*]
+[...]
+ERROR: test_login_using_magic_link
+(functional_tests.test_login.LoginTest.test_login_using_magic_link)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/test_login.py", line 32, in
+test_login_using_magic_link
+    email = mail.outbox.pop()
+IndexError: pop from empty list
+----
+
+Aha!  The tests get a little further.
+It looks like our server _can_ now send emails,
+(and the docker log no longer shows any errors),
+they're just not appearing in `mail.outbox`.
+
+The reason is that `mail.outbox` is a local, in-memory variable in Django,
+so that's only going to work when our tests and our server are running in the same process, like they do with unit tests or with `LiveServerTestCase` FTs.
+
+When we run against another process, be it Docker or an actual server,
+we can't access the same `mail.outbox` variable.
+
+We need another technique if we want to actually inspect the emails
+that the server sends, in our tests against Docker or the server.
+
+
+=== Deciding How to Test "Real" Email Sending
+
+This is a point at which we have to explore some tradeoffs.
+There are a few different ways we could test this:
+
+1. We could build a "real" end-to-end test, and have our tests
+   log in to an email server, and retrieve the email from there.
+   That's what I did in the first and second edition.
+
+2. We could give up on testing email on the server.
+   If we have a minimal smoke test that the server _can_ send emails,
+   then we don't need to test that they are actually delivered.
+
+3. We can use an alternative, fake email backend,
+   whereby Django will save the emails to a file on disk for example,
+   and we can inspect them there.
+
+
+
+
+=== Setting Secret Environment Variables on the Server
 
 ((("debugging", "server-side", "setting secret environment variables")))
 ((("environment variables")))
@@ -203,10 +371,6 @@ but we can't check the email in the `mail.outbox`...
 ((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))
 ((("Django framework", "sending emails", id="DJFemail21")))
 ((("emails, sending from Django", id="email21")))
-Ah. That explains it.
-Now that we're running against a real server rather than the `LiveServerTestCase`,
-we can no longer inspect the local `django.mail.outbox` to see sent emails.
-
 
 First, we'll need to know, in our FTs,
 whether we're running against the staging server or not.
