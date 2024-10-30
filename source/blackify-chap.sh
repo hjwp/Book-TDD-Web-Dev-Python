@@ -14,7 +14,7 @@ git fetch $REPO
 STARTCOMMIT="$(git rev-parse $PREV)"
 ENDCOMMIT="$(git rev-parse $CHAP)"
 
-git checkout $CHAP
+git switch $CHAP
 git reset --hard $REPO/$PREV
 ruff format .
 git commit -am"initial black commit" --allow-empty

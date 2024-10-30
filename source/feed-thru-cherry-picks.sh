@@ -31,7 +31,7 @@ fi
 git fetch "$REPO"
 
 # reset our chapter to the new version of the end of $PREV
-git checkout "$CHAP"
+git switch "$CHAP"
 git reset --hard "$REPO/$PREV"
 
 # now cherry pick all the old commits from $CHAP onto this new base.

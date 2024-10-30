@@ -15,8 +15,8 @@ fi
 git mv "source/$OLD_CHAPTER" "source/$NEW_NAME"
 
 cd "source/$NEW_NAME/superlists" 
-git checkout "$OLD_CHAPTER"
-git checkout -b "$NEW_NAME"
+git switch "$OLD_CHAPTER"
+git switch -c "$NEW_NAME"
 git push -u local
 git push -u origin
 cd ../../..
