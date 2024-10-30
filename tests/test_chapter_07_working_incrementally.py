@@ -38,8 +38,8 @@ class Chapter7Test(ChapterTest):
             # self.pos = 93
             self.pos = 113
             self.sourcetree.run_command(
-                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l035"))
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch07l041"))
+                # "git switch {}".format(self.sourcetree.get_commit_spec("ch07l035"))
+                "git switch {}".format(self.sourcetree.get_commit_spec("ch07l041"))
             )
 
         while self.pos < touch_pos:

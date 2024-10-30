@@ -33,7 +33,7 @@ class Chapter10Test(ChapterTest):
             self.pos = 29
             self.sourcetree.run_command("uv pip install gunicorn whitenoise")
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch10l007"))
+                "git switch {}".format(self.sourcetree.get_commit_spec("ch10l007"))
             )
 
         # if DO_SERVER_COMMANDS:

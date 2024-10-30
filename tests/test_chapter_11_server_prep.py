@@ -30,7 +30,7 @@ class Chapter11Test(ChapterTest):
         if os.environ.get("SKIP"):
             self.pos = 42
             self.sourcetree.run_command(
-                f"git checkout {self.sourcetree.get_commit_spec('ch08l003')}"
+                f"git switch {self.sourcetree.get_commit_spec('ch08l003')}"
             )
 
         # if DO_SERVER_COMMANDS:

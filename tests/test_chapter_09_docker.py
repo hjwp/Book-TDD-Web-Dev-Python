@@ -36,9 +36,9 @@ class Chapter9Test(ChapterTest):
             # self.pos = 18
             self.pos = 60
             self.sourcetree.run_command(
-                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l001"))
-                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l003"))
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l008"))
+                # "git switch {}".format(self.sourcetree.get_commit_spec("ch09l001"))
+                # "git switch {}".format(self.sourcetree.get_commit_spec("ch09l003"))
+                "git switch {}".format(self.sourcetree.get_commit_spec("ch09l008"))
             )
             print(f"Running in: {self.sourcetree.tempdir}")
             # vm_restore = "MANUAL_2"

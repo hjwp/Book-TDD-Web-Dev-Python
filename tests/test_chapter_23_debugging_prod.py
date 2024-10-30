@@ -38,7 +38,7 @@ class Chapter18Test(ChapterTest):
         if os.environ.get("SKIP"):
             self.pos = 10
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch17l004"))
+                "git switch {}".format(self.sourcetree.get_commit_spec("ch17l004"))
             )
 
         # if DO_SERVER_COMMANDS:
@@ -50,7 +50,7 @@ class Chapter18Test(ChapterTest):
             #     print("hacking in code update on server")
             #     self.run_server_command(
             #         "cd /home/elspeth/sites/staging.ottg.co.uk"
-            #         " && git checkout chapter_23_debugging_prod"
+            #         " && git switch chapter_23_debugging_prod"
             #         " && git reset --hard origin/chapter_23_debugging_prod",
             #     )
             #     self.run_server_command(

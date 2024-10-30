@@ -26,7 +26,7 @@ class Chapter23Test(ChapterTest):
         if skip:
             self.pos = 27
             self.sourcetree.run_command(
-                "git checkout {0}".format(self.sourcetree.get_commit_spec("ch20l015"))
+                "git switch {0}".format(self.sourcetree.get_commit_spec("ch20l015"))
             )
 
         while self.pos < len(self.listings):

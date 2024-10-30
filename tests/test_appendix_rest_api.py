@@ -24,7 +24,7 @@ class AppendixVITest(ChapterTest):
         skip = False
         if skip:
             self.pos = 40
-            self.sourcetree.run_command('git checkout {}'.format(
+            self.sourcetree.run_command('git switch {}'.format(
                 self.sourcetree.get_commit_spec('ch36l027')
             ))
 

@@ -66,7 +66,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
             os.path.join(os.path.dirname(__file__), "testrepo")
         )
         self.sourcetree.start_with_checkout("chapter_17", "chapter_16")
-        self.sourcetree.run_command("git checkout test-start")
+        self.sourcetree.run_command("git switch test-start")
         self.sourcetree.run_command("git reset")
 
     def test_from_real_git_stuff(self):
@@ -128,7 +128,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
 
     def _checkout_commit(self, commit):
         commit_spec = self.sourcetree.get_commit_spec(commit)
-        self.sourcetree.run_command("git checkout " + commit_spec)
+        self.sourcetree.run_command("git switch " + commit_spec)
         self.sourcetree.run_command("git reset")
 
     def test_raises_if_too_many_files_in_commit(self):
