@@ -240,10 +240,25 @@ Sure enough!  Good to know our local Docker setup can repro the error on the ser
 ((("", startref="SScatch21")))((("", startref="DBserstag21")))
 
 
-=== Another Environment Variable
+=== Another Environment Variable In Docker
 
-Hm, Gmail is refusing to send our emails, is it?  Now why might that be?
+So, Gmail is refusing to send our emails, is it?  Now why might that be?
 Ah yes, we haven't told the server what our password is!
+
+
+As you might remember from earlier chapters,
+our _settings.py_ expects to get the email server password from an environment variable
+named `EMAIL_PASSWORD`:
+
+[role="sourcecode currentcontents"]
+.src/superlists/settings.py
+====
+[source,python]
+----
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+----
+====
+
 
 Let's add this new environment variable to our local Docker container `run`
 command:
@@ -252,10 +267,14 @@ First, set your email password in your terminal if you need to:
 
 [subs="specialcharacters,quotes"]
 ----
+$ *echo $EMAIL_PASSWORD*
+# if that's empty, let's set it:
 $ *export EMAIL_PASSWORD="yoursekritpasswordhere"*
 ----
 
-Now, rebuild and re-run our container, with an extra `-e` flag:
+Now let's pass that env var thru to our docker container using one more `-e` flag,
+this one fishing the env var out of the shell we're in:
+
 
 [subs="specialcharacters,quotes"]
 ----
@@ -264,9 +283,14 @@ $ *docker build -t superlists . && docker run \
     --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
     -e DJANGO_SECRET_KEY=sekrit \
     -e DJANGO_ALLOWED_HOST=localhost \
-    -e EMAIL_PASSWORD="$EMAIL_PASSWORD" \
+    -e EMAIL_PASSWORD \  <1>
     -it superlists*
 ----
+
+<1> If you use `-e` without an `=something` argument, it sets the env var inside Docker
+    to the same value set in the current shell.
+    It's like saying `-e EMAIL_PASSWORD=$EMAIL_PASSWORD`
+
 
 And now we can rerun our FT again.
 We'll narrow it down to just the `test_login` test since that's the main one that has a problem:
@@ -319,6 +343,119 @@ There are a few different ways we could test this:
    and we can inspect them there.
 
 
+Let's explore all three options and pick one.
+
+=== How to Test Email End-To-End, if You Want To
+
+Here's an example helper function that can retrieve a real email
+from a real POP3 email server,
+using the horrifically tortuous Python standard library POP3 client.
+
+To make it work, we'll need an email address to receive the email.
+I signed up for a Yahoo account for testing,
+but you can use any email service you like, as long as it offers POP3 access.
+
+You will need to set the
+`RECEIVER_EMAIL_PASSWORD` environment variable in the console that's running the FT.
+
+[subs="specialcharacters,quotes"]
+----
+$ *echo RECEIVER_EMAIL_PASSWORD=otheremailpasswordhere >> .env*
+$ *set -a; source .env; set +a*
+----
+
+[role="sourcecode skipme"]
+.src/functional_tests/test_login.py (ch23l001)
+====
+[source,python]
+----
+import os
+import poplib
+import re
+impot time
+[...]
+
+def retrieve_pop3_email(receiver_email, subject, pop3_server, pop3_password):
+    email_id = None
+    start = time.time()
+    inbox = poplib.POP3_SSL(pop3_server)
+    try:
+        inbox.user(receiver_email)
+        inbox.pass_(pop3_password)
+        while time.time() - start < POP3_TIMEOUT:
+            # get 10 newest messages
+            count, _ = inbox.stat()
+            for i in reversed(range(max(1, count - 10), count + 1)):
+                print("getting msg", i)
+                _, lines, __ = inbox.retr(i)
+                lines = [l.decode("utf8") for l in lines]
+                print(lines)
+                if f"Subject: {subject}" in lines:
+                    email_id = i
+                    body = "\n".join(lines)
+                    return body
+            time.sleep(5)
+    finally:
+        if email_id:
+            inbox.dele(email_id)
+        inbox.quit()
+----
+====
+
+If you're curious, I'd encourage you to try this out in your FTs.
+It definitely _can_ work.
+But, having tried it in the first couple of editions of the book.
+I have to say it's fiddly to get right,
+and often flaky, which is a highly undesirable property for a testing tool.
+
+
+=== Using a Fake Email Backend For Django
+
+Let's say that, if we detect an environment variable `EMAIL_FILE_PATH`,
+we switch to Django's file-based backend:
+
+
+.src/superlists/settings.py
+====
+[source,python]
+----
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_HOST_USER = "obeythetestinggoat@gmail.com"
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+# Use fake file-based backend if EMAIL_FILE_PATH is set
+if "EMAIL_FILE_PATH" in os.environ:
+    EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+    EMAIL_FILE_PATH = os.environ["EMAIL_FILE_PATH"]
+----
+====
+
+Now let's set that file path, and mount it inside our docker container,
+so that it's available both inside and outside the container:
+
+[subs="specialcharacters,quotes"]
+----
+# set a local env var for our path to the emails file
+$ *export EMAIL_FILE_PATH=/tmp/superlists-emails*
+# make sure the file exists
+$ *mkdir -p $EMAIL_FILE_PATH*
+# re-run our container, with the EMAIL_FILE_PATH as an env var, and mounted.
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    --mount type=bind,source=$EMAIL_FILE_PATH,target=$EMAIL_FILE_PATH \  <1>
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \
+    -e EMAIL_FILE_PATH \  <2>
+    -it superlists*
+----
+
+<1> Here's where we mount the emails file so we can see it
+    both inside and outside the container
+
+<2> And here's where we pass the path as an env var.
 
 
 === Setting Secret Environment Variables on the Server
@@ -388,70 +525,6 @@ Let's save the `staging_server` variable on `self` in _base.py_:
             self.live_server_url = "http://" + self.test_server
 ----
 ====
-
-Then we build a helper function that can retrieve a real email from a real POP3
-email server, using the horrifically tortuous Python standard library POP3
-client:
-
-[role="sourcecode"]
-.src/functional_tests/test_login.py (ch21l010)
-====
-[source,python]
-----
-import os
-import poplib
-import re
-import time
-[...]
-
-    def wait_for_email(self, test_email, subject):
-        if not self.test_server:
-            email = mail.outbox.pop()
-            self.assertIn(test_email, email.to)
-            self.assertEqual(email.subject, subject)
-            return email.body
-
-        email_id = None
-        start = time.time()
-        inbox = poplib.POP3_SSL("pop.mail.yahoo.com")
-        try:
-            inbox.user(test_email)
-            inbox.pass_(os.environ["YAHOO_PASSWORD"])
-            while time.time() - start < 60:
-                # get 10 newest messages
-                count, _ = inbox.stat()
-                for i in reversed(range(max(1, count - 10), count + 1)):
-                    print("getting msg", i)
-                    _, lines, __ = inbox.retr(i)
-                    lines = [l.decode("utf8") for l in lines]
-                    print(lines)
-                    if f"Subject: {subject}" in lines:
-                        email_id = i
-                        body = "\n".join(lines)
-                        return body
-                time.sleep(5)
-        finally:
-            if email_id:
-                inbox.dele(email_id)
-            inbox.quit()
-----
-====
-
-* TODO: consider not using POP3, maybe
-  https://docs.djangoproject.com/en/5.0/topics/email/#file-backend[file backend] instead.
-  discuss tradeoff of testing config
-  vs not needing to test that django can actually send emails
-
-I signed up for a Yahoo account for testing,
-but you can use any email service you like, as long as it offers POP3 access.
-You will need to set the
-`YAHOO_PASSWORD` environment variable in the console that's running the FT.
-
-[subs="specialcharacters,quotes"]
-----
-$ *echo YAHOO_PASSWORD=otheremailpasswordhere >> .env*
-$ *set -a; source .env; set +a*
-----
 
 And then we feed through the rest of the changes to the FT that are required
 as a result.  Firstly, populating a `test_email` variable, differently for
