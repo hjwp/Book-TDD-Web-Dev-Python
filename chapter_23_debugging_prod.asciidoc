@@ -430,7 +430,7 @@ Let's say that, if we detect an environment variable `EMAIL_FILE_PATH`,
 we switch to Django's file-based backend:
 
 
-.src/superlists/settings.py
+.src/superlists/settings.py (ch23l002)
 ====
 [source,python]
 ----
@@ -445,6 +445,105 @@ if "EMAIL_FILE_PATH" in os.environ:
     EMAIL_FILE_PATH = os.environ["EMAIL_FILE_PATH"]
 ----
 ====
+
+Here's how we can adapt our tests to conditionally use the email file,
+instead of Django's `mail.outbox`, if the env var is set when running our tests:
+
+
+
+[role="sourcecode"]
+.src/functional_tests/test_login.py (ch23l003)
+====
+[source,python]
+----
+class LoginTest(FunctionalTest):
+    def retrieve_email_from_file(self, sent_to, subject, emails_dir):  # <1>
+        latest_emails_file = sorted(Path(emails_dir).iterdir())[-1]  # <2>
+        latest_email = latest_emails_file.read_text().split("-" * 80)[-1]  # <3>
+        self.assertIn(subject, latest_email)
+        self.assertIn(sent_to, latest_email)
+        return latest_email
+
+    def retrieve_email_from_django_outbox(self, sent_to, subject):  # <4>
+        email = mail.outbox.pop()
+        self.assertIn(sent_to, email.to)
+        self.assertEqual(email.subject, subject)
+        return email.body
+
+    def wait_for_email(self, sent_to, subject):  # <5>
+        """
+        Retrieve email body,
+        from a file if the right env var is set,
+        or get it from django.mail.outbox by default
+        """
+        if email_file_path := os.environ.get("EMAIL_FILE_PATH"):  # <6>
+            return self.wait_for(  # <7>
+                lambda: self.retrieve_email_from_file(sent_to, subject, email_file_path)
+            )
+        else:
+            return self.retrieve_email_from_django_outbox(sent_to, subject)
+
+    def test_login_using_magic_link(self):
+        [...]
+----
+====
+
+<1> Here's our helper method for getting email contents from a file.
+    It takes the configured email directory as an argument,
+    as well as the sent-to address and expected subject.
+
+<2> Django saves a new file with emails every time you restart the server.
+    The filename has a timestamp in it,
+    so we can get the latest one by sorting the files in our test directory.
+    Check out the https://docs.python.org/3/library/pathlib.html[Pathlib] docs
+    if you haven't used it before, it's a nice, relatively new way of working with files in Python.
+
+<3> The emails in the file are separated by a line of 80 hyphens.
+
+<4> This is the matching helper for getting the email from `mail.outbox`.
+
+<5> Here's where we dispatch to the right helper based on whether the env
+    var is set.
+
+<6> Checking whether an environment variable is set, and using its value if so,
+    is one of the (relatively few) places where it's nice to use the walrus operator.
+
+<7> I'm using a `wait_for()` here because anything involving reading and writing from files,
+    especially across the filesystem mounts inside and outside of Docker,
+    has a potential race condition.
+
+
+We'll need a couple more minor changes to the FT, to use the helper:
+
+
+[role="sourcecode"]
+.src/functional_tests/test_login.py (ch23l004)
+====
+[source,diff]
+----
+@@ -59,15 +59,12 @@ class LoginTest(FunctionalTest):
+         )
+
+         # She checks her email and finds a message
+-        email = mail.outbox.pop()
+-        self.assertIn(TEST_EMAIL, email.to)
+-        self.assertEqual(email.subject, SUBJECT)
++        email_body = self.wait_for_email(TEST_EMAIL, SUBJECT)
+
+         # It has a URL link in it
+-        self.assertIn("Use this link to log in", email.body)
+-        url_search = re.search(r"http://.+/.+$", email.body)
+-        if not url_search:
+-            self.fail(f"Could not find url in email body:\n{email.body}")
++        self.assertIn("Use this link to log in", email_body)
++        if not (url_search := re.search(r"http://.+/.+$", email_body, re.MULTILINE)):
++            self.fail(f"Could not find url in email body:\n{email_body}")
+         url = url_search.group(0)
+         self.assertIn(self.live_server_url, url)
+----
+====
+
+// TODO backport that walrus
 
 Now let's set that file path, and mount it inside our docker container,
 so that it's available both inside and outside the container:
@@ -470,7 +569,37 @@ $ *docker build -t superlists . && docker run \
 <1> Here's where we mount the emails file so we can see it
     both inside and outside the container
 
-<2> And here's where we pass the path as an env var.
+<2> And here's where we pass the path as an env var,
+    once again re-exporting the variable from the current shell.
+
+
+And we can re-run our FT, first without using Docker or the EMAIL_FILE_PATH,
+just to check we didn't break anything:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*./src/manage.py test functional_tests.test_login*]
+[...]
+OK
+----
+
+And now _with_ Docker and the EMAIL_FILE_PATH.  Remember,
+
+[subs="specialcharacters,quotes"]
+----
+# we need to set the EMAIL_FILE_PATH in this terminal too
+$ *export EMAIL_FILE_PATH=/tmp/superlists-emails*
+$ *TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*
+[...]
+OK
+----
+
+
+It works!  Hooray.
+
+
+* TODO resume here
 
 
 === Setting Secret Environment Variables on the Server
