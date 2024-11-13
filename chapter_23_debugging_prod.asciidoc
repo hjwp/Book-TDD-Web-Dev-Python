@@ -599,7 +599,162 @@ OK
 It works!  Hooray.
 
 
-* TODO resume here
+==== Double-Checking our Test and Our Fix
+
+As always, we should be suspicious of any test that we've only ever seen pass!
+Let's see if we can make this test fail.
+
+NOTE: You might have lost track of the actual bug and how we fixed it!
+    The bug was, the server was crashing when it tried to send an email.
+    The reason was, we hadn't set the `EMAIL_PASSWORD` environment variable.
+    So the actual fix is to set that env var,
+    and the way we _test_ that it works, is by using the `filebased.EmailBackend"
+    `EMAIL_BACKEND` setting using the `EMAIL_FILE_PATH` environment variable.
+
+
+So, how shall we make the test fail?
+Well, how about if we deliberately break the email that the server sends:
+
+TODO: filename/commit
+
+[role="sourcecode"]
+.lists.tests.py (ch04l004)
+====
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST["email"]
+    token = Token.objects.create(email=email)
+    url = request.build_absolute_uri(
+        reverse("login") + "?token=" + str(token.uid),
+    )
+    message_body = f"Use this link to log in:\n\n{url}"
+    send_mail(
+        "Your login link for Superlists",
+        "HAHA NO LOGIN URL FOR U",  # <1>
+        "noreply@superlists",
+        [email],
+    )
+    messages.success(
+        request,
+        "Check your email, we've sent you a link you can use to log in.",
+    )
+    return redirect("/")
+----
+====
+
+<1> This should do it!  We'll still send an email,
+    but it won't contain a login URL.
+
+
+* TODO: aside on moujnting /src/?
+
+So let's try it:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 EMAIL_FILE_PATH=/tmp/superlists-emails ./src/manage.py test functional_tests.test_login
+[...]
+Ran 1 test in 2.513s
+
+OK
+----
+
+==== Testing side-effects is fiddly!
+
+TODO: flesh out explanation
+
+eh?  what's happening?
+
+It's because we're picking up an old email, which is still a valid token in the DB
+
+
+Let's clear out the db:
+
+[subs="specialcharacters,quotes"]
+----
+$ *rm src/db.sqlite3 && ./src/manage.py migrate*
+Operations to perform:
+  Apply all migrations: accounts, auth, contenttypes, lists, sessions
+Running migrations:
+  Applying accounts.0001_initial... OK
+  Applying accounts.0002_token... OK
+  Applying contenttypes.0001_initial... OK
+  Applying contenttypes.0002_remove_content_type_name... OK
+  Applying auth.0001_initial... OK
+----
+
+
+And...
+
+cmdgg
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests.test_login*
+[...]
+ERROR: test_login_using_magic_link (functional_tests.test_login.LoginTest.test_login_using_magic_link)
+    self.wait_to_be_logged_in(email=TEST_EMAIL)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate element: #id_logout; [...]
+----
+
+OK that's weird, it _does_ still find an email with a magic link in?
+
+ah, it's an old one.
+
+
+////
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests.test_login*
+ERROR: test_login_using_magic_link
+(functional_tests.test_login.LoginTest.test_login_using_magic_link)
+[...]
+    email_body = self.wait_for_email(TEST_EMAIL, SUBJECT)
+[...]
+    return self.wait_for(
+           ~~~~~~~~~~~~~^
+        lambda: self.retrieve_email_from_file(sent_to, subject, email_file_path)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[...]
+    latest_emails_file = sorted(Path(emails_dir).iterdir())[-1]
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^
+IndexError: list index out of range
+----
+
+That's better!  We're not sending any emails, so there's no email file to find.
+////
+
+Let's delete all our old emails
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*rm $EMAIL_FILE_PATH/*]
+----
+
+And now re rerun the FT:
+
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*]
+FAIL: test_login_using_magic_link
+(functional_tests.test_login.LoginTest.test_login_using_magic_link)
+[...]
+    email_body = self.wait_for_email(TEST_EMAIL, SUBJECT)
+[...]
+    self.assertIn("Use this link to log in", email_body)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'Use this link to log in' not found in 'Content-Type:
+text/plain; charset="utf-8"\nMIME-Version: 1.0\nContent-Transfer-Encoding:
+7bit\nSubject: Your login link for Superlists\nFrom: noreply@superlists\nTo:
+edith@example.com\nDate: Wed, 13 Nov 2024 18:00:55 -0000\nMessage-ID:
+[...]\n\nHAHA NO LOGIN URL FOR
+U\n-------------------------------------------------------------------------------\n'
+----
+
+
+That's the error we wanted!
 
 
 === Setting Secret Environment Variables on the Server
