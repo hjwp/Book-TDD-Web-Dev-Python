@@ -584,13 +584,12 @@ $ pass:quotes[*./src/manage.py test functional_tests.test_login*]
 OK
 ----
 
-And now _with_ Docker and the EMAIL_FILE_PATH.  Remember,
+And now _with_ Docker and the EMAIL_FILE_PATH:
 
 [subs="specialcharacters,quotes"]
 ----
-# we need to set the EMAIL_FILE_PATH in this terminal too
-$ *export EMAIL_FILE_PATH=/tmp/superlists-emails*
-$ *TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*
+$ *TEST_SERVER=localhost:8888 EMAIL_FILE_PATH=/tmp/superlists-emails \
+  python src/manage.py test functional_tests*
 [...]
 OK
 ----
@@ -599,26 +598,36 @@ OK
 It works!  Hooray.
 
 
-==== Double-Checking our Test and Our Fix
+=== Double-Checking our Test and Our Fix
 
 As always, we should be suspicious of any test that we've only ever seen pass!
 Let's see if we can make this test fail.
 
-NOTE: You might have lost track of the actual bug and how we fixed it!
-    The bug was, the server was crashing when it tried to send an email.
-    The reason was, we hadn't set the `EMAIL_PASSWORD` environment variable.
-    So the actual fix is to set that env var,
-    and the way we _test_ that it works, is by using the `filebased.EmailBackend"
-    `EMAIL_BACKEND` setting using the `EMAIL_FILE_PATH` environment variable.
+Before we do--we've been in the detail for a bit,
+it's worth reminding ourselves of what the actual bug was,
+and how we're fixing it!
+The bug was, the server was crashing when it tried to send an email.
+The reason was, we hadn't set the `EMAIL_PASSWORD` environment variable.
+We managed to repro the bug in Docker.
+The actual _fix_ is to set that env var,
+both in Docker and eventually on the server.
+Now we want to have a _test_ that our fix works,
+and we looked in to a few different options,
+settling on using the `filebased.EmailBackend"
+`EMAIL_BACKEND` setting using the `EMAIL_FILE_PATH` environment variable.
 
+Now, I say we haven't seen the test fail,
+but actually we have, when we repro'd the bug.
+If we unset the `EMAIL_PASSWORD` env var, it will fail again.
+I'm more worried about the new parts of our tests,
+the bits where we go and read from the file at `EMAIL_FILE_PATH`.
+How can we make that part fail?
 
-So, how shall we make the test fail?
-Well, how about if we deliberately break the email that the server sends:
+Well, how about if we deliberately break our email-sending code?
 
-TODO: filename/commit
 
 [role="sourcecode"]
-.lists.tests.py (ch04l004)
+.src/accounts/views.py (ch23l005)
 ====
 [source,python]
 ----
@@ -629,12 +638,12 @@ def send_login_email(request):
         reverse("login") + "?token=" + str(token.uid),
     )
     message_body = f"Use this link to log in:\n\n{url}"
-    send_mail(
-        "Your login link for Superlists",
-        "HAHA NO LOGIN URL FOR U",  # <1>
-        "noreply@superlists",
-        [email],
-    )
+    # send_mail(  <1>
+    #     "Your login link for Superlists",
+    #     message_body,
+    #     "noreply@superlists",
+    #     [email],
+    # )
     messages.success(
         request,
         "Check your email, we've sent you a link you can use to log in.",
@@ -643,31 +652,69 @@ def send_login_email(request):
 ----
 ====
 
-<1> This should do it!  We'll still send an email,
-    but it won't contain a login URL.
+<1> We just comment out the entire send_email block.
 
 
-* TODO: aside on moujnting /src/?
-
-So let's try it:
+We rebuild our docker image:
 
 
 [subs="specialcharacters,quotes"]
 ----
-$ *TEST_SERVER=localhost:8888 EMAIL_FILE_PATH=/tmp/superlists-emails ./src/manage.py test functional_tests.test_login
+# check our env var is set
+$ *echo $EMAIL_FILE_PATH*
+/tmp/superlists-emails
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    --mount type=bind,source=$EMAIL_FILE_PATH,target=$EMAIL_FILE_PATH \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \
+    -e EMAIL_FILE_PATH \
+    -it superlists*
+----
+
+// TODO: aside on moujnting /src/?
+
+And we re-run our test:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 EMAIL_FILE_PATH=/tmp/superlists-emails \
+  ./src/manage.py test functional_tests.test_login
 [...]
 Ran 1 test in 2.513s
 
 OK
 ----
 
-==== Testing side-effects is fiddly!
 
-TODO: flesh out explanation
+Eh?  How did that pass?
 
-eh?  what's happening?
 
-It's because we're picking up an old email, which is still a valid token in the DB
+=== Testing side-effects is fiddly!
+
+We've run into an example of the kinds of problems you often encounter
+when our tests involve side-effects.
+
+Let's have a look in our test emails directory:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *ls $EMAIL_FILE_PATH*
+20241120-153150-262004991022080.log
+20241120-153154-262004990980688.log
+20241120-153301-272143941669888.log
+----
+
+Every time we restart the server, it opens a new file,
+but only when it first tries to send an email.
+Because we've commented out the whole email-sending block,
+our test instead picks up on an old email,
+which still has a valid url in it,
+because the token is still in the database.
 
 
 Let's clear out the db:
@@ -700,12 +747,19 @@ ERROR: test_login_using_magic_link (functional_tests.test_login.LoginTest.test_l
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate element: #id_logout; [...]
 ----
 
-OK that's weird, it _does_ still find an email with a magic link in?
+OK sure enough, the `wait_to_be_logged_in()` helper is failing,
+because now, although we have found an email, its token is invalid.
 
-ah, it's an old one.
 
+Here's another way to make the tests fail:
 
-////
+[subs="specialcharacters,macros"]
+----
+$ pass:[<strong>rm $EMAIL_FILE_PATH/*</strong>]
+----
+
+Now when we run the FT:
+
 [subs="specialcharacters,quotes"]
 ----
 $ *TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests.test_login*
@@ -724,18 +778,62 @@ ERROR: test_login_using_magic_link
 IndexError: list index out of range
 ----
 
-That's better!  We're not sending any emails, so there's no email file to find.
-////
+We see there are no email files, because we're not sending one.
 
-Let's delete all our old emails
+Still, this isn't quite satisfactory.
+Let's try a different way to make our tests fail,
+where we _will_ send an email, but we'll give it the wrong contents:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch23l006)
+====
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST["email"]
+    token = Token.objects.create(email=email)
+    url = request.build_absolute_uri(
+        reverse("login") + "?token=" + str(token.uid),
+    )
+    message_body = f"Use this link to log in:\n\n{url}"
+    send_mail(
+        "Your login link for Superlists",
+        "HAHA NO LOGIN URL FOR U",  # <1>
+        "noreply@superlists",
+        [email],
+    )
+    messages.success(
+        request,
+        "Check your email, we've sent you a link you can use to log in.",
+    )
+    return redirect("/")
+----
+====
+
+<1> We _do_  send an email, but it won't contain a login URL.
+
+Let's rebuild again:
+
+[subs="specialcharacters,quotes"]
+----
+# check our env var is set
+$ *echo $EMAIL_FILE_PATH*
+/tmp/superlists-emails
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    --mount type=bind,source=$EMAIL_FILE_PATH,target=$EMAIL_FILE_PATH \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \
+    -e EMAIL_FILE_PATH \
+    -it superlists*
+----
+
+Now how do our tests look?
 
 [subs="specialcharacters,macros"]
-----
-$ pass:quotes[*rm $EMAIL_FILE_PATH/*]
-----
-
-And now re rerun the FT:
-
 ----
 $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*]
 FAIL: test_login_using_magic_link
@@ -753,14 +851,35 @@ edith@example.com\nDate: Wed, 13 Nov 2024 18:00:55 -0000\nMessage-ID:
 U\n-------------------------------------------------------------------------------\n'
 ----
 
+That's the error we wanted!  Let's revert our temporarily-broken _views.py_,
+rebuild, and make sure the tests pass once again.
 
-That's the error we wanted!
+[subs="specialcharacters,quotes"]
+----
+$ *git stash*
+$ *docker build [...]*
+# separate terminal
+$ *TEST_SERVER=localhost:8888 EMAIL_FILE_PATH=/tmp/superlists-emails [...]
+[...]
+OK
+----
 
+// todo: aside or title here?
+
+It may seem like we've done a lot of back-and-forth,
+and I could have written the book without this little detour to make the tests fail,
+or I could have skipped one of the blind alleys at least,
+but I wanted to give you a flavour of the fiddliness involved
+in these kinds of tests that involve a lot of side-effects.
+
+
+
+////
 
 === Setting Secret Environment Variables on the Server
 
 ((("debugging", "server-side", "setting secret environment variables")))
-((("environment variables")))
+((("environment variables"))k)
 ((("secret values")))
 Just as in <<chapter_11_server_prep>>,
 the place we set environment variables on the server is in the _superlists.env_ file.
@@ -774,177 +893,19 @@ Let's change it manually, on the server, for a test:
 elspeth@server:$ *echo EMAIL_PASSWORD=yoursekritpasswordhere >> ~/superlists.env*
 elspeth@server:$ *docker restart superlists*
 ----
-
-Now if we rerun our FTs, we see a change:
-
-[role="against-server small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
-
-[...]
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_login.py", line 28, in
-test_login_using_magic_link
-    email = mail.outbox[0]
-IndexError: list index out of range
-
-[...]
-
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Log out
-----
+////
 
 
-The `my_lists` failure is still the same, but we have more information in our login test:
-the FT gets further, and the site now looks like it's sending emails correctly
-(and the server log no longer shows any errors),
-but we can't check the email in the `mail.outbox`...
+=== Moving on to the next failure
 
-
-=== Adapting Our FT to Be Able to Test Real Emails via POP3
-
-((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))
-((("Django framework", "sending emails", id="DJFemail21")))
-((("emails, sending from Django", id="email21")))
-
-First, we'll need to know, in our FTs,
-whether we're running against the staging server or not.
-Let's save the `staging_server` variable on `self` in _base.py_:
-
-[role="sourcecode"]
-.src/functional_tests/base.py (ch21l009)
-====
-[source,python]
-----
-    def setUp(self):
-        self.browser = webdriver.Firefox()
-        self.test_server = os.environ.get("TEST_SERVER")
-        if self.test_server:
-            self.live_server_url = "http://" + self.test_server
-----
-====
-
-And then we feed through the rest of the changes to the FT that are required
-as a result.  Firstly, populating a `test_email` variable, differently for
-local and staging tests:
-
-
-
-[role="sourcecode small-code"]
-.src/functional_tests/test_login.py (ch21l011-1)
-====
-[source,diff]
-----
-@@ -9,7 +9,6 @@ from selenium.webdriver.common.keys import Keys
-
- from .base import FunctionalTest
-
--TEST_EMAIL = "edith@example.com"
- SUBJECT = "Your login link for Superlists"
-
-
-@@ -34,7 +33,6 @@ class LoginTest(FunctionalTest):
-                     print("getting msg", i)
-                     _, lines, __ = inbox.retr(i)
-                     lines = [l.decode("utf8") for l in lines]
--                    print(lines)
-                     if f"Subject: {subject}" in lines:
-                         email_id = i
-                         body = "\n".join(lines)
-@@ -49,9 +47,14 @@ class LoginTest(FunctionalTest):
-         # Edith goes to the awesome superlists site
-         # and notices a "Log in" section in the navbar for the first time
-         # It's telling her to enter her email address, so she does
-+        if self.test_server:
-+            test_email = "edith.testuser@yahoo.com"
-+        else:
-+            test_email = "edith@example.com"
-+
-         self.browser.get(self.live_server_url)
-         self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
--            TEST_EMAIL, Keys.ENTER
-+            test_email, Keys.ENTER
-         )
-----
-====
-
-And then modifications involving using that variable and calling our new helper
-function:
-
-[role="sourcecode small-code"]
-.src/functional_tests/test_login.py (ch21l011-2)
-====
-[source,diff]
-----
-@@ -69,15 +69,13 @@ class LoginTest(FunctionalTest):
-         )
-
-         # She checks her email and finds a message
--        email = mail.outbox[0]
--        self.assertIn(TEST_EMAIL, email.to)
--        self.assertEqual(email.subject, SUBJECT)
-+        body = self.wait_for_email(test_email, SUBJECT)
-
--        # It has a URL link in it
--        self.assertIn("Use this link to log in", email.body)
--        url_search = re.search(r"http://.+/.+$", email.body)
-+        # It has a url link in it
-+        self.assertIn("Use this link to log in", body)
-+        url_search = re.search(r"http://.+/.+$", body)
-         if not url_search:
--            self.fail(f"Could not find url in email body:\n{email.body}")
-+            self.fail(f"Could not find url in email body:\n{body}")
-         url = url_search.group(0)
-         self.assertIn(self.live_server_url, url)
-
-@@ -85,10 +83,10 @@ class LoginTest(FunctionalTest):
-         self.browser.get(url)
-
-         # she is logged in!
--        self.wait_to_be_logged_in(email=TEST_EMAIL)
-+        self.wait_to_be_logged_in(email=test_email)
-
-         # Now she logs out
-         self.browser.find_element(By.LINK_TEXT, "Log out").click()
-
-         # She is logged out
--        self.wait_to_be_logged_out(email=TEST_EMAIL)
-+        self.wait_to_be_logged_out(email=test_email)
-----
-====
-
-
-And, believe it or not, that'll actually work, and give us an FT
-that can actually check for logins that work, involving real emails!
-
+Now if we rerun our full set of FTs, we can move on to the next failure:
 
 [role="against-server small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests.test_login*]
-[...]
-OK
+$ pass:quotes[*TEST_SERVER=localhost:888 python src/manage.py test functional_tests*]
 ----
 
-NOTE: I've just hacked this email-checking code together,
-    and it's currently pretty ugly and brittle
-    (one common problem is picking up the wrong email from a previous test run).
-    With some cleanup and a few more retry loops
-    it could grow into something more reliable.
-    Alternatively, services like _mailinator.com_ will give you throwaway email addresses
-    and an API to check them, for a small fee.
-    ((("", startref="email21")))
-    ((("", startref="DJFemail21")))
-    ((("", startref="DBservemail21")))
-
-
-=== Managing the Test Database on Staging
-
-((("debugging", "server-side", "managing test databases", id="DBservdatabase21")))
-((("staging sites", "managing test databases", id="SSmanag21")))
-((("database testing", "managing test databases", id="DTmanag21")))
-((("sessions, pre-creating")))
 Now we can rerun our full FT suite and get to the next failure:
 our attempt to create pre-authenticated sessions doesn't work,
 so the "My Lists" test fails:
@@ -953,20 +914,28 @@ so the "My Lists" test fails:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
-
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
 [...]
-selenium.common.exceptions.TimeoutException: Message: Could not find element
-with id id_logout. Page text was:
-Superlists
-Sign in
-Start a new To-Do list
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/test_my_lists.py", line 36, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    self.wait_to_be_logged_in(email)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: #id_logout; [...]
+[...]
+ ---------------------------------------------------------------------
 
-Ran 8 tests in 72.742s
+Ran 8 tests in 30.087s
 
 FAILED (errors=1)
 ----
+
+
+* TODO: continue rewrites from this point.
 
 It's because our test utility function `create_pre_authenticated_session` only
 acts on the local database. Let's find out how our tests can manage the
