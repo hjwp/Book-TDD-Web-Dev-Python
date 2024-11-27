@@ -1114,7 +1114,7 @@ database on the server.
 
 ((("scripts, building standalone")))
 To do things on the server, we'll need to build a self-contained script
-that can be run from the command line on the server, most probably via Fabric.
+that can be run from the command line on the server, most probably via SSH.
 
 When trying to build a standalone script that works with Django (i.e., can talk
 to the database and so on), there are some fiddly issues you need to get right,
@@ -1278,87 +1278,69 @@ class FunctionalTest(StaticLiveServerTestCase):
 ----
 ====
 
+
+* TODO: introduce reset_database later, when we get an integrityerror from trying to recreate a user twice.
+
 <1> This will be our function to reset the server database in between each
     test.  We'll write that next, using Fabric.
 
 
 
 
-==== Using Fabric Directly from Python
+==== Running Commands on the Server Using the SSH Command
 
-* TODO: rewrite for ansible.
+A quick and dirty way of running commands on the server is with SSH and `subprocess`:
 
-((("Fabric", "using directly from Python")))
-Rather than using the `fab` command, Fabric provides an API that lets
-you run Fabric server commands directly inline in your Python code.  You
-just need to let it know the "host string" you're connecting to:
 
 
 
 [role="sourcecode"]
-.src/functional_tests/server_tools.py (ch18l018)
+.src/functional_tests/server_tools.py (ch23l02X)
 ====
 [source,python]
 ----
-from fabric.api import run
-from fabric.context_managers import settings, shell_env
+import subprocess
+
+USER = "elspeth"
 
 
-def _get_manage_dot_py(host):
-    return f"~/sites/{host}/.venv/bin/python ~/sites/{host}/manage.py"
+def _exec_in_container(host, cmd):
+    print(f"Running {cmd!r} on {host} inside docker container")
+    process = subprocess.run(
+        ["ssh", f"{USER}@{host}", f"docker exec superlists {cmd}"],  <1>
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    result = process.stdout.decode()
+    if process.returncode != 0:
+        raise Exception(result)
+    print(f"Result: {result!r}")
+    return result.strip()
 
 
 def reset_database(host):
-    manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f"elspeth@{host}"):  # <1>
-        run(f"{manage_dot_py} flush --noinput")  # <2>
+    return _exec_in_container(
+        host,
+        "/venv/bin/python /src/manage.py flush --noinput",
+    )
+
+
+def create_session_on_server(host, email):
+    return _exec_in_container(
+        host,
+        f"/venv/bin/python /src/manage.py create_session {email}",
+    )
 ----
 ====
 
-<1> Here's the context manager that sets the host string, in the form
-    'user@server-address' (I've hardcoded my server username, elspeth, so
-    adjust as necessary).
-
-<2> Then, once we're inside the context manager, we can just call
-    Fabric commands as if we're in a fabfile.
+<1> We're doing a `docker exec` inside an `ssh`.
 
 
 For creating the session, we have a slightly more complex procedure,
 because we need to extract the `SECRET_KEY` and other env vars from
 the current running server, to be able to generate a session key that's
 cryptographically valid for the server:
-
-
-[role="sourcecode small-code"]
-.src/functional_tests/server_tools.py (ch18l019)
-====
-[source,python]
-----
-def _get_server_env_vars(host):
-    env_lines = run(f"cat ~/sites/{host}/.env").splitlines()  # <1>
-    return dict(l.split("=") for l in env_lines if l)
-
-
-def create_session_on_server(host, email):
-    manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f"elspeth@{host}"):
-        env_vars = _get_server_env_vars(host)
-        with shell_env(**env_vars):  # <2>
-            session_key = run(f"{manage_dot_py} create_session {email}")  # <3>
-            return session_key.strip()
-----
-====
-
-
-<1> We extract and parse the server's current environment variables from the
-    _.env_ file...
-
-<2> In order to use them in another fabric context manager, `shell_env`,
-    which sets the environment for the next command...
-
-<3> Which is to run our `create_session` management command, which calls the
-    same `create_pre_authenticated_session` function, but on the server.
-
 
 
 ==== Recap: Creating Sessions Locally Versus Staging
@@ -1393,10 +1375,10 @@ Perhaps a little ascii-art diagram will help:
 +-----------------------------------+       +-------------------------------------+
             |                                                   ^
             v                                                   |
-+----------------------------+     +--------+      +------------------------------+
-| server_tools               | --> | fabric | -->  | ./manage.py create_session   |
-| .create_session_on_server  |     |  "run" |      |   (on server, using .env)    |
-|        (locally)           |     +--------+      +------------------------------+
++----------------------------+     +-------------+      +------------------------------+
+| server_tools               | --> |   ssh and   | -->  | ./manage.py create_session   |
+| .create_session_on_server  |     | docker exec |      |   (on server, using .env)    |
+|        (locally)           |     +-------------+      +------------------------------+
 +----------------------------+
 
 ----
@@ -1431,20 +1413,17 @@ And now we run the test:
 ----
 $ <strong>TEST_SERVER=staging.ottg.co.uk python src/manage.py test \
  functional_tests.test_my_lists</strong>
-[...]
-[elspeth@staging.ottg.co.uk] run:
-~/sites/staging.ottg.co.uk/.venv/bin/python
-~/sites/staging.ottg.co.uk/manage.py flush --noinput
-[...]
-[elspeth@staging.ottg.co.uk] run:
-~/sites/staging.ottg.co.uk/.venv/bin/python
-~/sites/staging.ottg.co.uk/manage.py create_session edith@example.com
-[...]
+Found 1 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+Running '/venv/bin/python /src/manage.py create_session edith@example.com' on staging.ottg.co.uk inside docker container
+Result: '7n032ogf179t2e7z3olv9ct7b3d4dmas\n'
 .
  ---------------------------------------------------------------------
-Ran 1 test in 5.701s
+Ran 1 test in 4.515s
 
 OK
+Destroying test database for alias 'default'...
 ----
 
 Looking good!  We can rerun all the tests to make sure...
@@ -1463,6 +1442,8 @@ OK
 ----
 
 Hooray!
+
+* TODO talk about reset_database separately
 
 NOTE: I've shown one way of managing the test database, but you could
     experiment with others--for example, if you were using MySQL or Postgres,
