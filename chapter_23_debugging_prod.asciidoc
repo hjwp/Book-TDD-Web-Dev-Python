@@ -1,5 +1,5 @@
 [[chapter_23_debugging_prod]]
-== Debugging Production Issues
+== Debugging And Testing Production Issues
 
 .Warning, Chapter Update in Progress
 *******************************************************************************
@@ -15,6 +15,14 @@ Popping a few layers off the stack of things we're working on:
 we have nice wait-for helpers; what were we using them for?
 Oh yes, waiting to be logged in. And why was that?
 Ah yes, we had just built a way of pre-authenticating a user.
+Let's see how that works against our staging server and Docker.
+
+In this chapter we'll encounter some situations where the right answer is not always obvious.
+We're into the realm of tradeoffs now, which is appropriate for this more advanced part of the book.
+My aim is no longer to show you a single, good way to do things,
+but instead to give you a toolbox of techniques and strategies,
+with some insights into their strengths and weaknesses,
+so that you can make decisions on your own.
 
 
 
@@ -368,10 +376,21 @@ but you can use any email service you like, as long as it offers POP3 access.
 You will need to set the
 `RECEIVER_EMAIL_PASSWORD` environment variable in the console that's running the FT.
 
+////
+
+TODO: this is the first time we've seen that set -e thing, maybe leave til later
+
 [subs="specialcharacters,quotes"]
 ----
 $ *echo RECEIVER_EMAIL_PASSWORD=otheremailpasswordhere >> .env*
 $ *set -a; source .env; set +a*
+----
+
+////
+
+[subs="specialcharacters,quotes"]
+----
+$ *export RECEIVER_EMAIL_PASSWORD=otheremailpasswordhere*
 ----
 
 [role="sourcecode skipme"]
@@ -424,7 +443,14 @@ TIP: If you _do_ want to test email end-to-end,
   rather than trying to use POP3 directly.
 
 
+
 === Using a Fake Email Backend For Django
+
+Next let's investigate using a filesystem-based email backend.
+As we'll see, although it definitely has the advantage
+that everything stays local on our own machine
+(there are no calls over the internet),
+there are quite a few things to watch out for.
 
 Let's say that, if we detect an environment variable `EMAIL_FILE_PATH`,
 we switch to Django's file-based backend:
@@ -780,6 +806,14 @@ IndexError: list index out of range
 
 We see there are no email files, because we're not sending one.
 
+NOTE: In this configuration of Docker + `filebase.EmailBackend`,
+  we now have to manage side effects in two locations:
+  the database at _src/db.sqlite3_, and the email files in _/tmp_.
+  What Django used to do for us thanks to LiveServerTestCase
+  is now all our responsibility, and as you can see, it's hard to get right.
+  This is a tradeoff to be aware of when writing tests against "real" systems.
+
+
 Still, this isn't quite satisfactory.
 Let's try a different way to make our tests fail,
 where we _will_ send an email, but we'll give it the wrong contents:
@@ -851,7 +885,10 @@ edith@example.com\nDate: Wed, 13 Nov 2024 18:00:55 -0000\nMessage-ID:
 U\n-------------------------------------------------------------------------------\n'
 ----
 
-That's the error we wanted!  Let's revert our temporarily-broken _views.py_,
+OK good, that's the error we wanted!
+I think we can be fairly confident that this testing setup
+can genuinely test that emails are sent properly.
+Let's revert our temporarily-broken _views.py_,
 rebuild, and make sure the tests pass once again.
 
 [subs="specialcharacters,quotes"]
@@ -866,34 +903,164 @@ OK
 
 // todo: aside or title here?
 
-It may seem like we've done a lot of back-and-forth,
-and I could have written the book without this little detour to make the tests fail,
-or I could have skipped one of the blind alleys at least,
-but I wanted to give you a flavour of the fiddliness involved
-in these kinds of tests that involve a lot of side-effects.
+NOTE: It may seem like we've done a lot of back-and-forth,
+  and I could have written the book without this little detour to make the tests fail,
+  or I could have skipped one of the blind alleys at least,
+  but I wanted to give you a flavour of the fiddliness involved
+  in these kinds of tests that involve a lot of side-effects.
 
 
+=== Decision Time: Which Test Strategy Will We Keep
 
-////
+Let's recap our three options:
+
+
+.Testing Strategy Tradeoffs
+[cols="1,1,1"]
+|=======
+| Strategy | Pros | Cons
+| End-to-end with POP3 | Maximally realistic, tests the whole system | Slow, fiddly, unreliable
+| File-based fake email backend | Faster, more reliable, no network calls, tests end-to-end (albeit with fake components) | Still Fiddly, requires managing db & filesystem side-effects
+| Give up on testing email on the server/Docker | Fast, simple | Less confidence that things work "for real"
+|=======
+
+This is a common problem in testing integration with external systems,
+how far should we go?  How realistic should we make our tests.
+
+In this case, I'm going to suggest we go for the last option,
+which is not to test email sending on the server or in Docker.
+
+Email itself is a well-understood protocol
+(reader, it's been around since _before I was born_, and that's a whiles ago now)
+and Django has supported sending email for more than a decade,
+so I think we can afford to say, in this case,
+that the costs of building testing tools for email outweigh the benefits.
+
+We can already repro the issue we saw on the server in our Docker image,
+so I'm going to suggest we stick to using `mail.outbox` when we're running local tests,
+and we configure our FTs to just check that the server (or Docker) _seems_ to be able to send email
+(in the sense of "not crashing") and we can skip the bit where we check the email contents in our FT.
+Remember, we also have unit tests for the email content!
+
+
+Here's where we can put an early return in the FT:
+
+[role="sourcecode dofirst-ch23l008"]
+.src/functional_tests/test_login.py (ch23l009)
+====
+[source,python]
+----
+    # A message appears telling her an email has been sent
+    self.wait_for(
+        lambda: self.assertIn(
+            "Check your email",
+            self.browser.find_element(By.CSS_SELECTOR, "body").text,
+        )
+    )
+
+    if self.against_server:
+        # Testing real email sending from the server is not worth it.
+        return
+
+    # She checks her email and finds a message
+    email = mail.outbox.pop()
+----
+====
+
+This test will still fail if you don't set `EMAIL_PASSWORD` to a valid value
+in Docker or on the server, so that's good enough for now.
+
+Here's how we populate the `.against_server` attribute:
+
+
+[role="sourcecode"]
+.src/functional_tests/base.py (ch23l010)
+====
+[source,python]
+----
+class FunctionalTest(StaticLiveServerTestCase):
+    def setUp(self):
+        self.browser = webdriver.Firefox()
+        if test_server := os.environ.get("TEST_SERVER"):
+            self.against_server = True
+            self.live_server_url = "http://" + test_server
+        else:
+            self.against_server = False
+----
+====
+
+
+And you can confirm that the FT will fail if you don't set `EMAIL_PASSWORD` in Docker.
+
+Now let's see if we can get our FTs to pass against the server:
+
 
 === Setting Secret Environment Variables on the Server
 
-((("debugging", "server-side", "setting secret environment variables")))
 ((("environment variables"))k)
 ((("secret values")))
 Just as in <<chapter_11_server_prep>>,
 the place we set environment variables on the server is in the _superlists.env_ file.
-Let's change it manually, on the server, for a test:
 
-* TODO: maybe use ansible straight away?  Also, need to discuss secret storage locally.
+Let's add it to the template first:
 
-[role="server-commands small-code"]
-[subs="specialcharacters,quotes"]
+
+[role="sourcecode"]
+.infra/env.j2 (ch23l011)
+====
+[source,python]
 ----
-elspeth@server:$ *echo EMAIL_PASSWORD=yoursekritpasswordhere >> ~/superlists.env*
-elspeth@server:$ *docker restart superlists*
+DJANGO_DEBUG_FALSE=1
+DJANGO_SECRET_KEY={{ secret_key }}
+DJANGO_ALLOWED_HOST={{ host }}
+EMAIL_PASSWORD={{ email_password }}
 ----
+====
+
+and now we add the line to the ansible deploy playbook
+that looks up EMAIL_PASSWORD in our local environment:
+
+
+[role="sourcecode dofirst=ch23l012-1"]
+.infra/deploy-playbook.yml (ch23l012)
+====
+[source,python]
+----
+    - name: Ensure .env file exists
+      ansible.builtin.template:
+        src: env.j2
+        dest: ~/superlists.env
+        force: true  # update file if contents changed
+      vars:
+        host: "{{ inventory_hostname }}"
+        secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters') }}"
+        email_password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"  <1>
+----
+====
+
+<1> We use another call to `lookup()`,
+    this one with the `env` parameter,
+    which is equivalent to `os.environ.get()` in Python.
+
+// TODO: backport that force=true from ch23l012-1
+
+
 ////
+TODO: sidebar on making the secret key only update if changed.
+
+- name: Check secret key already exists
+  shell: grep -c "SECRET_KEY" ~/superlists.env  || true
+  register: secret_key_line_count
+
+- name: add secret key line if not already there
+  lineinfile:
+    dest: ~/superlists.env
+    line: SECRET_KEY={{ secret_key }}
+  when: secret_key_line_count.stdout == "0"
+
+or bite the bullet and do it here?
+////
+
 
 
 === Moving on to the next failure
