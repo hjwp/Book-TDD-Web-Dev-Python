@@ -1,5 +1,5 @@
 [[chapter_23_debugging_prod]]
-== Server-Side Debugging
+== Debugging And Testing Production Issues
 
 .Warning, Chapter Update in Progress
 *******************************************************************************
@@ -15,6 +15,14 @@ Popping a few layers off the stack of things we're working on:
 we have nice wait-for helpers; what were we using them for?
 Oh yes, waiting to be logged in. And why was that?
 Ah yes, we had just built a way of pre-authenticating a user.
+Let's see how that works against our staging server and Docker.
+
+In this chapter we'll encounter some situations where the right answer is not always obvious.
+We're into the realm of tradeoffs now, which is appropriate for this more advanced part of the book.
+My aim is no longer to show you a single, good way to do things,
+but instead to give you a toolbox of techniques and strategies,
+with some insights into their strengths and weaknesses,
+so that you can make decisions on your own.
 
 
 
@@ -76,28 +84,66 @@ FAILED (failures=1, errors=1)
 
 ----
 
-We can't log in--either with the real email system or with our
-pre-authenticated session.  Looks like our nice new authentication
-system is crashing the server.
+We can't log in--either with the real email system or with our pre-authenticated session.
+Looks like our nice new authentication system is crashing the server.
 
 
-Let's practice a bit of server-side debugging!
+Let's practice a bit of production debugging!
 
 
-* TODO: show we can actually repro this with Docker.
+=== Trying to Repro in Docker
+
+One of the reasons we went to the trouble of building a Docker image,
+was to have a way of simulating what's on the server as closely as possible, locally.
+So let's see whether we get the same error if we test against Docker.
+
+Let's rebuild and start our Docker container locally,
+on port 8888:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -it superlists*
+----
+
+And now let's see if our errors repro against Docker:
+
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*]
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate element: #id_logout; [...]
+[...]
+AssertionError: 'Check your email' not found in 'Server Error (500)'
+[...]
+FAILED (failures=1, errors=1)
+----
+
+Sure enough, same two errors!
 
 // TODO: actually, does this obviate the whole need for running fts against the server?
 
 
-=== Inspecting Logs on the Server
+=== Inspecting the Docker Container Logs
 
 ((("logging")))
 ((("Gunicorn", "logging setup")))
-In order to track this problem down,
-we need to get some logging information out of Django.
+When Django fails with a 500 or "Unhandled Exception" and DEBUG is off,
+it doesn't print the tracebacks to your web browser.
+But it will send them to your logs instead.
 
-First, make sure your 'settings.py' still contains the `LOGGING`
-settings which will actually send stuff to the console:
+.Check our Django LOGGING settings
+*******************************************************************************
+
+It's worth double checking at this point that your _settings.py_
+still contains the `LOGGING` settings which will actually send stuff
+to the console:
 
 [role="sourcecode currentcontents"]
 .src/superlists/settings.py
@@ -117,298 +163,916 @@ LOGGING = {
 ----
 ====
 
-Restart the Docker container again if necessary,
+Restart the Docker container if necessary,
 and then either rerun the FT, or just try to log in manually.
-While that happens, we watch the logs on the server with `docker logs -f`:
+*******************************************************************************
+
+If you switch to the terminal that's running your Docker image,
+you should see the traceback printed out in there:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+Internal Server Error: /accounts/send_login_email
+Traceback (most recent call last):
+[...]
+  File "/src/accounts/views.py", line 16, in send_login_email
+    send_mail(
+    ~~~~~~~~~^
+        "Your login link for Superlists",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        [email],
+        ^^^^^^^^
+    )
+    ^
+[...]
+    self.connection.sendmail(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        from_email, recipients, message.as_bytes(linesep="\r\n")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/smtplib.py", line 876, in sendmail
+    raise SMTPSenderRefused(code, resp, from_addr)
+smtplib.SMTPSenderRefused: (530, b'5.7.0 Authentication Required. [...]
+----
+
+That looks like a pretty good clue to what's going on.
+
+Before we go further, it's worth confirming that the error on the actual server
+is the same as the one we see in Docker.
+
+SSH in to your server and run `docker logs`:
 
 [role="server-commands"]
 [subs="specialcharacters,quotes"]
 ----
-elspeth@server:$ *docker logs -f superlists*
+elspeth@server:$ *docker logs superlists*
 ----
 
 You should see an error like this:
 [role="skipme small-code"]
 [subs="specialcharacters,quotes"]
 ----
+❯ ssh elspeth@staging.ottg.co.uk docker logs superlists
+[2024-10-30 09:55:08 +0000] [6] [INFO] Starting gunicorn 22.0.0
+[2024-10-30 09:55:08 +0000] [6] [INFO] Listening at: http://0.0.0.0:8888 (6)
+[2024-10-30 09:55:08 +0000] [6] [INFO] Using worker: sync
+[2024-10-30 09:55:08 +0000] [7] [INFO] Booting worker with pid: 7
+Not Found: /favicon.ico
+Not Found: /favicon.ico
+Not Found: /favicon.ico
+Not Found: /favicon.ico
+Not Found: /favicon.ico
 Internal Server Error: /accounts/send_login_email
 Traceback (most recent call last):
-  File "/home/elspeth/sites/staging.ottg.co.uk/.venv/lib/python3.7/[...]
+  File "/venv/lib/python3.13/site-packages/django/core/handlers/exception.py",
+  line 55, in inner
+    response = get_response(request)
+  File "/venv/lib/python3.13/site-packages/django/core/handlers/base.py", line
+  197, in _get_response
     response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File
-"/home/elspeth/sites/staging.ottg.co.uk/accounts/views.py", line
-20, in send_login_email
-    [email]
+  File "/src/accounts/views.py", line 16, in send_login_email
+    send_mail(
+    ~~~~~~~~~^
+        "Your login link for Superlists",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 [...]
-    self.connection.sendmail(from_email, recipients, message.as_bytes(linesep='\r\n'))
-  File "/usr/lib/python3.7/smtplib.py", line 862, in sendmail
     raise SMTPSenderRefused(code, resp, from_addr)
-smtplib.SMTPSenderRefused: (530, b'5.5.1 Authentication Required. Learn more
-at\n5.5.1  https://support.google.com/mail/?p=WantAuthError [...]
-- gsmtp', 'noreply@superlists')
+smtplib.SMTPSenderRefused: (530, b'5.7.0 Authentication Required. [...]
 ----
 
-Hm, Gmail is refusing to send our emails, is it?  Now why might that be?
-Ah yes, we haven't told the server what our password is!
+
+Sure enough!  Good to know our local Docker setup can repro the error on the server.
 ((("", startref="SScatch21")))((("", startref="DBserstag21")))
 
 
-=== Another Environment Variable
+=== Another Environment Variable In Docker
 
-((("debugging", "server-side", "setting secret environment variables")))
-((("environment variables")))
-((("secret values")))
-Just as in <<chapter_11_server_prep>>,
-the place we set environment variables on the server is in the _superlists.env_ file.
-Let's change it manually, on the server, for a test:
-
-* TODO: maybe use ansible straight away?  Also, need to discuss secret storage locally.
-
-[role="server-commands small-code"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *echo EMAIL_PASSWORD=yoursekritpasswordhere >> ~/superlists.env*
-elspeth@server:$ *docker restart superlists*
-----
-
-Now if we rerun our FTs, we see a change:
-
-[role="against-server small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
-
-[...]
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_login.py", line 28, in
-test_login_using_magic_link
-    email = mail.outbox[0]
-IndexError: list index out of range
-
-[...]
-
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Log out
-----
+So, Gmail is refusing to send our emails, is it?  Now why might that be?
+Ah yes, we haven't told the server what our password is!
 
 
-The `my_lists` failure is still the same, but we have more information in our login test:
-the FT gets further, and the site now looks like it's sending emails correctly
-(and the server log no longer shows any errors),
-but we can't check the email in the `mail.outbox`...
+As you might remember from earlier chapters,
+our _settings.py_ expects to get the email server password from an environment variable
+named `EMAIL_PASSWORD`:
 
-
-=== Adapting Our FT to Be Able to Test Real Emails via POP3
-
-((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))
-((("Django framework", "sending emails", id="DJFemail21")))
-((("emails, sending from Django", id="email21")))
-Ah. That explains it.
-Now that we're running against a real server rather than the `LiveServerTestCase`,
-we can no longer inspect the local `django.mail.outbox` to see sent emails.
-
-
-First, we'll need to know, in our FTs,
-whether we're running against the staging server or not.
-Let's save the `staging_server` variable on `self` in _base.py_:
-
-[role="sourcecode"]
-.src/functional_tests/base.py (ch21l009)
+[role="sourcecode currentcontents"]
+.src/superlists/settings.py
 ====
 [source,python]
 ----
-    def setUp(self):
-        self.browser = webdriver.Firefox()
-        self.test_server = os.environ.get("TEST_SERVER")
-        if self.test_server:
-            self.live_server_url = "http://" + self.test_server
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 ----
 ====
 
-Then we build a helper function that can retrieve a real email from a real POP3
-email server, using the horrifically tortuous Python standard library POP3
-client:
 
-[role="sourcecode"]
-.src/functional_tests/test_login.py (ch21l010)
+Let's add this new environment variable to our local Docker container `run`
+command:
+
+First, set your email password in your terminal if you need to:
+
+[subs="specialcharacters,quotes"]
+----
+$ *echo $EMAIL_PASSWORD*
+# if that's empty, let's set it:
+$ *export EMAIL_PASSWORD="yoursekritpasswordhere"*
+----
+
+Now let's pass that env var thru to our docker container using one more `-e` flag,
+this one fishing the env var out of the shell we're in:
+
+
+[subs="attributes+,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \  <1>
+    -it superlists*
+----
+
+<1> If you use `-e` without an `=something` argument, it sets the env var inside Docker
+    to the same value set in the current shell.
+    It's like saying `-e EMAIL_PASSWORD=$EMAIL_PASSWORD`
+
+
+And now we can rerun our FT again.
+We'll narrow it down to just the `test_login` test since that's the main one that has a problem:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests.test_login*]
+[...]
+ERROR: test_login_using_magic_link
+(functional_tests.test_login.LoginTest.test_login_using_magic_link)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/test_login.py", line 32, in
+test_login_using_magic_link
+    email = mail.outbox.pop()
+IndexError: pop from empty list
+----
+
+Aha!  The tests get a little further.
+It looks like our server _can_ now send emails,
+(and the docker log no longer shows any errors),
+they're just not appearing in `mail.outbox`.
+
+The reason is that `mail.outbox` is a local, in-memory variable in Django,
+so that's only going to work when our tests and our server are running in the same process, like they do with unit tests or with `LiveServerTestCase` FTs.
+
+When we run against another process, be it Docker or an actual server,
+we can't access the same `mail.outbox` variable.
+
+We need another technique if we want to actually inspect the emails
+that the server sends, in our tests against Docker or the server.
+
+
+=== Deciding How to Test "Real" Email Sending
+
+This is a point at which we have to explore some tradeoffs.
+There are a few different ways we could test this:
+
+1. We could build a "real" end-to-end test, and have our tests
+   log in to an email server, and retrieve the email from there.
+   That's what I did in the first and second edition.
+
+2. You can use a service like Mailinator or Mailsac,
+   which give you an email account to send to,
+   and some APIs for checking what mail has been delivered.
+
+3. We could give up on testing email on the server.
+   If we have a minimal smoke test that the server _can_ send emails,
+   then we don't need to test that they are _actually_ delivered.
+
+4. We can use an alternative, fake email backend,
+   whereby Django will save the emails to a file on disk for example,
+   and we can inspect them there.
+
+
+I'm not going to explore option 2 in this book,
+since it involves a commercial service and I don't want to endorse one,
+but that's not to say it's a bad option.
+Especially since they have free plans these days!
+
+But let's explore the other three options (1, 2 and 4) and their pros+cons.
+
+
+=== How to Test Email End-To-End with POP3
+
+Here's an example helper function that can retrieve a real email
+from a real POP3 email server,
+using the horrifically tortuous Python standard library POP3 client.
+
+To make it work, we'll need an email address to receive the email.
+I signed up for a Yahoo account for testing,
+but you can use any email service you like, as long as it offers POP3 access.
+
+You will need to set the
+`RECEIVER_EMAIL_PASSWORD` environment variable in the console that's running the FT.
+
+////
+
+TODO: this is the first time we've seen that set -e thing, maybe leave til later
+
+[subs="specialcharacters,quotes"]
+----
+$ *echo RECEIVER_EMAIL_PASSWORD=otheremailpasswordhere >> .env*
+$ *set -a; source .env; set +a*
+----
+
+////
+
+[subs="specialcharacters,quotes"]
+----
+$ *export RECEIVER_EMAIL_PASSWORD=otheremailpasswordhere*
+----
+
+[role="sourcecode skipme"]
+.src/functional_tests/test_login.py (ch23l001)
 ====
 [source,python]
 ----
 import os
 import poplib
 import re
-import time
+impot time
 [...]
 
-    def wait_for_email(self, test_email, subject):
-        if not self.test_server:
-            email = mail.outbox.pop()
-            self.assertIn(test_email, email.to)
-            self.assertEqual(email.subject, subject)
-            return email.body
-
-        email_id = None
-        start = time.time()
-        inbox = poplib.POP3_SSL("pop.mail.yahoo.com")
-        try:
-            inbox.user(test_email)
-            inbox.pass_(os.environ["YAHOO_PASSWORD"])
-            while time.time() - start < 60:
-                # get 10 newest messages
-                count, _ = inbox.stat()
-                for i in reversed(range(max(1, count - 10), count + 1)):
-                    print("getting msg", i)
-                    _, lines, __ = inbox.retr(i)
-                    lines = [l.decode("utf8") for l in lines]
-                    print(lines)
-                    if f"Subject: {subject}" in lines:
-                        email_id = i
-                        body = "\n".join(lines)
-                        return body
-                time.sleep(5)
-        finally:
-            if email_id:
-                inbox.dele(email_id)
-            inbox.quit()
+def retrieve_pop3_email(receiver_email, subject, pop3_server, pop3_password):
+    email_id = None
+    start = time.time()
+    inbox = poplib.POP3_SSL(pop3_server)
+    try:
+        inbox.user(receiver_email)
+        inbox.pass_(pop3_password)
+        while time.time() - start < POP3_TIMEOUT:
+            # get 10 newest messages
+            count, _ = inbox.stat()
+            for i in reversed(range(max(1, count - 10), count + 1)):
+                print("getting msg", i)
+                _, lines, __ = inbox.retr(i)
+                lines = [l.decode("utf8") for l in lines]
+                print(lines)
+                if f"Subject: {subject}" in lines:
+                    email_id = i
+                    body = "\n".join(lines)
+                    return body
+            time.sleep(5)
+    finally:
+        if email_id:
+            inbox.dele(email_id)
+        inbox.quit()
 ----
 ====
 
-* TODO: consider not using POP3, maybe
-  https://docs.djangoproject.com/en/5.0/topics/email/#file-backend[file backend] instead.
-  discuss tradeoff of testing config
-  vs not needing to test that django can actually send emails
+If you're curious, I'd encourage you to try this out in your FTs.
+It definitely _can_ work.
+But, having tried it in the first couple of editions of the book.
+I have to say it's fiddly to get right,
+and often flaky, which is a highly undesirable property for a testing tool.
+So let's leave that there for now.
 
-I signed up for a Yahoo account for testing,
-but you can use any email service you like, as long as it offers POP3 access.
-You will need to set the
-`YAHOO_PASSWORD` environment variable in the console that's running the FT.
+TIP: If you _do_ want to test email end-to-end,
+  I'd encourage you to investigate services like Mailinator or Mailsac,
+  rather than trying to use POP3 directly.
 
-[subs="specialcharacters,quotes"]
+
+
+=== Using a Fake Email Backend For Django
+
+Next let's investigate using a filesystem-based email backend.
+As we'll see, although it definitely has the advantage
+that everything stays local on our own machine
+(there are no calls over the internet),
+there are quite a few things to watch out for.
+
+Let's say that, if we detect an environment variable `EMAIL_FILE_PATH`,
+we switch to Django's file-based backend:
+
+
+.src/superlists/settings.py (ch23l002)
+====
+[source,python]
 ----
-$ *echo YAHOO_PASSWORD=otheremailpasswordhere >> .env*
-$ *set -a; source .env; set +a*
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_HOST_USER = "obeythetestinggoat@gmail.com"
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+# Use fake file-based backend if EMAIL_FILE_PATH is set
+if "EMAIL_FILE_PATH" in os.environ:
+    EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+    EMAIL_FILE_PATH = os.environ["EMAIL_FILE_PATH"]
 ----
+====
 
-And then we feed through the rest of the changes to the FT that are required
-as a result.  Firstly, populating a `test_email` variable, differently for
-local and staging tests:
+Here's how we can adapt our tests to conditionally use the email file,
+instead of Django's `mail.outbox`, if the env var is set when running our tests:
 
 
 
-[role="sourcecode small-code"]
-.src/functional_tests/test_login.py (ch21l011-1)
+[role="sourcecode"]
+.src/functional_tests/test_login.py (ch23l003)
+====
+[source,python]
+----
+class LoginTest(FunctionalTest):
+    def retrieve_email_from_file(self, sent_to, subject, emails_dir):  # <1>
+        latest_emails_file = sorted(Path(emails_dir).iterdir())[-1]  # <2>
+        latest_email = latest_emails_file.read_text().split("-" * 80)[-1]  # <3>
+        self.assertIn(subject, latest_email)
+        self.assertIn(sent_to, latest_email)
+        return latest_email
+
+    def retrieve_email_from_django_outbox(self, sent_to, subject):  # <4>
+        email = mail.outbox.pop()
+        self.assertIn(sent_to, email.to)
+        self.assertEqual(email.subject, subject)
+        return email.body
+
+    def wait_for_email(self, sent_to, subject):  # <5>
+        """
+        Retrieve email body,
+        from a file if the right env var is set,
+        or get it from django.mail.outbox by default
+        """
+        if email_file_path := os.environ.get("EMAIL_FILE_PATH"):  # <6>
+            return self.wait_for(  # <7>
+                lambda: self.retrieve_email_from_file(sent_to, subject, email_file_path)
+            )
+        else:
+            return self.retrieve_email_from_django_outbox(sent_to, subject)
+
+    def test_login_using_magic_link(self):
+        [...]
+----
+====
+
+<1> Here's our helper method for getting email contents from a file.
+    It takes the configured email directory as an argument,
+    as well as the sent-to address and expected subject.
+
+<2> Django saves a new file with emails every time you restart the server.
+    The filename has a timestamp in it,
+    so we can get the latest one by sorting the files in our test directory.
+    Check out the https://docs.python.org/3/library/pathlib.html[Pathlib] docs
+    if you haven't used it before, it's a nice, relatively new way of working with files in Python.
+
+<3> The emails in the file are separated by a line of 80 hyphens.
+
+<4> This is the matching helper for getting the email from `mail.outbox`.
+
+<5> Here's where we dispatch to the right helper based on whether the env
+    var is set.
+
+<6> Checking whether an environment variable is set, and using its value if so,
+    is one of the (relatively few) places where it's nice to use the walrus operator.
+
+<7> I'm using a `wait_for()` here because anything involving reading and writing from files,
+    especially across the filesystem mounts inside and outside of Docker,
+    has a potential race condition.
+
+
+We'll need a couple more minor changes to the FT, to use the helper:
+
+
+[role="sourcecode"]
+.src/functional_tests/test_login.py (ch23l004)
 ====
 [source,diff]
 ----
-@@ -9,7 +9,6 @@ from selenium.webdriver.common.keys import Keys
-
- from .base import FunctionalTest
-
--TEST_EMAIL = "edith@example.com"
- SUBJECT = "Your login link for Superlists"
-
-
-@@ -34,7 +33,6 @@ class LoginTest(FunctionalTest):
-                     print("getting msg", i)
-                     _, lines, __ = inbox.retr(i)
-                     lines = [l.decode("utf8") for l in lines]
--                    print(lines)
-                     if f"Subject: {subject}" in lines:
-                         email_id = i
-                         body = "\n".join(lines)
-@@ -49,9 +47,14 @@ class LoginTest(FunctionalTest):
-         # Edith goes to the awesome superlists site
-         # and notices a "Log in" section in the navbar for the first time
-         # It's telling her to enter her email address, so she does
-+        if self.test_server:
-+            test_email = "edith.testuser@yahoo.com"
-+        else:
-+            test_email = "edith@example.com"
-+
-         self.browser.get(self.live_server_url)
-         self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
--            TEST_EMAIL, Keys.ENTER
-+            test_email, Keys.ENTER
-         )
-----
-====
-
-And then modifications involving using that variable and calling our new helper
-function:
-
-[role="sourcecode small-code"]
-.src/functional_tests/test_login.py (ch21l011-2)
-====
-[source,diff]
-----
-@@ -69,15 +69,13 @@ class LoginTest(FunctionalTest):
+@@ -59,15 +59,12 @@ class LoginTest(FunctionalTest):
          )
 
          # She checks her email and finds a message
--        email = mail.outbox[0]
+-        email = mail.outbox.pop()
 -        self.assertIn(TEST_EMAIL, email.to)
 -        self.assertEqual(email.subject, SUBJECT)
-+        body = self.wait_for_email(test_email, SUBJECT)
++        email_body = self.wait_for_email(TEST_EMAIL, SUBJECT)
 
--        # It has a URL link in it
+         # It has a URL link in it
 -        self.assertIn("Use this link to log in", email.body)
 -        url_search = re.search(r"http://.+/.+$", email.body)
-+        # It has a url link in it
-+        self.assertIn("Use this link to log in", body)
-+        url_search = re.search(r"http://.+/.+$", body)
-         if not url_search:
+-        if not url_search:
 -            self.fail(f"Could not find url in email body:\n{email.body}")
-+            self.fail(f"Could not find url in email body:\n{body}")
++        self.assertIn("Use this link to log in", email_body)
++        if not (url_search := re.search(r"http://.+/.+$", email_body, re.MULTILINE)):
++            self.fail(f"Could not find url in email body:\n{email_body}")
          url = url_search.group(0)
          self.assertIn(self.live_server_url, url)
-
-@@ -85,10 +83,10 @@ class LoginTest(FunctionalTest):
-         self.browser.get(url)
-
-         # she is logged in!
--        self.wait_to_be_logged_in(email=TEST_EMAIL)
-+        self.wait_to_be_logged_in(email=test_email)
-
-         # Now she logs out
-         self.browser.find_element(By.LINK_TEXT, "Log out").click()
-
-         # She is logged out
--        self.wait_to_be_logged_out(email=TEST_EMAIL)
-+        self.wait_to_be_logged_out(email=test_email)
 ----
 ====
 
+// TODO backport that walrus
 
-And, believe it or not, that'll actually work, and give us an FT
-that can actually check for logins that work, involving real emails!
+Now let's set that file path, and mount it inside our docker container,
+so that it's available both inside and outside the container:
+
+[subs="attributes+,specialcharacters,quotes"]
+----
+# set a local env var for our path to the emails file
+$ *export EMAIL_FILE_PATH=/tmp/superlists-emails*
+# make sure the file exists
+$ *mkdir -p $EMAIL_FILE_PATH*
+# re-run our container, with the EMAIL_FILE_PATH as an env var, and mounted.
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    --mount type=bind,source=$EMAIL_FILE_PATH,target=$EMAIL_FILE_PATH \  <1>
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \
+    -e EMAIL_FILE_PATH \  <2>
+    -it superlists*
+----
+
+<1> Here's where we mount the emails file so we can see it
+    both inside and outside the container
+
+<2> And here's where we pass the path as an env var,
+    once again re-exporting the variable from the current shell.
 
 
-[role="against-server small-code"]
+And we can re-run our FT, first without using Docker or the EMAIL_FILE_PATH,
+just to check we didn't break anything:
+
+
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests.test_login*]
+$ pass:quotes[*./src/manage.py test functional_tests.test_login*]
 [...]
 OK
 ----
 
-NOTE: I've just hacked this email-checking code together,
-    and it's currently pretty ugly and brittle
-    (one common problem is picking up the wrong email from a previous test run).
-    With some cleanup and a few more retry loops
-    it could grow into something more reliable.
-    Alternatively, services like _mailinator.com_ will give you throwaway email addresses
-    and an API to check them, for a small fee.
-    ((("", startref="email21")))
-    ((("", startref="DJFemail21")))
-    ((("", startref="DBservemail21")))
+And now _with_ Docker and the EMAIL_FILE_PATH:
+
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 EMAIL_FILE_PATH=/tmp/superlists-emails \
+  python src/manage.py test functional_tests*
+[...]
+OK
+----
 
 
-=== Managing the Test Database on Staging
+It works!  Hooray.
 
-((("debugging", "server-side", "managing test databases", id="DBservdatabase21")))
-((("staging sites", "managing test databases", id="SSmanag21")))
-((("database testing", "managing test databases", id="DTmanag21")))
-((("sessions, pre-creating")))
+
+=== Double-Checking our Test and Our Fix
+
+As always, we should be suspicious of any test that we've only ever seen pass!
+Let's see if we can make this test fail.
+
+Before we do--we've been in the detail for a bit,
+it's worth reminding ourselves of what the actual bug was,
+and how we're fixing it!
+The bug was, the server was crashing when it tried to send an email.
+The reason was, we hadn't set the `EMAIL_PASSWORD` environment variable.
+We managed to repro the bug in Docker.
+The actual _fix_ is to set that env var,
+both in Docker and eventually on the server.
+Now we want to have a _test_ that our fix works,
+and we looked in to a few different options,
+settling on using the `filebased.EmailBackend"
+`EMAIL_BACKEND` setting using the `EMAIL_FILE_PATH` environment variable.
+
+Now, I say we haven't seen the test fail,
+but actually we have, when we repro'd the bug.
+If we unset the `EMAIL_PASSWORD` env var, it will fail again.
+I'm more worried about the new parts of our tests,
+the bits where we go and read from the file at `EMAIL_FILE_PATH`.
+How can we make that part fail?
+
+Well, how about if we deliberately break our email-sending code?
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch23l005)
+====
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST["email"]
+    token = Token.objects.create(email=email)
+    url = request.build_absolute_uri(
+        reverse("login") + "?token=" + str(token.uid),
+    )
+    message_body = f"Use this link to log in:\n\n{url}"
+    # send_mail(  <1>
+    #     "Your login link for Superlists",
+    #     message_body,
+    #     "noreply@superlists",
+    #     [email],
+    # )
+    messages.success(
+        request,
+        "Check your email, we've sent you a link you can use to log in.",
+    )
+    return redirect("/")
+----
+====
+
+<1> We just comment out the entire send_email block.
+
+
+We rebuild our docker image:
+
+
+[subs="specialcharacters,quotes"]
+----
+# check our env var is set
+$ *echo $EMAIL_FILE_PATH*
+/tmp/superlists-emails
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    --mount type=bind,source=$EMAIL_FILE_PATH,target=$EMAIL_FILE_PATH \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \
+    -e EMAIL_FILE_PATH \
+    -it superlists*
+----
+
+// TODO: aside on moujnting /src/?
+
+And we re-run our test:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 EMAIL_FILE_PATH=/tmp/superlists-emails \
+  ./src/manage.py test functional_tests.test_login
+[...]
+Ran 1 test in 2.513s
+
+OK
+----
+
+
+Eh?  How did that pass?
+
+
+=== Testing side-effects is fiddly!
+
+We've run into an example of the kinds of problems you often encounter
+when our tests involve side-effects.
+
+Let's have a look in our test emails directory:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *ls $EMAIL_FILE_PATH*
+20241120-153150-262004991022080.log
+20241120-153154-262004990980688.log
+20241120-153301-272143941669888.log
+----
+
+Every time we restart the server, it opens a new file,
+but only when it first tries to send an email.
+Because we've commented out the whole email-sending block,
+our test instead picks up on an old email,
+which still has a valid url in it,
+because the token is still in the database.
+
+
+Let's clear out the db:
+
+[subs="specialcharacters,quotes"]
+----
+$ *rm src/db.sqlite3 && ./src/manage.py migrate*
+Operations to perform:
+  Apply all migrations: accounts, auth, contenttypes, lists, sessions
+Running migrations:
+  Applying accounts.0001_initial... OK
+  Applying accounts.0002_token... OK
+  Applying contenttypes.0001_initial... OK
+  Applying contenttypes.0002_remove_content_type_name... OK
+  Applying auth.0001_initial... OK
+----
+
+
+And...
+
+cmdgg
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests.test_login*
+[...]
+ERROR: test_login_using_magic_link (functional_tests.test_login.LoginTest.test_login_using_magic_link)
+    self.wait_to_be_logged_in(email=TEST_EMAIL)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate element: #id_logout; [...]
+----
+
+OK sure enough, the `wait_to_be_logged_in()` helper is failing,
+because now, although we have found an email, its token is invalid.
+
+
+Here's another way to make the tests fail:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:[<strong>rm $EMAIL_FILE_PATH/*</strong>]
+----
+
+Now when we run the FT:
+
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 ./src/manage.py test functional_tests.test_login*
+ERROR: test_login_using_magic_link
+(functional_tests.test_login.LoginTest.test_login_using_magic_link)
+[...]
+    email_body = self.wait_for_email(TEST_EMAIL, SUBJECT)
+[...]
+    return self.wait_for(
+           ~~~~~~~~~~~~~^
+        lambda: self.retrieve_email_from_file(sent_to, subject, email_file_path)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[...]
+    latest_emails_file = sorted(Path(emails_dir).iterdir())[-1]
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^
+IndexError: list index out of range
+----
+
+We see there are no email files, because we're not sending one.
+
+NOTE: In this configuration of Docker + `filebase.EmailBackend`,
+  we now have to manage side effects in two locations:
+  the database at _src/db.sqlite3_, and the email files in _/tmp_.
+  What Django used to do for us thanks to LiveServerTestCase
+  is now all our responsibility, and as you can see, it's hard to get right.
+  This is a tradeoff to be aware of when writing tests against "real" systems.
+
+
+Still, this isn't quite satisfactory.
+Let's try a different way to make our tests fail,
+where we _will_ send an email, but we'll give it the wrong contents:
+
+
+[role="sourcecode"]
+.src/accounts/views.py (ch23l006)
+====
+[source,python]
+----
+def send_login_email(request):
+    email = request.POST["email"]
+    token = Token.objects.create(email=email)
+    url = request.build_absolute_uri(
+        reverse("login") + "?token=" + str(token.uid),
+    )
+    message_body = f"Use this link to log in:\n\n{url}"
+    send_mail(
+        "Your login link for Superlists",
+        "HAHA NO LOGIN URL FOR U",  # <1>
+        "noreply@superlists",
+        [email],
+    )
+    messages.success(
+        request,
+        "Check your email, we've sent you a link you can use to log in.",
+    )
+    return redirect("/")
+----
+====
+
+<1> We _do_  send an email, but it won't contain a login URL.
+
+Let's rebuild again:
+
+[subs="specialcharacters,quotes"]
+----
+# check our env var is set
+$ *echo $EMAIL_FILE_PATH*
+/tmp/superlists-emails
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    --mount type=bind,source=$EMAIL_FILE_PATH,target=$EMAIL_FILE_PATH \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \
+    -e EMAIL_FILE_PATH \
+    -it superlists*
+----
+
+Now how do our tests look?
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*]
+FAIL: test_login_using_magic_link
+(functional_tests.test_login.LoginTest.test_login_using_magic_link)
+[...]
+    email_body = self.wait_for_email(TEST_EMAIL, SUBJECT)
+[...]
+    self.assertIn("Use this link to log in", email_body)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'Use this link to log in' not found in 'Content-Type:
+text/plain; charset="utf-8"\nMIME-Version: 1.0\nContent-Transfer-Encoding:
+7bit\nSubject: Your login link for Superlists\nFrom: noreply@superlists\nTo:
+edith@example.com\nDate: Wed, 13 Nov 2024 18:00:55 -0000\nMessage-ID:
+[...]\n\nHAHA NO LOGIN URL FOR
+U\n-------------------------------------------------------------------------------\n'
+----
+
+OK good, that's the error we wanted!
+I think we can be fairly confident that this testing setup
+can genuinely test that emails are sent properly.
+Let's revert our temporarily-broken _views.py_,
+rebuild, and make sure the tests pass once again.
+
+[subs="specialcharacters,quotes"]
+----
+$ *git stash*
+$ *docker build [...]*
+# separate terminal
+$ *TEST_SERVER=localhost:8888 EMAIL_FILE_PATH=/tmp/superlists-emails [...]
+[...]
+OK
+----
+
+// todo: aside or title here?
+
+NOTE: It may seem like we've done a lot of back-and-forth,
+  and I could have written the book without this little detour to make the tests fail,
+  or I could have skipped one of the blind alleys at least,
+  but I wanted to give you a flavour of the fiddliness involved
+  in these kinds of tests that involve a lot of side-effects.
+
+
+=== Decision Time: Which Test Strategy Will We Keep
+
+Let's recap our three options:
+
+
+.Testing Strategy Tradeoffs
+[cols="1,1,1"]
+|=======
+| Strategy | Pros | Cons
+| End-to-end with POP3 | Maximally realistic, tests the whole system | Slow, fiddly, unreliable
+| File-based fake email backend | Faster, more reliable, no network calls, tests end-to-end (albeit with fake components) | Still Fiddly, requires managing db & filesystem side-effects
+| Give up on testing email on the server/Docker | Fast, simple | Less confidence that things work "for real"
+|=======
+
+This is a common problem in testing integration with external systems,
+how far should we go?  How realistic should we make our tests.
+
+In this case, I'm going to suggest we go for the last option,
+which is not to test email sending on the server or in Docker.
+
+Email itself is a well-understood protocol
+(reader, it's been around since _before I was born_, and that's a whiles ago now)
+and Django has supported sending email for more than a decade,
+so I think we can afford to say, in this case,
+that the costs of building testing tools for email outweigh the benefits.
+
+We can already repro the issue we saw on the server in our Docker image,
+so I'm going to suggest we stick to using `mail.outbox` when we're running local tests,
+and we configure our FTs to just check that the server (or Docker) _seems_ to be able to send email
+(in the sense of "not crashing") and we can skip the bit where we check the email contents in our FT.
+Remember, we also have unit tests for the email content!
+
+
+Here's where we can put an early return in the FT:
+
+[role="sourcecode dofirst-ch23l008"]
+.src/functional_tests/test_login.py (ch23l009)
+====
+[source,python]
+----
+    # A message appears telling her an email has been sent
+    self.wait_for(
+        lambda: self.assertIn(
+            "Check your email",
+            self.browser.find_element(By.CSS_SELECTOR, "body").text,
+        )
+    )
+
+    if self.against_server:
+        # Testing real email sending from the server is not worth it.
+        return
+
+    # She checks her email and finds a message
+    email = mail.outbox.pop()
+----
+====
+
+This test will still fail if you don't set `EMAIL_PASSWORD` to a valid value
+in Docker or on the server, so that's good enough for now.
+
+Here's how we populate the `.against_server` attribute:
+
+
+[role="sourcecode"]
+.src/functional_tests/base.py (ch23l010)
+====
+[source,python]
+----
+class FunctionalTest(StaticLiveServerTestCase):
+    def setUp(self):
+        self.browser = webdriver.Firefox()
+        if test_server := os.environ.get("TEST_SERVER"):
+            self.against_server = True
+            self.live_server_url = "http://" + test_server
+        else:
+            self.against_server = False
+----
+====
+
+
+And you can confirm that the FT will fail if you don't set `EMAIL_PASSWORD` in Docker.
+
+Now let's see if we can get our FTs to pass against the server:
+
+
+=== Setting Secret Environment Variables on the Server
+
+((("environment variables"))k)
+((("secret values")))
+Just as in <<chapter_11_server_prep>>,
+the place we set environment variables on the server is in the _superlists.env_ file.
+
+Let's add it to the template first:
+
+
+[role="sourcecode"]
+.infra/env.j2 (ch23l011)
+====
+[source,python]
+----
+DJANGO_DEBUG_FALSE=1
+DJANGO_SECRET_KEY={{ secret_key }}
+DJANGO_ALLOWED_HOST={{ host }}
+EMAIL_PASSWORD={{ email_password }}
+----
+====
+
+and now we add the line to the ansible deploy playbook
+that looks up EMAIL_PASSWORD in our local environment:
+
+
+[role="sourcecode dofirst=ch23l012-1"]
+.infra/deploy-playbook.yml (ch23l012)
+====
+[source,python]
+----
+    - name: Ensure .env file exists
+      ansible.builtin.template:
+        src: env.j2
+        dest: ~/superlists.env
+        force: true  # update file if contents changed
+      vars:
+        host: "{{ inventory_hostname }}"
+        secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters') }}"
+        email_password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"  <1>
+----
+====
+
+<1> We use another call to `lookup()`,
+    this one with the `env` parameter,
+    which is equivalent to `os.environ.get()` in Python.
+
+// TODO: backport that force=true from ch23l012-1
+
+
+////
+TODO: sidebar on making the secret key only update if changed.
+
+- name: Check secret key already exists
+  shell: grep -c "SECRET_KEY" ~/superlists.env  || true
+  register: secret_key_line_count
+
+- name: add secret key line if not already there
+  lineinfile:
+    dest: ~/superlists.env
+    line: SECRET_KEY={{ secret_key }}
+  when: secret_key_line_count.stdout == "0"
+
+or bite the bullet and do it here?
+////
+
+
+
+=== Moving on to the next failure
+
+Now if we rerun our full set of FTs, we can move on to the next failure:
+
+[role="against-server small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:888 python src/manage.py test functional_tests*]
+----
+
 Now we can rerun our full FT suite and get to the next failure:
 our attempt to create pre-authenticated sessions doesn't work,
 so the "My Lists" test fails:
@@ -417,24 +1081,36 @@ so the "My Lists" test fails:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
-
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
 [...]
-selenium.common.exceptions.TimeoutException: Message: Could not find element
-with id id_logout. Page text was:
-Superlists
-Sign in
-Start a new To-Do list
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/test_my_lists.py", line 36, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    self.wait_to_be_logged_in(email)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: #id_logout; [...]
+[...]
+ ---------------------------------------------------------------------
 
-Ran 8 tests in 72.742s
+Ran 8 tests in 30.087s
 
 FAILED (errors=1)
 ----
 
+
+
 It's because our test utility function `create_pre_authenticated_session` only
 acts on the local database. Let's find out how our tests can manage the
 database on the server.
+
+
+=== Repro the error in docker, again
+
+* TODO: resume here.
 
 
 
@@ -442,7 +1118,7 @@ database on the server.
 
 ((("scripts, building standalone")))
 To do things on the server, we'll need to build a self-contained script
-that can be run from the command line on the server, most probably via Fabric.
+that can be run from the command line on the server, most probably via SSH.
 
 When trying to build a standalone script that works with Django (i.e., can talk
 to the database and so on), there are some fiddly issues you need to get right,
@@ -606,87 +1282,69 @@ class FunctionalTest(StaticLiveServerTestCase):
 ----
 ====
 
+
+* TODO: introduce reset_database later, when we get an integrityerror from trying to recreate a user twice.
+
 <1> This will be our function to reset the server database in between each
     test.  We'll write that next, using Fabric.
 
 
 
 
-==== Using Fabric Directly from Python
+==== Running Commands on the Server Using the SSH Command
 
-* TODO: rewrite for ansible.
+A quick and dirty way of running commands on the server is with SSH and `subprocess`:
 
-((("Fabric", "using directly from Python")))
-Rather than using the `fab` command, Fabric provides an API that lets
-you run Fabric server commands directly inline in your Python code.  You
-just need to let it know the "host string" you're connecting to:
 
 
 
 [role="sourcecode"]
-.src/functional_tests/server_tools.py (ch18l018)
+.src/functional_tests/server_tools.py (ch23l02X)
 ====
 [source,python]
 ----
-from fabric.api import run
-from fabric.context_managers import settings, shell_env
+import subprocess
+
+USER = "elspeth"
 
 
-def _get_manage_dot_py(host):
-    return f"~/sites/{host}/.venv/bin/python ~/sites/{host}/manage.py"
+def _exec_in_container(host, cmd):
+    print(f"Running {cmd!r} on {host} inside docker container")
+    process = subprocess.run(
+        ["ssh", f"{USER}@{host}", f"docker exec superlists {cmd}"],  <1>
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    result = process.stdout.decode()
+    if process.returncode != 0:
+        raise Exception(result)
+    print(f"Result: {result!r}")
+    return result.strip()
 
 
 def reset_database(host):
-    manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f"elspeth@{host}"):  # <1>
-        run(f"{manage_dot_py} flush --noinput")  # <2>
+    return _exec_in_container(
+        host,
+        "/venv/bin/python /src/manage.py flush --noinput",
+    )
+
+
+def create_session_on_server(host, email):
+    return _exec_in_container(
+        host,
+        f"/venv/bin/python /src/manage.py create_session {email}",
+    )
 ----
 ====
 
-<1> Here's the context manager that sets the host string, in the form
-    'user@server-address' (I've hardcoded my server username, elspeth, so
-    adjust as necessary).
-
-<2> Then, once we're inside the context manager, we can just call
-    Fabric commands as if we're in a fabfile.
+<1> We're doing a `docker exec` inside an `ssh`.
 
 
 For creating the session, we have a slightly more complex procedure,
 because we need to extract the `SECRET_KEY` and other env vars from
 the current running server, to be able to generate a session key that's
 cryptographically valid for the server:
-
-
-[role="sourcecode small-code"]
-.src/functional_tests/server_tools.py (ch18l019)
-====
-[source,python]
-----
-def _get_server_env_vars(host):
-    env_lines = run(f"cat ~/sites/{host}/.env").splitlines()  # <1>
-    return dict(l.split("=") for l in env_lines if l)
-
-
-def create_session_on_server(host, email):
-    manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f"elspeth@{host}"):
-        env_vars = _get_server_env_vars(host)
-        with shell_env(**env_vars):  # <2>
-            session_key = run(f"{manage_dot_py} create_session {email}")  # <3>
-            return session_key.strip()
-----
-====
-
-
-<1> We extract and parse the server's current environment variables from the
-    _.env_ file...
-
-<2> In order to use them in another fabric context manager, `shell_env`,
-    which sets the environment for the next command...
-
-<3> Which is to run our `create_session` management command, which calls the
-    same `create_pre_authenticated_session` function, but on the server.
-
 
 
 ==== Recap: Creating Sessions Locally Versus Staging
@@ -721,10 +1379,10 @@ Perhaps a little ascii-art diagram will help:
 +-----------------------------------+       +-------------------------------------+
             |                                                   ^
             v                                                   |
-+----------------------------+     +--------+      +------------------------------+
-| server_tools               | --> | fabric | -->  | ./manage.py create_session   |
-| .create_session_on_server  |     |  "run" |      |   (on server, using .env)    |
-|        (locally)           |     +--------+      +------------------------------+
++----------------------------+     +-------------+      +------------------------------+
+| server_tools               | --> |   ssh and   | -->  | ./manage.py create_session   |
+| .create_session_on_server  |     | docker exec |      |   (on server, using .env)    |
+|        (locally)           |     +-------------+      +------------------------------+
 +----------------------------+
 
 ----
@@ -759,20 +1417,17 @@ And now we run the test:
 ----
 $ <strong>TEST_SERVER=staging.ottg.co.uk python src/manage.py test \
  functional_tests.test_my_lists</strong>
-[...]
-[elspeth@staging.ottg.co.uk] run:
-~/sites/staging.ottg.co.uk/.venv/bin/python
-~/sites/staging.ottg.co.uk/manage.py flush --noinput
-[...]
-[elspeth@staging.ottg.co.uk] run:
-~/sites/staging.ottg.co.uk/.venv/bin/python
-~/sites/staging.ottg.co.uk/manage.py create_session edith@example.com
-[...]
+Found 1 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+Running '/venv/bin/python /src/manage.py create_session edith@example.com' on staging.ottg.co.uk inside docker container
+Result: '7n032ogf179t2e7z3olv9ct7b3d4dmas\n'
 .
  ---------------------------------------------------------------------
-Ran 1 test in 5.701s
+Ran 1 test in 4.515s
 
 OK
+Destroying test database for alias 'default'...
 ----
 
 Looking good!  We can rerun all the tests to make sure...
@@ -791,6 +1446,8 @@ OK
 ----
 
 Hooray!
+
+* TODO talk about reset_database separately
 
 NOTE: I've shown one way of managing the test database, but you could
     experiment with others--for example, if you were using MySQL or Postgres,
