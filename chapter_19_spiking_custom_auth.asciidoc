@@ -201,6 +201,8 @@ $ *cd src && python manage.py startapp accounts*
 ----
 //16l002
 
+// DAVID: Worth discussing why you chose to make this an app?
+
 And we'll wire up _urls.py_ with at least one URL.
 In the top-level _superlists/urls.py_...
 
@@ -221,6 +223,8 @@ urlpatterns = [
 ====
 
 And in the accounts module's 'urls.py':
+
+// DAVID: Note that this module isn't created by the startapp command, possibly should be rephrased slightly?
 
 [role="sourcecode"]
 .src/accounts/urls.py (ch18l004)
@@ -370,6 +374,12 @@ How are we doing? Let's review where we're at in the process:
 * _What steps will the user have to go through?_
 *****
 
+// DAVID: In practice would we really cross something off the list like this before giving it a try?
+// Might be better to gradually build things up, e.g. write a function to send an email (and check it works).
+// Could even use as an excuse to introduce manage.py shell and do it from there?
+// Equally with the user interface stuff, maybe starting up the application and having a look at what it looks like?
+// Or maybe start with the model and then layer things on top of that.
+
 We'll need a model to store our tokens in the database--they
 link an email address with a unique ID.
 Pretty simple:
@@ -391,6 +401,8 @@ class Token(models.Model):
 
 Yes, I know Django supports UID fields in databases,
 but I just want to keep things simple for now.
+// DAVID: The reader might not know that - make "Yes, I know" something like "Now I happen to know...".
+// Also do you definitely mean UID rather than UUID?
 The point of this spike is about authentication and emails,
 not optimising database storage.
 We've got enough things we need to learn as it is!
@@ -419,6 +431,9 @@ INSTALLED_APPS = [
 
 We can then do a quick migrations dance to add the token model to the db:
 
+// DAVID: The current working directory is src, maybe we should do a `cd ..` after we
+// create the accounts app?
+
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py makemigrations*]
@@ -436,6 +451,9 @@ Running migrations:
 
 And at this point, if you actually try the email form in your browser,
 you'll see we can actually send email! See <<spike-email-sent>> and <<spike-email-received>>
+
+// DAVID: Maybe we should hand-hold them through this a bit more, reminding them that this is ACTUALLY GOING TO SEND AN EMAIL
+// so make sure they spell their email correctly otherwise they'll be spamming someone else.
 
 [[spike-email-sent]]
 .Looks like we might have sent an email
@@ -494,6 +512,7 @@ class ListUser(AbstractBaseUser):
         return True
 ----
 ====
+// DAVID: Maybe better include the ListUserManager() here too? Or leave it out until we create it?
 
 That's what I call a minimal user model!
 One field, none of this firstname/lastname/username nonsense,
@@ -601,7 +620,7 @@ def login(request):
     return redirect("/")
 ----
 ====
-
+// DAVID: Maybe better to do request.GET["uid"] as the exception would be earlier and clearer?
 
 The `authenticate()` function invokes Django's authentication framework,
 which we configure using a "custom authentication backend",
@@ -644,6 +663,14 @@ class PasswordlessAuthenticationBackend(BaseBackend):
         return ListUser.objects.get(email=email)
 ----
 ====
+// DAVID: It would be more idiomatic (and involve fewer SQL queries) to do:
+//
+//     try:
+//        token = Token.objects.get(uid=uid)
+//     except Token.DoesNotExist:
+//         print("no token found", file=sys.stderr)
+//         return None
+//     print("got token", file=sys.stderr)
 
 
 Again, lots of debug prints in there, and some duplicated code,
@@ -670,6 +697,8 @@ MIDDLEWARE = [
 
 ----
 ====
+// DAVID: The place they put these in the settings file doesn't matter so you could just say
+// 'put it at the end'.
 
 And finally, a logout view:
 
@@ -711,7 +740,7 @@ urlpatterns = [
 
 And we should be all done!
 Spin up a dev server with `runserver` and try it--believe it or not,
-it _acutally_ works:
+it _actually_ works:
 (<<spike-login-worked>>).
 
 [[spike-login-worked]]
@@ -741,7 +770,7 @@ $ *git status*
 $ *git add src/accounts*
 $ *git commit -am "spiked in custom passwordless auth backend"*
 ----
-
+// DAVID: If we're using `-am`, why the manual add of src/accounts?
 
 [role="scratchpad"]
 *****
@@ -827,6 +856,9 @@ class LoginTest(FunctionalTest):
         self.assertIn(TEST_EMAIL, navbar.text)
 ----
 ====
+// DAVID: Worth mentioning that once we start going near real emails, example.com is
+// a special domain intended for this purpose, which you don't need to worry about accidentally
+// spamming someone on.
 
 <1> Were you worried about how we were going to handle retrieving emails in our
     tests?  Thankfully we can cheat for now! When running tests, Django gives
@@ -924,6 +956,10 @@ form for the login email:
 ----
 ====
 
+// DAVID: Just observing that we are introducing a conceptual dependency here from the lists app on the accounts app.
+// It might be worth calling this out explicitly at some point, as it's an architectural choice.
+// Also, now we are heading for a multi-app project it might make more sense to put base.html under superlists/templates,
+// but this is very much a matter of taste.
 
 Now our FT fails because the login form doesn't send us to a real URL yet--you'll
 see the `Not found:` message in the server output,
@@ -949,9 +985,13 @@ $ *cd src && python manage.py startapp accounts*
 ----
 //ch18l021
 
+// DAVID: probably a good idea to `cd ..` after this command.
 
 You could even do a commit just for that, to be able to distinguish the
 placeholder app files from our modifications.
+
+// DAVID: Tell me what to do Harry! It's helpful to have a prescribed commit
+// message in case I take a wrong turn and want to retrace my steps to a known good point.
 
 Next let's rebuild our minimal user model, with tests this time, and see
 if it turns out neater than it did in the spike.
@@ -1009,6 +1049,8 @@ class UserModelTest(TestCase):
 // todo: consider User.objects.create() here,
 // depending on what we do about IntegrityErrors in chap 13
 
+// DAVID: It would be good to say what test command to run here, since
+// the previous one was just for the lists app.
 
 That gives us an expected failure:
 
@@ -1185,7 +1227,8 @@ OK
 But our model isn't quite as simple as it could be.
 It has the email field, and also an autogenerated "ID" field as its primary key.
 We could make it even simpler!
-
+// DAVID: Maybe spell this out more clearly to the reader that there are actually two fields,
+// they might not realise this.
 
 
 ==== Tests as Documentation
@@ -1257,6 +1300,10 @@ Migrations for 'accounts':
 ----
 //ch18l034
 
+// DAVID: Deleting migrations can get readers in a pickle if they have already run migrations locally.
+// Might be worth saying we're only doing this because we've just created it, and advise them to delete
+// their database if they happen to have run the migration they've just deleted? (Or you can get them
+// to run `migrate accounts zero` I think.)
 
 ((("", startref="SDminimal18")))
 Now both our tests pass:
@@ -1270,7 +1317,6 @@ OK
 ----
 
 It's probably a good time for a commit, too.
-
 
 === A Token Model to Link Emails with a Unique ID
 
@@ -1343,6 +1389,7 @@ class Token(models.Model):
     uid = models.CharField(max_length=40)
 ----
 ====
+// DAVID: could it confuse people that the max_length is 40 here but 255 in the spike?
 
 And this error:
 
@@ -1362,6 +1409,7 @@ specifically designed for generating unique IDs called "uuid"
 (for "universally unique id").
 We can use it like this:
 
+// DAVID: It feels like a strange time to introduce it, seeing as we've already used it in the spike earlier.
 
 [role="sourcecode"]
 .src/accounts/models.py (ch18l040)
@@ -1381,6 +1429,9 @@ class Token(models.Model):
 And, perhaps with a bit more wrangling of migrations,
 that should get us to passing tests:
 
+// DAVID: The tests will pass without needing to make migrations,
+// but next time they make migrations it will include this change too. That doesn't matter that
+// much but isn't as clean a git history. Might be simpler just to tell them to makemigrations.
 
 [role="dofirst-ch18l041"]
 [subs="specialcharacters,quotes"]
@@ -1400,6 +1451,7 @@ In the next chapter, we'll get into mocking,
 a key technique for testing external dependencies like email.
 ((("", startref="SDtoken18")))
 
+// DAVID: Worth getting them to commit the code?
 
 [role="pagebreak-before"]
 .Exploratory Coding, Spiking, and De-spiking
