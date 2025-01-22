@@ -896,7 +896,7 @@ OK
 
 NOTE: It may seem like we've done a lot of back-and-forth,
   and I could have written the book without this little detour to make the tests fail,
-  or I could have skipped one of the blind alleys at least,
+  or I could have skipped one of the weird bugs at least,
   but I wanted to give you a flavour of the fiddliness involved
   in these kinds of tests that involve a lot of side-effects.
 
@@ -1104,22 +1104,22 @@ Let's find out how our tests can manage the database on the server.
 
 ==== A Django Management Command to Create Sessions
 
-TODO resume here
+We need a way to make changes to the database inside Docker, or on the server.
+Essentially we want to run some code outside the context of the tests
+(and the test database) and in the context of the server and its database.
 
 ((("scripts, building standalone")))
-We need a way to make changes to the database inside Docker, or on the server.
-To do things on the server, we'll need to build a self-contained script
-that can be run from the command line on the server, most probably via SSH.
+When trying to build a standalone script that works with Django
+(i.e., can talk to the database and so on),
+there are some fiddly issues you need to get right,
+like setting the `DJANGO_SETTINGS_MODULE` environment variable,
+and setting `sys.path` correctly.
 
-When trying to build a standalone script that works with Django (i.e., can talk
-to the database and so on), there are some fiddly issues you need to get right,
-like setting the `DJANGO_SETTINGS_MODULE` environment variable, and getting
-`sys.path` correctly.
 
 Instead of messing about with all that, Django lets you create your own
 "management commands" (commands you can run with `python manage.py`), which
 will do all that path mangling for you. They live in a folder called
-'management/commands' inside your apps:
+_management/commands_ inside your apps:
 
 [subs=""]
 ----
@@ -1127,14 +1127,13 @@ $ <strong>mkdir -p src/functional_tests/management/commands</strong>
 $ <strong>touch src/functional_tests/management/__init__.py</strong>
 $ <strong>touch src/functional_tests/management/commands/__init__.py</strong>
 ----
-//ch21l012-1
 
 The boilerplate in a management command is a class that inherits from
 `django.core.management.BaseCommand`, and that defines a method called
 `handle`:
 
 [role="sourcecode"]
-.src/functional_tests/management/commands/create_session.py (ch21l012)
+.src/functional_tests/management/commands/create_session.py (ch23l014)
 ====
 [source,python]
 ----
@@ -1182,7 +1181,7 @@ for it to recognise it as a real app that might have management commands as
 well as tests:
 
 [role="sourcecode"]
-.src/superlists/settings.py (ch21l014)
+.src/superlists/settings.py (ch23l015)
 ====
 [source,python]
 ----
@@ -1205,9 +1204,10 @@ $ pass:quotes[*python src/manage.py create_session a@b.com*]
 qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
-NOTE: If you see an error saying the `auth_user` table is missing, you may need
-    to run `manage.py migrate`.  In case that doesn't work, delete the
-    _db.sqlite3_ file and run +migrate+ again, to get a clean slate.
+NOTE: If you see an error saying the `auth_user` table is missing,
+    you may need to run `manage.py migrate`.
+    In case that doesn't work, delete the _db.sqlite3_ file
+    and run `migrate` again, to get a clean slate.
 
 
 ==== Getting the FT to Run the Management Command on the Server
@@ -1217,15 +1217,15 @@ when we're on the local server,
 and make it run the management command on the staging server if we're on that:
 
 [role="sourcecode"]
-.src/functional_tests/test_my_lists.py (ch21l016)
+.src/functional_tests/test_my_lists.py (ch23l016)
 ====
 [source,python]
 ----
 from django.conf import settings
 
 from .base import FunctionalTest
+from .container_commands import create_session_on_server
 from .management.commands.create_session import create_pre_authenticated_session
-from .server_tools import create_session_on_server
 
 
 class MyListsTest(FunctionalTest):
@@ -1251,46 +1251,22 @@ class MyListsTest(FunctionalTest):
 ====
 
 
-Let's also tweak _base.py_, to gather a bit more information
-when we populate `self.test_server`:
+
+
+
+==== Running Commands Using Docker Exec and (optionally) SSH
+
+
+You may remember `docker exec` from <<chapter_09_docker>>, it lets us run
+commands inside a running Docker container.
+That's fine for when we're running against the local Docker,
+but when we're against the server, we need to SSH in first.
+
+There's a bit of plumbing here, but I've tried to break things down into small chunks:
 
 
 [role="sourcecode"]
-.src/functional_tests/base.py (ch21l017)
-====
-[source,python]
-----
-from .server_tools import reset_database  #<1>
-[...]
-
-class FunctionalTest(StaticLiveServerTestCase):
-    def setUp(self):
-        self.browser = webdriver.Firefox()
-        self.test_server = os.environ.get("TEST_SERVER")
-        if self.test_server:
-            self.live_server_url = "http://" + self.test_server
-            reset_database(self.test_server)  #<1>
-----
-====
-
-
-* TODO: introduce reset_database later, when we get an integrityerror from trying to recreate a user twice.
-
-<1> This will be our function to reset the server database in between each
-    test.  We'll write that next, using Fabric.
-
-
-
-
-==== Running Commands on the Server Using the SSH Command
-
-A quick and dirty way of running commands on the server is with SSH and `subprocess`:
-
-
-
-
-[role="sourcecode"]
-.src/functional_tests/server_tools.py (ch23l02X)
+.src/functional_tests/container_commands.py (ch23l018)
 ====
 [source,python]
 ----
@@ -1299,10 +1275,40 @@ import subprocess
 USER = "elspeth"
 
 
-def _exec_in_container(host, cmd):
-    print(f"Running {cmd!r} on {host} inside docker container")
-    process = subprocess.run(
-        ["ssh", f"{USER}@{host}", f"docker exec superlists {cmd}"],  <1>
+def create_session_on_server(host, email):
+    return _exec_in_container(
+        host, ["/venv/bin/python", "/src/manage.py", "create_session", email]  # <1>
+    )
+
+
+def _exec_in_container(host, commands):
+    if "localhost" in host:  # <2>
+        return _exec_in_container_locally(commands)
+    else:
+        return _exec_in_container_on_server(host, commands)
+
+
+def _exec_in_container_locally(commands):
+    print(f"Running {commands} on inside local docker container")
+    return _run_commands(["docker", "exec", _get_container_id()] + commands)  # <3>
+
+
+def _exec_in_container_on_server(host, commands):
+    print(f"Running {commands!r} on {host} inside docker container")
+    return _run_commands(
+        ["ssh", f"{USER}@{host}", "docker", "exec", "superlists"] + commands  # <4>
+    )
+
+
+def _get_container_id():
+    return subprocess.check_output(  # <5>
+        ["docker", "ps", "-q", "--filter", "ancestor=superlists"]  # <3>
+    ).strip()
+
+
+def _run_commands(commands):
+    process = subprocess.run(  # <5>
+        commands,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         check=False,
@@ -1312,30 +1318,27 @@ def _exec_in_container(host, cmd):
         raise Exception(result)
     print(f"Result: {result!r}")
     return result.strip()
-
-
-def reset_database(host):
-    return _exec_in_container(
-        host,
-        "/venv/bin/python /src/manage.py flush --noinput",
-    )
-
-
-def create_session_on_server(host, email):
-    return _exec_in_container(
-        host,
-        f"/venv/bin/python /src/manage.py create_session {email}",
-    )
 ----
 ====
 
-<1> We're doing a `docker exec` inside an `ssh`.
+<1> We invoke our management command with the path to the virtualenv python,
+    the `create_session` command name, and pass in the email we want to create a session for
 
+<2> We dispatch to two slightly different ways of running a command inside a container,
+    with the assumption that a host that's on "localhost" is a local Docker container,
+    and the others are on the staging server.
 
-For creating the session, we have a slightly more complex procedure,
-because we need to extract the `SECRET_KEY` and other env vars from
-the current running server, to be able to generate a session key that's
-cryptographically valid for the server:
+<3> To run a command on the local Docker container, we're going to use `docker exec`,
+    and we have a little extra hop first to get the correct container ID.
+
+<4> To run a command on the Docker container that's on the staging server,
+    we still use `docker exec`, but we do it inside an SSH session.
+    In this case we don't need the container ID, because the container is always named "superlists'.
+
+<5> Finally we use Python's `subprocess` module to actually run a command.
+    You can see a couple of different ways of running it here,
+    which differ based on how we're handing errors and output;
+    the details don't matter too much.
 
 
 ==== Recap: Creating Sessions Locally Versus Staging
@@ -1350,36 +1353,75 @@ Perhaps a little ascii-art diagram will help:
 
 [role="skipme small-code"]
 ----
-
 +-----------------------------------+       +-------------------------------------+
 | MyListsTest                       |  -->  | .management.commands.create_session |
 | .create_pre_authenticated_session |       |  .create_pre_authenticated_session  |
 |            (locally)              |       |             (locally)               |
 +-----------------------------------+       +-------------------------------------+
-
 ----
 
-===== Against staging:
+
+===== Against Docker locally:
 
 [role="skipme small-code"]
 ----
-+-----------------------------------+       +-------------------------------------+
-| MyListsTest                       |       | .management.commands.create_session |
-| .create_pre_authenticated_session |       |  .create_pre_authenticated_session  |
-|            (locally)              |       |            (on server)              |
-+-----------------------------------+       +-------------------------------------+
-            |                                                   ^
-            v                                                   |
-+----------------------------+     +-------------+      +------------------------------+
-| server_tools               | --> |   ssh and   | -->  | ./manage.py create_session   |
-| .create_session_on_server  |     | docker exec |      |   (on server, using .env)    |
-|        (locally)           |     +-------------+      +------------------------------+
++-----------------------------------+             +-------------------------------------+
+| MyListsTest                       |             | .management.commands.create_session |
+| .create_pre_authenticated_session |             |  .create_pre_authenticated_session  |
+|            (locally)              |             |            (in Docker)              |
++-----------------------------------+             +-------------------------------------+
+            |                                                        ^
+            v                                                        |
++----------------------------+     +-------------+     +----------------------------+
+| server_tools               | --> | docker exec | --> | ./manage.py create_session |
+| .create_session_on_server  |     +-------------+     |       (in Docker)          |
+|        (locally)           |                         +----------------------------+
 +----------------------------+
-
 ----
 
-In any case, let's see if it works.  First, locally, to check that we didn't
-break anything:
+===== Against Docker locally:
+
+[role="skipme small-code"]
+----
++-----------------------------------+                           +-------------------------------------+
+| MyListsTest                       |                           | .management.commands.create_session |
+| .create_pre_authenticated_session |                           |  .create_pre_authenticated_session  |
+|            (locally)              |                           |            (on server)              |
++-----------------------------------+                           +-------------------------------------+
+            |                                                                      ^
+            v                                                                      |
+
++----------------------------+     +-----+    +-------------+      +------------------------------+
+| server_tools               | --> | ssh | -> | docker exec | -->  | ./manage.py create_session   |
+| .create_session_on_server  |     +-----+    +-------------+      |         (on server)          |
+|        (locally)           |                                     +------------------------------+
++----------------------------+              
+                                            
+
+
+.An Alternative For Managing Test Database Content: Talking Directly to the DB
+**********************************************************************
+An alternative way of managing database content inside Docker,
+or on a server, would be to talk directly to the DB
+
+Since we're using SQLite, that involves writing to the file directly,
+This can be fiddly to get right, because when we're running inside Django's
+test runner, Django takes over test database creation,
+so you end up having to write raw SQL and managing your connections to the database directly.
+
+There are also some tricky interactions with the filesystem mounts and Docker,
+as well as needing to have the SECRET_KEY env var set to the same value as on the server.
+
+If we were using a "classic" database server like Postgres or MySQL,
+we'd be able to talk directly to the database over its port,
+and that's an approach I've used successfully in the past (see eg https://www.cosmicpython.com/book/chapter_02_repository.html#_inverting_the_dependency_orm_depends_on_model)
+but it's still fiddly to get right and usually requires writing your own SQL.
+**********************************************************************
+
+=== Testing the Management Command
+
+In any case, let's see if it works.
+First, locally, to check that we didn't break anything:
 
 
 [role="dofirst-ch21l022"]
@@ -1438,19 +1480,64 @@ OK
 
 Hooray!
 
-* TODO talk about reset_database separately
 
-NOTE: I've shown one way of managing the test database, but you could
-    experiment with others--for example, if you were using MySQL or Postgres,
-    you could open up an SSH tunnel to the server, and use port forwarding to
-    talk to the database directly.  You could then amend `settings.DATABASES`
-    during FTs to talk to the tunnelled port.  You'd still need some way of
-    pulling in the staging server environment variables though.((("", startref="DBservdatabase21")))((("", startref="SSmanag21")))((("", startref="DTmanag21")))
+=== Test Database Cleanup
+
+If you try running the tests twice, you'll run into this error:
+
+[subs="specialcharacters,quotes"]
+----
+django.db.utils.IntegrityError: UNIQUE constraint failed: accounts_user.email
+----
+
+It's because the user we created the first time we ran the tests is still in the database.
+When we're running against Django's test database, Django cleans up for us.
+Let's try and emulate that when we're running against a real database:
+
+
+
+
+[role="sourcecode"]
+.src/functional_tests/container_commands.py (ch23l019)
+====
+[source,python]
+----
+def reset_database(host):
+    return _exec_in_container(
+        host, ["/venv/bin/python", "/src/manage.py", "flush", "--noinput"]
+    )
+----
+====
+
+
+And let's add the call to `reset_database()` in our base test `setUp()` method:
+
+
+[role="sourcecode"]
+.src/functional_tests/base.py (ch23l020)
+====
+[source,python]
+----
+from .server_tools import reset_database  #<1>
+[...]
+
+class FunctionalTest(StaticLiveServerTestCase):
+    def setUp(self):
+        self.browser = webdriver.Firefox()
+        self.test_server = os.environ.get("TEST_SERVER")
+        if self.test_server:
+            self.live_server_url = "http://" + self.test_server
+            reset_database(self.test_server)
+----
+====
+
+
+If you try to run your tests again, you'll find they pass happily.
 
 
 
 [role="pagebreak-before less_space"]
-.Warning: Be Careful Not to Run Test Code Against the Live Server
+.Warning: Be Careful Not to Run Test Code Against the Production Server!
 *******************************************************************************
 ((("database testing", "safeguarding production databases")))
 ((("production databases")))
@@ -1469,44 +1556,6 @@ I have a little story about accidentally sending thousands of duplicate invoices
 in <<data-migrations-appendix>>. LFMF.
 
 *******************************************************************************
-
-
-=== Updating our Deploy Script
-
-* TODO: ansible.
-
-((("debugging", "server-side", "baking in logging code")))
-Before we finish, let's update our deployment fabfile so that it can
-automatically add the `EMAIL_PASSWORD` to the _.env_ file on the server:
-
-
-[role="sourcecode skipme"]
-.src/deploy_tools/fabfile.py (ch18l021)
-====
-[source,python]
-----
-import os
-[...]
-
-
-def _create_or_update_dotenv():
-    append(".env", "DJANGO_DEBUG_FALSE=y")
-    append(".env", f"SITENAME={env.host}")
-    current_contents = run("cat .env")
-    if "DJANGO_SECRET_KEY" not in current_contents:
-        new_secret = "".join(
-            random.SystemRandom().choices("abcdefghijklmnopqrstuvwxyz0123456789", k=50)
-        )
-        append(".env", f"DJANGO_SECRET_KEY={new_secret}")
-    email_password = os.environ["EMAIL_PASSWORD"]  # <1>
-    append(".env", f"EMAIL_PASSWORD={email_password}")  # <1>
-----
-====
-
-<1> We just add two lines at the end of the script which will essentially
-    copy the local `EMAIL_PASSWORD` environment variable up to the server's
-    _.env_ file.
-
 
 
 === Wrap-Up
@@ -1532,8 +1581,8 @@ the ability to save their lists on a "My Lists" page.
 Fixtures also have to work remotely::
     `LiveServerTestCase` makes it easy to interact with the test database
     using the Django ORM for tests running locally.  Interacting with the
-    database on the staging server is not so straightforward. One solution
-    is Fabric and Django management commands, as I've shown, but you should
+    database inside Docker is not so straightforward. One solution
+    is `docker exec` and Django management commands, as I've shown, but you should
     explore what works for you--SSH tunnels, for example.
     ((("fixtures", "staging and")))
     ((("staging sites", "fixtures and")))
