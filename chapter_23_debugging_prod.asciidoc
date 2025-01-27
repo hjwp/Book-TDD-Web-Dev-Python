@@ -18,88 +18,14 @@ Oh yes, waiting to be logged in. And why was that?
 Ah yes, we had just built a way of pre-authenticating a user.
 Let's see how that works against our staging server and Docker.
 
-// TODO revise this?
-In this chapter we'll encounter some situations where the right answer is not always obvious.
-We're into the realm of tradeoffs now, which is appropriate for this more advanced part of the book.
-My aim is no longer to show you a single, good way to do things,
-but instead to give you a toolbox of techniques and strategies,
-with some insights into their strengths and weaknesses,
-so that you can make decisions on your own.
 
 
+=== The Proof Is in the Pudding: Using Docker to Catch Final Bugs
 
-=== The Proof Is in the Pudding: Using Staging to Catch Final Bugs
+Remember the deployment checklist from <<chapter_18_second_deploy>>?
+Let's see if it can't come in useful today!
 
-((("debugging", "server-side", "using staging sites", tertiary-sortas="staging sites", id="DBserstag21")))
-((("staging sites", "catching final bugs with", id="SScatch21")))
-They're all very well for running the FTs locally,
-but how would they work against the staging server?
-Let's try to deploy our site.
-Along the way we'll catch an unexpected bug (that's what staging is for!),
-and then we'll have to figure out a way of managing the database on the test server:
-
-[role="against-server small-code"]
-[subs="specialcharacters,quotes"]
-----
-$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/deploy-playbook.yaml.yaml -vv*]
-
-PLAYBOOK: deploy-playbook.yaml.yaml ***********************************************
-1 plays in infra/deploy-playbook.yaml.yaml
-[...]
-----
-
-
-Here's what happens when we run the functional tests:
-
-[role="against-server small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
-
-======================================================================
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists (functional_tests.test_
-my_lists.MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_my_lists.py", line 34, in
-test_logged_in_users_lists_are_saved_as_my_lists
-    self.wait_to_be_logged_in(email)
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Log out
-
-
-======================================================================
-FAIL: test_login_using_magic_link (functional_tests.test_login.LoginTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_login.py", line 22, in
-test_login_using_magic_link
-    self.wait_for(lambda: self.assertIn(
-[...]
-AssertionError: 'Check your email' not found in 'Server Error (500)'
-
- ---------------------------------------------------------------------
-Ran 8 tests in 68.602s
-
-FAILED (failures=1, errors=1)
-
-----
-
-We can't log in--either with the real email system or with our pre-authenticated session.
-Looks like our nice new authentication system is crashing the server.
-
-
-Let's practice a bit of production debugging!
-
-
-=== Trying to Repro in Docker
-
-One of the reasons we went to the trouble of building a Docker image,
-was to have a way of simulating what's on the server as closely as possible, locally.
-So let's see whether we get the same error if we test against Docker.
-
-Let's rebuild and start our Docker container locally,
+First we rebuild and start our Docker container locally,
 on port 8888:
 
 [subs="specialcharacters,quotes"]
@@ -112,7 +38,8 @@ $ *docker build -t superlists . && docker run \
     -it superlists*
 ----
 
-And now let's see if our errors repro against Docker:
+
+And now let's do an FT run:
 
 
 [role="small-code"]
@@ -128,9 +55,10 @@ AssertionError: 'Check your email' not found in 'Server Error (500)'
 FAILED (failures=1, errors=1)
 ----
 
-Sure enough, same two errors!
+We can't log in--either with the real email system or with our pre-authenticated session.
+Looks like our nice new authentication system is crashing when we run it in Docker.
 
-// TODO: actually, does this obviate the whole need for running fts against the server?
+Let's practice a bit of production debugging!
 
 
 === Inspecting the Docker Container Logs
@@ -202,59 +130,17 @@ smtplib.SMTPSenderRefused: (530, b'5.7.0 Authentication Required. [...]
 ----
 
 That looks like a pretty good clue to what's going on.
-
-Before we go further, it's worth confirming that the error on the actual server
-is the same as the one we see in Docker.
-
-SSH in to your server and run `docker logs`:
-
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *docker logs superlists*
-----
-
-You should see an error like this:
-[role="skipme small-code"]
-[subs="specialcharacters,quotes"]
-----
-❯ ssh elspeth@staging.ottg.co.uk docker logs superlists
-[2024-10-30 09:55:08 +0000] [6] [INFO] Starting gunicorn 22.0.0
-[2024-10-30 09:55:08 +0000] [6] [INFO] Listening at: http://0.0.0.0:8888 (6)
-[2024-10-30 09:55:08 +0000] [6] [INFO] Using worker: sync
-[2024-10-30 09:55:08 +0000] [7] [INFO] Booting worker with pid: 7
-Not Found: /favicon.ico
-Not Found: /favicon.ico
-Not Found: /favicon.ico
-Not Found: /favicon.ico
-Not Found: /favicon.ico
-Internal Server Error: /accounts/send_login_email
-Traceback (most recent call last):
-  File "/venv/lib/python3.13/site-packages/django/core/handlers/exception.py",
-  line 55, in inner
-    response = get_response(request)
-  File "/venv/lib/python3.13/site-packages/django/core/handlers/base.py", line
-  197, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "/src/accounts/views.py", line 16, in send_login_email
-    send_mail(
-    ~~~~~~~~~^
-        "Your login link for Superlists",
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-[...]
-    raise SMTPSenderRefused(code, resp, from_addr)
-smtplib.SMTPSenderRefused: (530, b'5.7.0 Authentication Required. [...]
-----
+((("", startref="Dockercatch21")))
 
 
 Sure enough!  Good to know our local Docker setup can repro the error on the server.
-((("", startref="SScatch21")))((("", startref="DBserstag21")))
 
 
 === Another Environment Variable In Docker
 
-So, Gmail is refusing to send our emails, is it?  Now why might that be?
-Ah yes, we haven't told the server what our password is!
+So, Gmail is refusing to let us send emails, is it?  
+Now why might that be? "Authentication Required" you say? 
+Oh woops, we haven't told the server what our password is!
 
 
 As you might remember from earlier chapters,
