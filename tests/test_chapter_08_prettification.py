@@ -32,7 +32,7 @@ class Chapter8Test(ChapterTest):
         if os.environ.get("SKIP"):
             self.pos = 55
             self.sourcetree.run_command(
-                "git switch {}".format(self.sourcetree.get_commit_spec("ch08l018"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch08l018"))
             )
 
         while self.pos < len(self.listings):
