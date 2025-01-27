@@ -86,18 +86,6 @@ def standardise_assertionerror_none(output):
     return output.replace("AssertionError: None", "AssertionError")
 
 
-def standardise_tree_dir_count(output):
-    regex = r"(\d+) directories, (\d+) files"
-    if sys.platform == "darwin":
-        if match := re.search(regex, output):
-            return re.sub(
-                regex,
-                f"{int(match.group(1)) -1} directories, {match.group(2)} files",
-                output,
-            )
-    return output
-
-
 def standardise_git_init_msg(output):
     return output.replace(
         "Initialized empty Git repository", "Initialised empty Git repository"
@@ -444,7 +432,6 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = fix_creating_database_line(actual_fixed)
         actual_fixed = fix_interactive_managepy_stuff(actual_fixed)
         actual_fixed = standardise_assertionerror_none(actual_fixed)
-        actual_fixed = standardise_tree_dir_count(actual_fixed)
         actual_fixed = standardise_git_init_msg(actual_fixed)
         actual_fixed = wrap_long_lines(actual_fixed)
 
