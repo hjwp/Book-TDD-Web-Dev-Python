@@ -6,7 +6,7 @@
 This chapter has been recently updated to Django 5, Ansible+Docker, etc.
 
 It all works on my machine, as they say!
-Let me know if you run into anything strange. 
+Let me know if you run into anything strange.
 Feedback and suggestions of any kind appreciated, as always.
 
 *******************************************************************************
@@ -36,6 +36,12 @@ $ *docker build -t superlists . && docker run \
     -e DJANGO_SECRET_KEY=sekrit \
     -e DJANGO_ALLOWED_HOST=localhost \
     -it superlists*
+[...]
+ => => naming to docker.io/library/superlists [...]
+[2025-01-27 22:37:02 +0000] [7] [INFO] Starting gunicorn 22.0.0
+[2025-01-27 22:37:02 +0000] [7] [INFO] Listening at: http://0.0.0.0:8888 (7)
+[2025-01-27 22:37:02 +0000] [7] [INFO] Using worker: sync
+[2025-01-27 22:37:02 +0000] [8] [INFO] Booting worker with pid: 8
 ----
 
 
@@ -138,8 +144,8 @@ Sure enough!  Good to know our local Docker setup can repro the error on the ser
 
 === Another Environment Variable In Docker
 
-So, Gmail is refusing to let us send emails, is it?  
-Now why might that be? "Authentication Required" you say? 
+So, Gmail is refusing to let us send emails, is it?
+Now why might that be? "Authentication Required" you say?
 Oh woops, we haven't told the server what our password is!
 
 
@@ -209,9 +215,12 @@ IndexError: pop from empty list
 ----
 
 Well, not a pass, but the tests do get a little further.
-It looks like our server _can_ now send emails,
-(and the docker log no longer shows any errors),
-they're just not appearing in `mail.outbox`.
+It looks like our server _can_ now send emails
+(if you check the docker logs, you'll see there are no more errors)
+But our FT is saying it can't see any emails appearing in `mail.outbox`.
+
+
+==== `mail.outbox` Won't Work Outside Django's Test Environment
 
 The reason is that `mail.outbox` is a local, in-memory variable in Django,
 so that's only going to work when our tests and our server are running in the same process,
@@ -221,7 +230,8 @@ When we run against another process, be it Docker or an actual server,
 we can't access the same `mail.outbox` variable.
 
 We need another technique if we want to actually inspect the emails
-that the server sends, in our tests against Docker or staging.
+that the server sends, in our tests against Docker
+(or later, against the staging server).
 
 
 [[options-for-testing-real-email]]
@@ -239,7 +249,9 @@ There are a few different ways we could test this:
    and some APIs for checking what mail has been delivered.
 
 3. We can use an alternative, fake email backend,
-   whereby Django will save the emails to a file on disk for example,
+   whereby Django will save the emails to a
+   https://docs.djangoproject.com/en/5.1/topics/email/#file-backend[file on disk]
+   for example,
    and we can inspect them there.
 
 4. Or we could give up on testing email on the server.
@@ -272,10 +284,10 @@ and Django has supported sending email for more than a decade,
 so I think we can afford to say, in this case,
 that the costs of building testing tools for email outweigh the benefits.
 
-We can already repro the issue we saw on the server in our Docker image,
-so I'm going to suggest we stick to using `mail.outbox` when we're running local tests,
-and we configure our FTs to just check that the server (or Docker) _seems_ to be able to send email
-(in the sense of "not crashing") and we can skip the bit where we check the email contents in our FT.
+I'm going to suggest we stick to using `mail.outbox` when we're running local tests,
+and we configure our FTs to just check that Docker (or, later, the staging server)
+_seems_ to be able to send email (in the sense of "not crashing")
+and we can skip the bit where we check the email contents in our FT.
 Remember, we also have unit tests for the email content!
 
 NOTE: I explore some of the difficulties involved in getting
@@ -297,7 +309,7 @@ Here's where we can put an early return in the FT:
         )
     )
 
-    if self.against_server:
+    if self.test_server:
         # Testing real email sending from the server is not worth it.
         return
 
@@ -309,7 +321,7 @@ Here's where we can put an early return in the FT:
 This test will still fail if you don't set `EMAIL_PASSWORD` to a valid value
 in Docker or on the server, so that's good enough for now.
 
-Here's how we populate the `.against_server` attribute:
+Here's how we populate the `.test_server` attribute:
 
 
 [role="sourcecode"]
@@ -320,13 +332,15 @@ Here's how we populate the `.against_server` attribute:
 class FunctionalTest(StaticLiveServerTestCase):
     def setUp(self):
         self.browser = webdriver.Firefox()
-        if test_server := os.environ.get("TEST_SERVER"):
-            self.against_server = True
-            self.live_server_url = "http://" + test_server
-        else:
-            self.against_server = False
+        self.test_server = os.environ.get("TEST_SERVER")  # <1>
+        if self.test_server:
+            self.live_server_url = "http://" + self.test_server
 ----
 ====
+
+<1> We upgrade `test_server` to being an attribute on the test object,
+    so we can access it in various places in our tests.
+    We'll see this come in useful later too!
 
 
 And you can confirm that the FT will fail if you don't set `EMAIL_PASSWORD` in Docker.
@@ -361,7 +375,7 @@ that looks up EMAIL_PASSWORD in our local environment:
 
 
 [role="sourcecode dofirst=ch23l012-1"]
-.infra/deploy-playbook.yml (ch23l012)
+.infra/deploy-playbook.yaml (ch23l012)
 ====
 [source,python]
 ----
@@ -743,9 +757,9 @@ Perhaps a little ascii-art diagram will help:
 | server_tools               | --> | ssh | -> | docker exec | -->  | ./manage.py create_session   |
 | .create_session_on_server  |     +-----+    +-------------+      |         (on server)          |
 |        (locally)           |                                     +------------------------------+
-+----------------------------+              
++----------------------------+
 ----
-                                            
+
 
 
 .An Alternative For Managing Test Database Content: Talking Directly to the DB
@@ -773,7 +787,6 @@ In any case, let's see if it works.
 First, locally, to check that we didn't break anything:
 
 
-[role="dofirst-ch21l022"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test functional_tests.test_my_lists*]
@@ -834,8 +847,10 @@ Hooray!
 
 If you try running the tests twice, you'll run into this error:
 
-[subs="specialcharacters,quotes"]
+[role="against-server small-code"]
+[subs=""]
 ----
+$ <strong>TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests</strong>
 django.db.utils.IntegrityError: UNIQUE constraint failed: accounts_user.email
 ----
 
@@ -867,7 +882,7 @@ And let's add the call to `reset_database()` in our base test `setUp()` method:
 ====
 [source,python]
 ----
-from .server_tools import reset_database  #<1>
+from .container_commands import reset_database  #<1>
 [...]
 
 class FunctionalTest(StaticLiveServerTestCase):

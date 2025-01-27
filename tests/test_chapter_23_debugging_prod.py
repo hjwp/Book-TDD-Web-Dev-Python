@@ -13,11 +13,12 @@ class Chapter18Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, "against staging")
+        self.assertEqual(self.listings[0].type, "docker run tty")
         self.assertEqual(self.listings[1].type, "output")
 
         # skips
-        # self.skip_with_check(45, "commit changes first")
+        self.skip_with_check(1, "naming to docker")
+
         if DO_SERVER_COMMANDS:
             self.replace_command_with_check(
                 13,
@@ -36,9 +37,9 @@ class Chapter18Test(ChapterTest):
 
         # hack fast-forward
         if os.environ.get("SKIP"):
-            self.pos = 10
+            self.pos = 14
             self.sourcetree.run_command(
-                "git switch {}".format(self.sourcetree.get_commit_spec("ch17l004"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch23l009"))
             )
 
         # if DO_SERVER_COMMANDS:
