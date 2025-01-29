@@ -27,6 +27,8 @@ so for the purpose of these unit tests, we'll pretend that this nice Django shor
 
 Am I telling you _not_ to use Django's `mail.outbox`?
 No; use it, it's a neat shortcut.
+// DAVID: More than just a shortcut, it's a much better approach than mocking because it's
+// a documented, swappable API.
 But I want to teach mocks because they're a useful general-purpose tool
 for unit testing external dependencies.
 You may not always be using Django!
@@ -51,7 +53,7 @@ and the use of custom fake objects, are well worth exploring,
 but they're a more advanced topic.
 
 My second book, https://www.cosmicpython.com[Architecture Patterns with Python],
-goes in to some detail on these alternatives.
+goes into some detail on these alternatives.
 *******************************************************************************
 
 
@@ -85,7 +87,7 @@ class SendLoginEmailViewTest(TestCase):
 Wire up the `include` in _superlists/urls.py_,
 plus the `url` in _accounts/urls.py_,
 and get the test passing with something a bit like this:
-
+// DAVID: Should we give them a code snippet for this?
 
 [role="sourcecode dofirst-ch19l003"]
 .src/accounts/views.py (ch19l004)
@@ -103,6 +105,10 @@ def send_login_email(request):
 
 
 <1> I've added the import of the `send_mail` function as a placeholder for now.
+
+// DAVID: This wrongfooted me as I forgot to include it here (or maybe my IDE linting
+// automatically removed the unused import). Might be better to include in the same snippet
+// as we use it.
 
 That'll get the test passing:
 
@@ -147,6 +153,7 @@ or what's sometimes called https://en.wikipedia.org/wiki/Monkey_patch[monkeypatc
 Let's suppose that, as a first step,
 we want to get to some code that invokes `send_mail`
 with the right subject line, from address, and to address.
+// CSANAD: wouldn't "sender address" and "recipient address" sound better?
 That would look something like this:
 
 
@@ -166,7 +173,8 @@ def send_login_email(request):
     return redirect('/')
 ----
 ====
-
+// DAVID: The send_mail function probably shouldn't be commented out here.
+// Also I'm a bit unclear whether or not I should be typing this in or just reading it.
 
 How can we test this, without calling the _real_ `send_mail` function?
 The answer is that our test can ask Python to swap out the `send_mail` function
@@ -211,6 +219,8 @@ class SendLoginEmailViewTest(TestCase):
 ----
 ====
 
+// SEBASTIAN: I really like this way of introducing [monkey]patching in tests, congrats
+
 <1> We define a `fake_send_mail` function,
     which looks like the real `send_mail` function,
     but all it does is save some information about how it was called,
@@ -221,6 +231,12 @@ class SendLoginEmailViewTest(TestCase):
     we swap out the real `accounts.views.send_mail`
     with our fake version—it's as simple as just assigning it.
 
+// DAVID: Maybe would be less confusing to some readers if fake_send_mail was in the module
+// scope, rather than as an inner function.
+
+// DAVID: Might be better to get everything else working, and the test passing, without send_mail at all.
+// Then we introduce it, run the test and see it fail because it has some dependencies? Then we can just concentrate on
+// the mock bit.
 
 It's important to realise that there isn't really anything magical going on here;
 we're just taking advantage of Python's dynamic nature and scoping rules.
@@ -275,6 +291,7 @@ def send_login_email(request):
     return redirect("/")
 ----
 ====
+
 
 That gives:
 
@@ -353,6 +370,10 @@ we're able to write the tests and code all the same.
 ((("", startref="monkey19")))((("", startref="Mmanual19")))
 
 
+// DAVID: Worth finding a way to expose the problems with the current approach, in particular:
+// - the monkeypatch persists after the test runs.
+// - we've had to roll our own logic to see what it was called with.
+
 === The Python Mock Library
 
 ((("mocks", "Python Mock library", id="Mpythong19")))
@@ -428,7 +449,11 @@ from django.test import TestCase
 
 ----
 ====
+// CSANAD: using `self.assertTrue(mock_send_mail.called)` would be nicer.
 
+// SEBASTIAN: I'd give some hint (maybe visual?) that one should look at the decorator.
+//      At first, I got lost as I was expecting something to change in the test itself,
+//      for example mock.patch used as context manager.
 
 If you rerun the tests, you'll see they still pass.
 And since we're always suspicious of any test that still passes after a big change,
@@ -459,6 +484,9 @@ def send_login_email(request):
         [...]
 ----
 ====
+// CSANAD: I suggest adding a bit of a text for the print:
+// `print(f'DEBUG send_mail type:{type(send_mail)}')`
+// it's arguably better practice and certainly easier for the eyes to find
 
 Let's run the tests again:
 
@@ -554,7 +582,17 @@ to log in\nStart a new To-Do list'
 
 Submitting the email address currently has no effect,
 because the form isn't sending the data anywhere.
+// CSANAD: It is sending the data!
+// In the previous chapter at ch18l020 we set the form to
+// `<form method="POST" action="/accounts/send_login_email">`
+// I suggest moving this changing of the hard-coded url higher up, maybe after
+// ch19l004 along something like:
+// "...and while we are at it, we can change the hard-coded url in the form to
+// the named-path we just re-introduced from the spike into `src/accounts/urls.py`:
+// `<form method="POST" action="{% url 'send_login_email' %}">`
+
 Let's wire it up in _base.html_:
+// DAVID: I'm not sure this is correct, my code already is wired up (albeit to the hard-coded url).
 
 [role="sourcecode small-code"]
 .src/lists/templates/base.html (ch19l012)
@@ -564,6 +602,9 @@ Let's wire it up in _base.html_:
 <form method="POST" action="{% url 'send_login_email' %}">
 ----
 ====
+// DAVID: There are two forms in base.html, might be worth making it clear which one
+// just in case they accidentally do the wrong one.
+
 
 Does that help?  Nope, same error.  Why?
 Because we're not actually displaying a success message after we send the user an email.
@@ -577,7 +618,7 @@ We'll use Django's "messages framework",
 which is often used to display ephemeral "success" or "warning" messages
 to show the results of an action.
 Have a look at the
-https://docs.djangoproject.com/en/1.11/ref/contrib/messages/[django messages docs]
+https://docs.djangoproject.com/en/5.1/ref/contrib/messages/[django messages docs]
 if you haven't come across it already.
 
 Testing Django messages is a bit contorted--we have to pass `follow=True`
@@ -638,13 +679,16 @@ def send_login_email(request):
     return redirect("/")
 ----
 ====
-
+// DAVID: Might be worth explaining how the messages framework works - i.e. that if you have a request,
+// you can add messages to the session which will be popped off and displayed in the response.
 
 [[mocks-tightly-coupled-sidebar]]
 .Mocks Can Leave You Tightly Coupled to the Implementation
 *******************************************************************************
 
 TIP: This sidebar is an intermediate-level testing tip.
+// CSANAD: not sure what sidebar we are talking about here. This TIP renders
+// on the center for me.
     If it goes over your head the first time around,
     come back and take another look when you've finished this chapter.
     Consider also going through <<appendix_purist_unit_tests>>
@@ -710,6 +754,7 @@ Mocks often end up erring too much on the side of the "how" rather than the "wha
 
 TIP: Test should be about behaviour, not implementation.
 
+// DAVID: Say a bit about why?
 *******************************************************************************
 
 
@@ -760,6 +805,8 @@ $ pass:quotes[*python src/manage.py test functional_tests.test_login*]
 [...]
 AssertionError: 'Use this link to log in' not found in 'body text tbc'
 ----
+// CSANAD: we haven't changed the views or the models, and we just had the unit
+// tests passing before the TIP, so running it again is redundant here.
 
 
 We need to fill out the body text of the email,
@@ -899,6 +946,7 @@ from accounts.models import Token
         self.assertIn(expected_url, body)
 ----
 ====
+// CSANAD: will that be clear these go under `SendLoginEmailViewTest`?
 
 The first test is fairly straightforward;
 it checks that the token we create in the database
@@ -993,6 +1041,8 @@ def send_login_email(request):
 // TODO: investigate kwards for reverse() call
 // reverse("login", token=str(token.uid))
 
+// DAVID: The unit tests now pass, worth mentioning?
+
 Two more pieces in the puzzle.
 We need an authentication backend,
 whose job it will be to examine tokens for validity
@@ -1000,7 +1050,14 @@ and then return the corresponding users;
 then we need to get our login view to actually log users in,
 if they can authenticate.
 ((("", startref="Mpythong19")))((("", startref="Pmock19")))
-
+// DAVID: Starting this paragraph by talking about authentication backends
+// as a 'need' could leave readers behind. Maybe it would be better to point out that the user isn't actually
+// logged in, talk about HTTP being stateless and how Django uses sessions
+// to get around that, and then say we're going to solve the problem by
+// creating an authentication backend.
+// (Having said that, it might be much simpler just to use Django's session
+// framework directly and set the user in the session. The only snag might be integration
+// with the Django Admin but not sure if that's a concern here).
 
 
 === De-spiking Our Custom Authentication Backend
@@ -1041,11 +1098,12 @@ Decoding this:
 * We return `None` if it doesn't.
 * If it does exist, we extract an email address,
   and either find an existing user with that address, or create a new one.
+// CSANAD: shouldn't we use the numbered annotations instead?
 
 
 
 ==== 1 if = 1 More Test
-
+// DAVID: I was confused by how to read this heading for a moment. (I get it now.)
 A rule of thumb for these sorts of tests:
 any `if` means an extra test, and any `try/except` means an extra test,
 so this should be about three tests.
@@ -1167,7 +1225,12 @@ class PasswordlessAuthenticationBackend:
 ====
 
 
-That gets one test passing but breaks another one:
+That changes the `FAILED` test to also result in a "matching query does not
+exist" `ERROR`.
+// CSANAD: the first test was already passing even with the placeholder
+// `authenticate`, the second was failing and the third resulted in an error.
+// With this first cut version the passing test remains passing and the other
+// two result in DoesNotExist errors.
 
 
 [subs="specialcharacters,macros"]
@@ -1187,7 +1250,12 @@ accounts.models.User.DoesNotExist: User matching query does not exist.
 ----
 
 Let's fix each of those in turn:
-
+// CSANAD: I think it would be nice to explain what this error means and why we
+// can fix it by returning None when it occurs.
+// E.g. "The token with the given `uid` does not exist - this means we couldn't
+// find the uuid in the database, so we should not authorize this login request.
+// In the password-based world this would be the equivalent of an incorrect or
+// missing password."
 
 [role="sourcecode"]
 .src/accounts/authentication.py (ch19l027)
@@ -1218,6 +1286,9 @@ FAILED (errors=1)
 
 
 And we can handle the final case like this:
+// CSANAD: again, I would add a bit more explanation:
+// "If we can't find a user with the given email, then we will treat it as a
+// sign-up request for a new user instead."
 
 [role="sourcecode"]
 .src/accounts/authentication.py (ch19l028)
@@ -1234,6 +1305,7 @@ And we can handle the final case like this:
             return None
 ----
 ====
+// DAVID: Consider User.objects.get_or_create.
 
 That's turned out neater than our spike!
 
@@ -1248,7 +1320,8 @@ whose job is to retrieve a user based on their unique identifier (the email addr
 or to return `None` if it can't find one
 (have another look at <<spike-reminder,the spiked code>> if you need a
 reminder).
-
+// DAVID: I was a bit unclear what you meant here to start with. Maybe worth spelling out/reminding that
+// authentication backends need to implement a `get_user` method?
 
 Here are a couple of tests for those two requirements:
 
@@ -1383,6 +1456,7 @@ Let's call that a win, and in the next chapter
 we'll work on integrating it into our login view,
 and getting our FT passing.
 
+// DAVID: Shall we do a commit?
 
 [[mocking-py-sidebar-1]]
 .On Mocking in Python
@@ -1428,6 +1502,11 @@ The mock.patch decorator::
 Mocks can leave you tightly coupled to the implementation::
   As we saw in <<mocks-tightly-coupled-sidebar>>,
   mocks can leave you tightly coupled to your implementation.
+// CSANAD: this link reads as
+// "As we saw in Mocks Can Leave You Tightly Coupled to the Implementation,
+// mocks can leave you tightly coupled to your implementation" so it just
+// repeats itself. I would re-word it e.g. "As we saw in (...), mocks can make
+// your tests tied to implementation details too much."
   For that reason, you shouldn't use them unless you have a good reason.
-
+// DAVID: When rendered, this last point says the same phrase three times in a row.
 *******************************************************************************

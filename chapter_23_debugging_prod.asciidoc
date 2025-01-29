@@ -1,13 +1,14 @@
 [[chapter_23_debugging_prod]]
-== Server-Side Debugging
+== Debugging And Testing Production Issues
 
-.Warning, Chapter Update in Progress
+.Warning, Chapter Recently Updated
 *******************************************************************************
-🚧 Warning, Chapter update for 3e in progress.
+This chapter has been recently updated to Django 5, Ansible+Docker, etc.
 
-This chapter has only been partially updated to Django 5, Ansible+Docker, etc.
+It all works on my machine, as they say!
+Let me know if you run into anything strange.
+Feedback and suggestions of any kind appreciated, as always.
 
-Following along may be tricky, but I hope to have it in better shape soon!
 *******************************************************************************
 
 
@@ -15,89 +16,71 @@ Popping a few layers off the stack of things we're working on:
 we have nice wait-for helpers; what were we using them for?
 Oh yes, waiting to be logged in. And why was that?
 Ah yes, we had just built a way of pre-authenticating a user.
+Let's see how that works against our staging server and Docker.
 
 
 
-=== The Proof Is in the Pudding: Using Staging to Catch Final Bugs
+=== The Proof Is in the Pudding: Using Docker to Catch Final Bugs
 
-((("debugging", "server-side", "using staging sites", tertiary-sortas="staging sites", id="DBserstag21")))
-((("staging sites", "catching final bugs with", id="SScatch21")))
-They're all very well for running the FTs locally,
-but how would they work against the staging server?
-Let's try to deploy our site.
-Along the way we'll catch an unexpected bug (that's what staging is for!),
-and then we'll have to figure out a way of managing the database on the test server:
+Remember the deployment checklist from <<chapter_18_second_deploy>>?
+Let's see if it can't come in useful today!
 
-[role="against-server small-code"]
+First we rebuild and start our Docker container locally,
+on port 8888:
+
 [subs="specialcharacters,quotes"]
 ----
-$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/deploy-playbook.yaml.yaml -vv*]
-
-PLAYBOOK: deploy-playbook.yaml.yaml ***********************************************
-1 plays in infra/deploy-playbook.yaml.yaml
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -it superlists*
 [...]
+ => => naming to docker.io/library/superlists [...]
+[2025-01-27 22:37:02 +0000] [7] [INFO] Starting gunicorn 22.0.0
+[2025-01-27 22:37:02 +0000] [7] [INFO] Listening at: http://0.0.0.0:8888 (7)
+[2025-01-27 22:37:02 +0000] [7] [INFO] Using worker: sync
+[2025-01-27 22:37:02 +0000] [8] [INFO] Booting worker with pid: 8
 ----
 
 
-Here's what happens when we run the functional tests:
+And now let's do an FT run:
 
-[role="against-server small-code"]
+
+[role="small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
-
-======================================================================
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists (functional_tests.test_
-my_lists.MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_my_lists.py", line 34, in
-test_logged_in_users_lists_are_saved_as_my_lists
-    self.wait_to_be_logged_in(email)
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*]
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Log out
-
-
-======================================================================
-FAIL: test_login_using_magic_link (functional_tests.test_login.LoginTest)
- ---------------------------------------------------------------------
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_login.py", line 22, in
-test_login_using_magic_link
-    self.wait_for(lambda: self.assertIn(
+element: #id_logout; [...]
 [...]
 AssertionError: 'Check your email' not found in 'Server Error (500)'
-
- ---------------------------------------------------------------------
-Ran 8 tests in 68.602s
-
+[...]
 FAILED (failures=1, errors=1)
-
 ----
 
-We can't log in--either with the real email system or with our
-pre-authenticated session.  Looks like our nice new authentication
-system is crashing the server.
+We can't log in--either with the real email system or with our pre-authenticated session.
+Looks like our nice new authentication system is crashing when we run it in Docker.
+
+Let's practice a bit of production debugging!
 
 
-Let's practice a bit of server-side debugging!
-
-
-* TODO: show we can actually repro this with Docker.
-
-// TODO: actually, does this obviate the whole need for running fts against the server?
-
-
-=== Inspecting Logs on the Server
+=== Inspecting the Docker Container Logs
 
 ((("logging")))
 ((("Gunicorn", "logging setup")))
-In order to track this problem down,
-we need to get some logging information out of Django.
+When Django fails with a 500 or "Unhandled Exception" and DEBUG is off,
+it doesn't print the tracebacks to your web browser.
+But it will send them to your logs instead.
 
-First, make sure your 'settings.py' still contains the `LOGGING`
-settings which will actually send stuff to the console:
+.Check our Django LOGGING settings
+*******************************************************************************
+
+It's worth double checking at this point that your _settings.py_
+still contains the `LOGGING` settings which will actually send stuff
+to the console:
 
 [role="sourcecode currentcontents"]
 .src/superlists/settings.py
@@ -117,298 +100,334 @@ LOGGING = {
 ----
 ====
 
-Restart the Docker container again if necessary,
+Restart the Docker container if necessary,
 and then either rerun the FT, or just try to log in manually.
-While that happens, we watch the logs on the server with `docker logs -f`:
+*******************************************************************************
 
-[role="server-commands"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *docker logs -f superlists*
-----
+If you switch to the terminal that's running your Docker image,
+you should see the traceback printed out in there:
 
-You should see an error like this:
-[role="skipme small-code"]
+[role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
 Internal Server Error: /accounts/send_login_email
 Traceback (most recent call last):
-  File "/home/elspeth/sites/staging.ottg.co.uk/.venv/lib/python3.7/[...]
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File
-"/home/elspeth/sites/staging.ottg.co.uk/accounts/views.py", line
-20, in send_login_email
-    [email]
 [...]
-    self.connection.sendmail(from_email, recipients, message.as_bytes(linesep='\r\n'))
-  File "/usr/lib/python3.7/smtplib.py", line 862, in sendmail
+  File "/src/accounts/views.py", line 16, in send_login_email
+    send_mail(
+    ~~~~~~~~~^
+        "Your login link for Superlists",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        [email],
+        ^^^^^^^^
+    )
+    ^
+[...]
+    self.connection.sendmail(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        from_email, recipients, message.as_bytes(linesep="\r\n")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/smtplib.py", line 876, in sendmail
     raise SMTPSenderRefused(code, resp, from_addr)
-smtplib.SMTPSenderRefused: (530, b'5.5.1 Authentication Required. Learn more
-at\n5.5.1  https://support.google.com/mail/?p=WantAuthError [...]
-- gsmtp', 'noreply@superlists')
+smtplib.SMTPSenderRefused: (530, b'5.7.0 Authentication Required. [...]
 ----
 
-Hm, Gmail is refusing to send our emails, is it?  Now why might that be?
-Ah yes, we haven't told the server what our password is!
-((("", startref="SScatch21")))((("", startref="DBserstag21")))
+That looks like a pretty good clue to what's going on.
+((("", startref="Dockercatch21")))
 
 
-=== Another Environment Variable
-
-((("debugging", "server-side", "setting secret environment variables")))
-((("environment variables")))
-((("secret values")))
-Just as in <<chapter_11_server_prep>>,
-the place we set environment variables on the server is in the _superlists.env_ file.
-Let's change it manually, on the server, for a test:
-
-* TODO: maybe use ansible straight away?  Also, need to discuss secret storage locally.
-
-[role="server-commands small-code"]
-[subs="specialcharacters,quotes"]
-----
-elspeth@server:$ *echo EMAIL_PASSWORD=yoursekritpasswordhere >> ~/superlists.env*
-elspeth@server:$ *docker restart superlists*
-----
-
-Now if we rerun our FTs, we see a change:
-
-[role="against-server small-code"]
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
-
-[...]
-Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_login.py", line 28, in
-test_login_using_magic_link
-    email = mail.outbox[0]
-IndexError: list index out of range
-
-[...]
-
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Log out
-----
+Sure enough!  Good to know our local Docker setup can repro the error on the server.
 
 
-The `my_lists` failure is still the same, but we have more information in our login test:
-the FT gets further, and the site now looks like it's sending emails correctly
-(and the server log no longer shows any errors),
-but we can't check the email in the `mail.outbox`...
+=== Another Environment Variable In Docker
+
+So, Gmail is refusing to let us send emails, is it?
+Now why might that be? "Authentication Required" you say?
+Oh woops, we haven't told the server what our password is!
 
 
-=== Adapting Our FT to Be Able to Test Real Emails via POP3
+As you might remember from earlier chapters,
+our _settings.py_ expects to get the email server password from an environment variable
+named `EMAIL_PASSWORD`:
 
-((("debugging", "server-side", "testing POP3 emails", id="DBservemail21")))
-((("Django framework", "sending emails", id="DJFemail21")))
-((("emails, sending from Django", id="email21")))
-Ah. That explains it.
-Now that we're running against a real server rather than the `LiveServerTestCase`,
-we can no longer inspect the local `django.mail.outbox` to see sent emails.
-
-
-First, we'll need to know, in our FTs,
-whether we're running against the staging server or not.
-Let's save the `staging_server` variable on `self` in _base.py_:
-
-[role="sourcecode"]
-.src/functional_tests/base.py (ch21l009)
+[role="sourcecode currentcontents"]
+.src/superlists/settings.py
 ====
 [source,python]
 ----
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+----
+====
+
+
+Let's add this new environment variable to our local Docker container `run`
+command:
+
+First, set your email password in your terminal if you need to:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *echo $EMAIL_PASSWORD*
+# if that's empty, let's set it:
+$ *export EMAIL_PASSWORD="yoursekritpasswordhere"*
+----
+
+Now let's pass that env var thru to our docker container using one more `-e` flag,
+this one fishing the env var out of the shell we're in:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \
+    -it superlists*
+----
+
+TIP: If you use `-e` without an `=something` argument,
+    it sets the env var inside Docker to the same value set in the current shell.
+    It's like saying `-e EMAIL_PASSWORD=$EMAIL_PASSWORD`
+
+
+And now we can rerun our FT again.
+We'll narrow it down to just the `test_login` test since that's the main one that has a problem:
+
+[role="small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests.test_login*]
+[...]
+ERROR: test_login_using_magic_link
+(functional_tests.test_login.LoginTest.test_login_using_magic_link)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/test_login.py", line 32, in
+test_login_using_magic_link
+    email = mail.outbox.pop()
+IndexError: pop from empty list
+----
+
+Well, not a pass, but the tests do get a little further.
+It looks like our server _can_ now send emails
+(if you check the docker logs, you'll see there are no more errors)
+But our FT is saying it can't see any emails appearing in `mail.outbox`.
+
+
+==== `mail.outbox` Won't Work Outside Django's Test Environment
+
+The reason is that `mail.outbox` is a local, in-memory variable in Django,
+so that's only going to work when our tests and our server are running in the same process,
+like they do with unit tests or with `LiveServerTestCase` FTs.
+
+When we run against another process, be it Docker or an actual server,
+we can't access the same `mail.outbox` variable.
+
+We need another technique if we want to actually inspect the emails
+that the server sends, in our tests against Docker
+(or later, against the staging server).
+
+
+[[options-for-testing-real-email]]
+=== Deciding How to Test "Real" Email Sending
+
+This is a point at which we have to explore some tradeoffs.
+There are a few different ways we could test this:
+
+1. We could build a "real" end-to-end test, and have our tests
+   log in to an email server, and retrieve the email from there.
+   That's what I did in the first and second edition.
+
+2. You can use a service like Mailinator or Mailsac,
+   which give you an email account to send to,
+   and some APIs for checking what mail has been delivered.
+
+3. We can use an alternative, fake email backend,
+   whereby Django will save the emails to a
+   https://docs.djangoproject.com/en/5.1/topics/email/#file-backend[file on disk]
+   for example,
+   and we can inspect them there.
+
+4. Or we could give up on testing email on the server.
+   If we have a minimal smoke test that the server _can_ send emails,
+   then we don't need to test that they are _actually_ delivered.
+
+
+But let's lay out some of the pros + cons:
+
+
+.Testing Strategy Tradeoffs
+[cols="1,1,1"]
+|=======
+| Strategy | Pros | Cons
+| End-to-end with POP3 | Maximally realistic, tests the whole system | Slow, fiddly, unreliable
+| Email testing service eg Mailinator/Mailsac| As realistic as real POP3, with better APIs for testing| Slow, possibly expensive.  Plus I don't want to endorse any particular commercial provider ;-)
+| File-based fake email backend | Faster, more reliable, no network calls, tests end-to-end (albeit with fake components) | Still Fiddly, requires managing db & filesystem side-effects
+| Give up on testing email on the server/Docker | Fast, simple | Less confidence that things work "for real"
+|=======
+
+This is a common problem in testing integration with external systems,
+how far should we go?  How realistic should we make our tests?
+
+In this case, I'm going to suggest we go for the last option,
+which is not to test email sending on the server or in Docker.
+
+Email itself is a well-understood protocol
+(reader, it's been around since _before I was born_, and that's a whiles ago now)
+and Django has supported sending email for more than a decade,
+so I think we can afford to say, in this case,
+that the costs of building testing tools for email outweigh the benefits.
+
+I'm going to suggest we stick to using `mail.outbox` when we're running local tests,
+and we configure our FTs to just check that Docker (or, later, the staging server)
+_seems_ to be able to send email (in the sense of "not crashing")
+and we can skip the bit where we check the email contents in our FT.
+Remember, we also have unit tests for the email content!
+
+NOTE: I explore some of the difficulties involved in getting
+  these kinds of tests to work in <<appendix_fts_for_external_dependencies>>,
+  so go check that out if this feels like a bit of a cop-out!
+
+Here's where we can put an early return in the FT:
+
+[role="sourcecode"]
+.src/functional_tests/test_login.py (ch23l009)
+====
+[source,python]
+----
+    # A message appears telling her an email has been sent
+    self.wait_for(
+        lambda: self.assertIn(
+            "Check your email",
+            self.browser.find_element(By.CSS_SELECTOR, "body").text,
+        )
+    )
+
+    if self.test_server:
+        # Testing real email sending from the server is not worth it.
+        return
+
+    # She checks her email and finds a message
+    email = mail.outbox.pop()
+----
+====
+
+This test will still fail if you don't set `EMAIL_PASSWORD` to a valid value
+in Docker or on the server, so that's good enough for now.
+
+Here's how we populate the `.test_server` attribute:
+
+
+[role="sourcecode"]
+.src/functional_tests/base.py (ch23l010)
+====
+[source,python]
+----
+class FunctionalTest(StaticLiveServerTestCase):
     def setUp(self):
         self.browser = webdriver.Firefox()
-        self.test_server = os.environ.get("TEST_SERVER")
+        self.test_server = os.environ.get("TEST_SERVER")  # <1>
         if self.test_server:
             self.live_server_url = "http://" + self.test_server
 ----
 ====
 
-Then we build a helper function that can retrieve a real email from a real POP3
-email server, using the horrifically tortuous Python standard library POP3
-client:
+<1> We upgrade `test_server` to being an attribute on the test object,
+    so we can access it in various places in our tests.
+    We'll see this come in useful later too!
+
+
+And you can confirm that the FT will fail if you don't set `EMAIL_PASSWORD` in Docker.
+
+Now let's see if we can get our FTs to pass against the server:
+
+
+=== Setting Secret Environment Variables on the Server
+
+((("environment variables"))k)
+((("secret values")))
+Just as in <<chapter_11_server_prep>>,
+the place we set environment variables on the server is in the _superlists.env_ file.
+
+Let's add it to the template first:
+
 
 [role="sourcecode"]
-.src/functional_tests/test_login.py (ch21l010)
+.infra/env.j2 (ch23l011)
 ====
 [source,python]
 ----
-import os
-import poplib
-import re
-import time
-[...]
-
-    def wait_for_email(self, test_email, subject):
-        if not self.test_server:
-            email = mail.outbox.pop()
-            self.assertIn(test_email, email.to)
-            self.assertEqual(email.subject, subject)
-            return email.body
-
-        email_id = None
-        start = time.time()
-        inbox = poplib.POP3_SSL("pop.mail.yahoo.com")
-        try:
-            inbox.user(test_email)
-            inbox.pass_(os.environ["YAHOO_PASSWORD"])
-            while time.time() - start < 60:
-                # get 10 newest messages
-                count, _ = inbox.stat()
-                for i in reversed(range(max(1, count - 10), count + 1)):
-                    print("getting msg", i)
-                    _, lines, __ = inbox.retr(i)
-                    lines = [l.decode("utf8") for l in lines]
-                    print(lines)
-                    if f"Subject: {subject}" in lines:
-                        email_id = i
-                        body = "\n".join(lines)
-                        return body
-                time.sleep(5)
-        finally:
-            if email_id:
-                inbox.dele(email_id)
-            inbox.quit()
+DJANGO_DEBUG_FALSE=1
+DJANGO_SECRET_KEY={{ secret_key }}
+DJANGO_ALLOWED_HOST={{ host }}
+EMAIL_PASSWORD={{ email_password }}
 ----
 ====
 
-* TODO: consider not using POP3, maybe
-  https://docs.djangoproject.com/en/5.0/topics/email/#file-backend[file backend] instead.
-  discuss tradeoff of testing config
-  vs not needing to test that django can actually send emails
-
-I signed up for a Yahoo account for testing,
-but you can use any email service you like, as long as it offers POP3 access.
-You will need to set the
-`YAHOO_PASSWORD` environment variable in the console that's running the FT.
-
-[subs="specialcharacters,quotes"]
-----
-$ *echo YAHOO_PASSWORD=otheremailpasswordhere >> .env*
-$ *set -a; source .env; set +a*
-----
-
-And then we feed through the rest of the changes to the FT that are required
-as a result.  Firstly, populating a `test_email` variable, differently for
-local and staging tests:
+and now we add the line to the ansible deploy playbook
+that looks up EMAIL_PASSWORD in our local environment:
 
 
-
-[role="sourcecode small-code"]
-.src/functional_tests/test_login.py (ch21l011-1)
+[role="sourcecode dofirst=ch23l012-1"]
+.infra/deploy-playbook.yaml (ch23l012)
 ====
-[source,diff]
+[source,python]
 ----
-@@ -9,7 +9,6 @@ from selenium.webdriver.common.keys import Keys
-
- from .base import FunctionalTest
-
--TEST_EMAIL = "edith@example.com"
- SUBJECT = "Your login link for Superlists"
-
-
-@@ -34,7 +33,6 @@ class LoginTest(FunctionalTest):
-                     print("getting msg", i)
-                     _, lines, __ = inbox.retr(i)
-                     lines = [l.decode("utf8") for l in lines]
--                    print(lines)
-                     if f"Subject: {subject}" in lines:
-                         email_id = i
-                         body = "\n".join(lines)
-@@ -49,9 +47,14 @@ class LoginTest(FunctionalTest):
-         # Edith goes to the awesome superlists site
-         # and notices a "Log in" section in the navbar for the first time
-         # It's telling her to enter her email address, so she does
-+        if self.test_server:
-+            test_email = "edith.testuser@yahoo.com"
-+        else:
-+            test_email = "edith@example.com"
-+
-         self.browser.get(self.live_server_url)
-         self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
--            TEST_EMAIL, Keys.ENTER
-+            test_email, Keys.ENTER
-         )
+    - name: Ensure .env file exists
+      ansible.builtin.template:
+        src: env.j2
+        dest: ~/superlists.env
+        force: true  # update file if contents changed
+      vars:
+        host: "{{ inventory_hostname }}"
+        secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters') }}"
+        email_password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"  <1>
 ----
 ====
 
-And then modifications involving using that variable and calling our new helper
-function:
+<1> We use another call to `lookup()`,
+    this one with the `env` parameter,
+    which is equivalent to `os.environ.get()` in Python.
 
-[role="sourcecode small-code"]
-.src/functional_tests/test_login.py (ch21l011-2)
-====
-[source,diff]
-----
-@@ -69,15 +69,13 @@ class LoginTest(FunctionalTest):
-         )
-
-         # She checks her email and finds a message
--        email = mail.outbox[0]
--        self.assertIn(TEST_EMAIL, email.to)
--        self.assertEqual(email.subject, SUBJECT)
-+        body = self.wait_for_email(test_email, SUBJECT)
-
--        # It has a URL link in it
--        self.assertIn("Use this link to log in", email.body)
--        url_search = re.search(r"http://.+/.+$", email.body)
-+        # It has a url link in it
-+        self.assertIn("Use this link to log in", body)
-+        url_search = re.search(r"http://.+/.+$", body)
-         if not url_search:
--            self.fail(f"Could not find url in email body:\n{email.body}")
-+            self.fail(f"Could not find url in email body:\n{body}")
-         url = url_search.group(0)
-         self.assertIn(self.live_server_url, url)
-
-@@ -85,10 +83,10 @@ class LoginTest(FunctionalTest):
-         self.browser.get(url)
-
-         # she is logged in!
--        self.wait_to_be_logged_in(email=TEST_EMAIL)
-+        self.wait_to_be_logged_in(email=test_email)
-
-         # Now she logs out
-         self.browser.find_element(By.LINK_TEXT, "Log out").click()
-
-         # She is logged out
--        self.wait_to_be_logged_out(email=TEST_EMAIL)
-+        self.wait_to_be_logged_out(email=test_email)
-----
-====
+// TODO: backport that force=true from ch23l012-1
 
 
-And, believe it or not, that'll actually work, and give us an FT
-that can actually check for logins that work, involving real emails!
+////
+TODO: sidebar on making the secret key only update if changed.
 
+- name: Check secret key already exists
+  shell: grep -c "SECRET_KEY" ~/superlists.env  || true
+  register: secret_key_line_count
+
+- name: add secret key line if not already there
+  when: secret_key_line_count.stdout == "0"
+  lineinfile:
+    dest: ~/superlists.env
+    line: SECRET_KEY={{ secret_key }}
+  vars:
+    secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters') }}"
+
+or bite the bullet and do it here?
+////
+
+
+
+=== Moving on to the next failure
+
+Now if we rerun our full set of FTs, we can move on to the next failure:
 
 [role="against-server small-code"]
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests.test_login*]
-[...]
-OK
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*]
 ----
 
-NOTE: I've just hacked this email-checking code together,
-    and it's currently pretty ugly and brittle
-    (one common problem is picking up the wrong email from a previous test run).
-    With some cleanup and a few more retry loops
-    it could grow into something more reliable.
-    Alternatively, services like _mailinator.com_ will give you throwaway email addresses
-    and an API to check them, for a small fee.
-    ((("", startref="email21")))
-    ((("", startref="DJFemail21")))
-    ((("", startref="DBservemail21")))
-
-
-=== Managing the Test Database on Staging
-
-((("debugging", "server-side", "managing test databases", id="DBservdatabase21")))
-((("staging sites", "managing test databases", id="SSmanag21")))
-((("database testing", "managing test databases", id="DTmanag21")))
-((("sessions, pre-creating")))
 Now we can rerun our full FT suite and get to the next failure:
 our attempt to create pre-authenticated sessions doesn't work,
 so the "My Lists" test fails:
@@ -417,42 +436,52 @@ so the "My Lists" test fails:
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
-
-ERROR: test_logged_in_users_lists_are_saved_as_my_lists
-(functional_tests.test_my_lists.MyListsTest)
 [...]
-selenium.common.exceptions.TimeoutException: Message: Could not find element
-with id id_logout. Page text was:
-Superlists
-Sign in
-Start a new To-Do list
+ERROR: test_logged_in_users_lists_are_saved_as_my_lists
+(functional_tests.test_my_lists.MyListsTest.test_logged_in_users_lists_are_saved_as_my_lists)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/src/functional_tests/test_my_lists.py", line 36, in
+test_logged_in_users_lists_are_saved_as_my_lists
+    self.wait_to_be_logged_in(email)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: #id_logout; [...]
+[...]
+ ---------------------------------------------------------------------
 
-Ran 8 tests in 72.742s
+Ran 8 tests in 30.087s
 
 FAILED (errors=1)
 ----
 
-It's because our test utility function `create_pre_authenticated_session` only
-acts on the local database. Let's find out how our tests can manage the
-database on the server.
+
+
+It's because our test utility function `create_pre_authenticated_session()`
+only acts on the local database.
+Let's find out how our tests can manage the database on the server.
 
 
 
 ==== A Django Management Command to Create Sessions
 
-((("scripts, building standalone")))
-To do things on the server, we'll need to build a self-contained script
-that can be run from the command line on the server, most probably via Fabric.
+We need a way to make changes to the database inside Docker, or on the server.
+Essentially we want to run some code outside the context of the tests
+(and the test database) and in the context of the server and its database.
 
-When trying to build a standalone script that works with Django (i.e., can talk
-to the database and so on), there are some fiddly issues you need to get right,
-like setting the `DJANGO_SETTINGS_MODULE` environment variable, and getting
-`sys.path` correctly.
+((("scripts, building standalone")))
+When trying to build a standalone script that works with Django
+(i.e., can talk to the database and so on),
+there are some fiddly issues you need to get right,
+like setting the `DJANGO_SETTINGS_MODULE` environment variable,
+and setting `sys.path` correctly.
+
 
 Instead of messing about with all that, Django lets you create your own
 "management commands" (commands you can run with `python manage.py`), which
 will do all that path mangling for you. They live in a folder called
-'management/commands' inside your apps:
+_management/commands_ inside your apps:
 
 [subs=""]
 ----
@@ -460,14 +489,13 @@ $ <strong>mkdir -p src/functional_tests/management/commands</strong>
 $ <strong>touch src/functional_tests/management/__init__.py</strong>
 $ <strong>touch src/functional_tests/management/commands/__init__.py</strong>
 ----
-//ch21l012-1
 
 The boilerplate in a management command is a class that inherits from
 `django.core.management.BaseCommand`, and that defines a method called
 `handle`:
 
 [role="sourcecode"]
-.src/functional_tests/management/commands/create_session.py (ch21l012)
+.src/functional_tests/management/commands/create_session.py (ch23l014)
 ====
 [source,python]
 ----
@@ -515,7 +543,7 @@ for it to recognise it as a real app that might have management commands as
 well as tests:
 
 [role="sourcecode"]
-.src/superlists/settings.py (ch21l014)
+.src/superlists/settings.py (ch23l015)
 ====
 [source,python]
 ----
@@ -538,9 +566,10 @@ $ pass:quotes[*python src/manage.py create_session a@b.com*]
 qnslckvp2aga7tm6xuivyb0ob1akzzwl
 ----
 
-NOTE: If you see an error saying the `auth_user` table is missing, you may need
-    to run `manage.py migrate`.  In case that doesn't work, delete the
-    _db.sqlite3_ file and run +migrate+ again, to get a clean slate.
+NOTE: If you see an error saying the `auth_user` table is missing,
+    you may need to run `manage.py migrate`.
+    In case that doesn't work, delete the _db.sqlite3_ file
+    and run `migrate` again, to get a clean slate.
 
 
 ==== Getting the FT to Run the Management Command on the Server
@@ -550,15 +579,15 @@ when we're on the local server,
 and make it run the management command on the staging server if we're on that:
 
 [role="sourcecode"]
-.src/functional_tests/test_my_lists.py (ch21l016)
+.src/functional_tests/test_my_lists.py (ch23l016)
 ====
 [source,python]
 ----
 from django.conf import settings
 
 from .base import FunctionalTest
+from .container_commands import create_session_on_server
 from .management.commands.create_session import create_pre_authenticated_session
-from .server_tools import create_session_on_server
 
 
 class MyListsTest(FunctionalTest):
@@ -584,109 +613,94 @@ class MyListsTest(FunctionalTest):
 ====
 
 
-Let's also tweak _base.py_, to gather a bit more information
-when we populate `self.test_server`:
+
+
+
+==== Running Commands Using Docker Exec and (optionally) SSH
+
+
+You may remember `docker exec` from <<chapter_09_docker>>, it lets us run
+commands inside a running Docker container.
+That's fine for when we're running against the local Docker,
+but when we're against the server, we need to SSH in first.
+
+There's a bit of plumbing here, but I've tried to break things down into small chunks:
 
 
 [role="sourcecode"]
-.src/functional_tests/base.py (ch21l017)
+.src/functional_tests/container_commands.py (ch23l018)
 ====
 [source,python]
 ----
-from .server_tools import reset_database  #<1>
-[...]
+import subprocess
 
-class FunctionalTest(StaticLiveServerTestCase):
-    def setUp(self):
-        self.browser = webdriver.Firefox()
-        self.test_server = os.environ.get("TEST_SERVER")
-        if self.test_server:
-            self.live_server_url = "http://" + self.test_server
-            reset_database(self.test_server)  #<1>
-----
-====
-
-<1> This will be our function to reset the server database in between each
-    test.  We'll write that next, using Fabric.
-
-
-
-
-==== Using Fabric Directly from Python
-
-* TODO: rewrite for ansible.
-
-((("Fabric", "using directly from Python")))
-Rather than using the `fab` command, Fabric provides an API that lets
-you run Fabric server commands directly inline in your Python code.  You
-just need to let it know the "host string" you're connecting to:
-
-
-
-[role="sourcecode"]
-.src/functional_tests/server_tools.py (ch18l018)
-====
-[source,python]
-----
-from fabric.api import run
-from fabric.context_managers import settings, shell_env
-
-
-def _get_manage_dot_py(host):
-    return f"~/sites/{host}/.venv/bin/python ~/sites/{host}/manage.py"
-
-
-def reset_database(host):
-    manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f"elspeth@{host}"):  # <1>
-        run(f"{manage_dot_py} flush --noinput")  # <2>
-----
-====
-
-<1> Here's the context manager that sets the host string, in the form
-    'user@server-address' (I've hardcoded my server username, elspeth, so
-    adjust as necessary).
-
-<2> Then, once we're inside the context manager, we can just call
-    Fabric commands as if we're in a fabfile.
-
-
-For creating the session, we have a slightly more complex procedure,
-because we need to extract the `SECRET_KEY` and other env vars from
-the current running server, to be able to generate a session key that's
-cryptographically valid for the server:
-
-
-[role="sourcecode small-code"]
-.src/functional_tests/server_tools.py (ch18l019)
-====
-[source,python]
-----
-def _get_server_env_vars(host):
-    env_lines = run(f"cat ~/sites/{host}/.env").splitlines()  # <1>
-    return dict(l.split("=") for l in env_lines if l)
+USER = "elspeth"
 
 
 def create_session_on_server(host, email):
-    manage_dot_py = _get_manage_dot_py(host)
-    with settings(host_string=f"elspeth@{host}"):
-        env_vars = _get_server_env_vars(host)
-        with shell_env(**env_vars):  # <2>
-            session_key = run(f"{manage_dot_py} create_session {email}")  # <3>
-            return session_key.strip()
+    return _exec_in_container(
+        host, ["/venv/bin/python", "/src/manage.py", "create_session", email]  # <1>
+    )
+
+
+def _exec_in_container(host, commands):
+    if "localhost" in host:  # <2>
+        return _exec_in_container_locally(commands)
+    else:
+        return _exec_in_container_on_server(host, commands)
+
+
+def _exec_in_container_locally(commands):
+    print(f"Running {commands} on inside local docker container")
+    return _run_commands(["docker", "exec", _get_container_id()] + commands)  # <3>
+
+
+def _exec_in_container_on_server(host, commands):
+    print(f"Running {commands!r} on {host} inside docker container")
+    return _run_commands(
+        ["ssh", f"{USER}@{host}", "docker", "exec", "superlists"] + commands  # <4>
+    )
+
+
+def _get_container_id():
+    return subprocess.check_output(  # <5>
+        ["docker", "ps", "-q", "--filter", "ancestor=superlists"]  # <3>
+    ).strip()
+
+
+def _run_commands(commands):
+    process = subprocess.run(  # <5>
+        commands,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    result = process.stdout.decode()
+    if process.returncode != 0:
+        raise Exception(result)
+    print(f"Result: {result!r}")
+    return result.strip()
 ----
 ====
 
+<1> We invoke our management command with the path to the virtualenv python,
+    the `create_session` command name, and pass in the email we want to create a session for
 
-<1> We extract and parse the server's current environment variables from the
-    _.env_ file...
+<2> We dispatch to two slightly different ways of running a command inside a container,
+    with the assumption that a host that's on "localhost" is a local Docker container,
+    and the others are on the staging server.
 
-<2> In order to use them in another fabric context manager, `shell_env`,
-    which sets the environment for the next command...
+<3> To run a command on the local Docker container, we're going to use `docker exec`,
+    and we have a little extra hop first to get the correct container ID.
 
-<3> Which is to run our `create_session` management command, which calls the
-    same `create_pre_authenticated_session` function, but on the server.
+<4> To run a command on the Docker container that's on the staging server,
+    we still use `docker exec`, but we do it inside an SSH session.
+    In this case we don't need the container ID, because the container is always named "superlists'.
 
+<5> Finally we use Python's `subprocess` module to actually run a command.
+    You can see a couple of different ways of running it here,
+    which differ based on how we're handing errors and output;
+    the details don't matter too much.
 
 
 ==== Recap: Creating Sessions Locally Versus Staging
@@ -701,39 +715,79 @@ Perhaps a little ascii-art diagram will help:
 
 [role="skipme small-code"]
 ----
-
 +-----------------------------------+       +-------------------------------------+
 | MyListsTest                       |  -->  | .management.commands.create_session |
 | .create_pre_authenticated_session |       |  .create_pre_authenticated_session  |
 |            (locally)              |       |             (locally)               |
 +-----------------------------------+       +-------------------------------------+
-
 ----
 
-===== Against staging:
+
+===== Against Docker locally:
 
 [role="skipme small-code"]
 ----
-+-----------------------------------+       +-------------------------------------+
-| MyListsTest                       |       | .management.commands.create_session |
-| .create_pre_authenticated_session |       |  .create_pre_authenticated_session  |
-|            (locally)              |       |            (on server)              |
-+-----------------------------------+       +-------------------------------------+
-            |                                                   ^
-            v                                                   |
-+----------------------------+     +--------+      +------------------------------+
-| server_tools               | --> | fabric | -->  | ./manage.py create_session   |
-| .create_session_on_server  |     |  "run" |      |   (on server, using .env)    |
-|        (locally)           |     +--------+      +------------------------------+
++-----------------------------------+             +-------------------------------------+
+| MyListsTest                       |             | .management.commands.create_session |
+| .create_pre_authenticated_session |             |  .create_pre_authenticated_session  |
+|            (locally)              |             |            (in Docker)              |
++-----------------------------------+             +-------------------------------------+
+            |                                                        ^
+            v                                                        |
++----------------------------+     +-------------+     +----------------------------+
+| server_tools               | --> | docker exec | --> | ./manage.py create_session |
+| .create_session_on_server  |     +-------------+     |       (in Docker)          |
+|        (locally)           |                         +----------------------------+
 +----------------------------+
-
 ----
 
-In any case, let's see if it works.  First, locally, to check that we didn't
-break anything:
+===== Against Docker locally:
+
+[role="skipme small-code"]
+----
++-----------------------------------+                           +-------------------------------------+
+| MyListsTest                       |                           | .management.commands.create_session |
+| .create_pre_authenticated_session |                           |  .create_pre_authenticated_session  |
+|            (locally)              |                           |            (on server)              |
++-----------------------------------+                           +-------------------------------------+
+            |                                                                      ^
+            v                                                                      |
+
++----------------------------+     +-----+    +-------------+      +------------------------------+
+| server_tools               | --> | ssh | -> | docker exec | -->  | ./manage.py create_session   |
+| .create_session_on_server  |     +-----+    +-------------+      |         (on server)          |
+|        (locally)           |                                     +------------------------------+
++----------------------------+
+----
 
 
-[role="dofirst-ch21l022"]
+
+.An Alternative For Managing Test Database Content: Talking Directly to the DB
+**********************************************************************
+An alternative way of managing database content inside Docker,
+or on a server, would be to talk directly to the DB
+
+Since we're using SQLite, that involves writing to the file directly,
+This can be fiddly to get right, because when we're running inside Django's
+test runner, Django takes over test database creation,
+so you end up having to write raw SQL and managing your connections to the database directly.
+
+There are also some tricky interactions with the filesystem mounts and Docker,
+as well as needing to have the SECRET_KEY env var set to the same value as on the server.
+
+If we were using a "classic" database server like Postgres or MySQL,
+we'd be able to talk directly to the database over its port,
+and that's an approach I've used successfully in the past (see eg https://www.cosmicpython.com/book/chapter_02_repository.html#_inverting_the_dependency_orm_depends_on_model)
+but it's still fiddly to get right and usually requires writing your own SQL.
+**********************************************************************
+
+
+=== Testing the Management Command
+
+In any case, let's see if it works.
+First, locally, to check that we didn't break anything:
+
+
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test functional_tests.test_my_lists*]
@@ -742,7 +796,31 @@ OK
 ----
 
 
-Next, against the server.
+Next, against Docker. Rebuild first:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -e EMAIL_PASSWORD \
+    -it superlists*
+----
+
+And then we run the FT that uses our fixture, against Docker:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests.test_my_lists*]
+
+[...]
+OK
+----
+
+
+And now against the server.  First, re-deploy to make sure our 
 
 
 [role="against-server"]
@@ -759,20 +837,17 @@ And now we run the test:
 ----
 $ <strong>TEST_SERVER=staging.ottg.co.uk python src/manage.py test \
  functional_tests.test_my_lists</strong>
-[...]
-[elspeth@staging.ottg.co.uk] run:
-~/sites/staging.ottg.co.uk/.venv/bin/python
-~/sites/staging.ottg.co.uk/manage.py flush --noinput
-[...]
-[elspeth@staging.ottg.co.uk] run:
-~/sites/staging.ottg.co.uk/.venv/bin/python
-~/sites/staging.ottg.co.uk/manage.py create_session edith@example.com
-[...]
+Found 1 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+Running '/venv/bin/python /src/manage.py create_session edith@example.com' on staging.ottg.co.uk inside docker container
+Result: '7n032ogf179t2e7z3olv9ct7b3d4dmas\n'
 .
  ---------------------------------------------------------------------
-Ran 1 test in 5.701s
+Ran 1 test in 4.515s
 
 OK
+Destroying test database for alias 'default'...
 ----
 
 Looking good!  We can rerun all the tests to make sure...
@@ -792,17 +867,78 @@ OK
 
 Hooray!
 
-NOTE: I've shown one way of managing the test database, but you could
-    experiment with others--for example, if you were using MySQL or Postgres,
-    you could open up an SSH tunnel to the server, and use port forwarding to
-    talk to the database directly.  You could then amend `settings.DATABASES`
-    during FTs to talk to the tunnelled port.  You'd still need some way of
-    pulling in the staging server environment variables though.((("", startref="DBservdatabase21")))((("", startref="SSmanag21")))((("", startref="DTmanag21")))
 
+=== Test Database Cleanup
+
+One more thing to be aware of: now that we're running against a real database,
+we don't get cleanup for free any more.
+If you try running the tests twice--locally or against Docker,
+you'll run into this error:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests.test_my_lists*]
+[...]
+django.db.utils.IntegrityError: UNIQUE constraint failed: accounts_user.email
+----
+
+It's because the user we created the first time we ran the tests is still in the database.
+When we're running against Django's test database, Django cleans up for us.
+Let's try and emulate that when we're running against a real database:
+
+
+
+
+[role="sourcecode"]
+.src/functional_tests/container_commands.py (ch23l019)
+====
+[source,python]
+----
+def reset_database(host):
+    return _exec_in_container(
+        host, ["/venv/bin/python", "/src/manage.py", "flush", "--noinput"]
+    )
+----
+====
+
+
+And let's add the call to `reset_database()` in our base test `setUp()` method:
+
+
+[role="sourcecode"]
+.src/functional_tests/base.py (ch23l020)
+====
+[source,python]
+----
+from .container_commands import reset_database  #<1>
+[...]
+
+class FunctionalTest(StaticLiveServerTestCase):
+    def setUp(self):
+        self.browser = webdriver.Firefox()
+        self.test_server = os.environ.get("TEST_SERVER")
+        if self.test_server:
+            self.live_server_url = "http://" + self.test_server
+            reset_database(self.test_server)
+----
+====
+
+
+If you try to run your tests again, you'll find they pass happily.
+
+
+[role="dofirst-ch23l021"]
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests.test_my_lists*]
+[...]
+
+OK
+----
 
 
 [role="pagebreak-before less_space"]
-.Warning: Be Careful Not to Run Test Code Against the Live Server
+.Warning: Be Careful Not to Run Test Code Against the Production Server!
 *******************************************************************************
 ((("database testing", "safeguarding production databases")))
 ((("production databases")))
@@ -821,44 +957,6 @@ I have a little story about accidentally sending thousands of duplicate invoices
 in <<data-migrations-appendix>>. LFMF.
 
 *******************************************************************************
-
-
-=== Updating our Deploy Script
-
-* TODO: ansible.
-
-((("debugging", "server-side", "baking in logging code")))
-Before we finish, let's update our deployment fabfile so that it can
-automatically add the `EMAIL_PASSWORD` to the _.env_ file on the server:
-
-
-[role="sourcecode skipme"]
-.src/deploy_tools/fabfile.py (ch18l021)
-====
-[source,python]
-----
-import os
-[...]
-
-
-def _create_or_update_dotenv():
-    append(".env", "DJANGO_DEBUG_FALSE=y")
-    append(".env", f"SITENAME={env.host}")
-    current_contents = run("cat .env")
-    if "DJANGO_SECRET_KEY" not in current_contents:
-        new_secret = "".join(
-            random.SystemRandom().choices("abcdefghijklmnopqrstuvwxyz0123456789", k=50)
-        )
-        append(".env", f"DJANGO_SECRET_KEY={new_secret}")
-    email_password = os.environ["EMAIL_PASSWORD"]  # <1>
-    append(".env", f"EMAIL_PASSWORD={email_password}")  # <1>
-----
-====
-
-<1> We just add two lines at the end of the script which will essentially
-    copy the local `EMAIL_PASSWORD` environment variable up to the server's
-    _.env_ file.
-
 
 
 === Wrap-Up
@@ -884,8 +982,8 @@ the ability to save their lists on a "My Lists" page.
 Fixtures also have to work remotely::
     `LiveServerTestCase` makes it easy to interact with the test database
     using the Django ORM for tests running locally.  Interacting with the
-    database on the staging server is not so straightforward. One solution
-    is Fabric and Django management commands, as I've shown, but you should
+    database inside Docker is not so straightforward. One solution
+    is `docker exec` and Django management commands, as I've shown, but you should
     explore what works for you--SSH tunnels, for example.
     ((("fixtures", "staging and")))
     ((("staging sites", "fixtures and")))
