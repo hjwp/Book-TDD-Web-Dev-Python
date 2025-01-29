@@ -3,15 +3,16 @@
 
 ((("deployment", "procedure for", id="Dpro17")))
 It's time to deploy our brilliant new validation code to our live servers.
+
 This will be a chance to see our automated deploy scripts in action for the
 second time.
+Let's take the opportunity to make a little deployment checklist.
 
-// RITA: A long section where? In the book? Please clarify.
 NOTE: At this point I always want to say a huge thanks to Andrew Godwin
     and the whole Django team.
-    Up until Django 1.7, I used to have a whole long section,
+    In the first edition, I used to have a whole long section,
     entirely devoted to migrations.
-    Migrations now "just work", so I was able to drop it altogether.
+    Since Django 1.7, migrations now "just work", so I was able to drop it altogether.
     I mean yes this all happened nearly ten years ago,
     but still--open source software is a gift.
     We get such amazing things, entirely for free.
@@ -28,15 +29,99 @@ You can refer back to <<chapter_11_server_prep>> for reminders on Ansible comman
 
 *******************************************************************************
 
+=== The Deployment Checklist
 
-=== Staging Deploy
+Let's make a little checklist of pre-deployment tasks:
+
+1. We run all our unit and functional tests in the regular way. Just in case!
+2. We rebuild our Docker image, and run our tests against Docker, on our local machine.
+3. We deploy to staging, and run our FTs against staging.
+4. Now we can deploy to prod.
+
 // DAVID: By the time I got to this chapter, I had cancelled my digital ocean subscription
 // from the earlier chapter as it was coming out of the free period and I hadn't realised I would need it again.
 // Perhaps you should consider mentioning at end of the earlier deployment chapter that they'll need to keep the
 // subscription active if they want to follow along with this chapter. Even better, maybe find a way of making
 // these chapters closer together?
 
-We start with the staging server:
+
+TIP: A deployment checklist like this should be a temporary measure.
+  Once you've worked through it manually a few times,
+  you should be looking to take the next step in automation,
+  continuous deployment straight using a CI/CD pipeline.
+  We'll touch on this in <<chapter_25_CI>>.
+
+
+=== A Full Test Run Locally
+
+Of course, under the watchful eye of the Testing Goat,
+we're running the tests all the time! But, just in case:
+
+[subs="specialcharacters,quotes"]
+----
+$ *cd src && python manage.py test*
+[...]
+
+Ran 39 tests in 15.222s
+
+OK
+----
+
+
+=== Quick Test Run Against Docker
+
+The next step closer to prod, is running things in Docker.
+This was one of the main reasons we went to the trouble of containerising our app,
+which is being able to repro the production environment as faithfully as possible,
+on our own machine.
+
+So let's rebuild our Docker image and spin up a local Docker container:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -t superlists . && docker run \
+    -p 8888:8888 \
+    --mount type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 \
+    -e DJANGO_SECRET_KEY=sekrit \
+    -e DJANGO_ALLOWED_HOST=localhost \
+    -it superlists
+ => [internal] load build definition from Dockerfile                  0.0s
+ => => transferring dockerfile: 371B                                  0.0s
+ => [internal] load metadata for docker.io/library/python:3.13-slim   1.4s
+ [...]
+ => => naming to docker.io/library/superlists                         0.0s
++ docker run -p 8888:8888 --mount
+type=bind,source=./src/db.sqlite3,target=/src/db.sqlite3 -e
+DJANGO_SECRET_KEY=sekrit -e DJANGO_ALLOWED_HOST=localhost -e EMAIL_PASSWORD -it
+superlists
+[2025-01-27 21:29:37 +0000] [7] [INFO] Starting gunicorn 22.0.0
+[2025-01-27 21:29:37 +0000] [7] [INFO] Listening at: http://0.0.0.0:8888 (7)
+[2025-01-27 21:29:37 +0000] [7] [INFO] Using worker: sync
+[2025-01-27 21:29:37 +0000] [8] [INFO] Booting worker with pid: 8
+----
+
+And now, in a separate terminal, we can run our FT suite against the Docker:
+
+[subs="specialcharacters,quotes"]
+----
+$ *TEST_SERVER=localhost:8888 python src/manage.py test functional_tests*
+[...]
+......
+ ---------------------------------------------------------------------
+Ran 6 tests in 17.047s
+
+OK
+----
+
+Looking good!  Let's move on to staging.
+
+
+
+=== Staging Deploy and Test Run
+
+
+Here's our `ansible-playbook` command to deploy to staging:
 
 [role="against-server small-code"]
 [subs="specialcharacters,macros"]
@@ -90,7 +175,7 @@ Disconnecting from staging.ottg.co.uk... done.
 ----
 
 
-And run the tests against staging:
+And now we run the FTs against staging:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -98,6 +183,7 @@ And run the tests against staging:
 $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
 OK
 ----
+
 // CSANAD: I needed to add `force_source` to the "Import container image on
 //         server" task. Otherwise, the server would deploy a container based on
 // the old image, even though a new one was successfully created locally (and
@@ -122,12 +208,10 @@ OK
 Hooray!
 
 
-
 [role="pagebreak-before less_space"]
-=== Live Deploy
+=== Production Deploy
 
-// RITA: Forgive me if this is a newbie question, but will readers understand what you mean by "live"? As in, "live what"? Just making sure that it's clear.
-Assuming all is well, we then run our deploy against live:
+Since all is looking well we can deploy to prod!
 
 
 [role="against-server"]
@@ -142,6 +226,7 @@ $ pass:quotes[*ansible-playbook --user=elspeth -i www.ottg.co.uk, infra/deploy-p
 
 Because our migrations introduce a new integrity constraint, you may find
 that it fails to apply because some existing data violates that constraint.
+// SEBASTIAN: Example might be helpful, like adding not null to a column while having some rows with nulls.
 
 [role="skipme"]
 ----
@@ -160,6 +245,7 @@ At this point you have two choices:
 // A third option is to manually edit the data on the site. If all we have is a staging site it's
 // a reasonable thing to do. I wonder if rather than getting into any of this, though, you could just
 // be prescriptive and get them to delete the db.
+
 
 ==== How to Delete the Database on the Staging Server
 
@@ -200,6 +286,8 @@ NOTE: Some people don't like to use `push -f` and update an existing tag,
     and will instead use some kind of version number to tag their releases.
     Use whatever works for you.
 
+// JAN: I'd advise against using the -f option. If something goes south with the release, it's hard to return to the previous state. I'd suggest simply creating a new tag. Structure that works nicely is <project_name>-<wannabe_iso_date_time>-<latest_commit_sha>-<description>. For example, goat-book-2024-12-20_10_12_13-86fd578r-new-feature-a-added. If there's any issue, it's easy to check out the latest working tag and redeploy.
+
 And on that note, we can wrap up <<part2>>,
 and move on to the more exciting topics that comprise <<part3>>.
 Can't wait!
@@ -225,5 +313,3 @@ Look up "continuous delivery" for some background reading.
 ((("", startref="Dpro17")))
 
 *******************************************************************************
-
-// SEBASTIAN: Great summary

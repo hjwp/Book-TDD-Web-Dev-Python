@@ -34,11 +34,13 @@ class Chapter9Test(ChapterTest):
         if os.environ.get("SKIP"):
             # self.pos = 8
             # self.pos = 18
-            self.pos = 60
+            self.pos = 36
+            # self.pos = 60
             self.sourcetree.run_command(
-                # "git switch {}".format(self.sourcetree.get_commit_spec("ch09l001"))
-                # "git switch {}".format(self.sourcetree.get_commit_spec("ch09l003"))
-                "git switch {}".format(self.sourcetree.get_commit_spec("ch09l008"))
+                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l001"))
+                "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l005"))
+                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l003"))
+                # "git checkout {}".format(self.sourcetree.get_commit_spec("ch09l008"))
             )
             print(f"Running in: {self.sourcetree.tempdir}")
             # vm_restore = "MANUAL_2"
