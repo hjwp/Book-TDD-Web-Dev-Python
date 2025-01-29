@@ -29,7 +29,7 @@ NOTE: In this chapter, we start to drift towards what's called "London-school TD
 
 
 Along the way, we'll learn a few more useful features of `unittest.mock`,
-and we'll also have a discussion about how many tests is "enough".
+and we'll also have a discussion about how many tests are "enough".
 
 
 
@@ -60,6 +60,8 @@ AUTHENTICATION_BACKENDS = [
 
 Next let's write some tests for what should happen in our view.
 Looking back at the spike again:
+// CSANAD: we could give a tip for simply having a look at the spike version:
+// `git show passwordless-spike:src/accounts/views.py`
 
 
 [role="sourcecode skipme"]
@@ -111,13 +113,13 @@ class LoginViewTest(TestCase):
 
     def test_logs_in_if_given_valid_token(self):
         anon_user = auth.get_user(self.client)  # <1>
-        self.assertEqual(anon_user.is_authenticated, False)  # <2>
+        self.assertFalse(anon_user.is_authenticated)  # <2>
 
         token = Token.objects.create(email="edith@example.com")
         self.client.get(f"/accounts/login?token={token.uid}")
 
         user = auth.get_user(self.client)
-        self.assertEqual(user.is_authenticated, True)  # <3>
+        self.assertTrue(user.is_authenticated)  # <3>
         self.assertEqual(user.email, "edith@example.com")  # <3>
 ----
 ====
@@ -125,14 +127,14 @@ class LoginViewTest(TestCase):
 <1> We use Django's `auth.get_user()` to extract the current user from the Test Client.
 <2> We verify we're not logged in before we start
     (this isn't strictly necessary, but it's always nice to know you're on firm ground).
-<3> And here's where we check that we've been logged,
+<3> And here's where we check that we've been logged in,
     with a user with the right email address:
 
 
 And that will fail as expected:
 
 ----
-    self.assertEqual(user.is_authenticated, True)
+    self.assertTrue(user.is_authenticated)
 AssertionError: False != True
 ----
 
@@ -169,7 +171,7 @@ Which forces us to write another test:
 def test_shows_login_error_if_token_invalid(self):
     response = self.client.get("/accounts/login?token=invalid-token", follow=True)
     user = auth.get_user(self.client)
-    self.assertEqual(user.is_authenticated, False)
+    self.assertFalse(user.is_authenticated)
     message = list(response.context["messages"])[0]
     self.assertEqual(
         message.message,
@@ -189,9 +191,9 @@ And now we get that passing using the most straightforward implementation...
 [source,python]
 ----
 def login(request):
-    if Token.objects.filter(uid=request.GET["token"]).exists():  # <1> <2>
+    if Token.objects.filter(uid=request.GET["token"]).exists():  # <1>
         User = auth.get_user_model()
-        user = User.objects.create(email="edith@example.com")  # <3>
+        user = User.objects.create(email="edith@example.com")  # <2> <3>
         auth.login(request, user)
     else:
         messages.error(request, "Invalid login link, please request a new one")  # <4>
@@ -307,6 +309,8 @@ See <<car-factory-illustration>>.
 [[car-factory-illustration]]
 .Analysing how many tests are needed at different levels
 image::images/car-factory-illustration.png["An illustration of the car factory, with boxes for each step in the process (build engine, assemble, paint), and descriptions of testing each step separately vs testing them in combination."]
+// CSANAD: just a tiny thing: in the diagram, below the "Paint" box, there is
+// an apostrophe missing in "engine type doesn't matter".
 
 // SEBASTIAN: How about splitting this big image into several smaller ones? At the first encounter, I skipped it only to discover I need to jump up and down to have visualizations of paragraphs below.
 //      Not a showstopper, tho.
@@ -316,7 +320,7 @@ we think about the inputs and outputs that apply to each type of test,
 as well as which attributes of the inputs matter, and which don't.
 
 Testing the first stage of the process, building the engine,
-is straightforward.  The "engine type" input has three possible values,
+is straightforward.  The "engine type" input has three possible values
 as inputs, so we need three tests of the output, which is the engine.
 If we're testing at the end-to-end level, no matter how many tests we have in total,
 we know we'll need at least 3 of to be the tests
@@ -435,7 +439,7 @@ as a way of reducing duplication and avoiding combinatorial explosion in our tes
 
 On top of that, the fact that we're using the Django `auth.authenticate` function
 rather than calling our own code directly is relevant.
-Django has already introduce an abstraction,
+Django has already introduced an abstraction,
 to decouple the specifics of authentication backends
 from the views that use them.
 This makes it easier for us to add further backends in future.
@@ -458,6 +462,8 @@ We'll start by reverting all the authentication stuff,
 both from our test and from our view.
 
 Let's disable the test first (we can re-enable them later to sense-check things):
+// CSANAD: I would add this disables the test because now its name does not
+// start with the word "test".
 
 [role="sourcecode small-code"]
 .src/accounts/tests/test_views.py (ch20l006)
@@ -566,7 +572,7 @@ class LoginViewTest(TestCase):
 
 ((("call_args property")))
 The `.call_args` property on a mock represents the positional and keyword arguments 
-hat the mock was called with.
+that the mock was called with.
 It's a special "call" object type,
 which is essentially a tuple of `(positional_args, keyword_args)`.
 `positional_args` is itself a tuple,
@@ -748,6 +754,12 @@ def test_calls_auth_login_with_user_if_there_is_one(self, mock_auth):
 <4> and the "user" object that the `authenticate()` function returns.
     Because `authenticate()` is also mocked out,
     we can use its special `.return_value` attribute.
+// CSANAD: I don't think it's clear to someone who's new to mocking why this
+// brings any value to us or what this mocked call proves, which would be the
+// point of having a test. I would add maybe:
+// "We are checking whether the second argument in the call was the same as the
+// return value - whatever it may be - of the (mocked) `auth.authenticate`.
+// So Python doesn't really know it is a User object, but we do."
 
 When you call a mock, you get another mock.
 But you can also get a copy of that returned mock from the original mock that you called.
@@ -776,7 +788,15 @@ True
 // there's already a lot to take on with the `.return_value` stuff
 If you've used `unittest.mock` before, you may have come across its special
 `assert_called...`
-http://bit.ly/2F9AEMY[methods], and you may be wondering why I didn't use them.
+https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock.assert_called[methods],
+and you may be wondering why I didn't use them.
+// CSANAD: we usually use regular links instead of shortened ones, which I
+// agree with. Shortened links depend on a 3rd party beyond the publisher's
+// control, they may expire or end up hijacked and in my own opinion, they look
+// less useful. When I see a URL I can just tell it links to e.g. the Python
+// library reference, so I can expect a brief paragraph or is it an article
+// from somewhere else, etc. With a shortened link, I can't tell anything before
+// I open it.
 For example, instead of doing:
 
 [role="skipme"]
@@ -935,6 +955,12 @@ def login(request):
     where you have a variable and want to do a conditional on it straight away.
     See https://www.pythonmorsels.com/using-walrus-operator/[this article]
     for more explanation.
+// CSANAD: I would add that it's just short for:
+//    ```
+//    user = auth.authenticate(uid=request.GET["token"])
+//    if user:
+//        auth.login(request, user)
+//    ```
 
 // SEBASTIAN: This is not the first occurrence of a walrus operator in this chapter. Is this intended to put an explanation here?
 
@@ -1102,10 +1128,10 @@ us to the right place:
 -    def DONT_test_logs_in_if_given_valid_token(self):
 +    def test_logs_in_if_given_valid_token(self):
          anon_user = auth.get_user(self.client)
-         self.assertEqual(anon_user.is_authenticated, False)
+         self.assertFalse(anon_user.is_authenticated)
 
 @@ -74,7 +74,7 @@ class LoginViewTest(TestCase):
-         self.assertEqual(user.is_authenticated, True)
+         self.assertTrue(user.is_authenticated)
          self.assertEqual(user.email, "edith@example.com")
 
 -    def DONT_test_shows_login_error_if_token_invalid(self):
@@ -1206,6 +1232,7 @@ we want to check we are using the Django auth library:
         [...]
 ----
 ====
+// CSANAD: I think the `diff` style snippets are better for renaming things.
 
 And we're down to 17 tests:
 
@@ -1303,6 +1330,16 @@ Traceback (most recent call last):
 
 ConnectionRefusedError: [Errno 111] Connection refused
 ----
+// CSANAD: I have an unapplied migration for `accounts`. The last time we ran
+// `migrate` was in the 19th chapter, on the passwordless-spike branch.
+// Maybe we should add to the very end of the 19th chapter that once the reader
+// has the Token model with the passing tests, they should run `migrate`? And a
+// commit. A migration did not run flawlessly at this point, due to the table
+// `accounts_token` already exists. I'm not sure if this error would have shown
+// up at the end of the 19th chapter. TODO check.
+// Also, although the error does say the error occurs on `/accounts/send_login_email`
+// maybe it would seem for some readers as if we are expecting this error right
+// after starting the server.
 
 
 ==== Using Our New Environment Variable, and Saving It to .env
@@ -1353,9 +1390,13 @@ that's a convention which makes it a hidden file, on Unix-like systems at least:
 [subs="specialcharacters,quotes"]
 ----
 $ *echo .env >> .gitignore*  # we don't want to commit our secrets into git!
-$ *echo EMAIL_PASSWORD="yoursekritpasswordhere" >> .env*
+$ *echo EMAIL_PASSWORD=\"yoursekritpasswordhere\" >> .env*
 $ *set -a; source .env; set +a;*
 ----
+// CSANAD: we need to either put the entire `EMAIL_PASSWD=...` in single quotes
+// or escape the double quotes. Without these, the double quotes don't
+// make it to the .env file and if there is a space in the password, `source`
+// will just try to run the sequence after the space character as a command.
 
 It does mean you have to remember to do that weird `set -a; source...` dance,
 every time you start working on the project, as well as remembering to activate
@@ -1416,6 +1457,8 @@ $ *git commit -m "Custom passwordless auth backend + custom user model"*
 The last thing we need to do before we call it a day is to test the logout button.
 We extend the FT with a couple more steps:
 
+// CSANAD: since we are adding `logout` functionality to the FT, we should re-
+// name it to `functional_tests/test_authentication.py` or something similar.
 [role="sourcecode"]
 .src/functional_tests/test_login.py (ch20l024)
 ====
@@ -1531,7 +1574,9 @@ Ran 57 tests in 78.124s
 OK
 ----
 //54
+
 // DAVID: Should we get them to `cd ..` back out of src?
+// CSANAD: I was just about to comment that my suite has 54 tests.
 
 WARNING: We're nowhere near a truly secure or acceptable login system here.
     Since this is just an example app for a book, we'll leave it at that,
@@ -1540,6 +1585,15 @@ WARNING: We're nowhere near a truly secure or acceptable login system here.
     We're dangerously close to "rolling our own crypto" here,
     and relying on a more established login system would be much safer.
     ((("security issues and settings", "login systems")))
+
+// CSANAD: very nice to mention this rule. I would add at least one source
+// further explaining why you should never roll your own crypto (for anything
+// other than studying purposes):
+// https://security.stackexchange.com/a/18198
+//
+// for demonstrating a security issue with our current, custom
+// authentication, we could mention that after logout, we can log in using any
+// of the previous login magic links (there is no token invalidation)
 
 
 In the next chapter, we'll start trying to put our login system to good use.
