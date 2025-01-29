@@ -105,15 +105,23 @@ from selenium.webdriver.common.by import By
 
         # She goes to the home page and starts a list
         self.browser.get(self.live_server_url)
-        self.add_list_item("Reticulate splines")
+        self.add_list_item("Reticulate splines")  # <1>
         self.add_list_item("Immanentize eschaton")
         first_list_url = self.browser.current_url
 
         # She notices a "My lists" link, for the first time.
         self.browser.find_element(By.LINK_TEXT, "My lists").click()
 
-        # She sees that her list is in there, named according to its
-        # first list item
+        # She sees her email is there in the page heading
+        self.wait_for(
+            lambda: self.assertIn(
+                "edith@example.com",
+                self.browser.find_element(By.CSS_SELECTOR, "h1").text,
+            )
+        )
+
+        # And she sees that her list is in there,
+        # named according to its first list item
         self.wait_for(
             lambda: self.browser.find_element(By.LINK_TEXT, "Reticulate splines")
         )
@@ -124,11 +132,10 @@ from selenium.webdriver.common.by import By
 ----
 ====
 
+<1> We'll define this `add_list_item()` shortly.
+    Programming by wishful thinking, as always!
 
-//TODO: add a check for email in my lists page header, reflow logic
-// to fit better with workshops..
-
-We create a list with a couple of items,
+As you can see, we create a list with a couple of items,
 then we check that this list appears on a new "My Lists" page,
 and that it's "named" after the first item in the list.
 
@@ -219,7 +226,6 @@ changes--see if you agree with me.
 A quick run of all FTs, a commit, and then back to the FT we're working on.
 The first error should look like this:
 
-//IDEA: add a thing that looks for her email address in an h1?
 
 [subs="specialcharacters,macros"]
 ----
@@ -250,29 +256,30 @@ Here's the minimal code change:
         <div class="container-fluid">
           <a class="navbar-brand" href="/">Superlists</a>
           {% if user.email %}
-            <a href="#">My lists</a>
+            <a class="navbar-link" href="#">My lists</a>
             <span class="navbar-text">Logged in as {{ user.email }}</span>
             <form method="POST" action="{% url 'logout' %}">
               [...]
 ----
 ====
 
-Of course, that link doesn't actually go anywhere, but it does get us along to
-the next failure:
+Of course that link doesn't actually go anywhere,
+but it does get us along to the next failure:
 
-* TODO: address issue with default list item ordering here.
 
-[subs="specialcharacters,macros"]
+[subs=""]
 ----
-$ pass:quotes[*python src/manage.py test functional_tests.test_my_lists*]
+$ <strong>python src/manage.py test functional_tests.test_my_lists</strong>
 [...]
-    self.wait_for(
-    ~~~~~~~~~~~~~^
-        lambda: self.browser.find_element(By.LINK_TEXT, "Reticulate splines")
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Reticulate splines; [...]
+    lambda: self.assertIn(
+            ~~~~~~~~~~~~~^
+        "edith@example.com",
+        ^^^^^^^^^^^^^^^^^^^^
+        self.browser.find_element(By.CSS_SELECTOR, "h1").text,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+AssertionError: 'edith@example.com' not found in 'Your To-Do list'
 ----
 
 Which is telling us we're going to have to build a page that lists all of a
@@ -288,7 +295,7 @@ URL and nothing else:
 [source,html]
 ----
   {% if user.email %}
-    <a href="{% url 'my_lists' user.email %}">My lists</a>
+    <a class="navbar-link" href="{% url 'my_lists' user.email %}">My lists</a>
 ----
 ====
 
@@ -360,7 +367,8 @@ def my_lists(request, email):
 ----
 ====
 
-And a minimal template:
+And a minimal template, with no real content
+except for the header that shows the user's email address:
 
 [role="sourcecode"]
 .src/lists/templates/my_lists.html (ch22l010)
@@ -369,13 +377,20 @@ And a minimal template:
 ----
 {% extends 'base.html' %}
 
-{% block header_text %}My Lists{% endblock %}
+{% block header_text %}{{user.email}}'s Lists{% endblock %}
 ----
 ====
 
-That gets our unit tests passing, but our FT is still at the same point,
-saying that the "My Lists" page doesn't yet show any lists.  It wants
-them to be clickable links named after the first item:
+That gets our unit tests passing.
+
+[subs="specialcharacters,quotes"]
+----
+$ *./src/manage.py test lists*
+[...]
+OK
+----
+
+Let's rerun our FT:
 
 [subs="specialcharacters,macros"]
 ----
@@ -384,6 +399,10 @@ $ pass:quotes[*python src/manage.py test functional_tests.test_my_lists*]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: Reticulate splines; [...]
 ----
+
+Sure enough, the FT get a little further because it finds our email in the `<h1>`,
+but it's now saying that the "My Lists" page doesn't yet show any lists.
+It wants them to appear as clickable links, named after the first item.
 
 
 === Another Pass, Outside-In
@@ -473,7 +492,7 @@ and say it should be empty...
 ----
 {% extends 'base.html' %}
 
-{% block header_text %}My Lists{% endblock %}
+{% block header_text %}{{user.email}}'s Lists{% endblock %}
 
 {% block list_form %}{% endblock %}
 ----
@@ -486,7 +505,9 @@ And then we can just work inside the `extra_content` block:
 ====
 [source,html]
 ----
-[...]
+{% extends 'base.html' %}
+
+{% block header_text %}{{user.email}}'s Lists{% endblock %}
 
 {% block list_form %}{% endblock %}
 
