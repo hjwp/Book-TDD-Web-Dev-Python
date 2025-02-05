@@ -266,23 +266,15 @@ $ *ssh elspeth@staging.superlists.ottg.co.uk*
 Welcome to Ubuntu 22.04.4 LTS (GNU/Linux 5.15.0-67-generic x86_64)
  [...]
 
-elspeth@server$ *docker ps -a*
+elspeth@server$ *sudo docker ps -a*
 CONTAINER ID   IMAGE     COMMAND              CREATED      STATUS
 PORTS     NAMES
 3a2e600fbe77   busybox   "echo hello world"   2 days ago   Exited (0) 10
 minutes ago             testcontainer
 
-elspeth@server:$ *docker logs testcontainer*
+elspeth@server:$ *sudo docker logs testcontainer*
 hello world
 ----
-
-// CSANAD: we haven't set up rootless docker and haven't added the user to the
-//         `docker` group either, so `docker ps` would only run with sudo.
-
-// DAVID: Got
-// permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock
-// Sudo fixed it.
-// Update: I think better to add my user to the docker group before this point.
 
 TIP: Look out for that `elspeth@server`
     in the command-line listings in this chapter.
@@ -294,6 +286,114 @@ SSHing in to check things worked is a key server debugging skill!
 It's something we want to practice on our staging server,
 because ideally we'll want to avoid doing it on production machines.
 
+=== Allowing Rootless Docker access
+
+Having to use `sudo` or `become=True` to run Docker commands is a bit of a pain.
+If we add the our user to the `docker` group, we can run Docker commands without `sudo`.
+
+[role="sourcecode"]
+.infra/deploy-playbook.yaml (ch12l001-1)
+====
+[source,yaml]
+----
+  - name: Install docker
+        [...]
+
+  - name: Add our user to the docker group, so we don't need sudo/become
+    ansible.builtin.user:  # <1>
+      name: '{{ ansible_user }}'  # <2>
+      groups: docker
+    become: true
+
+  - name: Reset ssh connection to allow the user/group change to take effect
+    ansible.builtin.meta: reset_connection  # <3>
+
+  - name: Run test container  # <4>
+        [...]
+----
+====
+
+<1> We use the `builtin.user` module to add our user to the `docker` group.
+
+<2> The `{{ ... }}` syntax allows us to interpolate some variables into
+    our config file, much like in a Django template.
+    `ansible_user` will be the user we're using to connect to the server,
+    ie "elspeth" in my case.
+
+<3> As per the task name, we need this for the user/group change to take effect.
+    Strictly speaking this is only needed the first time we run the script;
+    if you've got some time, you can read up on how to
+    make tasks https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_conditionals.html[conditional]
+    and configure it to only run if the `builtin.user` tasks has actually made a change.
+
+<4> We can remove the `become: true` from this task and it should still work.
+
+
+Let's run that:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/deploy-playbook.yaml -vv*]
+PLAYBOOK: deploy-playbook.yaml ************************************************
+1 plays in infra/deploy-playbook.yaml
+
+PLAY [all] ********************************************************************
+
+TASK [Gathering Facts] ********************************************************
+[...]
+ok: [staging.ottg.co.uk]
+
+TASK [Install docker] *********************************************************
+[...]
+ok: [staging.ottg.co.uk] => {"cache_update_time": 1738767216, "cache_updated": true, "changed": false}
+
+TASK [Add our user to the docker group, so we don't need sudo/become] *********
+[...]
+changed: [staging.ottg.co.uk] => {"append": false, "changed": true, [...]
+"", "group": 1000, "groups": "docker", [...]
+
+TASK [Reset ssh connection to allow the user/group change to take effect] *****
+[...]
+META: reset connection
+
+TASK [Run test container] *****************************************************
+[...]
+changed: [staging.ottg.co.uk] => {"changed": true, "container": [...]
+
+PLAY RECAP ********************************************************************
+staging.ottg.co.uk         : ok=4    changed=2    unreachable=0    failed=0
+skipped=0    rescued=0    ignored=0
+----
+
+And check that it worked:
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server$ *docker ps -a*  # no sudo yay!
+CONTAINER ID   IMAGE        COMMAND                  CREATED          STATUS
+PORTS     NAMES
+bd3114e43f55   busybox      "echo hello world"       12 minutes ago   Exited (0)
+6 seconds ago               testcontainer
+
+elsepth@server$ *docker logs testcontainer*
+hello world
+hello world
+----
+
+Sure enough, we no longer need `sudo`,
+and we can see a new version of the container just ran.
+
+You know, that's worthy of a commit!
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add infra/deploy-playbook.yaml*
+$ *git commit -m "Made a start on an ansible playbook for deployment"*
+----
+
+
 Let's move on to trying to get our actual docker container running on the server.
 As we go through, you'll see that we're going to work through very similar issues
 to the ones we've already figured our way through in the last couple of chapters:
@@ -302,22 +402,6 @@ to the ones we've already figured our way through in the last couple of chapters
 * Networking
 * And the database.
 
-////
-
-TODO: add user to docker group:
-
-
-#
-- name: Add our user to the docker group, so we don't need sudo/become
-  ansible.builtin.user:
-    name: '{{ ansible_user }}'
-    groups: docker
-
-- name: Reset ssh connection to allow the user/group change to take effect
-  ansible.builtin.meta: reset_connection
-
-
-////
 
 === Getting our image onto the server
 
@@ -348,63 +432,54 @@ In Ansible config, it looks like this:
 ====
 [source,yaml]
 ----
----
-- hosts: all
+  - name: Install docker
+        [...]
+  - name: Add our user to the docker group, so we don't need sudo/become
+        [...]
+  - name: Reset ssh connection to allow the user/group change to take effect
+        [...]
 
-  tasks:
-    - name: Install docker
-      ansible.builtin.apt:
-        name: docker.io
-        state: latest
-      become: true
+  - name: Export container image locally  # <1>
+    community.docker.docker_image:
+      name: superlists
+      archive_path: /tmp/superlists-img.tar
+      source: local
+    delegate_to: 127.0.0.1
 
-    - name: Export container image locally  # <1>
-      community.docker.docker_image:
-        name: superlists
-        archive_path: /tmp/superlists-img.tar
-        source: local
-      delegate_to: 127.0.0.1
+  - name: Upload image to server  # <2>
+    ansible.builtin.copy:
+      src: /tmp/superlists-img.tar
+      dest: /tmp/superlists-img.tar
 
-    - name: Upload image to server  # <2>
-      ansible.builtin.copy:
-        src: /tmp/superlists-img.tar
-        dest: /tmp/superlists-img.tar
+  - name: Import container image on server  # <3>
+    community.docker.docker_image:
+      name: superlists
+      load_path: /tmp/superlists-img.tar
+      source: load
+      force_source: true  # <4>
+      state: present
 
-    - name: Import container image on server  # <3>
-      community.docker.docker_image:
-        name: superlists
-        load_path: /tmp/superlists-img.tar
-        source: load
-        force_source: true  # <4>
-        state: present
-      become: true
-
-    - name: Run container
-      community.docker.docker_container:
-        name: superlists
-        image: superlists
-        state: started
-        recreate: true
+  - name: Run container
+    community.docker.docker_container:
+      name: superlists
+      image: superlists  # <5>
+      state: started
+      recreate: true  # <6>
 ----
 ====
 
-NOTE: Colima users on MacOS may need to set an env var to get the ansible-docker
-    integration to work in the "Export container image locally" stage:
-    `DOCKER_HOST=unix:///$HOME/.colima/default/docker.sock`
 
-// CSANAD: I would add `update_cache: true` to the `Install docker` task back,
-//         it's a good practice to update the apt cache before installing.
-//
-// Also because of the `delegate_to` the reader may face permission errors if they
-// have not set up rootless docker or haven't added their user to the docker group
-// on their local (developer) system.
-// TASK [Export container image locally] ****[...]
-// task path: /path/to/goat-book/infra/deploy-playbook.yaml:12
-// fatal: [192.168.122.23 -> 127.0.0.1]: FAILED! => {"changed": false, "msg": "Error connecting: Error while fetching server API version: ('Connection aborted.', PermissionError(13, 'Permission denied'))"}
-//
-// They may get away with just using `sudo docker` but `sudo ansible-playbook`
-// will not work.
-//
+NOTE: If you see an error saying "Error connecting: Error while fetching server API version",
+    it may be because the Python Docker SDK can't find your docker daemon.
+    Try restarting Docker Desktop if you're on Windows or a Mac.
+    If you're not using the standard docker engine, with Colima for example,
+    you may need to set the `DOCKER_HOST` environment variable
+    (`DOCKER_HOST=unix:///$HOME/.colima/default/docker.sock`)
+    or use a symlink to point to the right place.
+    See the
+    https://github.com/abiosoft/colima/blob/main/docs/FAQ.md#cannot-connect-to-the-docker-daemon-at-unixvarrundockersock-is-the-docker-daemon-running[Colima FAQ].
+
+
 
 <1> We export the docker image to a `.tar` file by using the `docker_image` module
   with the `archive_path` set to temp file, and setting the `delegate_to` attribute
@@ -418,16 +493,16 @@ NOTE: Colima users on MacOS may need to set an env var to get the ansible-docker
 <4> the `force_source` flag tells the server to attempt the import,
     even if an image of that name already exists.
 
+<5> We change our "Run container" task to use the `superlists` image,
+    and we'll use that as the container name too.
+
+<6> Similarly to `source: load`, the `recreate` argument tells Ansible
+    to recreate the container even if there's already one running
+    whose name and image match "superlists".
+
 // TODO: consider using commit id as image tag to avoid the force_source.
 
-// TODO: consider splitting out into two chapters.
 
-////
-* chapter 1, start a server, sort out dns, ssh into it. install ansible locally,
-make sure it works, make sure "become" works, make sure you can delegate_to
-and build the image locally
-* chapter 2 starts about here.
-////
 
 
 Let's run the new version of our playbook,
@@ -450,9 +525,16 @@ ok: [staging.ottg.co.uk]
 TASK [Install docker] *********************************************************
 task path: ...goat-book/superlists/infra/deploy-playbook.yaml:5
 ok: [staging.ottg.co.uk] => {"cache_update_time": 1708982855, "cache_updated": false, "changed": false}
+TASK [Add our user to the docker group, so we don't need sudo/become] *********
+task path: ...goat-book/infra/deploy-playbook.yaml:11
+ok: [staging.ottg.co.uk] => {"append": false, "changed": false, [...]
+
+TASK [Reset ssh connection to allow the user/group change to take effect] *****
+task path: ...goat-book/infra/deploy-playbook.yaml:17
+META: reset connection
 
 TASK [Export container image locally] *****************************************
-task path: ...goat-book/superlists/infra/deploy-playbook.yaml:11
+task path: ...goat-book/superlists/infra/deploy-playbook.yaml:20
 changed: [staging.ottg.co.uk -> 127.0.0.1] => {"actions": ["Archived image
 superlists:latest to /tmp/superlists-img.tar, overwriting archive with image
 11ff3b83873f0fea93f8ed01bb4bf8b3a02afa15637ce45d71eca1fe98beab34 named
@@ -460,36 +542,30 @@ superlists:latest"], "changed": true, "image": {"Architecture": "amd64",
 [...]
 
 TASK [Upload image to server] *************************************************
-task path: ...goat-book/superlists/infra/deploy-playbook.yaml:18
+task path: ...goat-book/superlists/infra/deploy-playbook.yaml:27
 changed: [staging.ottg.co.uk] => {"changed": true, "checksum":
 "313602fc0c056c9255eec52e38283522745b612c", "dest": "/tmp/superlists-img.tar",
 [...]
 
 TASK [Import container image on server] ***************************************
-task path: ...goat-book/superlists/infra/deploy-playbook.yaml:23
+task path: ...goat-book/superlists/infra/deploy-playbook.yaml:32
 changed: [staging.ottg.co.uk] => {"actions": ["Loaded image superlists:latest
 from /tmp/superlists-img.tar"], "changed": true, "image": {"Architecture":
 "amd64", "Author": "", "Comment": "buildkit.dockerfile.v0", "Config":
 [...]
 
 TASK [Run container] **********************************************************
-task path: ...goat-book/superlists/infra/deploy-playbook.yaml:32
+task path: ...goat-book/superlists/infra/deploy-playbook.yaml:40
 changed: [staging.ottg.co.uk] => {"changed": true, "container":
 {"AppArmorProfile": "docker-default", "Args": ["--bind", ":8888",
 "superlists.wsgi:application"], "Config": {"AttachStderr": true, "AttachStdin":
 false, "AttachStdout": true, "Cmd": ["gunicorn", "--bind", ":8888",
 "superlists.wsgi:application"], "Domainname": "", "Entrypoint": null, "Env":
 [...]
+staging.ottg.co.uk         : ok=7    changed=4    unreachable=0    failed=0
+skipped=0    rescued=0    ignored=0
 ----
 
-// CSANAD: earlier we also added the `PLAY RECAP` line.
-
-// DAVID: I got error during the 'Export container image locally' step.
-// FAILED! => {"changed": false, "msg": "Error connecting: Error while fetching server API version:
-// ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))"}
-// Update: I fixed it by doing ``sudo usermod -aG docker ${USER}`` on the remote machine.
-// Maybe worth getting them to shell in and run `docker run hello-world` to
-// check their user has permission.
 // DAVID: by the way it's getting annoying having to type my sudo password in all the time.
 
 For completeness, let's also add a step to explicitly build the image locally.
@@ -501,7 +577,7 @@ This means we don't have a dependency on having run `docker build` locally.
 ====
 [source,yaml]
 ----
-    - name: Install docker
+    - name: Reset ssh connection to allow the user/group change to take effect
       [...]
 
     - name: Build container image locally
@@ -546,7 +622,18 @@ PORTS     NAMES
 minutes ago             testcontainer
 129e36a42190   superlists   "/bin/sh -c \'gunicor…"   About a minute ago
 Exited (3) About a minute ago             superlists
+----
 
+OK!  We can see our "superlists" container is there now.
+The Status: Exited is a bit more worrying though.
+
+Let's take a look at the logs of our new container,
+to see if we can figure out what's happened:
+
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
 elspeth@server:$ *docker logs superlists*
 [2024-02-26 22:19:15 +0000] [1] [INFO] Starting gunicorn 21.2.0
 [2024-02-26 22:19:15 +0000] [1] [INFO] Listening at: http://0.0.0.0:8888 (1)
@@ -563,26 +650,14 @@ KeyError: 'DJANGO_SECRET_KEY'
 [2024-02-26 22:19:15 +0000] [1] [ERROR] Reason: Worker failed to boot.
 ----
 
-// DAVID: (re docker ps) I can also see superlists listed (though exited).
-// In any event, feels like needs a bit more explanation of
-// your thought process?
-
-Whoops, we need to set those environment variables on the server too.
-
-
-NOTE: If you see an error saying "Error connecting: Error while fetching server API version",
-    it may be because the Python Docker SDK can't find your docker daemon.
-    Try restarting Docker Desktop if you're on Windows or a Mac.
-    If you're not using the standard docker engine, with Colima for example,
-    you may need to set the `DOCKER_HOST` environment variable
-    or use a symlink to point to the right place.
-    See the
-    https://github.com/abiosoft/colima/blob/main/docs/FAQ.md#cannot-connect-to-the-docker-daemon-at-unixvarrundockersock-is-the-docker-daemon-running[Colima FAQ].
+Oh whoops, it can't find the `DJANGO_SECRET_KEY` environment variable.
+We need to set those environment variables on the server too.
 
 
 === Using an env File to Store Our Environment Variables
 
-When we run our container manually locally, we can pass in environment variables with the `-e` flag.
+When we run our container manually locally,
+we can pass in environment variables with the `-e` flag.
 But we don't want to hard-code secrets like SECRET_KEY into our Ansible files
 and commit them to our repo!
 
