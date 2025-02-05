@@ -439,77 +439,342 @@ from the code at the layers below.
 Programming by wishful thinking, as always!
 
 
-==== A Quick Restructure of the Template Inheritance Hierarchy
+==== A Quick Restructure of Our Template Composition
 
+((("templates", "composition")))
+Let's take a look at our base template, _base.html_.
+It currently has a lot of content that's specific to editing todo lists,
+which our "My Lists" page doesn't need:
 
-((("templates", "inheritance hierarchy")))
-Currently there's no place in our base template for us to put any new content,
-so let's change that first by adding a new block called `extra_content`:
-
-[role="sourcecode"]
-.src/lists/templates/base.html (ch24l011-2)
+[role="sourcecode currentcontents"]
+.src/lists/templates/base.html
 ====
 [source,html]
 ----
+    <div class="container">
+
+      <nav class="navbar">
+        [...]
+      </nav>
+
+      {% if messages %}
+        [...]
+      {% endif %}
+
+      <div class="row justify-content-center p-5 bg-body-tertiary rounded-3">
+        <div class="col-lg-6 text-center">
+          <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
+
+          <form method="POST" action="{% block form_action %}{% endblock %}" >  <1>
+            [...]
+          </form>
+        </div>
+      </div>
+
       <div class="row justify-content-center">
         <div class="col-lg-6">
-          {% block table %}
+          {% block table %}  <2>
           {% endblock %}
         </div>
       </div>
 
-      <div class="row">
-        <div class="col-md-6 col-md-offset-3">
-          {% block extra_content %}
-          {% endblock %}
-        </div>
-      </div>
     </div>
 
-    <script src="/static/lists.js"></script>
-    [...]
+    <script src="/static/lists.js"></script>  <3>
+      [...]
 ----
 ====
 
-Also, the "My Lists" page doesn't need the new item form,
-so let's pull that out into an https://docs.djangoproject.com/en/5.1/ref/templates/builtins/#include[include]
+<1> The `<form>` tag is definitely something we only want on pages where we edit lists.
+    Everything else up to this point is generic enough to be on any page.
 
-[role="sourcecode"]
-.src/lists/templates/base.html (ch24l011-1)
+<2> Similarly the `{% block table %}` isn't something we'd need on the "My Lists" page.
+
+<3> Finally the `<script>` tag is specific to lists too.
+
+So we'll want to change things so that _base.html_ is a bit more generic.
+
+Let's recap: we've got three actual pages we want to render:
+
+1. The home page (where you can enter a first todo item to create a new list)
+2. The "list" page (where you can view an existing list and add to it)
+3. The "my lists" page (which is a list of all your existing lists)
+
+* The home page and list page both share the "form" elements and the lists.js javascript.
+* But the lists page is the only one that needs to show the full table of list items
+* The "my lists" page doesn't need anything related to editing or displaying lists.
+
+So we have some things shared between all 3, and some only shared between 1 and 2.
+
+So far we've been using inheritance to share the common parts of our templates,
+but this is a good place to start using composition instead.
+At the moment we're saying that "home" is a type of "base" template,
+but with the "table" section switched off, which is a bit awkward.
+Let's not make it even more awkward by saying that "lists"
+is a "base" template with both the form and the table switched off!
+It might more sense to say that "home" is a type of base template which "includes" a list form,
+but no table, and "list" includes both the list form and the list table.
+
+((("composition over inheritance principle")))
+TIP: People often say "prefer composition over inheritance",
+    because inheritance can become hard to reason about as the inheritance hierarchy grows.
+    Composition is more flexible,
+    and often makes more sense.
+    For a lengthy discussion of this topic, see
+    https://hynek.me/articles/python-subclassing-redux/[Hynek Schlawack's definitive article on subclassing in Python].
+
+So, let's:
+
+1. Pull out the `<form>` tag and the _lists.js_ `<script>` tag into into some blocks
+   we can "include" in our homepage and lists page.
+
+2. Move the `<table>` block so it only exists in the lists page.
+
+3. Take all the lists-specific stuff out of the _base.html_ template,
+   making it into a more generic page with header and a placeholder for generic content:
+
+We'll use what's called an 
+https://docs.djangoproject.com/en/5.1/ref/templates/builtins/#include[include]
+to be able to compose reusable template fragments,
+when we don't want to use inheritance.
+
+
+First let's pull out the form and the script tag from _base.html_:
+
+[role="sourcecode small-code"]
+.src/lists/templates/base.html (ch24l010-1)
 ====
 [source,diff]
 ----
-@@ -57,6 +57,7 @@
+@@ -58,43 +58,19 @@
          <div class="col-lg-6 text-center">
            <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
-
-+          {% block list_form %}
-             <form method="POST" action="{% block form_action %}{% endblock %}" >
-               {% csrf_token %}
-               <input
-@@ -76,6 +77,8 @@
-                 </div>
-               {% endif %}
-             </form>
+ 
+-          <form method="POST" action="{% block form_action %}{% endblock %}" >
+-            {% csrf_token %}
+-            <input
+-              id="id_text"
+-              name="text"
+-              class="form-control
+-                     form-control-lg
+-                     {% if form.errors %}is-invalid{% endif %}"
+-              placeholder="Enter a to-do item"
+-              value="{{ form.text.value }}"
+-              aria-describedby="id_text_feedback"
+-              required
+-            />
+-            {% if form.errors %}
+-              <div id="id_text_feedback" class="invalid-feedback">
+-                {{ form.errors.text.0 }}
+-              </div>
+-            {% endif %}
+-          </form>
++          {% block extra_header %}
 +          {% endblock %}
 +
          </div>
        </div>
+ 
+-      <div class="row justify-content-center">
+-        <div class="col-lg-6">
+-          {% block table %}
+-          {% endblock %}
+-        </div>
+-      </div>
++      {% block content %}
++      {% endblock %}
+ 
+     </div>
+ 
+-    <script src="/static/lists.js"></script>
+-    <script>
+-      window.onload = () => {
+-        initialize("#id_text");
+-      };
+-    </script>
++    {% block scripts %}
++    {% endblock %}
+ 
+   </body>
+ </html>
 ----
 ====
 
+You can see we've replaced all the lists-specific stuff with 3 new blocks:
+
+* `extra_header` for anything we want to put in the big header section
+* `content` for the main content of the page
+* `scripts` for any javascript we want to include.
+
+Let's paste in the `<form>` tag into a file at _src/lists/templates/form.html_:
+
+
+[role="sourcecode small-code"]
+.src/lists/templates/form.html (ch24l010-2)
+====
+[source,html]
+----
+<form method="POST" action="{{ form_action }}" >  <1>
+  {% csrf_token %}
+  <input
+    id="id_text"
+    name="text"
+    class="form-control
+           form-control-lg
+           {% if form.errors %}is-invalid{% endif %}"
+    placeholder="Enter a to-do item"
+    value="{{ form.text.value }}"
+    aria-describedby="id_text_feedback"
+    required
+  />
+  {% if form.errors %}
+    <div id="id_text_feedback" class="invalid-feedback">
+      {{ form.errors.text.0 }}
+    </div>
+  {% endif %}
+</form>
+----
+====
+
+<1> This is the only change,
+    we've replaced the `{% block form_action %}` with `{{ form_action }}`.
+
+
+Let's paste the scripts tags verbatim
+into a new file at _src/lists/templates/scripts.html_:
+
+[role="sourcecode"]
+.src/lists/templates/scripts.html (ch24l010-3)
+====
+[source,html]
+----
+<script src="/static/lists.js"></script>
+
+<script>
+  window.onload = () => {
+    initialize("#id_text");
+  };
+</script>
+----
+====
+
+Now let's look at how to use the include,
+and how the `form_action` change plays out,
+in the changes to _home.html_:
+
+[role="sourcecode small-code"]
+.src/lists/templates/home.html (ch24l010-4)
+====
+[source,html]
+----
+{% extends 'base.html' %}
+
+{% block header_text %}Start a new To-Do list{% endblock %}
+
+{% block extra_header %}
+  {% url 'new_list' as form_action %}  <1>
+  {% include "form.html" with form=form form_action=form_action %}  <2>
+{% endblock %}
+
+{% block scripts %}  <3>
+  {% include "scripts.html" %}
+{% endblock %}
+----
+====
+
+<1> The `{% url ... as %}` syntax lets us define a template variable in-line
+
+<2> Then we use `{% include ... with key=value... %}`
+    to pull in the contents of the `form.html` template,
+    with the appropriate context variables passed in--a bit like
+    calling a function.
+
+<3> The `scripts` block is just a straightforward `include`
+    with no variables.
+  
+Now let's see it in _list.html_:
+
+[role="sourcecode"]
+.src/lists/templates/list.html (ch24l010-5)
+====
+[source,diff]
+----
+@@ -2,12 +2,24 @@
+
+ {% block header_text %}Your To-Do list{% endblock %}
+
+-{% block form_action %}{% url 'view_list' list.id %}{% endblock %}
+
+-{% block table %}
++{% block extra_header %}  <1>
++  {% url 'view_list' list.id as form_action %}
++  {% include "form.html" with form=form form_action=form_action %}
++{% endblock %}
++
++{% block content %}  <2>
++<div class="row justify-content-center">
++  <div class="col-lg-6">
+     <table class="table" id="id_list_table">
+       {% for item in list.item_set.all %}
+         <tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+       {% endfor %}
+     </table>
++  </div>
++</div>
++{% endblock %}
++
++{% block scripts %}  <3>
++  {% include "scripts.html" %}
+ {% endblock %}
+
+----
+====
+
+<1> The `block table` becomes an `extra_header` block,
+    and we use the `include` to pull in the form.
+
+<2> The `block table` becomes a `content` block,
+    with all the html we need for our table.
+
+<3> And the scripts block is the same as the one from _home.html_.
+
+
+We can have a little click around our site,
+and then a little re-run of all our FTs to make sure we haven't broken anything, and then commit.
+
+[subs="specialcharacters,quotes"]
+----
+$ *./src/manage.py test functional_tests*
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: Reticulate splines; [...]
+[..]
+Ran 8 tests in X.Xs
+
+FAILED (errors=1)
+----
+
+8 tests with 1 failure, the same one we had before, we haven't broken anything. Hooray!
+
+[subs="specialcharacters,quotes"]
+----
+$ *git add src/lists/templates*
+$ *git commit -m "refactor templates to use composition/includes"*
+----
+
+
+Now let's get back to our outside-in process,
+and working in our template to drive out the requirements
+for our views layer:
 
 
 ==== Designing Our API Using the Template
 
 ((("templates", "designing APIs using")))
-Meanwhile, in _my_lists.html_ we override the `list_form`
-and say it should be empty...
-
-// TODO: proper commits for these
+So, in _my_lists.html_ we can now work in the `content` block:
 
 [role="sourcecode"]
-.src/lists/templates/my_lists.html (ch24l010-1)
+.src/lists/templates/my_lists.html (ch24l010-6)
 ====
 [source,html]
 ----
@@ -517,24 +782,7 @@ and say it should be empty...
 
 {% block header_text %}{{user.email}}'s Lists{% endblock %}
 
-{% block list_form %}{% endblock %}
-----
-====
-
-And then we can just work inside the `extra_content` block:
-
-[role="sourcecode"]
-.src/lists/templates/my_lists.html (ch24l010-2)
-====
-[source,html]
-----
-{% extends 'base.html' %}
-
-{% block header_text %}{{user.email}}'s Lists{% endblock %}
-
-{% block list_form %}{% endblock %}
-
-{% block extra_content %}
+{% block content %}
   <h2>{{ owner.email }}'s lists</h2>  <1>
   <ul>
     {% for list in owner.list_set.all %}  <2>
