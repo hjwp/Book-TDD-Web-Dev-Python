@@ -133,7 +133,8 @@ from selenium.webdriver.common.by import By
 ====
 
 <1> We'll define this `add_list_item()` shortly.
-    Programming by wishful thinking, as always!
+
+// Programming by wishful thinking, as always!
 
 As you can see, we create a list with a couple of items,
 then we check that this list appears on a new "My Lists" page,
@@ -436,7 +437,8 @@ we begin to write the template code we'd like to use
 to get the "My Lists" page to work the way we want it to.
 As we do so, we start to specify the API we want
 from the code at the layers below.
-Programming by wishful thinking, as always!
+
+// Programming by wishful thinking, as always!
 
 
 ==== A Quick Restructure of Our Template Composition
@@ -748,7 +750,7 @@ $ *./src/manage.py test functional_tests*
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: Reticulate splines; [...]
-[..]
+[...]
 Ran 8 tests in X.Xs
 
 FAILED (errors=1)
@@ -785,7 +787,7 @@ So, in _my_lists.html_ we can now work in the `content` block:
 {% block content %}
   <h2>{{ owner.email }}'s lists</h2>  <1>
   <ul>
-    {% for list in owner.list_set.all %}  <2>
+    {% for list in owner.lists.all %}  <2>
       <li><a href="{{ list.get_absolute_url }}">{{ list.name }}</a></li>  <3>
     {% endfor %}
   </ul>
@@ -799,21 +801,21 @@ which are going to filter their way down through the code:
 <1> We want a variable called `owner` to represent the user in our template.
 
 <2> We want to be able to iterate through the lists created by the user
-    using `owner.list_set.all`
-    (I happen to know we get this for free from the Django ORM).
+    using `owner.lists.all`
+    (I happen to know how to make this work with the Django ORM).
 
 <3> We want to use `list.name` to print out the "name" of the list,
     which is currently specified as the text of its first element.
 
 NOTE: Outside-In TDD is sometimes called "programming by wishful thinking",footnote:[
-    This phrase "programming by wishful thinking" was perhaps first used in
+    The phrase "programming by wishful thinking" was first popularised by
     the amazing, mind-expanding textbook
     https://en.wikipedia.org/wiki/Structure_and_Interpretation_of_Computer_Programs[SICP],
     which I _cannot_ recommend highly enough.]
     and you can see why.
     We start writing code at the higher levels
-    based on what we wish we had at the lower levels,
-    even though it doesn't exist yet!
+    based on what we _wish_ we had at the lower levels, even though it doesn't exist yet...
+    A bit like when we write test for code that doesn't exist yet!
 
 
 We can rerun our FTs, to check that we didn't break anything,
@@ -898,8 +900,8 @@ def my_lists(request, email):
 ----
 ====
 
-That gets our new test passing, but we'll also see an error from
-the previous test. We just need to add a user for it as well:
+That gets our new test passing, but we'll also see an error from the previous test.
+We just need to add a user for it as well:
 
 
 [role="sourcecode"]
@@ -913,8 +915,8 @@ the previous test. We just need to add a user for it as well:
 ----
 ====
 
-((("", startref="OITDDft22")))And
-we get to an OK:
+And we get to an OK:
+((("", startref="OITDDft22")))
 
 
 ----
@@ -994,9 +996,6 @@ AttributeError: 'List' object has no attribute 'owner'
 
 ==== A Decision Point: Whether to Proceed to the Next Layer with a Failing Test
 
-* TODO: rewrite this section if we do decide to drop the next chapter.
-
-
 ((("Outside-In TDD", "model layer", id="OITDDmodel21")))
 In order to get this test passing, as it's written now,
 we have to move down to the model layer.
@@ -1011,7 +1010,10 @@ and it can lead to tests that are harder to read.
 On the other hand, advocates of what's known as "London School" TDD
 are very keen on the approach.   Read more in <<appendix_purist_unit_tests>>.
 
-Let's do a commit, and then 'tag' the commit as a way of remembering our
+For now we'll accept the tradeoff, moving down one layer with failing tests,
+but avoiding the extra mocks.
+
+Let's do a commit, and then _tag_ the commit as a way of remembering our
 position for that appendix:
 
 [subs="specialcharacters,quotes"]
@@ -1025,9 +1027,8 @@ $ *git tag revisit_this_point_with_isolated_tests*
 
 Our outside-in design has driven out two requirements for the model layer:
 we want to be able to assign an owner to a list using the attribute `.owner`,
-and we want to be able to access the list's owner with the API `owner.list_set.all()`.
+and we want to be able to access the list's owner with the API `owner.lists.all()`.
 
-// TODO: let's make this owner.lists.all() ?
 
 Let's write a test for that:
 
@@ -1051,7 +1052,7 @@ class ListModelTest(TestCase):
     def test_lists_can_have_owners(self):
         user = User.objects.create(email="a@b.com")
         mylist = List.objects.create(owner=user)
-        self.assertIn(mylist, user.list_set.all())
+        self.assertIn(mylist, user.lists.all())
 ----
 ====
 
@@ -1102,7 +1103,11 @@ from django.conf import settings
 
 class List(models.Model):
     owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, blank=True, null=True, on_delete=models.CASCADE
+        settings.AUTH_USER_MODEL,
+        related_name="lists",
+        blank=True,
+        null=True,
+        on_delete=models.CASCADE,
     )
 
     def get_absolute_url(self):
@@ -1130,7 +1135,7 @@ Migrations for 'lists':
 ----
 //22
 
-We're almost there; a couple more failures:
+We're almost there; a couple more failures in some of our old tests:
 
 ----
 ERROR: test_can_save_a_POST_request
@@ -1148,12 +1153,13 @@ be a "User" instance.
 ----
 
 
-
 We're moving back up to the views layer now, just doing a little tidying up.
-Notice that these are in the old test for the `new_list` view,
+Notice that these are in the existing test for the `new_list` view,
 when we haven't got a logged-in user.
-We should only save the list owner when the user is actually logged in.
-The `.is_authenticated` attribute we defined in <<chapter_19_spiking_custom_auth>>
+
+The tests are reminding us to think of this use case too:
+we should only save the list owner when the user is actually logged in.
+The `.is_authenticated` attribute we came across in <<chapter_19_spiking_custom_auth>>
 comes in useful now
 (when they're not logged in,
 Django represents users using a class called `AnonymousUser`,
@@ -1241,17 +1247,22 @@ Ran 8 tests in 93.819s
 OK
 ----
 
+[[my-lists-page]]
+.The "My Lists" page, in all its glory (and proof I did test on Windows)
+image::images/twp2_2201.png["Screenshot of new My Lists page"]
+
 
 .The @property Decorator in Python
 *******************************************************************************
 
-((("@property decorator")))((("decorators", "property decorator")))((("Python 3", "@property decorator")))If
-you haven't seen it before, the `@property` decorator transforms a method
+((("@property decorator")))
+((("decorators", "property decorator")))
+((("Python 3", "@property decorator")))
+If you haven't seen it before, the `@property` decorator transforms a method
 on a class to make it appear to the outside world like an attribute.
 
-
-((("duck typing")))This
-is a powerful feature of the language, because it makes it easy to
+((("duck typing")))
+This is a powerful feature of the language, because it makes it easy to
 implement "duck typing", to change the implementation of a property without
 changing the interface of the class.  In other words, if we decide to change
 `.name` into being a "real" attribute on the model, which is stored as text in
@@ -1268,40 +1279,40 @@ even if it didn't have `@property`, but that's a particularity of Django, and
 doesn't apply to Python in general...
 *******************************************************************************
 
-((("", startref="OITDDmodel21")))But
-we know we cheated to get there.  The Testing Goat is eyeing us
+((("", startref="OITDDmodel21")))
+But we know we cheated to get there.  The Testing Goat is eyeing us
 suspiciously.  We left a test failing at one layer while we implemented its
 dependencies at the lower layer. Let's see how things would play out if we were
 to use better test isolation...
-
-[[my-lists-page]]
-.The "My Lists" page, in all its glory (and proof I did test on Windows)
-image::images/twp2_2201.png["Screenshot of new My Lists page"]
 
 .Outside-In TDD
 *******************************************************************************
 
 Outside-In TDD::
-    ((("Outside-In TDD", "defined")))A
-methodology for building code, driven by tests, which proceeds by
-    starting from the "outside" layers (presentation, GUI), and moving
-    "inwards" step by step, via view/controller layers, down towards
-    the model layer.  The idea is to drive the design of your code from
-    the use to which it is going to be put, rather than trying to anticipate
-    requirements from the ground up.
+    A methodology for building code, driven by tests,
+    which proceeds by starting from the "outside" layers (presentation, GUI),
+    and moving "inwards" step by step, via view/controller layers,
+    down towards the model layer.
+    The idea is to drive the design of your code from how it will be used,
+    rather than trying to anticipate requirements from the bottom up.
+    ((("Outside-In TDD", "defined")))
 
 
 Programming by wishful thinking::
-    ((("programming by wishful thinking")))The
-outside-in process is sometimes called "programming by wishful
-    thinking".  Actually, any kind of TDD involves some wishful thinking.
+    The outside-in process is sometimes called "programming by wishful thinking".
+    Actually, any kind of TDD involves some wishful thinking.
     We're always writing tests for things that don't exist yet.
+    ((("programming by wishful thinking")))
 
 
 The pitfalls of outside-in::
-    ((("Outside-In TDD", "drawbacks of")))Outside-in isn't a silver bullet.  It encourages us to focus on things
-    that are immediately visible to the user, but it won't automatically
-    remind us to write other critical tests that are less user-visible--things like security, for example. You'll need to remember them yourself.((("", startref="TTDoutside22")))
+    Outside-in isn't a silver bullet.
+    It encourages us to focus on things that are immediately visible to the user,
+    but it won't automatically remind us to write other critical tests
+    that are less user-visible--things like security, for example.
+    You'll need to remember them yourself.
+    ((("", startref="TTDoutside22")))
+    ((("Outside-In TDD", "drawbacks of")))
 
 
 *******************************************************************************
