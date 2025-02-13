@@ -33,454 +33,167 @@ and let us know if we've broken anything accidentally.
 The unit tests should stay fast enough that we can keep running them every few seconds.
 
 ((("Continuous Integration (CI)", "server of choice")))
-The CI server of choice these days is called Jenkins.
-It's a bit Java, a bit crashy, a bit ugly, but it's what everyone uses,
-and it has a great plugin ecosystem, so let's get it up and running.
+TODO chat re gha, hosted ci solutions, picked a relatable one.
 
 
-=== Installing Jenkins
+### Setting up GitLab
 
-* TODO: update to mention github actions, gitlab etc.
-
-((("Continuous Integration (CI)", "Jenkins installation")))
-((("Jenkins", "installation")))
-There are several hosted-CI services out there that essentially provide you
-with a Jenkins server, ready to go.  I've come across Sauce Labs, Travis,
-Circle-CI, ShiningPanda, and there are probably lots more.  But I'm going to
-assume we're installing everything on a server we control.
-
-NOTE: It's not a good idea to install Jenkins on the same server as our
-    staging or production servers.  Apart from anything else, we may want 
-    Jenkins to be able to reboot the staging server!
-
-We'll install the latest version from the official Jenkins apt repo, because
-the Ubuntu default still has a few annoying bugs with locale/unicode support,
-and it also doesn't set itself up to listen on the public internet by default:
+* start new ci/cd project, add repo url
+* go to build -> pipelines
+* use template python project
 
 
-[role="skipme"]
-[subs="specialcharacters,quotes"]
+change a of things., `/venv` -> `.venv`
+
+ended up with this as first cut:
+
+
+[role="sourcecode"]
+..gitlab-ci.yml
+====
+[source,yaml]
 ----
-# add jenkins repo to our apt sources
-root@server:$ *wget -O /usr/share/keyrings/jenkins-keyring.asc \
-  https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key*
+# Official language image. Look for the different tagged releases at:
+# https://hub.docker.com/r/library/python/tags/
+image: python:latest
 
-root@server:$ *echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]" \
-  https://pkg.jenkins.io/debian-stable binary/ > \
-  /etc/apt/sources.list.d/jenkins.list*
+# Change pip's cache directory to be inside the project directory since we can
+# only cache local items.
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
-# update and install jenkins
-root@server:$ *apt-get update*
-root@server:$ *apt-get install jenkins*
+# https://pip.pypa.io/en/stable/topics/caching/
+cache:
+  paths:
+    - .cache/pip
+
+before_script:
+  - python --version ; pip --version  # For debugging
+  - pip install virtualenv
+  - virtualenv .venv
+  - source .venv/bin/activate
+
+test:
+  script:
+    - pip install -r requirements.txt
+    - pip install selenium
+    # unit tests
+    - python src/manage.py test lists accounts
+    # (if those pass) all tests, incl. functional. yes we need that cd.
+    - cd src && python manage.py test
+
 ----
+====
 
-(Instructions lifted from the https://www.jenkins.io/doc/book/installing/linux/#debianubuntu[Jenkins site].)
+
+=== First Build!
+
+fails as follows:
 
 
-While we're at it, we'll install a few other dependencies:
+* TODO: consider deliberately forgetting to pip install selenium
 
-[role="skipme small-code"]
-[subs="specialcharacters,quotes"]
 ----
-# remove the default Firefox installed via snap,
-# add more reliable "extended support release" version:
-root@server:$ *snap remove firefox*
-root@server:$ *add-apt-repository ppa:mozillateam/ppa*
-root@server:$ *apt update*
-root@server:$ *apt install firefox-esr*
+[...]
+Ran 63 tests in 8.658s
+FAILED (errors=8)
 
-# install the venv modules for the otherwise-broken default system python:
-root@server:$ *apt install python3-venv*
-----
-
-
-
-.Adding Some Swap
-*******************************************************************************
-Jenkins is quite memory-hungry, and if  you're running this on a small VM
-with less than a couple of gigs for RAM, you'll probably find it gets
-OOM-killed unless you add some swap:
-
-[role="skipme"]
-[subs="specialcharacters,quotes"]
-----
-root@server:$ *fallocate -l 4G /swapfile*
-root@server:$ *mkswap /swapfile*
-root@server:$ *chmod 600 /swapfile*
-root@server:$ *swapon /swapfile*
-root@server:$ *echo "LABEL=swap  /swap.img  swap  defaults 0 0" >> /etc/fstab*
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly closed with status 255
 ----
 
-That should be plenty.
+unit tsets pass but fts are failing
 
-*******************************************************************************
+firefox isn't installed.
 
-
-=== Configuring Jenkins
-
-((("Continuous Integration (CI)", "Jenkins configuration")))
-((("Jenkins", "configuration")))
-You should now be able to visit Jenkins at the URL/IP for your server on port `8080`,
-and see something like <<jenkin-unlock>>.
-
-[[jenkin-unlock]]
-[role="width-75"]
-.Jenkins unlock screen 
-image::images/jenkins-unlock.png["Jenkins' default unlock screen"]
-
-
-
-==== Initial Unlock
-
-The unlock screen is telling us to read a file from disk to unlock the server for first-time use.
-I jumped over to a terminal and printed it like this:
-
-[role="skipme"]
-[subs="specialcharacters,quotes"]
-----
-root@server$ *cat /var/lib/jenkins/secrets/initialAdminPassword*
-----
-
-
-==== Suggested Plugins for Now
-
-Next we're offered the choice to choose "suggested" plugins.
-Suggested ones are fine for now.
-(As a self-respecting nerd, our instinct is to hit "customize" immediately,
-but I don't think it really bought me anything.)
-
-
-==== Configuring the Admin User
-
-Next we set up a username and password to log in to Jenkins with; see <<jenkins-user>>.
-
-[[jenkins-user]]
-[role="width-75"]
-.Jenkins admin user config
-image::images/jenkins-admin-user.png["Jenkins screen asking for username and password"]
-
-
-And once we log in, we should see a welcome screen (<<jenkin-welcome>>).
-
-[[jenkin-welcome]]
-[role="width-75"]
-.A butler--how quaint
-image::images/jenkins-welcome.png["Jenkins welcome screen with invitation to create new job"]
-
-
-////
-[role="pagebreak-before"]
-Adding Plugins
-^^^^^^^^^^^^^^
-
-Follow the links for _Manage Jenkins_ -> _Manage Plugins_ -> _Available_.
-
-We'll want the plugins for:
-
-* 'ShiningPanda'
-* 'Xvfb'
-
-And hit install (<<installing-plugins>>).
-
-[[installing-plugins]]
-[role="width-75"]
-.Installing plugins...
-image::images/twp2_2404.png["Jenkins installing plugins"]
-
-
-
-Telling Jenkins Where to Find Python 3 and Xvfb
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-We need to tell the ShiningPanda plugin where Python 3 is installed 
-(usually '/usr/bin/python3', but you can check with a `which python3`):
-
-* _Manage Jenkins_ -> _Global Tool Configuration_
-
-* _Python_ -> _Python installations_ -> _Add Python_ (see <<add-python-to-jenkins>>; it's
-  safe to ignore the warning message)
-
-* _Xvfb installation_ -> _Add Xvfb installation_; enter **++/usr/bin++** as the
-  installation directory
-
-[[add-python-to-jenkins]]
-.Where did I leave that Python?
-image::images/twp2_2405.png["Adding Python 3"]
-
-
-////
-
-
-
-Finishing Off with HTTPS
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-* TODO: review and update this section
-
-To finish off securing your Jenkins instance, you'll want to set up HTTPS, by
-getting nginx HTTPS to use a self-signed cert, and proxy requests from port 443
-to port 8080. Then you can even block port 8080 on the firewall.  I won't go
-into detail on that now, but here are a few links to instructions which I found
-useful:
-
-* https://wiki.jenkins-ci.org/display/JENKINS/Installing+Jenkins+on+Ubuntu[Official
-Jenkins Ubuntu installation guide]
-
-* https://www.digitalocean.com/community/tutorials/how-to-create-an-ssl-certificate-on-nginx-for-ubuntu-14-04[How
-to create a self-signed SSL certificate]
-
-* http://serverfault.com/questions/250476/how-to-force-or-redirect-to-ssl-in-nginx#424016[How
-to redirect HTTP to HTTPS]
-
-
-
-Setting Up Our Project
-~~~~~~~~~~~~~~~~~~~~~~
-
-((("Continuous Integration (CI)", "project setup")))((("Jenkins", "project setup")))Now
-we've got the basic Jenkins configured, let's set up our project:
-
-* Hit the New Item button.
-
-* Enter 'Superlists' as the name, and then choose "Freestyle project", and hit
-  OK.
-
-* Add the Git repo, as in <<choose-git-repo>>.
-
-[[choose-git-repo]]
-.Get it from Git
-image::images/twp2_2406.png["Setting the git repo"]
-
-* Set it to poll every hour (<<poll-hourly>>; check out the help text here--there are many other options for ways of triggering builds).
-
-[[poll-hourly]]
-.Poll GitHub for changes
-image::images/twp2_2407.png["Config polling GitHub"]
-
-
-* Run the tests inside a Python 3 virtualenv.
-
-* Run the unit tests and functional tests separately.  See
-  <<virtualenv-buildstep>>.
-
-[[virtualenv-buildstep]]
-.Virtualenv build steps
-image::images/twp2_2408.png["Adding Python 3"]
-
-
-
-First Build!
-~~~~~~~~~~~~
-
-((("Jenkins", "first build")))((("Continuous Integration (CI)", "first build")))Hit
-"Build Now", then go and take a look at the "Console Output". You
-should see something like this:
 
 [role="skipme small-code"]
 ----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision d515acebf7e173f165ce713b30295a4a6ee17c07 (origin/master)
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7260707941304155464.sh
-+ pip install -r requirements.txt
-Requirement already satisfied (use --upgrade to upgrade): Django==1.11 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.7/site-packages
-(from -r requirements.txt (line 1))
-    
-Requirement already satisfied (use --upgrade to upgrade): gunicorn==17.5 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.7/site-packages
-(from -r requirements.txt (line 3))
-Downloading/unpacking requests==2.0.0 (from -r requirements.txt (line 4))
-  Running setup.py egg_info for package requests
-    
-Installing collected packages: requests
-  Running setup.py install for requests
-    
-Successfully installed requests
-Cleaning up...
-+ python manage.py test lists accounts
-...................................................................
- ---------------------------------------------------------------------
-Ran 67 tests in 0.429s
-
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-+ python manage.py test functional_tests
-EEEEEE
-======================================================================
-ERROR: functional_tests.test_layout_and_styling (unittest.loader._FailedTest)
- ---------------------------------------------------------------------
-ImportError: Failed to import test module: functional_tests.test_layout_and_styling
+$ apt-get update -y && apt-get install -y firefox-esr
+Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [48.0 kB]
+Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8792 kB]
+Get:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [13.5 kB]
+Get:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [245 kB]
+Fetched 9305 kB in 1s (9127 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
 [...]
-ImportError: No module named 'selenium'
-
-Ran 6 tests in 0.001s
-
-FAILED (errors=6)
-
-Build step 'Virtualenv Builder' marked build as failure
-----
-
-Ah.  We need Selenium in our virtualenv.
-
-
-Let's add a manual installation of Selenium to our build 
-steps:
-
-[role="skipme"]
-----
-    pip install -r requirements.txt
-    python manage.py test accounts lists
-    pip install selenium fabric3
-    python manage.py test functional_tests
-----
-
-
-TIP: Some people like to use a file called 'test-requirements.txt' to specify 
-    packages that are needed for the tests, but not the main app.
-
-
-And hit "Build Now" again. 
-
-Next one of two things will happen.  Either you'll see some error messages
-like this in your console output:
-
-
-[role="skipme"]
-----
-    self.browser = webdriver.Firefox()
+The following NEW packages will be installed:
+  adwaita-icon-theme alsa-topology-conf alsa-ucm-conf at-spi2-common
+  at-spi2-core dbus dbus-bin dbus-daemon dbus-session-bus-common
+  dbus-system-bus-common dbus-user-session dconf-gsettings-backend
+  dconf-service dmsetup firefox-esr fontconfig fontconfig-config
 [...]
-selenium.common.exceptions.WebDriverException: Message: 'The browser appears to
-have exited before we could connect. The output was: b"\\n(process:19757):
-GLib-CRITICAL **: g_slice_set_config: assertion \'sys_page_size == 0\'
-failed\\nError: no display specified\\n"' 
+Get:117 http://deb.debian.org/debian-security bookworm-security/main amd64
+firefox-esr amd64 128.7.0esr-1~deb12u1 [69.8 MB]
 [...]
-selenium.common.exceptions.WebDriverException: Message: connection refused
-----
-
-Or possibly your build will just hang altogether (that happened to me at
-least once).  The reason is that Firefox can't start, because it doesn't
-have a display to run on.
-
-
-Setting Up a Virtual Display So the FTs Can Run Headless
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("Jenkins", "virtual display setup", id="Jvirtual23")))((("Continuous Integration (CI)", "virtual display setup", id="CIvirtual24")))((("virtual displays", id="virtdisp24")))As
-you can see from the traceback, Firefox is unable to start because the
-server doesn't have a display.
-
-
-There are two ways to deal with this problem. The first is to switch to using
-a headless browser, like PhantomJS or SlimerJS.  Those tools definitely have
-their place--they're faster, for one thing--but they also have
-disadvantages.  The first is that they're not "real" web browsers, so you can't
-be sure you're going to catch all the strange quirks and behaviours of the
-actual browsers your users use.  The second is that they can behave quite
-differently inside Selenium, and often require some rewriting of FT code.
-
-TIP: I would look into using headless browsers as a "dev-only" tool, to speed
-    up the running of FTs on the developer's machine, while the tests on the CI
-    server use actual browsers.
-
-
-[role="pagebreak-before"]
-The alternative is to set up a virtual display:  we get the server to pretend
-it has a screen attached to it, so Firefox runs happily. There are a few tools
-out there to do this; we'll use one called "Xvfb" 
-(X Virtual Framebuffer)footnote:[Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
-as a way of controlling virtual displays from Python.]
-because it's easy to install and use, and because it has a convenient Jenkins
-plugin (now you know why we installed it earlier).
-
-We go back to our project and hit "Configure" again, then find the section
-called "Build Environment".  Using the virtual display is as simple as
-ticking the box marked "Start Xvfb before the build, and shut it down after",
-as in <<xvfb-tickbox>>.
-
-[[xvfb-tickbox]]
-.Sometimes config is easy
-image::images/twp2_2409.png["Tickbox saying we want Xvfb"]
-
-
-The build does much better now:
-
-[role="skipme small-code"]
-----
+Selecting previously unselected package firefox-esr.
+Preparing to unpack .../105-firefox-esr_128.7.0esr-1~deb12u1_amd64.deb ...
+Adding 'diversion of /usr/bin/firefox to /usr/bin/firefox.real by firefox-esr'
+Unpacking firefox-esr (128.7.0esr-1~deb12u1) ...
 [...]
-Xvfb starting$ /usr/bin/Xvfb :2 -screen 0 1024x768x24 -fbdir
-/var/lib/jenkins/2013-11-04_03-27-221510012427739470928xvfb
+Setting up firefox-esr (128.7.0esr-1~deb12u1) ...
+update-alternatives: using /usr/bin/firefox-esr to provide
+/usr/bin/x-www-browser (x-www-browser) in auto mode
 [...]
-+ python manage.py test lists accounts
-...............................................................
- ---------------------------------------------------------------------
-Ran 63 tests in 0.410s
 
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.7/site-packages
-Cleaning up...
-----
-
-[role="skipme small-code"]
-----
-+ python manage.py test functional_tests
-......F.
-======================================================================
-FAIL: test_can_start_a_list_for_one_user
-(functional_tests.test_simple_list_creation.NewVisitorTest)
+ERROR: test_multiple_users_can_start_lists_at_different_urls
+(functional_tests.test_simple_list_creation.NewVisitorTest.test_multiple_users_can_start_lists_at_different_urls)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "...goat-book/functional_tests/test_simple_list_creation.py", line
-43, in test_can_start_a_list_for_one_user
-    self.wait_for_row_in_list_table('2: Use peacock feathers to make a fly')
-  File "...goat-book/functional_tests/base.py", line 51, in
-wait_for_row_in_list_table
-    raise e
-  File "...goat-book/functional_tests/base.py", line 47, in
-wait_for_row_in_list_table
-    self.assertIn(row_text, [row.text for row in rows])
-AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
-peacock feathers']
+  File "/builds/hjwp/book-example/src/functional_tests/base.py", line 30, in setUp
+    self.browser = webdriver.Firefox()
+                   ~~~~~~~~~~~~~~~~~^^
+[...]
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly
+closed with status 1
  ---------------------------------------------------------------------
-Ran 8 tests in 89.275s
-
-FAILED (errors=1)
-Creating test database for alias 'default'...
-[{'secure': False, 'domain': 'localhost', 'name': 'sessionid', 'expiry':
-1920011311, 'path': '/', 'value': 'a8d8bbde33nreq6gihw8a7r1cc8bf02k'}]
-Destroying test database for alias 'default'...
-Build step 'Virtualenv Builder' marked build as failure
-Xvfb stopping
-Finished: FAILURE
+Ran 63 tests in 3.654s
+FAILED (errors=8)
 ----
 
-((("", startref="CIvirtual24")))((("", startref="Jvirtual23")))((("", startref="virtdisp24")))Pretty
-close!  To debug that failure, we'll need screenshots though.
-
-NOTE: This error was due to the performance of my Jenkins instance--you may see
-    a different error, or none at all. In any case, the following tools for taking
-    screenshots and dealing with race conditions will come in useful. Read on!
+Ooops still not.
 
 
 
-Taking Screenshots
-~~~~~~~~~~~~~~~~~~
+[role="sourcecode"]
+..gitlab-ci.yml
+====
+[source,yaml]
+----
+variables:
+  # Change pip's cache directory to be inside the project directory since we can
+  # only cache local items.
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  # make firefox run without a display
+  MOZ_HEADLESS: "1"
+----
+====
 
-((("Continuous Integration (CI)", "screenshots", id="CIscreen24")))((("screenshots", id="screen24")))((("debugging", "screenshots for", id="DBscreen24")))((("HTML", "screenshot dumps", id="HTMLscreen24")))To
-be able to debug unexpected failures that happen on a remote PC, it
-would be good to see a picture of the screen at the moment of the failure,
-and maybe also a dump of the HTML of the page.  We can do that using some
-custom logic in our FT class `tearDown`. We have to do a bit of introspection of
-`unittest` internals, a private attribute called `._outcome`, but
-this will work:
+
+and insert success image.
+
+
+
+* TODO: can we show some sort of failure, maybe a flaky test here?
+
+=== Taking Screenshots
+
+((("Continuous Integration (CI)", "screenshots", id="CIscreen24")))
+((("screenshots", id="screen24")))
+((("debugging", "screenshots for", id="DBscreen24")))
+((("HTML", "screenshot dumps", id="HTMLscreen24")))
+To be able to debug unexpected failures that happen on a remote server,
+it would be good to see a picture of the screen at the moment of the failure,
+and maybe also a dump of the HTML of the page.
+
+We can do that using some custom logic in our FT class `tearDown`.
+We'll need to do a bit of introspection of `unittest` internals,
+a private attribute called `._outcome`,
+but this will work:
 
 [role="sourcecode"]
 .src/functional_tests/base.py (ch23l006)
@@ -513,10 +226,11 @@ SCREEN_DUMP_LOCATION = Path(__file__).absolute().parent / "screendumps"
 ====
 
 
-We first create a directory for our screenshots if necessary. Then we 
-iterate through all the open browser tabs and pages, and use some Selenium
-methods, `get_screenshot_as_file` and `browser.page_source`, for our image and
-HTML dumps:
+We first create a directory for our screenshots if necessary.
+Then we iterate through all the open browser tabs and pages,
+and use a Selenium methods, `get_screenshot_as_file()`
+and the attribute `browser.page_source`,
+for our image and HTML dumps, respectively:
 
 [role="sourcecode"]
 .src/functional_tests/base.py (ch23l007)
@@ -535,9 +249,9 @@ HTML dumps:
 ----
 ====
 
-[role="pagebreak-before"]
-And finally here's a way of generating a unique filename identifier, which
-includes the name of the test and its class, as well as a timestamp:
+
+And finally here's a way of generating a unique filename identifier,
+which includes the name of the test and its class, as well as a timestamp:
 
 [role="sourcecode small-code"]
 .src/functional_tests/base.py (ch23l008)
@@ -552,8 +266,8 @@ includes the name of the test and its class, as well as a timestamp:
 ----
 ====
 
-You can test this first locally by deliberately breaking one of the tests, with
-a `self.fail()` for example, and you'll see something like this:
+You can test this first locally by deliberately breaking one of the tests,
+with a `self.fail()` for example, and you'll see something like this:
 
 [role="dofirst-ch21l009"]
 ----
@@ -574,6 +288,8 @@ $ *echo "src/functional_tests/screendumps" >> .gitignore*
 $ *git commit -am "add screenshot on failure to FT runner"*
 $ *git push*
 ----
+
+* TODO resume here
 
 And when we rerun the build on Jenkins, we see something like this:
 
