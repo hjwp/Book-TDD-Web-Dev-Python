@@ -217,10 +217,7 @@ class SourceTree:
 
     def apply_listing_from_commit(self, listing):
         commit_spec = self.get_commit_spec(listing.commit_ref)
-        commit_info = self.run_command("git show -w %s" % (commit_spec,))
         print("Applying listing from commit.\nListing:\n" + listing.contents)
-
-        commit = Commit.from_diff(commit_info)
 
         files = self.get_files_from_commit_spec(commit_spec)
         if files != [listing.filename]:
@@ -229,35 +226,38 @@ class SourceTree:
             )
         future_contents = self.show_future_version(commit_spec, listing.filename)
 
-        check_listing_matches_commit(listing, commit, future_contents)
+        self._check_listing_matches_commit(listing, commit_spec, future_contents)
 
         self.patch_from_commit(listing.commit_ref, listing.filename)
         listing.was_written = True
         print("applied commit.")
 
-
-def check_listing_matches_commit(listing, commit, future_contents):
-    if listing.is_diff():
-        diff = Commit.from_diff(listing.contents)
-        if diff.new_lines != commit.new_lines:
+    def _check_listing_matches_commit(self, listing, commit_spec, future_contents):
+        commit = Commit.from_diff(self.run_command(f"git show -w {commit_spec}"))
+        if listing.is_diff():
+            diff = Commit.from_diff(listing.contents)
+            if diff.new_lines == commit.new_lines:
+                return
+            commit_withwhitespace = Commit.from_diff(
+                self.run_command(f"git show {commit_spec}")
+            )
+            if diff.new_lines == commit_withwhitespace.new_lines:
+                return
             raise ApplyCommitException(
-                "diff new lines did not match.\n{}\n!=\n{}".format(
-                    diff.new_lines, commit.new_lines
+                "diff new lines did not match.\n"
+                "{diff.new_lines}\n!=\n{commit.new_lines}"
+            )
+
+        listing_lines = [strip_comments(l) for l in listing.contents.split("\n")]
+        stripped_listing_lines = [l.strip() for l in listing_lines]
+        for new_line in commit.new_lines:
+            if new_line.strip() not in stripped_listing_lines:
+                # print('stripped_listing_lines', stripped_listing_lines)
+                raise ApplyCommitException(
+                    f"could not find commit new line {new_line!r} in listing {listing.commit_ref}:\n{listing.contents}"
                 )
-            )
 
-        return
-
-    listing_lines = [strip_comments(l) for l in listing.contents.split("\n")]
-    stripped_listing_lines = [l.strip() for l in listing_lines]
-    for new_line in commit.new_lines:
-        if new_line.strip() not in stripped_listing_lines:
-            # print('stripped_listing_lines', stripped_listing_lines)
-            raise ApplyCommitException(
-                f"could not find commit new line {new_line!r} in listing {listing.commit_ref}:\n{listing.contents}"
-            )
-
-    check_chunks_against_future_contents("\n".join(listing_lines), future_contents)
+        check_chunks_against_future_contents("\n".join(listing_lines), future_contents)
 
 
 def check_chunks_against_future_contents(listing_contents, future_contents):
