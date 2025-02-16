@@ -1,0 +1,397 @@
+[[appendix_CD]]
+[appendix]
+== CD: Continuous Deployment
+
+((("Continuous Delivery (CD)")))
+This is the next step after CI.
+Once we have a server that automatically does things every time we push,
+we can take the next step in automating our deploys,
+and deploy our code to staging (and even production!)
+with every push.
+
+
+* this is an appendix because we get even more tied in to the particularities
+  of an individual platform
+
+* it's also incredibly fiddly. the feedback cycle is annoying slow,
+  and you have to commit and push with every small change.
+  just look at my commit history!
+
+[role="skipme"]
+----
+f5d58736 some tidyup
+f28411a0 disable host key checking again
+a2933ad4 dammit forgot curl
+fb4132ec use private keyfile in ssh commands
+ce7219e3 install ssh for fts
+957ca269 fix stage name
+dae47804 run fts against staging after deploy
+17999c65 fix the way we get env vars in ansible script
+87aecc62 make secrets files private for ssh
+a06d24e9 switch off host key checking
+059fc15e lets try for superverbose debug output
+021843db Revert "quick look at end of keypair"
+56d79af4 quick look at end of keypair
+bc5664c6 fix path to secure files
+857c803a install curl
+c37a538c get ssh key from secure files
+5ffbf80f install ssh on python image
+d4f39755 duh stupid typo
+c34cf933 try to deploy using gitlab registry. add stages
+62486de1 docker login using password from env
+4bdc6f53 fix tags in docker push to gitlab registry
+c5a0056c try pushing to gitlab
+81c8601f temporarily dont moujnt db
+6bd41a1f forgot dind
+2de01bf0 move python before-script stuff in to test step
+d11c21fe try to build docker
+76f15efb temporarily dont run fts
+16db3dc1 debug finding path to playbook
+1f3f77f5 remove backslashes
+ad46cd12 just do it inline
+1c887270 add deploy step
+6f77b2df venv paths
+801c8373 try and make actual ci work
+ba8be943 Gitlab yaml config
+----
+
+
+Tricky!
+
+building and running a docker image can only be done on a `docker.git` image,
+but we want `python:slim` to run our tests,
+and to actually have ansible installed
+
+idea 1:
+
+- build and push a docker image to gitlab registry after each ci run
+- deploy to staging using the new image tag
+- run tests against staging
+
+
+idea 2:
+- run tests inside docker  (needs an image with firefox tho)
+- run fts inside docker against _another_ docker container
+- deploy from inside docker
+
+
+I've seen variants on both of these.  Gave idea 1 a go first,
+and it worked out:
+
+
+first (or, very quickly), i commented out the fts part of the tests.
+one of the worst things about fiddling with ci is how slow it is to get feedback:
+
+
+
+[role="sourcecode"]
+..gitlab-ci.yml
+====
+[source,yaml]
+----
+test:
+  image: python:slim
+
+  before_script:
+    # TODO temporarily commented out
+    # - apt update -y && apt install -y firefox-esr
+    - python --version ; pip --version  # For debugging
+    - pip install virtualenv
+    - virtualenv .venv
+    - source .venv/bin/activate
+
+  script:
+    [...]
+----
+====
+
+recap:
+1. run tests in python image (with firefox and our virtualenv / requirements.txt)
+2. build docker image in a docker-in-docker image
+3. deploy to staging (from the python image once again, needs ansible)
+4. run fts against staging (from the python image, with firefox)
+
+now, deploy playbook currently assumes we're building the docker image
+as part of the deploy, but we can't do that because it happened on a different image
+
+we could use cache / "build artifacts" to move the image around,
+but we may as well do something that's more like real life.
+you remember i said the `docker push / docker load` dance was a simulation
+of `push+pull` from a "container registry"?  well let's do that.
+
+1. run tests (python image)
+2. build our image AND push to registry (docker image)
+3. deploy to staging referencing our image in the registry (python image)
+4. run fts against staging (python image, with firefox)
+
+=== Building our docker image and pushing it to Gitlab registry
+
+TODO: gitlab container registry screnshot
+
+
+[role="sourcecode"]
+..gitlab-ci.yml
+====
+[source,yaml]
+----
+build:
+  image: docker:git
+  services:
+    - docker:dind
+
+  script:
+    - docker build
+      -t registry.gitlab.com/hjwp/book-example:$CI_COMMIT_SHA
+      .
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker push
+      registry.gitlab.com/hjwp/book-example:$CI_COMMIT_SHA
+----
+====
+
+link to gitlab registry docs, explain docker login, image tags.
+
+
+=== Deploying from CI, working with secrets
+
+[role="sourcecode"]
+..gitlab-ci.yml
+====
+[source,yaml]
+----
+deploy:
+  stage: staging-deploy
+  image: python:slim
+  variables:
+    ANSIBLE_HOST_KEY_CHECKING: "False"  # <1>
+
+  before_script:
+    - apt update -y && apt install -y
+      curl
+      openssh-client
+    - python --version ; pip --version  # For debugging
+    - pip install virtualenv
+    - virtualenv .venv
+    - source .venv/bin/activate
+
+  script:
+    - pip install -r requirements.txt
+    - pip install ansible
+    # download secure files to get private key  # <2>
+    - curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+    - chmod 600 .secure_files/*
+
+    - ansible-playbook
+      --private-key=.secure_files/keypair-for-gitlab  # <2>
+      --user=elspeth
+      -i staging.ottg.co.uk,
+      -vvv  # <3>
+      ${PWD}/infra/deploy-playbook.yaml
+----
+====
+
+<1> "known hosts" checking doesnt work well in ci
+<2> we needed a way to give the ci server permission to access our server.
+    I used a new ssh key
+<3> super-verbose was necessary
+
+TODO: explain generating ssh key, adding to `/home/elpseth/.ssh/authorized_keys` on server.
+
+
+short listing, couple of hours of pain!
+
+eg had to run thru about 200 lines of verbose logs to find this, 
+and then a bit of web-searching, to figure out that known-hosts was the problem:
+
+[role="skipme"]
+----
+debug1: Server host key: ssh-ed25519 SHA256:4kXU5nf93OCxgBMuhr+OC8OUct6xb8yGsRjrqmLTJ7g
+debug1: load_hostkeys: fopen /root/.ssh/known_hosts: No such file or directory
+debug1: load_hostkeys: fopen /root/.ssh/known_hosts2: No such file or directory
+debug1: load_hostkeys: fopen /etc/ssh/ssh_known_hosts: No such file or directory
+debug1: load_hostkeys: fopen /etc/ssh/ssh_known_hosts2: No such file or directory
+debug1: hostkeys_find_by_key_hostfile: hostkeys file /root/.ssh/known_hosts does not exist
+debug1: hostkeys_find_by_key_hostfile: hostkeys file /root/.ssh/known_hosts2 does not exist
+debug1: hostkeys_find_by_key_hostfile: hostkeys file /etc/ssh/ssh_known_hosts does not exist
+debug1: hostkeys_find_by_key_hostfile: hostkeys file /etc/ssh/ssh_known_hosts2 does not exist
+debug1: read_passphrase: can't open /dev/tty: No such device or address
+Host key verification failed.", "unreachable": true}
+----
+
+
+=== Updating deploy playbook to use the container registry:
+
+We delete all the stages to do with building locally and uploading and re-importing:
+
+[role="sourcecode skipme"]
+.infra/deploy-playbook.yaml 
+====
+[source,diff]
+----
+@@ -19,37 +19,6 @@
+     - name: Reset ssh connection to allow the user/group change to take effect
+       ansible.builtin.meta: reset_connection
+
+-    - name: Build container image locally
+-    - name: Export container image locally
+-    - name: Upload image to server
+-    - name: Import container image on server
+----
+====
+
+And instead, we can just use the full path to the image in our `docker run`
+(with a login to the registry first):
+
+
+[role="sourcecode skipme"]
+.infra/deploy-playbook.yaml 
+====
+[source,yaml]
+----
+    - name: Login to gitlab container registry
+      community.docker.docker_login:
+        registry_url: "{{ lookup('env', 'CI_REGISTRY') }}"  # <1>
+        username: "{{ lookup('env', 'CI_REGISTRY_USER') }}"  # <1>
+        password: "{{ lookup('env', 'CI_REGISTRY_PASSWORD') }}"  # <1>
+
+    - name: Run container
+      community.docker.docker_container:
+        name: superlists
+        image: registry.gitlab.com/hjwp/book-example:{{ lookup('env', 'CI_COMMIT_SHA') }}  # <2>
+        state: started
+        recreate: true
+        [...]
+----
+====
+
+<1> just like in the ci script, we use the env vars to get the login details
+<2> and we spell out the registry, with the commit sha, in the image name
+
+
+
+=== Running Fts against staging
+
+Add explicit "stages" to make things run in order:
+
+[role="sourcecode"]
+..gitlab-ci.yml
+====
+[source,yaml]
+----
+stages:
+  - build-and-test
+  - staging-deploy
+  - staging-test
+
+test:
+  image: python:slim
+  stage: build-and-test
+
+  [...]
+
+build:
+  image: docker:git
+  services:
+    - docker:dind
+  stage: build-and-test
+
+  script:
+    [...]
+
+test-staging:
+  image: python:slim
+  stage: staging-test
+  [...]
+----
+====
+
+
+And here's how we run the tests against staging:
+
+[role="sourcecode"]
+..gitlab-ci.yml
+====
+[source,yaml]
+----
+test-staging:
+  image: python:slim
+  stage: staging-test
+
+  before_script:
+    - apt update -y && apt install -y
+      curl
+      firefox-esr  # <1>
+      openssh-client
+    - python --version ; pip --version  # For debugging
+    - pip install virtualenv
+    - virtualenv .venv
+    - source .venv/bin/activate
+
+  script:
+    - pip install -r requirements.txt
+    - pip install selenium
+    - curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+    - chmod 600 .secure_files/*  # <2>
+    - env
+      TEST_SERVER=staging.ottg.co.uk
+      SSH_PRIVATE_KEY_PATH=.secure_files/keypair-for-gitlab  # <2>
+      python src/manage.py test functional_tests
+
+----
+====
+
+<1> we need firefox for the fts
+<2> we needed the ssh key again, because as you might remember (i forgot!)
+    the fts use ssh to talk to the db on the server,
+    to manage the database.
+
+
+So we need some changes in the base FT too:
+
+
+
+[role="sourcecode"]
+.lists.tests.py (ch04l004)
+====
+[source,python]
+----
+
+def _exec_in_container_on_server(host, commands):
+    print(f"Running {commands!r} on {host} inside docker container")
+    keyfile = os.environ.get("SSH_PRIVATE_KEY_PATH")
+    keyfile_arg = ["-i", keyfile, "-o", "StrictHostKeyChecking=no"] if keyfile else []  # <1><2>
+    return _run_commands(
+        ["ssh"]
+        + keyfile_arg
+        + [f"{USER}@{host}", "docker", "exec", "superlists"]
+        + commands
+    )
+----
+====
+
+
+<1> `-i` tells ssh to use a specific private key
+<2> `-o StrictHostKeyChecking=no` is how we disable known_hosts for the ssh client
+    at the command-line
+
+
+
+and that works
+
+TODO it works deploy screenshot
+
+.CD Recap
+*******************************************************************************
+
+Feedback cycles::
+    Slow.  try to make faster.
+
+Secrets::
+    secret key, email password.
+    each platform is different but there's always a way.
+    careful not to print things out!
+
+
+
+*******************************************************************************
+
