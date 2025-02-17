@@ -12,7 +12,7 @@ I'm still going to avoid the obvious choice of GitHub Actions,
 I'm hoping to pick something that's at least open source (eg GitLab),
 if not fully self-hosted / free software (like Woodpecker CI).
 
-Also planning to add the CD part, ie automated deployments. 
+Also planning to add the CD part, ie automated deployments.
 watch this spaceeee
 
 *******************************************************************************
@@ -34,9 +34,13 @@ The unit tests should stay fast enough that we can keep running
 the full suite locally, every few seconds.
 
 NOTE: Continuous Integration is another practice that was popularised by
-    Kent Beck's 
+    Kent Beck's
     https://martinfowler.com/bliki/ExtremeProgramming.html[Extreme Programming (XP)]
     movement in the 1990s.
+
+As we'll see, one of the great frustrations of CI
+is that the feedback loop is so much slower than working locally.
+As we go along, we'll look for ways to optimise for that, where we can.
 
 === Choosing a CI service
 
@@ -44,19 +48,78 @@ NOTE: Continuous Integration is another practice that was popularised by
 TODO chat re gha, hosted ci solutions, picked a relatable one.
 
 
-=== Setting up GitLab
+=== Getting our Code into GitLab
 
-* start new ci/cd project, add repo url
-* go to build -> pipelines
-* use template python project
-
-NOTE: GitLab free tier won't let you "mirror" a repo from elsewhere.
-    You either need
+GitLab is primarily a code hosting service like GitHub,
+so the first thing thing to do is get our code up there
 
 
-change a of things., `/venv` -> `.venv`
+==== Starting a Project
 
-ended up with this as first cut:
+Use the **New Project** -> **Create Blank Project** option, as in <<gitlab-new-blank-project>>.
+
+.Creating a New Repo on Gitlab
+[[gitlab-new-blank-project]]
+image::images/gitlab_new_blank_project.png["New Blank Project"]
+
+
+==== Pushing our Code up using Git Push
+
+First we set up gitlab as a "remote" for our project:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+# substitute your username and project name as necessary
+$ *git remote add origin git@gitlab.com:yourusername/superlists.git*
+# or, if you already have "origin" defined:
+$ *git remote add gitlab git@gitlab.com:yourusername/superlists.git*
+$ *git remote -v*
+gitlab	git@gitlab.com:hjwp/superlistz.git (fetch)
+gitlab	git@gitlab.com:hjwp/superlistz.git (push)
+origin	git@github.com:hjwp/book-example.git (fetch)
+origin	git@github.com:hjwp/book-example.git (push)
+----
+
+Now we can push up our code with `git push`.
+The `-u` flag sets up a "remote-tracking" branch,
+so you can push+pull without explicitly specifying the remote + branch
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+# if using 'origin', it will be the default:
+$ *git push -u*
+# or, if you have multiple remotes:
+$ *git push -u gitlab*
+Enumerating objects: 706, done.
+Counting objects: 100% (706/706), done.
+Delta compression using up to 11 threads
+Compressing objects: 100% (279/279), done.
+Writing objects: 100% (706/706), 918.72 KiB | 131.25 MiB/s, done.
+Total 706 (delta 413), reused 682 (delta 408), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (413/413), done.
+To gitlab.com:hjwp/superlistz.git
+ * [new branch]        main -> main
+branch 'main' set up to track 'gitlab/main'.
+----
+
+If you refresh the GitLab UI, you should now see your code, as in <<gitlab_files_ui>>:
+
+.CI Project Files on GitLab
+[[gitlab_files_ui]]
+image::images/gitlab_files_ui.png["GitLab UI showing project files"]
+
+
+=== Setting up a First Cut of a CI Pipeline
+
+TODO brief expl. "pipeline" terminology.
+
+
+Got to **Build** -> **Pipelines**, you'll see a list of example templates.
+That's usually a pretty good place to start
+when getting to know a new configuration language.
+I chose the **Python** one and made a few customisations:
 
 
 [role="sourcecode"]
@@ -64,57 +127,123 @@ ended up with this as first cut:
 ====
 [source,yaml]
 ----
-# Official language image. Look for the different tagged releases at:
-# https://hub.docker.com/r/library/python/tags/
-image: python:latest
+# Use the same image as our Dockerfile
+image: python:slim
 
-# Change pip's cache directory to be inside the project directory since we can
-# only cache local items.
+# These two setting lets us cache pip-installed packages,
+# it came from the default template
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-
-# https://pip.pypa.io/en/stable/topics/caching/
 cache:
   paths:
     - .cache/pip
 
+# "setUp" phase, before the main build
 before_script:
   - python --version ; pip --version  # For debugging
   - pip install virtualenv
   - virtualenv .venv
   - source .venv/bin/activate
 
+# This is the main build
 test:
   script:
-    - pip install -r requirements.txt
-    - pip install selenium
+    - pip install -r requirements.txt  # <1>
+    - pip install selenium  # <1>
     # unit tests
-    - python src/manage.py test lists accounts
+    - python src/manage.py test lists accounts  # <2>
     # (if those pass) all tests, incl. functional. yes we need that cd.
-    - cd src && python manage.py test
+    - cd src && python manage.py test  # <3>
 
 ----
 ====
 
+YAML once again folks!
 
-=== First Build!
+<1> Here's where I install our requirements,
+    including a manual step to install the non-production / test-only requirements
 
-fails as follows:
+<2> I've decided to run the unit tests first.
+    This gives us an "early failure" if  there's any problem at this stage,
+    and saves us from having to run, and more importantly wait for, the Fts to run.
+
+<3> And here is a full test run, including the functional tests.
 
 
-* TODO: consider deliberately forgetting to pip install selenium
+TIP: It's a good idea in CI pipelines to try and run the quickest tests first,
+    so that you can get feedback as quickly as possible.
 
+
+If you used the web UI to edit your pipeline YAML,
+you can go check for results straight away.
+If you edited it locally (it's just a file in the repo like any other),
+then you'll need to `git push` up to gitlab,
+and then go check the **Jobs** section in the **Build** UI.
+
+
+
+=== First Build!  (and First Failure)
+
+// TODO: consider deliberately forgetting to pip install selenium
+
+However you click through the UI and you should be able to find your way
+to see the output of the build Job.
+
+
+[role="skipme small-code"]
 ----
+Running with gitlab-runner 17.7.0~pre.103.g896916a8 (896916a8)
+  on green-1.saas-linux-small-amd64.runners-manager.gitlab.com/default
+  JLgUopmM, system ID: s_deaa2ca09de7
+Preparing the "docker+machine" executor 00:20
+Using Docker executor with image python:latest ...
+Pulling docker image python:latest ...
 [...]
+$ python src/manage.py test lists accounts
+Creating test database for alias 'default'...
+Found 55 test(s).
+System check identified no issues (0 silenced).
+................../builds/hjwp/book-example/.venv/lib/python3.13/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /builds/hjwp/book-example/src/static/
+  mw_instance = middleware(adapted_handler)
+.....................................
+ ---------------------------------------------------------------------
+Ran 55 tests in 0.129s
+OK
+Destroying test database for alias 'default'...
+$ cd src && python manage.py test
+Creating test database for alias 'default'...
+Found 63 test(s).
+System check identified no issues (0 silenced).
+......../builds/hjwp/book-example/.venv/lib/python3.13/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /builds/hjwp/book-example/src/static/
+  mw_instance = middleware(adapted_handler)
+...............................................EEEEEEEE
+======================================================================
+ERROR: test_layout_and_styling (functional_tests.test_layout_and_styling.LayoutAndStylingTest.test_layout_and_styling)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/builds/hjwp/book-example/src/functional_tests/base.py", line 30, in setUp
+    self.browser = webdriver.Firefox()
+                   ~~~~~~~~~~~~~~~~~^^
+
+[...]
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly closed with status 255
+ ---------------------------------------------------------------------
 Ran 63 tests in 8.658s
 FAILED (errors=8)
 
 selenium.common.exceptions.WebDriverException: Message: Process unexpectedly closed with status 255
 ----
 
-unit tests pass but fts are failing
+You can see we got through the unit tests,
+and then in the full test run we have 8 errors out of 63 tests.
+The FTs are all failing.
 
-firefox isn't installed.
+I'm "lucky" because I've done this sort of thing many times before,
+so I know what to expect:  it's failing because Firefox isn't installed
+in the image we're using.
+
+
+Let's modify the `before_script` section of our file,
 
 [role="sourcecode"]
 ..gitlab-ci.yml
@@ -122,7 +251,7 @@ firefox isn't installed.
 [source,yaml]
   before_script:
     # install firefox
-    - apt update -y && apt install -y firefox-esr
+    - apt update -y && apt install -y firefox-esr  # <1>
     - python --version ; pip --version  # For debugging
     - pip install virtualenv
     - virtualenv .venv
@@ -130,7 +259,11 @@ firefox isn't installed.
 ----
 ====
 
-and...
+<1> We use the Debian Linux `apt` package manager to install Firefox.
+    `firefox-esr` is the "extended support release",
+    which is a more stable version of Firefox to test against.
+
+If you run it again, and wait a bit, you'll see we get a slightly different failure:
 
 
 [role="skipme small-code"]
@@ -182,9 +315,17 @@ Ran 63 tests in 3.654s
 FAILED (errors=8)
 ----
 
-Ooops still not.
+We can see Firefox installing OK, but we still get an error.
+This time it's exit code 1.
 
 
+* TODO: write up a debugging session here.
+
+
+The answer is that Firefox is crashing because it can't find a display.
+Servers are "headless", meaning they don't have a screen.
+Thankfully Firefox has a "headless' mode,
+which we can enable by setting an environment variable.
 
 [role="sourcecode"]
 ..gitlab-ci.yml
@@ -192,8 +333,6 @@ Ooops still not.
 [source,yaml]
 ----
 variables:
-  # Change pip's cache directory to be inside the project directory since we can
-  # only cache local items.
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   # make firefox run without a display
   MOZ_HEADLESS: "1"
@@ -201,9 +340,44 @@ variables:
 ====
 
 
+=== A Common Bugbear: Flaky tests
 
-* TODO: need to show a flaky test failure here
+The next error I saw was unexpected:
 
+[role="skipme small-code"]
+----
++ python manage.py test functional_tests
+......F.
+======================================================================
+FAIL: test_can_start_a_todo_list
+(functional_tests.test_simple_list_creation.NewVisitorTest)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/functional_tests/test_simple_list_creation.py", line
+38, in test_can_start_a_todo_list
+    self.wait_for_row_in_list_table('2: Use peacock feathers to make a fly')
+  File "...goat-book/functional_tests/base.py", line 51, in
+wait_for_row_in_list_table
+    raise e
+  File "...goat-book/functional_tests/base.py", line 47, in
+wait_for_row_in_list_table
+    self.assertIn(row_text, [row.text for row in rows])
+AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
+peacock feathers']
+ ---------------------------------------------------------------------
+----
+
+
+You might not see this error,
+but it's common for the switch to CI to flush out some "flaky" tests,
+things that will fail intermittently.
+In CI a common cause is the "noisy neighbour" problem,
+where the CI server might be much slower than your own machine,
+thus flushing out some race conditions, or in this case,
+just randomly hanging for a few seconds, taking us past the default timeout.
+
+
+Let's give ourselves some tools to help debug though.
 
 
 === Taking Screenshots
@@ -303,6 +477,42 @@ dumping page HTML to ...goat-book/src/functional_tests/screendumps/MyListsTest.
 test_logged_in_users_lists_are_saved_as_my_lists-[...]
 ----
 
+
+=== Saving Build Outputs (or Debug Files) as Artifacts
+
+We also need to tell gitlab to "save" these files
+for us to be able to actually look at them
+This is called "artifacts":
+
+[role="sourcecode"]
+..gitlab-ci.yml
+====
+[source,yaml]
+----
+test:
+  [...]
+
+  script:
+    [...]
+
+  artifacts: # <1>
+    when: always  # <2>
+    paths: # <1>
+      - src/functional_tests/screendumps/
+----
+====
+
+<1> `artifacts` is the name of the key,
+    and the `paths` argument is fairly self-explanatory.
+    You can use wildcards here,
+    more info in the https://docs.gitlab.com/ci/jobs/job_artifacts/[GitLab docs].
+
+<2> One thing the docs _didn't_ make obvious is that you need `when: always`
+    because otherwise it won't save artifacts for failed jobs.
+    That was annoyingly hard to figure out!
+
+
+////
 Revert the `self.fail()`, then commit and push:
 
 [role="dofirst-ch21l010"]
@@ -313,31 +523,42 @@ $ *echo "src/functional_tests/screendumps" >> .gitignore*
 $ *git commit -am "add screenshot on failure to FT runner"*
 $ *git push*
 ----
+////
 
-* TODO resume here
+In any case that should work.
+If you commit the code and then push it back to Gitlab,
+we should be able to see a new build job.
 
-And when we rerun the build on Gitlab, we see something like this:
+In its output, we'll see the screenshots and html dumps being saved:
+
 
 [role="skipme small-code"]
 ----
-screenshotting to ./builds/hjwp/book-example/functional_tests/
-screendumps/LoginTest.test_can_get_email_link_to_log_in-window0-2014-01-22T17.45.12.png
-dumping page HTML to ./builds/hjwp/book-example/functional_tests/
 screendumps/LoginTest.test_can_get_email_link_to_log_in-window0-2014-01-22T17.45.12.html
+Fscreenshotting to /builds/hjwp/book-example/src/functional_tests/screendumps/NewVisitorTest.test_can_start_a_todo_list-2025-02-17T17.51.01.png
+dumping page HTML to /builds/hjwp/book-example/src/functional_tests/screendumps/NewVisitorTest.test_can_start_a_todo_list-2025-02-17T17.51.01.html
+Not Found: /favicon.ico
+.screenshotting to /builds/hjwp/book-example/src/functional_tests/screendumps/NewVisitorTest.test_multiple_users_can_start_lists_at_different_urls-2025-02-17T17.51.06.png
+dumping page HTML to /builds/hjwp/book-example/src/functional_tests/screendumps/NewVisitorTest.test_multiple_users_can_start_lists_at_different_urls-2025-02-17T17.51.06.html
+======================================================================
+FAIL: test_can_start_a_todo_list (functional_tests.test_simple_list_creation.NewVisitorTest.test_can_start_a_todo_list)
+[...]
 ----
 
 
-* TODO show these in gitlab ui
+And to the right some new UI options appear to **Browse** the artifacts,
+as in <<gitlab_ui_for_browse_artifacts>>.
+
+.Artifacts Appear on the Right of the Build Job
+[[gitlab_ui_for_browse_artifacts]]
+image::images/gitlab_ui_for_browse_artifacts.png["GitLab UI tab showing the option to browse artifacts"]
 
 
-And then we look at the screenshot, as shown in <<normal-screenshot>>.
+And if you navigate through, you'll see something like <<gitlab_ui_show_screenshot>>:
 
-// TODO needs updating for latest bootstrap etc
-
-[[normal-screenshot]]
-[role="width-75"]
-.Screenshot looking normal
-image::images/twp2_2411.png["Screenshot of site page"]
+.Our Screenshot in the GitLab UI, Looking Unremarkable
+[[gitlab_ui_show_screenshot]]
+image::images/gitlab_ui_show_screenshot.png["GitLab UI showing a normal-looking screenshot of the site"]
 
 
 
@@ -363,7 +584,14 @@ MAX_WAIT = 10
 Then we can rerun the build by pushing, and confirm it now works,
 
 
-* TODO screenshot
+=== A Successful Python Test Run
+
+At this point we should get a working pipeline, <<gitlab_pipeline_success>>:
+
+.A Successful GitLab Pipeline
+[[gitlab_pipeline_success]]
+image::images/gitlab_pipeline_success.png["GitLab UI showing a successful pipeline run"]
+
 
 
 
@@ -412,7 +640,7 @@ and repositories for popular Linux distros.
 
 ==== Adding A Build Steps for Js
 
-* TODO 
+* TODO
 
 
 ((("", startref="CIjs5")))
@@ -439,16 +667,20 @@ onto our last chapter!
 
 
 
-.Tips on CI and Selenium Best Practices
+.Best Practices for CI (including Selenium Tips)
 *******************************************************************************
 
 Set up CI as soon as possible for your project::
     As soon as your functional tests take more than a few seconds to run,
-    you'll find yourself avoiding running them all. Give this job to a CI
-    server, to make sure that all your tests are getting run somewhere.
+    you'll find yourself avoiding running them all.
+    Give this job to a CI server,
+    to make sure that all your tests are getting run somewhere.
     ((("Selenium", "best CI practices")))
     ((("Continuous Integration (CI)", "tips")))
-    
+
+Optimise for fast feedback::
+    CI feedback loops can be frustratingly slow.
+    Optimising things to get results quicker is worth the effort.
 
 Set up screenshots and HTML dumps for failures::
     Debugging test failures is easier if you can see what the page looked
@@ -470,6 +702,6 @@ Take the next step, CD (Continuous Delivery)::
     we can take the next step which is to automated our deployments
     (when the tests pass). See <<appendix_CD>> for a worked example.
     ((("Continuous Delivery (CD)")))
-    
+
 *******************************************************************************
 
