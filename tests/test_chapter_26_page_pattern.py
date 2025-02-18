@@ -5,7 +5,7 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter22Test(ChapterTest):
+class Chapter26Test(ChapterTest):
     chapter_name = "chapter_26_page_pattern"
     previous_chapter = "chapter_25_CI"
 
@@ -39,7 +39,7 @@ class Chapter22Test(ChapterTest):
         self.sourcetree.tidy_up_after_patches()
         # final branch includes a suggested implementation...
         # so just check diff up to the last listing
-        commit = self.sourcetree.get_commit_spec("ch24l013")
+        commit = self.sourcetree.get_commit_spec("ch26l013")
         diff = self.sourcetree.run_command(f"git diff -b {commit}")
         self.check_final_diff(ignore=["moves"], diff=diff)
 
