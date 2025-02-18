@@ -672,10 +672,10 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
     def test_ignores_screenshot_times(self):
         actual = (
             "screenshotting to ...goat-book/functional_tests/screendumps/MyListsTes\n"
-            "t.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.38.\n"
+            "t.test_logged_in_users_lists_are_saved_as_my_lists-window0-2024-03-09T11.39.38.\n"
             "png\n"
             "dumping page HTML to ...goat-book/functional_tests/screendumps/MyLists\n"
-            "Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-03-09T11.39.\n"
+            "Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2024-03-09T11.39.\n"
             "38.html\n"
         )
         expected = Output(
@@ -683,7 +683,7 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             "t.test_logged_in_users_lists_are_saved_as_my_lists-window0-2013-04-09T13.40.39.\n"
             "png\n"
             "dumping page HTML to ...goat-book/functional_tests/screendumps/MyLists\n"
-            "Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2014-04-04T12.43.\n"
+            "Test.test_logged_in_users_lists_are_saved_as_my_lists-window0-2024-04-04T12.43.\n"
             "42.html\n"
         )
         self.assert_console_output_correct(actual, expected)
