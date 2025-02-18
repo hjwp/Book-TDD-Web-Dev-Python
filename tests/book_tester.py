@@ -167,8 +167,8 @@ def strip_bdd_test_speed(output):
 
 def strip_screenshot_timestamps(output):
     fixed = re.sub(
-        r"window0-(201\d-\d\d-\d\dT\d\d\.\d\d\.\d?\d?)",
-        r"window0-201X-XX-XXTXX.XX",
+        r"-(20\d\d-\d\d-\d\dT\d\d\.\d\d\.\d?\d?)",
+        r"-20XX-XX-XXTXX.XX",
         output,
     )
     # this last is very specific to one listing in 19...
