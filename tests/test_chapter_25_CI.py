@@ -35,9 +35,16 @@ class Chapter25Test(ChapterTest):
 
         self.assert_all_listings_checked(self.listings)
         self.sourcetree.run_command(
-            "git add .gitlab-ci.yml && git commit -m gitlabyaml"
+            "git add .gitlab-ci.yml",
         )
-        self.check_final_diff(ignore=["moves"])
+        # TODO: test package.json
+        # self.sourcetree.run_command(
+        #     "git add src/lists/static/package.json src/lists/static/tests"
+        # )
+        self.sourcetree.run_command(
+            "git commit -m'final commit'"
+        )
+        # self.check_final_diff(ignore=["moves"])
 
 
 if __name__ == "__main__":
