@@ -14,7 +14,8 @@ RUN apt-get install -y \
     ruby-pygments.rb \
     firefox-esr \
     tree \
-    locales
+    locales \
+    vim
 
 RUN apt-get install -y \
     make \
@@ -24,7 +25,7 @@ RUN locale-gen en_GB.UTF-8
 # RUN pip install uv
 ADD --chmod=755 https://astral.sh/uv/install.sh /install.sh
 RUN /install.sh && rm /install.sh
-RUN ln -s $HOME/.cargo/bin/uv /usr/bin/uv
+RUN ln -s $HOME/.local/bin/uv /usr/bin/uv
 
 RUN git config --global user.email "elspeth@example.com" && \
     git config --global user.name "Elspeth See-Eye" && \
@@ -35,6 +36,8 @@ RUN uv venv .venv
 
 COPY pyproject.toml pyproject.toml
 RUN uv pip install .
+RUN uv pip install selenium
+ENV PATH=".venv/bin:$PATH"
 
 
 CMD bash
