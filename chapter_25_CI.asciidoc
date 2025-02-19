@@ -45,6 +45,7 @@ As we'll see, one of the great frustrations of CI
 is that the feedback loop is so much slower than working locally.
 As we go along, we'll look for ways to optimise for that, where we can.
 
+
 === Choosing a CI service
 
 ((("Continuous Integration (CI)", "choosing a service")))
@@ -386,16 +387,247 @@ We can see Firefox installing OK, but we still get an error.
 This time it's exit code 1.
 
 
-* TODO: write up a debugging session here.
+==== Trying to reproduce a CI error locally
 
+The cycle of "change _.gitlab-ci.yml_, push, wait for a build, check results"
+is painfully slow.
 
-The answer is that Firefox is crashing because it can't find a display.
-Servers are "headless", meaning they don't have a screen.
-Thankfully Firefox has a "headless' mode,
-which we can enable by setting an environment variable.
+Let's see if we can reproduce this error locally.
+
+To reproduce the CI environment locally, I put together a quick Dockerfile,
+by copy-pasting the steps in the `script` section, and prefixing them with `RUN` commands:
+
 
 [role="sourcecode"]
-..gitlab-ci.yml (ch25l003)
+.infra/Dockerfile.ci (ch25l003)
+====
+[source,dockerfile]
+----
+FROM python:slim
+
+RUN pip install virtualenv
+RUN virtualenv .venv
+
+# this won't work
+# RUN source .venv/bin/activate
+# use full path to venv instead.
+
+COPY requirements.txt requirements.txt
+RUN .venv/bin/pip install -r requirements.txt
+RUN apt update -y && apt install -y firefox-esr
+RUN .venv/bin/pip install selenium
+
+COPY infra/debug-ci.py debug-ci.py
+CMD .venv/bin/python debug-ci.py
+----
+====
+
+And let's add a little debug script at _debug-ci.py_:
+
+
+[role="sourcecode"]
+.infra/debug-ci.py (ch25l004)
+====
+[source,python]
+----
+from selenium import webdriver
+
+# just try to open a selenium session
+webdriver.Firefox().quit()
+----
+====
+
+We build and run it like this:
+
+[role="ignore-errors"]
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -f infra/Dockerfile.ci -t debug-ci . && docker run -it debug-ci*
+[+] Building 0.4s (13/13) FINISHED                                    docker:default
+ => [internal] load build definition from infra/Dockerfile.ci         0.0s
+ => => transferring dockerfile: 461B                                  0.0s
+ => [internal] load metadata for docker.io/library/python:slim        0.3s
+ => [internal] load .dockerignore                                     0.0s
+ => => transferring context: 92B                                      0.0s
+ => [1/8] FROM docker.io/library/python:slim@sha256:[...]
+ => [internal] load build context                                     0.0s
+ => => transferring context: 244B                                     0.0s
+ => CACHED [2/8] RUN pip install virtualenv                           0.0s
+ => CACHED [3/8] RUN virtualenv .venv                                 0.0s
+ => CACHED [4/8] COPY requirements.txt requirements.txt               0.0s
+ => CACHED [5/8] RUN .venv/bin/pip install -r requirements.txt        0.0s
+ => CACHED [6/8] RUN apt update -y && apt install -y firefox-esr      0.0s
+ => CACHED [7/8] RUN .venv/bin/pip install selenium                   0.0s
+ => [8/8] COPY infra/debug-ci.py debug-ci.py                          0.0s
+ => exporting to image                                                0.0s
+ => => exporting layers                                               0.0s
+ => => writing image sha256:[...]
+ => => naming to docker.io/library/debug-ci                           0.0s
+Traceback (most recent call last):
+  File
+  "//.venv/lib/python3.13/site-packages/selenium/webdriver/common/driver_finder.py",
+  line 67, in _binary_paths
+    output = SeleniumManager().binary_paths(self._to_args())
+[...]
+selenium.common.exceptions.WebDriverException: Message: Unsupported platform/architecture combination: linux/aarch64
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "//debug-ci.py", line 4, in <module>
+    webdriver.Firefox().quit()
+    ~~~~~~~~~~~~~~~~~^^
+[...]
+selenium.common.exceptions.NoSuchDriverException: Message: Unable to obtain
+driver for firefox; For documentation on this error, please visit:
+https://www.selenium.dev/documentation/webdriver/troubleshooting/errors/driver_location
+----
+
+You might not see this--that "Unsupported platform/architecture combination" error is spurious,
+it's because I was on a Mac.  Let's try again with:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -f Dockerfile.ci -t debug-ci --platform=linux/amd64 . && \
+  docker run --platform=linux/amd64 -it debug-ci*
+ => [internal] load build definition from Dockerfile.ci [...]
+ => => transferring dockerfile: [...]
+ => [internal] load metadata for docker.io/library/python:slim [...]
+  [...]
+ => => naming to docker.io/library/debug-ci [...]
+Traceback (most recent call last):
+  File "//debug-ci.py", line 4, in <module>
+    webdriver.Firefox().quit()
+    ^^^^^^^^^^^^^^^^^^^
+    [...]
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly closed with status 1
+----
+
+OK, that's a repro of our issue.  But no further clues yet!
+
+==== Enabling Debug Logs for Selenium / Firefox / Webdriver
+
+Getting debug information out of Selenium can be a bit fiddly.
+I tried two avenues, setting `options` and setting the `service`,
+the former of which doesn't really work as far as I can tell,
+but the latter does.  There is some limited info in the
+https://www.selenium.dev/documentation/webdriver/browsers/firefox/#log-output[Selenium docs].
+
+[role="sourcecode"]
+.infra/debug-ci.py (ch25l005)
+====
+[source,python]
+----
+import subprocess
+
+from selenium import webdriver
+
+options = webdriver.FirefoxOptions()  # <1>
+options.log.level = "trace"
+
+service = webdriver.FirefoxService(  # <2>
+    log_output=subprocess.STDOUT, service_args=["--log", "trace"]
+)
+
+# just try to open a selenium session
+webdriver.Firefox(options=options, service=service).quit()
+----
+====
+
+<1> This is how I attempted to increase the log level using `options`.
+    I had to reverse-engineer it from the source code,
+    and it doesn't seem to work anyway,
+    but I thought I"d leave it here for future reference
+
+<2> This is the `FirefoxService` config class,
+    which _does_ seem to let you print some debug info.
+    I'm configuring it to print to standard-out.
+
+Sure enough we can see some output now!
+
+[role="ignore-errors"]
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -f infra/Dockerfile.ci -t debug-ci --platform=linux/amd64 . && \
+  docker run --platform=linux/amd64 -it debug-ci*
+[...]
+ => [internal] load build definition from Dockerfile.ci [...]
+ => => naming to docker.io/library/debug-ci  [...]
+1739977878464	geckodriver	INFO	Listening on 127.0.0.1:59905
+1739977878481	webdriver::server	DEBUG	-> POST /session {"capabilities": {"firstMatch": [{}], "alwaysMatch": {"browserName": "firefox", "acceptInsecureCerts": true, ... , "moz:firefoxOptions": {"binary": "/usr/bin/firefox", "prefs": {"remote.active-protocols": 3}, "log": {"level": "trace"}}}}}
+1739977878484	geckodriver::capabilities	DEBUG	Trying to read firefox version from ini files
+1739977878485	geckodriver::capabilities	DEBUG	Trying to read firefox version from binary
+1739977878603	geckodriver::capabilities	DEBUG	Found version 128.7esr
+1739977878609	mozrunner::runner	INFO	Running command: MOZ_CRASHREPORTER="1" MOZ_CRASHREPORTER_NO_REPORT="1" MOZ_CRASHREPORTER_SHUTDOWN="1" MOZ_NO_REMOTE="1" "/usr ... te" "--remote-debugging-port" "57343" "--remote-allow-hosts" "localhost" "-no-remote" "-profile" "/tmp/rust_mozprofileDlWAmb"
+1739977878611	geckodriver::marionette	DEBUG	Waiting 60s to connect to browser on 127.0.0.1
+1739977878611	geckodriver::browser	TRACE	Failed to open /tmp/rust_mozprofileDlWAmb/MarionetteActivePort
+1739977878611	geckodriver::marionette	TRACE	Retrying in 100ms
+Error: no DISPLAY environment variable specified
+1739977878712	geckodriver::browser	TRACE	Failed to open /tmp/rust_mozprofileDlWAmb/MarionetteActivePort
+1739977878712	geckodriver::marionette	TRACE	Retrying in 100ms
+1739977878814	geckodriver::browser	DEBUG	Browser process stopped: exit status: 1
+1739977878816	webdriver::server	DEBUG	<- 500 Internal Server Error {"value":{"error":"unknown error","message":"Process unexpectedly closed with status 1","stacktrace":""}}
+Traceback (most recent call last):
+  File "//debug-ci.py", line 13, in <module>
+    webdriver.Firefox(options=options, service=service).quit()
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  [...]
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly closed with status 1
+----
+
+Well, it wasn't immediately obvious what's going on there,
+but I did eventually get a clue from the line that says `no DISPLAY environment variable specified`
+
+Out of curiosity, I thought I'd try running `firefox` directly:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -f infra/Dockerfile.ci -t debug-ci --platform=linux/amd64 . && \
+  docker run --platform=linux/amd64 -it debug-ci firefox
+[+] Building 0.1s (13/13) FINISHED                                                                                                                             docker:default
+[...]
+Error: no DISPLAY environment variable specified
+----
+
+Sure enough, the same error.
+
+
+==== Enabling Headless Mode for Firefox
+
+And if you search around for this error,
+you'll eventually find enough pointers to the answer:
+Firefox is crashing because it can't find a display.
+Servers are "headless", meaning they don't have a screen.
+Thankfully Firefox has a "headless' mode,
+which we can enable by setting an environment variable,
+`MOZ_HEADLESS`.
+
+Let's confirm that locally. We'll use the `-e` flag for `docker run`:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -f infra/Dockerfile.ci -t debug-ci --platform=linux/amd64 . && \
+  docker run -e MOZ_HEADLESS=1 --platform=linux/amd64 -it debug-ci*
+1739978218953	geckodriver	INFO	Listening on 127.0.0.1:47281
+1739978218973	webdriver::server	DEBUG	-> POST /session {"capabilities": {"firstMatch": [{}], "alwaysMatch": {"browserName": "firefox", "acceptInsecureCerts": true, ... , "moz:firefoxOptions": {"binary": "/usr/bin/firefox", "prefs": {"remote.active-protocols": 3}, "log": {"level": "trace"}}}}}
+1739978218976	geckodriver::capabilities	DEBUG	Trying to read firefox version from ini files
+1739978218977	geckodriver::capabilities	DEBUG	Trying to read firefox version from binary
+*** You are running in headless mode.
+[...]
+1739978235272	webdriver::server	DEBUG	Teardown session
+1739978235293	Marionette	DEBUG	Closed connection 0
+1739978235875	geckodriver::browser	DEBUG	Browser process stopped: exit status: 0
+1739978235880	webdriver::server	DEBUG	<- 200 OK {"value":null}
+----
+
+It takes quite a long time to run,
+and there's lots of debug out, but... it looks OK!
+
+Let's set that environment variable in our CI script:
+
+[role="sourcecode"]
+..gitlab-ci.yml (ch25l006)
 ====
 [source,yaml]
 ----
@@ -407,10 +639,18 @@ variables:
 ----
 ====
 
+TIP: Using a local Docker image to repro the CI environment
+  is a hint that it might be worth investing time in running CI
+  in a custom Docker image that you fully control;
+  this is an another way of improving _reproducibility_.
+  We won't have time to go into detail in this book though.
+
 
 === A Common Bugbear: Flaky tests
 
-The next error I saw was unexpected:
+That worked!  or at least it almost did.
+All but one of the FTs passed for me,
+but there was one unexpected error:
 
 [role="skipme small-code"]
 ----
@@ -436,7 +676,7 @@ peacock feathers']
 ----
 
 
-You might not see this error,
+Now you might not see this error,
 but it's common for the switch to CI to flush out some "flaky" tests,
 things that will fail intermittently.
 In CI a common cause is the "noisy neighbour" problem,
@@ -463,7 +703,7 @@ a private attribute called `._outcome`,
 but this will work:
 
 [role="sourcecode"]
-.src/functional_tests/base.py (ch25l006)
+.src/functional_tests/base.py (ch25l007)
 ====
 [source,python]
 ----
@@ -500,7 +740,7 @@ and the attribute `browser.page_source`,
 for our image and HTML dumps, respectively:
 
 [role="sourcecode"]
-.src/functional_tests/base.py (ch25l007)
+.src/functional_tests/base.py (ch25l008)
 ====
 [source,python]
 ----
@@ -521,7 +761,7 @@ And finally here's a way of generating a unique filename identifier,
 which includes the name of the test and its class, as well as a timestamp:
 
 [role="sourcecode small-code"]
-.src/functional_tests/base.py (ch25l008)
+.src/functional_tests/base.py (ch25l009)
 ====
 [source,python]
 ----
@@ -537,7 +777,7 @@ You can test this first locally by deliberately breaking one of the tests,
 with a `self.fail()` for example, and you'll see something like this:
 
 
-[role="dofirst-ch25l009"]
+[role="dofirst-ch25l010"]
 [subs="specialcharacters,quotes"]
 ----
 $ *./src/manage.py test functional_tests.test_my_lists*
@@ -591,13 +831,14 @@ In any case that should work.
 If you commit the code and then push it back to Gitlab,
 we should be able to see a new build job.
 
-[role="dofirst-ch25l010"]
+[role="dofirst-ch25l010-1"]
 [subs="specialcharacters,quotes"]
 ----
 $ *echo "src/functional_tests/screendumps" >> .gitignore*
 $ *git commit -am "add screenshot on failure to FT runner"*
 $ *git push*
 ----
+// gitignore = ch25l011
 
 
 In its output, we'll see the screenshots and html dumps being saved:

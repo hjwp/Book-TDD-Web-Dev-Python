@@ -361,7 +361,7 @@ class ChapterTest(unittest.TestCase):
         if command == "git push":
             command.was_run = True
             return
-        print("running command", command)
+        print(f"running command {command} with {ignore_errors=}")
         output = self.sourcetree.run_command(
             command, cwd=cwd, user_input=user_input, ignore_errors=ignore_errors
         )
