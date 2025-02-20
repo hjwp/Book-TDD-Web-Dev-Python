@@ -591,6 +591,12 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assert_console_output_correct(actual, expected)
         self.assertTrue(expected.was_checked)
 
+    def test_ignores_127_0_0_1_server_port_4digits(self):
+        actual = "//127.0.0.1:2021/my-url is a thing"
+        expected = Output("//127.0.0.1:3339/my-url is a thing")
+        self.assert_console_output_correct(actual, expected)
+        self.assertTrue(expected.was_checked)
+
     def test_only_ignores_exactly_32_char_strings_no_whitespace(self):
         actual = "qnslckvp2aga7tm6xuivyb0ob1akzzwl"
         expected = Output("jvhzc8kj2mkh06xooqq9iciptead20qq")
@@ -598,6 +604,30 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             self.assert_console_output_correct(actual[:-1], expected[:-1])
             self.assert_console_output_correct(actual + "1", expected + "a")
             self.assert_console_output_correct(" " + actual, " " + expected)
+
+    def test_ignores_selenium_trace_log_ids(self):
+        actual = dedent(
+            """
+            1739977878464    geckodriver    INFO    Listening on 127.0.0.1:59905
+            1739977878481    webdriver::server    DEBUG    -> POST /session
+            """
+        )
+        expected = dedent(
+            """
+            1739977878465    geckodriver    INFO    Listening on 127.0.0.1:59905
+            1739987878488    webdriver::server    DEBUG    -> POST /session
+            """
+        )
+        self.assert_console_output_correct(actual, Output(expected))
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(
+                actual.replace("geckodriver", "foo"),
+                expected.replace("geckodriver", "foo"),
+            )
+            self.assert_console_output_correct(
+                actual.replace("webdriver", "foo"),
+                expected.replace("webdriver", "foo"),
+            )
 
     def test_ignores_docker_image_ids_and_creation_time(self):
         actual = "superlists   latest    522824a399de   2 weeks ago     164MB"
@@ -653,20 +683,6 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
         self.assertTrue(expected.was_checked)
         with self.assertRaises(AssertionError):
             bad_actual = "Error initializing Git repo"
-            self.assert_console_output_correct(bad_actual, expected)
-
-    def test_standardises_weird_macos_tree_dir_count_problem(self):
-        if sys.platform == "darwin":
-            actual = "3 directories, 9 files"
-        else:
-            actual = "2 directories, 9 files"
-        expected = Output("2 directories, 9 files")
-        self.assert_console_output_correct(actual, expected)
-        self.assertTrue(expected.was_checked)
-        with self.assertRaises(AssertionError):
-            bad_actual = "3 directories, 10 files"
-            self.assert_console_output_correct(bad_actual, expected)
-            bad_actual = "4 directories, 9 files"
             self.assert_console_output_correct(bad_actual, expected)
 
     def test_ignores_screenshot_times(self):

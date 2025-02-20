@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import unittest
 
 from book_tester import ChapterTest
@@ -22,11 +23,10 @@ class Chapter25Test(ChapterTest):
         # self.skip_with_check(22, 'switch back to master') # comment
 
         # hack fast-forward
-        skip = False
-        if skip:
-            self.pos = 27
+        if os.environ.get("SKIP"):
+            self.pos = 21
             self.sourcetree.run_command(
-                f"git switch {self.sourcetree.get_commit_spec('ch20l015')}"
+                f"git checkout {self.sourcetree.get_commit_spec('ch25l005')}"
             )
 
         while self.pos < len(self.listings):
@@ -41,9 +41,7 @@ class Chapter25Test(ChapterTest):
         # self.sourcetree.run_command(
         #     "git add src/lists/static/package.json src/lists/static/tests"
         # )
-        self.sourcetree.run_command(
-            "git commit -m'final commit'"
-        )
+        self.sourcetree.run_command("git commit -m'final commit'")
         # self.check_final_diff(ignore=["moves"])
 
 

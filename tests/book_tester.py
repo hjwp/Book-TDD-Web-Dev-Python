@@ -75,7 +75,33 @@ def strip_migration_timestamps(output):
 
 
 def strip_localhost_port(output):
-    return re.sub(r"localhost:\d\d\d\d\d?", r"localhost:XXXX", output)
+    lh_fixed = re.sub(r"localhost:\d\d\d\d\d?", r"localhost:XXXX", output)
+    ipaddr_fixed = re.sub(r"127.0.0.1:\d\d\d\d\d?", r"127.0.0.1:XXXX", lh_fixed)
+    return ipaddr_fixed
+
+
+def strip_selenium_trace_ids(output):
+    fixing = re.sub(
+        r"\d{13}(\s+)geckodriver",
+        r"1234567890111\1geckodriver",
+        output,
+    )
+    fixing = re.sub(
+        r"\d{13}(\s+)webdriver",
+        r"1234567890112\1webdriver",
+        fixing,
+    )
+    fixing = re.sub(
+        r"\d{13}(\s+)mozrunner",
+        r"1234567890113\1mozrunner",
+        fixing,
+    )
+    fixing = re.sub(
+        r"\d{13}(\s+)Marionette",
+        r"1234567890114\1Marionette",
+        fixing,
+    )
+    return fixing
 
 
 def strip_session_ids(output):
@@ -427,6 +453,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_docker_image_ids_and_creation_times(actual_fixed)
         actual_fixed = fix_curl_stuff(actual_fixed)
         actual_fixed = strip_localhost_port(actual_fixed)
+        actual_fixed = strip_selenium_trace_ids(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
@@ -449,6 +476,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_migration_timestamps(expected_fixed)
         expected_fixed = strip_session_ids(expected_fixed)
         expected_fixed = strip_localhost_port(expected_fixed)
+        expected_fixed = strip_selenium_trace_ids(expected_fixed)
         expected_fixed = strip_screenshot_timestamps(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
         expected_fixed = standardise_assertionerror_none(expected_fixed)
@@ -456,6 +484,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = actual_fixed.replace("\xa0", " ")
         expected_fixed = expected_fixed.replace("\xa0", " ")
         if "\t" in actual_fixed:
+            print('fixing tabs')
             actual_fixed = re.sub(r"\s+", " ", actual_fixed)
             expected_fixed = re.sub(r"\s+", " ", expected_fixed)
 
