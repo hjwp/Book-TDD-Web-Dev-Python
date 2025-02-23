@@ -878,11 +878,11 @@ class ChapterTest(unittest.TestCase):
                 "docker kill $(docker ps -q)", ignore_errors=True, silent=True
             )
             fixed = Command(listing.replace(" -it ", " -t "))
-            if "docker run -t debug-ci" in fixed:
+            if "docker run --platform=linux/amd64 -t debug-ci" in fixed:
                 fixed = Command(
                     fixed.replace(
-                        "docker run -t debug-ci",
-                        "docker run -e PYTHON_COLORS=0 -t debug-ci",
+                        "docker run --platform=linux/amd64 -t debug-ci",
+                        "docker run -e PYTHON_COLORS=0 --platform=linux/amd64 -t debug-ci"
                     )
                 )
             next_listing = self.listings[self.pos + 1]
