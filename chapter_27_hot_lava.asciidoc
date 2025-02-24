@@ -11,95 +11,35 @@ ______________________________________________________________
 ((("unit tests", "vs. integration tests", secondary-sortas="integration tests")))
 Unless you've been through <<appendix_purist_unit_tests>>,
 almost all of the "unit" tests in the book
-should perhaps have been called _integration_ tests,
-because they either rely on the database or use the Django Test Client,
-which does too much magic with the middleware layers that sit between requests,
+should arguably have been called _integration_ tests,
+because they rely on the database.
+Some people would also worry about the Django Test Client,
+which does a lot of "magic" with the middleware layers that sit between requests,
 responses, and view functions.
 
-There is an argument that a true unit test should always be isolated,
-because it's meant to test a single unit of software.
+In a more purist conception, a unit test should test a "unit" of code,
+in isolation from any other systems or dependencies,
+and the database is almost always categorised as a dependency.
 If it touches the database, it can't be a unit test.
-The database is hot lava!
 
-Some TDD veterans say you should strive to write "pure", isolated unit tests
-wherever possible, instead of writing integrated tests.  It's one of the
-ongoing (occasionally heated) debates in the testing community.
+The database is hot lava! As Casey Kinsey put it in a memorable DjangoCon talk.
+Once an application starts to grow beyond a certain size,
+involving the database in every single test starts to carry an unacceptable cost,
+in terms of the speed of execution of nothing else;
+Casey's company was struggling with test suites that took several hours.
+At Kraken, the full test suite does only take about 45 minutes,
+but that's only thanks to a quite frankly ridiculous level of parallelisation
+and associated expenditure on CI.
 
-Being merely a young whippersnapper myself,
-I'm only partway towards all the subtleties of the argument.
-But in this chapter, I'd like to talk about why people feel strongly about it,
-and try to give you some idea of when you can get away with muddling through
-with integrated tests (which I confess I do a lot of!),
-and when it's worth striving for more "pure" unit tests.
-
-
-NOTE: I revisited some of these issues in my
-    https://www.cosmicpython.com[second book on architecture patterns], which
-    outlines some strategies for getting the right balance between different
-    types of test.
+In this chapter, we'll discuss some of the pros & cons and trade-offs
+of different types of tests for different sizes of applications,
+and explain what the "Test Pyramid" is.
 
 
-.Terminology: Different Types of Test
-******************************************************************************
-
-Isolated tests ("pure" unit tests) vs. integrated tests::
-    The primary purpose of a unit test should be to verify the correctness
-    of the logic of your application.
-    An 'isolated' test is one that tests exactly one chunk of code, and whose
-    success or failure does not depend on any other external code. This is what
-    I call a "pure" unit test:  a test for a single function, for example,
-    written in such a way that only that function can make it fail.  If the
-    function depends on another system, and breaking that system breaks our
-    test, we have an 'integrated' test. That system could be an external
-    system, like a database, but it could also be another function which we
-    don't control.  In either case, if breaking the system makes our test fail,
-    our test is not properly isolated; it is not a "pure" unit test.  That's
-    not necessarily a bad thing, but it may mean the test is doing two jobs at
-    once.
+===
 
 
-Integration tests::
-    An integration test checks that the code you control is integrated
-    correctly with some external system which you don't control.
-    'Integration' tests are typically also 'integrated' tests.
-
-
-System tests::
-    If an integration test checks the integration with one external system,
-    a system test checks the integration of multiple systems in your
-    application--for example, checking that we've wired up our database,
-    static files, and server config together in such a way that they all work.
-    ((("system tests")))
-
-
-Functional tests and acceptance tests::
-    An acceptance test is meant to test that our system works from the point
-    of view of the user ("would the user accept this behaviour?").  It's
-    hard to write an acceptance test that's not a full-stack, end-to-end test.
-    We've been using our functional tests to play the role of both acceptance
-    tests and system tests.
-    ((("functional tests (FTs)", "vs. acceptance and system tests", secondary-sortas="acceptance and system tests")))
-
-
-
-******************************************************************************
-
-
-If you'll forgive the pretentious philosophical terminology, I'd like to
-structure our discussion of these issues like a Hegelian dialectic:
-
-* The Thesis: the case for "pure", fast unit tests.
-
-* The Antithesis: some of the risks associated with a (naive) pure unit testing
-  approach.
-
-* The Synthesis: a discussion of best practices like "Ports and Adapters"
-  or "Functional Core, Imperative Shell", and of just what it is that we want
-  from our tests, anyway.
-
-
-=== Thesis: Unit Tests Are Superfast and Good Besides That
-
+// instagram still runs on django
 
 ((("unit tests", "benefits of &#x201c;pure&#x201d;", id="UTbenefit26")))
 One of the things you often hear about unit tests is that they're much faster.
@@ -112,71 +52,80 @@ but it's worth exploring the theme of speed.
 Other things being equal, the faster your unit tests run, the better.
 To a lesser extent, the faster _all_ your tests run, the better.
 
-I've outlined the TDD test/code cycle in this book.  You've started to get a
-feel for the TDD workflow, the way you flick between writing tiny amounts of
-code and running your tests.  You end up running your unit tests several times
-a minute, and your functional tests several times a day.
+I've outlined the TDD test/code cycle in this book.
+You've started to get a feel for the TDD workflow,
+the way you flick between writing tiny amounts of code and running your tests.
+You end up running your unit tests several times a minute,
+and your functional tests several times a day.
 
-So, on a very basic level, the longer they take, the more time you spend
-waiting for your tests, and that will slow down your development.  But
-there's more to it than that.
+So, on a very basic level, the longer they take, the more time you spend waiting
+for your tests, and that will slow down your development.
+But there's more to it than that.
 
 
 ==== The Holy Flow State
 
-Thinking sociology for a moment, we programmers have our own culture, and our
-own tribal religion in a way. It has many congregations within it, such as the
-cult of TDD to which you are now initiated.  There are the followers of vi and
-the heretics of emacs. But one thing we all agree on, one particular spiritual
-practice, our own transcendental meditation, is the holy flow state.  That
-feeling of pure focus, of concentration, where hours pass like no time at all,
-where code flows naturally from our fingers, where problems are just tricky
-enough to be interesting but not so hard that they defeat us...
+Thinking sociology for a moment, we programmers have our own culture,
+and our own tribal religion in a way.
+It has many congregations within it
+such as the cult of TDD to which you are now initiated.
+There are the followers of vi and the heretics of emacs.
+But one thing we all agree on, one particular spiritual practice,
+our own transcendental meditation, is the holy flow state.
+That feeling of pure focus, of concentration,
+where hours pass like no time at all,
+where code flows naturally from our fingers,
+where problems are just tricky enough to be interesting
+but not so hard that they defeat us...
 
-There is absolutely no hope of achieving flow if you spend your time waiting
-for a slow test suite to run.  Anything longer than a few seconds and you're
-going to let your attention wander, you context-switch, and the flow state is
-gone.  And the flow state is a fragile dream. Once it's gone, it takes at
-least 15 minutes to live again.
+There is absolutely no hope of achieving flow
+if you spend your time waiting for a slow test suite to run.
+Anything longer than a few seconds and you're going to let your attention wander,
+you context-switch, and the flow state is gone.
+And the flow state is a fragile dream.
+Once it's gone, it takes at least 15 minutes to live again.
 
 
 ==== Slow Tests Don't Get Run as Often, Which Causes Bad Code
 
-If your test suite is slow and ruins your concentration, the danger is that
-you'll start to avoid running your tests, which may lead to bugs getting
-through. Or, it may lead to our being shy of refactoring the code,
-since we know that any refactor will mean having to wait ages while all the
-tests run. In either case, bad code can be the result.
+If your test suite is slow and ruins your concentration,
+the danger is that you'll start to avoid running your tests,
+which may lead to bugs getting through.
+Or, it may lead to our being shy of refactoring the code,
+since we know that any refactor will mean having to wait for ages while all the tests run.
+In either case, bad code can be the result.
 
 
-==== We're Fine Now, but Integrated Tests Get Slower Over Time
+==== We're Fine Now, but Integration Tests Get Slower Over Time
 
-You might be thinking, OK, but our test suite has lots of integrated
+You might be thinking, OK, but our test suite has lots of integration
 tests in it--over 50 of them, and it only takes 0.2 seconds to run.
 
-But remember, we've got a very simple app. Once it starts to get more
-complex, as your database grows more and more tables and columns, integrated
-tests will get slower and slower.  Having Django reset the database between
-each test will take longer and longer.
+But remember, we've got a very simple app.
+Once it starts to get more complex,
+as your database grows more and more tables and columns,
+integration tests will get slower and slower.
+Having Django reset the database between each test will take longer and longer.
 
 // TODO mention Kraken tests
 
 
 ==== Don't Take It from Me
 
-
 Gary Bernhardt, a man with far more experience of testing than me, put these
 points eloquently in a talk called
-https://www.youtube.com/watch?v=RAxiiRPHS9k[Fast Test, Slow Test]. I encourage
-you to watch it.
+https://www.youtube.com/watch?v=RAxiiRPHS9k[Fast Test, Slow Test].
+I encourage you to watch it.
 
 
 ==== And Unit Tests Drive Good Design
 
-But perhaps more importantly than any of this, remember the lesson from
-<<appendix_purist_unit_tests>>.  Going through the process of writing good, isolated
-unit tests can help us drive out better designs for our code, by forcing us
-to identify dependencies, and encouraging us towards a decoupled architecture
+But perhaps more importantly than any of this,
+remember the lesson from <<appendix_purist_unit_tests>>.
+Going through the process of writing good, isolated unit tests
+can help us drive out better designs for our code,
+by forcing us to identify dependencies,
+and encouraging us towards a decoupled architecture,
 in a way that integrated tests don't.
 ((("", startref="UTbenefit26")))
 
@@ -185,18 +134,19 @@ in a way that integrated tests don't.
 === The Problems with "Pure" Unit Tests
 
 ((("unit tests", "drawbacks of &#x201c;pure&#x201d;")))
-All of this comes with a huge "but". Writing isolated united tests comes with
-its own hazards, particularly if, like you or me, we are not yet advanced
-TDD'ers.
+All of this comes with a huge "but".
+Writing isolated unit tests comes with its own pitfalls,
+and avoiding them is a skill that takes time to develop.
 
 
-==== Isolated Tests Can Be Harder to Read and Write
+==== Mocky Tests Can Be Harder to Read and Write
 
 Cast your mind back to the first isolated unit test we wrote.  Wasn't it ugly?
-Admittedly, things improved when we refactored things out into the forms, but
-imagine if we hadn't followed through?  We'd have been left with a rather
-unreadable test in our codebase.  And even the final version of the tests we
-ended up with contain some pretty mind-bending bits.
+Admittedly, things improved when we refactored things out into the forms,
+but imagine if we hadn't followed through?
+We'd have been left with a rather unreadable test in our codebase.
+And even the final version of the tests we ended up with
+contain some pretty mind-bending bits.
 
 
 ==== Isolated Tests Don't Automatically Test Integration
