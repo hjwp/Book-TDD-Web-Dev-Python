@@ -270,7 +270,7 @@ But let's lay out some of the pros and cons:
 | Strategy | Pros | Cons
 | End-to-end with POP3 | Maximally realistic, tests the whole system | Slow, fiddly, unreliable
 | Email testing service eg Mailinator/Mailsac| As realistic as real POP3, with better APIs for testing| Slow, possibly expensive.  Plus I don't want to endorse any particular commercial provider ;-)
-| File-based fake email backend | Faster, more reliable, no network calls, tests end-to-end (albeit with fake components) | Still Fiddly, requires managing db & filesystem side-effects
+| File-based fake email backend | Faster, more reliable, no network calls, tests end-to-end (albeit with fake components) | Still fiddly, requires managing db & filesystem side-effects
 | Give up on testing email on the server/Docker | Fast, simple | Less confidence that things work "for real"
 |=======
 
@@ -464,6 +464,8 @@ FAILED (errors=1)
 
 It fails because our test utility function `create_pre_authenticated_session()`
 only acts on the local database.
+// DAVID: This feels like a logical leap. As a reader, I'm unsure whether I was supposed
+// to have known this, or if you're just saying 'trust me, I'll save you some time by telling you why'.
 Let's find out how our tests can manage the database on the server.
 
 
@@ -473,6 +475,11 @@ Let's find out how our tests can manage the database on the server.
 We need a way to make changes to the database inside Docker, or on the server.
 Essentially we want to run some code outside the context of the tests
 (and the test database) and in the context of the server and its database.
+
+// DAVID: Would be good to mention security at this point. We're rolling our
+// own way to authenticate, so we should tread carefully. Maybe point out that
+// in order to use this approach, we need ssh access to the server, so it's
+// decently protected.
 
 ((("scripts, building standalone")))
 When trying to build a standalone script that works with Django
@@ -560,6 +567,9 @@ well as tests:
 ----
 ====
 //14
+// DAVID: My immediate reaction is that this shouldn't be enabled in production.
+// Is it worth calling that out at the time?
+// Perhaps at least only add it if an environment variable is present?
 
 Now it works:
 
@@ -581,6 +591,9 @@ NOTE: If you see an error saying the `auth_user` table is missing,
 Next we need to adjust `test_my_lists` so that it runs the local function
 when we're on the local server,
 and make it run the management command on the staging server if we're on that:
+// DAVID: Confused here what you mean by local versus staging server.
+// Is the Docker image the local server or staging server? Maybe should call out that there are
+// three different test server contexts we're supporting...
 
 [role="sourcecode"]
 .src/functional_tests/test_my_lists.py (ch23l016)
@@ -615,7 +628,8 @@ class MyListsTest(FunctionalTest):
     [...]
 ----
 ====
-
+// DAVID: container_commands doesn't exist yet, maybe worth pointing this out
+// so readers don't think they've made a mistake?
 
 
 
@@ -686,6 +700,7 @@ def _run_commands(commands):
     return result.strip()
 ----
 ====
+// DAVID: In _run_commands, why not do `check=True`, then we can omit the returncode / exception handling?
 
 <1> We invoke our management command with the path to the virtualenv python,
     the `create_session` command name, and pass in the email we want to create a session for
@@ -714,7 +729,8 @@ Does that all make sense?
 Perhaps a little ascii-art diagram will help:
 
 
-// RITA: Shall we turn these into proper diagrams? Is there a particular reason why these are shown as ascii-art? I know that's how they were shown in the previous edition. 
+// RITA: Shall we turn these into proper diagrams? Is there a particular reason why these are shown as ascii-art? I know that's how they were shown in the previous edition.
+// DAVID: These say 'server_tools' whereas above the module is called 'container_commands'.
 ===== Locally:
 
 [role="skipme small-code"]
@@ -763,8 +779,8 @@ Perhaps a little ascii-art diagram will help:
 |        (locally)           |                                     +------------------------------+
 +----------------------------+
 ----
-
-
+// DAVID: Should this final one be 'Against Docker remotely'?
+// Also, there are rendering problems on the last one.
 
 .An Alternative For Managing Test Database Content: Talking Directly to the DB
 **********************************************************************
@@ -824,6 +840,10 @@ $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_t
 OK
 ----
 
+// DAVID: I got
+// Exception: OCI runtime exec failed: exec failed: unable to start container process:
+// exec: "/venv/bin/python": stat /venv/bin/python: no such file or directory: unknown
+// Changing it to /usr/local/bin/python worked. (Maybe I just set this up on an earlier version of the book.)
 
 And now against the server.  First, re-deploy to make sure our 
 
@@ -941,6 +961,7 @@ $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_t
 OK
 ----
 
+// DAVID: Shall we do a git commit?
 
 [role="pagebreak-before less_space"]
 .Warning: Be Careful Not to Run Test Code Against the Production Server!
@@ -956,6 +977,8 @@ by running FTs against the wrong host.
 You might consider putting some safeguards in place at this point.
 For example, you could put staging and production on different servers,
 and make it so they use different keypairs for authentication, with different passphrases.
+
+// DAVID: Or maybe something simpler like quitting if the host isn't in an allow-list?
 
 This is similarly dangerous territory to running tests against clones of production data.
 I have a little story about accidentally sending thousands of duplicate invoices to clients
@@ -1009,4 +1032,3 @@ Logging is critical to debugging issues on the server::
     ((("debugging", "server-side", "baking in logging code")))
 
 *******************************************************************************
-
