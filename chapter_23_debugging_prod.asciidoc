@@ -22,6 +22,9 @@ Let's see how that works against our staging server and Docker.
 
 === The Proof Is in the Pudding: Using Docker to Catch Final Bugs
 
+// CSANAD: we didn't make a commit after simplifying the tests with the `wait`
+// decorator.
+
 Remember the deployment checklist from <<chapter_18_second_deploy>>?
 Let's see if it can't come in useful today!
 
@@ -102,6 +105,10 @@ LOGGING = {
 
 Restart the Docker container if necessary,
 and then either rerun the FT, or just try to log in manually.
+// SEBASTIAN: Actually, rebuilding the image may be necessary.
+// When I look at the snippet you provided above to build the container,
+// you're not using a volume to share the source code between host and container
+// but just sharing the DB.
 *******************************************************************************
 
 If you switch to the terminal that's running your Docker image,
@@ -134,12 +141,16 @@ Traceback (most recent call last):
     raise SMTPSenderRefused(code, resp, from_addr)
 smtplib.SMTPSenderRefused: (530, b'5.7.0 Authentication Required. [...]
 ----
+// CSANAD: just a minor thing: these ^^^^ below the problematic lines render
+// much shorter in the html.
 
 That looks like a pretty good clue to what's going on.
 ((("", startref="Dockercatch21")))
 
 
 Sure enough!  Good to know our local Docker setup can repro the error on the server.
+// CSANAD: I think naming explicitly what the error on the server reproduced
+// by Docker is, would be clearer.
 
 
 === Another Environment Variable In Docker
@@ -270,7 +281,7 @@ But let's lay out some of the pros and cons:
 | Strategy | Pros | Cons
 | End-to-end with POP3 | Maximally realistic, tests the whole system | Slow, fiddly, unreliable
 | Email testing service eg Mailinator/Mailsac| As realistic as real POP3, with better APIs for testing| Slow, possibly expensive.  Plus I don't want to endorse any particular commercial provider ;-)
-| File-based fake email backend | Faster, more reliable, no network calls, tests end-to-end (albeit with fake components) | Still Fiddly, requires managing db & filesystem side-effects
+| File-based fake email backend | Faster, more reliable, no network calls, tests end-to-end (albeit with fake components) | Still fiddly, requires managing db & filesystem side-effects
 | Give up on testing email on the server/Docker | Fast, simple | Less confidence that things work "for real"
 |=======
 
@@ -321,11 +332,33 @@ Here's where we can put an early return in the FT:
     email = mail.outbox.pop()
 ----
 ====
+// CSANAD: This results in sending a real email to `edith@example.com` by
+// each run of `test_login.py`. I suggest moving this return way up:
+//
+// class LoginTest(FunctionalTest):
+//     def test_login_using_magic_link(self):
+//         if self.test_server:
+//             # Testing real email sending from the server is not worth it.
+//             return
+//
+//         # Edith goes to the awesome superlists site
+//         # and notices a "Log in" section in the navbar for the first time
+//         # It's telling her to enter her email address, so she does
+//         self.browser.get(self.live_server_url)
+//
+//         # CSANAD:
+//         # If we don't place the early return higher up, the following line will
+//         # cause a real email to be sent.
+//
+//         self.browser.find_element(By.CSS_SELECTOR, "input[name=email]").send_keys(
+//             TEST_EMAIL, Keys.ENTER
+//         )
+
 
 This test will still fail if you don't set `EMAIL_PASSWORD` to a valid value
 in Docker or on the server, so that's good enough for now.
 
-Here's how we populate the `.test_server` attribute:
+Here's how we populate the `FunctionalTest.test_server` attribute:
 
 
 [role="sourcecode"]
@@ -343,6 +376,8 @@ class FunctionalTest(StaticLiveServerTestCase):
 ====
 
 <1> We upgrade `test_server` to being an attribute on the test object,
+// CSANAD: "...on the FunctionalTest object," or "...on the FunctionalTest
+// instance (or "class")" would be a little more precise in my opinion.
     so we can access it in various places in our tests.
     We'll see this come in useful later too!
 
@@ -350,13 +385,21 @@ class FunctionalTest(StaticLiveServerTestCase):
 And you can confirm that the FT will fail if you don't set `EMAIL_PASSWORD` in Docker.
 
 Now let's see if we can get our FTs to pass against the server:
+// CSANAD: I think this is missing from here:
+// [subs="specialcharacters,macros"]
+// ----
+// $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_tests.test_login*]
+// [...]
+//
+// OK
+// ----
 
 
 === Setting Secret Environment Variables on the Server
 
 ((("environment variables")))
 ((("secret values")))
-Just as in <<chapter_11_server_prep>>,
+Just as in <<chapter_12_ansible>>,
 the place we set environment variables on the server is in the _superlists.env_ file.
 
 Let's add it to the template first:
@@ -464,6 +507,8 @@ FAILED (errors=1)
 
 It fails because our test utility function `create_pre_authenticated_session()`
 only acts on the local database.
+// DAVID: This feels like a logical leap. As a reader, I'm unsure whether I was supposed
+// to have known this, or if you're just saying 'trust me, I'll save you some time by telling you why'.
 Let's find out how our tests can manage the database on the server.
 
 
@@ -473,6 +518,11 @@ Let's find out how our tests can manage the database on the server.
 We need a way to make changes to the database inside Docker, or on the server.
 Essentially we want to run some code outside the context of the tests
 (and the test database) and in the context of the server and its database.
+
+// DAVID: Would be good to mention security at this point. We're rolling our
+// own way to authenticate, so we should tread carefully. Maybe point out that
+// in order to use this approach, we need ssh access to the server, so it's
+// decently protected.
 
 ((("scripts, building standalone")))
 When trying to build a standalone script that works with Django
@@ -560,6 +610,9 @@ well as tests:
 ----
 ====
 //14
+// DAVID: My immediate reaction is that this shouldn't be enabled in production.
+// Is it worth calling that out at the time?
+// Perhaps at least only add it if an environment variable is present?
 
 Now it works:
 
@@ -581,6 +634,9 @@ NOTE: If you see an error saying the `auth_user` table is missing,
 Next we need to adjust `test_my_lists` so that it runs the local function
 when we're on the local server,
 and make it run the management command on the staging server if we're on that:
+// DAVID: Confused here what you mean by local versus staging server.
+// Is the Docker image the local server or staging server? Maybe should call out that there are
+// three different test server contexts we're supporting...
 
 [role="sourcecode"]
 .src/functional_tests/test_my_lists.py (ch23l016)
@@ -615,7 +671,8 @@ class MyListsTest(FunctionalTest):
     [...]
 ----
 ====
-
+// DAVID: container_commands doesn't exist yet, maybe worth pointing this out
+// so readers don't think they've made a mistake?
 
 
 
@@ -686,6 +743,7 @@ def _run_commands(commands):
     return result.strip()
 ----
 ====
+// DAVID: In _run_commands, why not do `check=True`, then we can omit the returncode / exception handling?
 
 <1> We invoke our management command with the path to the virtualenv python,
     the `create_session` command name, and pass in the email we want to create a session for
@@ -714,7 +772,8 @@ Does that all make sense?
 Perhaps a little ascii-art diagram will help:
 
 
-// RITA: Shall we turn these into proper diagrams? Is there a particular reason why these are shown as ascii-art? I know that's how they were shown in the previous edition. 
+// RITA: Shall we turn these into proper diagrams? Is there a particular reason why these are shown as ascii-art? I know that's how they were shown in the previous edition.
+// SEBASTIAN: +1. Not sure how it will end up in print but they don't read great in markdown
 ===== Locally:
 
 [role="skipme small-code"]
@@ -745,7 +804,8 @@ Perhaps a little ascii-art diagram will help:
 +----------------------------+
 ----
 
-===== Against Docker locally:
+
+===== Against Docker on the server:
 
 [role="skipme small-code"]
 ----
@@ -764,14 +824,17 @@ Perhaps a little ascii-art diagram will help:
 +----------------------------+
 ----
 
+// DAVID: Should this final one be 'Against Docker remotely'?
+// Also, there are rendering problems on the last one.
 
+// CSANAD: the chart looks broken in HTML, but looks perfect in the source code.
 
 .An Alternative For Managing Test Database Content: Talking Directly to the DB
 **********************************************************************
 An alternative way of managing database content inside Docker,
-or on a server, would be to talk directly to the DB
+or on a server, would be to talk directly to the DB.
 
-Since we're using SQLite, that involves writing to the file directly,
+Since we're using SQLite, that involves writing to the file directly.
 This can be fiddly to get right, because when we're running inside Django's
 test runner, Django takes over test database creation,
 so you end up having to write raw SQL and manage your connections to the database directly.
@@ -781,9 +844,11 @@ as well as needing to have the SECRET_KEY env var set to the same value as on th
 
 If we were using a "classic" database server like Postgres or MySQL,
 we'd be able to talk directly to the database over its port,
-and that's an approach I've used successfully in the past (see eg https://www.cosmicpython.com/book/chapter_02_repository.html#_inverting_the_dependency_orm_depends_on_model)
+and that's an approach I've used successfully in the past (see e.g. https://www.cosmicpython.com/book/chapter_02_repository.html#_inverting_the_dependency_orm_depends_on_model)
 but it's still fiddly to get right and usually requires writing your own SQL.
 **********************************************************************
+// CSANAD: maybe we should rephrase one of the occurrences of
+// "fiddly to get right" as they are used twice in the same note.
 
 
 === Testing the Management Command
@@ -824,15 +889,25 @@ $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_t
 OK
 ----
 
+// DAVID: I got
+// Exception: OCI runtime exec failed: exec failed: unable to start container process:
+// exec: "/venv/bin/python": stat /venv/bin/python: no such file or directory: unknown
+// Changing it to /usr/local/bin/python worked. (Maybe I just set this up on an earlier version of the book.)
 
 And now against the server.  First, re-deploy to make sure our 
-
+// CSANAD: this sentence is incomplete.
 
 [role="against-server"]
 [subs="specialcharacters,quotes"]
 ----
-$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/deploy-playbook.yaml.yaml -vv*]
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/deploy-playbook.yaml -vv*]
 ----
+// CSANAD: at some point I deleted my .venv and reinstalled the pip packages on
+// my dedicated book-development environment. I just noticed I forgot about
+// installing ansible. Just a thought, maybe we could mention in a footnote,
+// perhaps in chapter 11 (after installing ansible), that it's a common practice
+// to create a separate requirements-dev.txt and we could list selenium, ansible
+// and requests in ours.
 
 And now we run the test:
 
@@ -874,6 +949,14 @@ Hooray!
 
 
 === Test Database Cleanup
+
+// CSANAD: We should mention this Database Cleanup earlier in the chapter. I
+// think if the Reader needs this information, it is likely to be during the
+// chapter, not at the end of it.
+// I too had to re-run a test which got through the point of creating the user
+// and I faced this exact "UNIQUE constraint failed" error before I noticed the
+// chapter would deal with this possibility later.
+
 
 One more thing to be aware of: now that we're running against a real database,
 we don't get cleanup for free any more.
@@ -941,6 +1024,7 @@ $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_t
 OK
 ----
 
+// DAVID: Shall we do a git commit?
 
 [role="pagebreak-before less_space"]
 .Warning: Be Careful Not to Run Test Code Against the Production Server!
@@ -956,6 +1040,8 @@ by running FTs against the wrong host.
 You might consider putting some safeguards in place at this point.
 For example, you could put staging and production on different servers,
 and make it so they use different keypairs for authentication, with different passphrases.
+
+// DAVID: Or maybe something simpler like quitting if the host isn't in an allow-list?
 
 This is similarly dangerous territory to running tests against clones of production data.
 I have a little story about accidentally sending thousands of duplicate invoices to clients
@@ -993,6 +1079,12 @@ Fixtures also have to work remotely::
     ((("fixtures", "staging and")))
     ((("staging sites", "fixtures and")))
 
+// SEBASTIAN: I am wondering how strongly this approach should be recommended.
+// In my mind, when one tests a service remotely, it would be a black-box testing
+// without SSH-ing into it. The chapter is called "debugging prod", though.
+// Then this is about debugging prod-like issues on staging?
+// Some reiteration or additional context in diagrams could help.
+
 Be very careful when resetting data on your servers::
     A command that can remotely wipe the entire database on one of your
     servers is a dangerous weapon, and you want to be really, really sure
@@ -1009,4 +1101,3 @@ Logging is critical to debugging issues on the server::
     ((("debugging", "server-side", "baking in logging code")))
 
 *******************************************************************************
-
