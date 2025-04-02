@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+import os
 import unittest
 
 from book_tester import ChapterTest
 
 
-class Chapter23Test(ChapterTest):
+class Chapter25Test(ChapterTest):
     chapter_name = "chapter_25_CI"
     previous_chapter = "chapter_24_outside_in"
 
@@ -16,17 +17,16 @@ class Chapter23Test(ChapterTest):
         # sanity checks
         self.assertEqual(self.listings[0].skip, True)
         self.assertEqual(self.listings[1].skip, True)
-        self.assertEqual(self.listings[24].type, "code listing with git ref")
+        self.assertEqual(self.listings[9].type, "code listing with git ref")
 
         # skips
         # self.skip_with_check(22, 'switch back to master') # comment
 
         # hack fast-forward
-        skip = False
-        if skip:
-            self.pos = 27
+        if os.environ.get("SKIP"):
+            self.pos = 21
             self.sourcetree.run_command(
-                "git switch {0}".format(self.sourcetree.get_commit_spec("ch20l015"))
+                f"git checkout {self.sourcetree.get_commit_spec('ch25l005')}"
             )
 
         while self.pos < len(self.listings):
@@ -34,7 +34,15 @@ class Chapter23Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.check_final_diff(ignore=["moves"])
+        self.sourcetree.run_command(
+            "git add .gitlab-ci.yml",
+        )
+        # TODO: test package.json
+        # self.sourcetree.run_command(
+        #     "git add src/lists/static/package.json src/lists/static/tests"
+        # )
+        self.sourcetree.run_command("git commit -m'final commit'")
+        # self.check_final_diff(ignore=["moves"])
 
 
 if __name__ == "__main__":

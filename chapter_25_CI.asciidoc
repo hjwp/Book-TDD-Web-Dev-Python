@@ -1,20 +1,14 @@
 [[chapter_25_CI]]
-== Continuous Integration (CI)
+== CI: Continuous Integration
 
-.Warning, Chapter Update in Progress
+
+.Warning, Fresh Content
 *******************************************************************************
-🚧 Warning, this chapter is being updated,
-and still mostly the 2e version;
+This chapter has had a big rewrite!
 
-Although it's not got many code examples in,
-you may find it's a little out of date.
-
-Sneak preview / spoilers - for the third edition,
-I plan to switch away from Jenkins,
-to something more modern.
-I'm still going to avoid the obvious choice of GitHub Actions,
-I'm hoping to pick something that's at least open source (eg GitLab),
-if not fully self-hosted / free software (like Woodpecker CI).
+As always, feedback is welcome, but especially-especially
+since this stuff is all so new.
+Let me know how you get on :)
 
 *******************************************************************************
 
@@ -25,421 +19,653 @@ As our site grows, it takes longer and longer to run all of our functional tests
 If this continues, the danger is that we're going to stop bothering.
 
 Rather than let that happen, we can automate the running of functional tests
-by setting up a "Continuous Integration" or CI server.
+by setting up "Continuous Integration", or CI.
 That way, in day-to-day development,
 we can just run the FT that we're working on at that time,
-and rely on the CI server to run all the other tests automatically
+and rely on CI to run all the other tests automatically
 and let us know if we've broken anything accidentally.
-The unit tests should stay fast enough that we can keep running them every few seconds.
 
-((("Continuous Integration (CI)", "server of choice")))
-The CI server of choice these days is called Jenkins.
-It's a bit Java, a bit crashy, a bit ugly, but it's what everyone uses,
-and it has a great plugin ecosystem, so let's get it up and running.
+The unit tests should stay fast enough that we can keep running
+the full suite locally, every few seconds.
+
+NOTE: Continuous Integration is another practice that was popularised by
+    Kent Beck's
+    https://martinfowler.com/bliki/ExtremeProgramming.html[Extreme Programming (XP)]
+    movement in the 1990s.
+
+As we'll see, one of the great frustrations of CI
+is that the feedback loop is so much slower than working locally.
+As we go along, we'll look for ways to optimise for that, where we can.
+
+While debugging, we'll also touch on the theme of _reproducibility_,
+the idea that we want to be able to reproduce behaviours of our CI environment locally,
+in the same way we try and make our production and dev environments as similar
+as possible.
 
 
-=== Installing Jenkins
 
-* TODO: update to mention github actions, gitlab etc.
+=== Choosing a CI service
 
-((("Continuous Integration (CI)", "Jenkins installation")))
-((("Jenkins", "installation")))
-There are several hosted-CI services out there that essentially provide you
-with a Jenkins server, ready to go.  I've come across Sauce Labs, Travis,
-Circle-CI, ShiningPanda, and there are probably lots more.  But I'm going to
-assume we're installing everything on a server we control.
+((("Continuous Integration (CI)", "choosing a service")))
+CI as a concept has been around since the 90s at least,
+and traditionally would be done by configuring a server,
+perhaps under a desk in the corner of the office,
+with software on it that could pull down all the code from the main branch
+at the end of each day, and scripts to compile all the code and run all the tests,
+a process that became know as a "build".
+Then each morning developers would take a look at the results,
+and deal with any "broken builds".
 
-NOTE: It's not a good idea to install Jenkins on the same server as our
-    staging or production servers.  Apart from anything else, we may want 
-    Jenkins to be able to reboot the staging server!
+As the practice has spread, and feedback cycles have grown faster,
+CI software has developed (Jenkins was a popular choice in the 2010s),
+and CI has become a common "cloud" service,
+designed to integrate with code hosting providers like GitHub,
+or even provided directly by the same providers:
+GitHub has "GitHub Actions", and because of its salience,
+it's probably the most popular choice for Open Source projects these days.
+In a corporate environment, you might come across other solutions
+like CircleCI, Travis, and GitLab.
 
-We'll install the latest version from the official Jenkins apt repo, because
-the Ubuntu default still has a few annoying bugs with locale/unicode support,
-and it also doesn't set itself up to listen on the public internet by default:
+It is still absolutely possible to download and self-host your own CI server;
+in the 1e and 2e I demonstrated the use of Jenkins.
+But, the installation and subsequent admin/maintenance burden is not effort-free,
+so for this edition I wanted to pick a service
+that was as much like the kind of thing you're likely to encounter in your day job,
+while trying not to endorse the largest commercial provider.
+There's nothing wrong with GitHub Actions!
+They just don't need any _more_ help dominating the market.
+
+So I've decided to use GitLab in this book.
+They are absolutely a commercial service,
+but they retain an open-source version, and you can self-host it in theory.
+
+The syntax (it's always YAML...) and core concepts are common across all providers,
+so the things you learn here will be replicable in whichever service
+you encounter in future.
+
+Like most of the services out there, GitLab has a free tier,
+which will work fine for our purposes.
+
+
+=== Getting our Code into GitLab
+
+GitLab is primarily a code hosting service like GitHub,
+so the first thing thing to do is get our code up there
+
+
+==== Starting a Project
+
+Use the **New Project** -> **Create Blank Project** option, as in <<gitlab-new-blank-project>>.
+
+.Creating a New Repo on Gitlab
+[[gitlab-new-blank-project]]
+image::images/gitlab_new_blank_project.png["New Blank Project"]
+
+
+==== Pushing our Code up using Git Push
+
+First we set up gitlab as a "remote" for our project:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+# substitute your username and project name as necessary
+$ *git remote add origin git@gitlab.com:yourusername/superlists.git*
+# or, if you already have "origin" defined:
+$ *git remote add gitlab git@gitlab.com:yourusername/superlists.git*
+$ *git remote -v*
+gitlab    git@gitlab.com:hjwp/superlistz.git (fetch)
+gitlab    git@gitlab.com:hjwp/superlistz.git (push)
+origin    git@github.com:hjwp/book-example.git (fetch)
+origin    git@github.com:hjwp/book-example.git (push)
+----
+
+Now we can push up our code with `git push`.
+The `-u` flag sets up a "remote-tracking" branch,
+so you can push+pull without explicitly specifying the remote + branch
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+# if using 'origin', it will be the default:
+$ *git push -u*
+# or, if you have multiple remotes:
+$ *git push -u gitlab*
+Enumerating objects: 706, done.
+Counting objects: 100% (706/706), done.
+Delta compression using up to 11 threads
+Compressing objects: 100% (279/279), done.
+Writing objects: 100% (706/706), 918.72 KiB | 131.25 MiB/s, done.
+Total 706 (delta 413), reused 682 (delta 408), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (413/413), done.
+To gitlab.com:hjwp/superlistz.git
+ * [new branch]        main -> main
+branch 'main' set up to track 'gitlab/main'.
+----
+
+If you refresh the GitLab UI, you should now see your code, as in <<gitlab_files_ui>>:
+
+.CI Project Files on GitLab
+[[gitlab_files_ui]]
+image::images/gitlab_files_ui.png["GitLab UI showing project files"]
+
+
+=== Setting up a First Cut of a CI Pipeline
+
+
+The "Pipeline" terminology was popularised by Dave Farley and Jez Humble
+in their book https://amzn.to/4k894A3[Continuous Delivery].
+The name alludes to the fact that a CI build typically has a series,
+where the process flows from one to another.
+
+
+Got to **Build** -> **Pipelines**, you'll see a list of example templates.
+When getting to know a new configuration language,
+it's nice to be able to start with something that works,
+rather than a blank slate.
+
+I chose the **Python** example template and made a few customisations:
+
+
+[role="sourcecode"]
+..gitlab-ci.yml (ch25l001)
+====
+[source,yaml]
+----
+# Use the same image as our Dockerfile
+image: python:slim
+
+# These two setting lets us cache pip-installed packages,
+# it came from the default template
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+cache:
+  paths:
+    - .cache/pip
+
+# "setUp" phase, before the main build
+before_script:
+  - python --version ; pip --version  # For debugging
+  - pip install virtualenv
+  - virtualenv .venv
+  - source .venv/bin/activate
+
+# This is the main build
+test:
+  script:
+    - pip install -r requirements.txt  # <1>
+    # unit tests
+    - python src/manage.py test lists accounts  # <2>
+    # (if those pass) all tests, incl. functional.
+    - pip install selenium  # <3>
+    - cd src && python manage.py test  # <4>
+----
+====
+
+YAML once again folks!
+
+<1> We start by installing our core requirements
+
+<2> I've decided to run the unit tests first.
+    This gives us an "early failure" if  there's any problem at this stage,
+    and saves us from having to run, and more importantly wait for, the Fts to run.
+
+<3> Then we need selenium for the functional tests.
+    Again, I'm delaying this `pip install` until it's absolutely necessary,
+    to get feedback as quickly as possible.
+
+<4> And here is a full test run, including the functional tests.
+
+
+TIP: It's a good idea in CI pipelines to try and run the quickest tests first,
+    so that you can get feedback as quickly as possible.
+
+
+You can use the GitLab web UI to edit your pipeline YAML,
+and then when you save it you can go check for results straight away.
+
+But it is also just a file in your repo!
+So you can edit it locally.
+You'll need to commit it and then `git push` up to GitLab,
+and then go check the **Jobs** section in the **Build** UI.
 
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-# add jenkins repo to our apt sources
-root@server:$ *wget -O /usr/share/keyrings/jenkins-keyring.asc \
-  https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key*
-
-root@server:$ *echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]" \
-  https://pkg.jenkins.io/debian-stable binary/ > \
-  /etc/apt/sources.list.d/jenkins.list*
-
-# update and install jenkins
-root@server:$ *apt-get update*
-root@server:$ *apt-get install jenkins*
-----
-
-(Instructions lifted from the https://www.jenkins.io/doc/book/installing/linux/#debianubuntu[Jenkins site].)
-
-
-While we're at it, we'll install a few other dependencies:
-
-[role="skipme small-code"]
-[subs="specialcharacters,quotes"]
-----
-# remove the default Firefox installed via snap,
-# add more reliable "extended support release" version:
-root@server:$ *snap remove firefox*
-root@server:$ *add-apt-repository ppa:mozillateam/ppa*
-root@server:$ *apt update*
-root@server:$ *apt install firefox-esr*
-
-# install the venv modules for the otherwise-broken default system python:
-root@server:$ *apt install python3-venv*
+$ *git push gitlab
 ----
 
 
 
-.Adding Some Swap
-*******************************************************************************
-Jenkins is quite memory-hungry, and if  you're running this on a small VM
-with less than a couple of gigs for RAM, you'll probably find it gets
-OOM-killed unless you add some swap:
+=== First Build!  (and First Failure)
 
-[role="skipme"]
-[subs="specialcharacters,quotes"]
-----
-root@server:$ *fallocate -l 4G /swapfile*
-root@server:$ *mkswap /swapfile*
-root@server:$ *chmod 600 /swapfile*
-root@server:$ *swapon /swapfile*
-root@server:$ *echo "LABEL=swap  /swap.img  swap  defaults 0 0" >> /etc/fstab*
-----
+// TODO: consider deliberately forgetting to pip install selenium
 
-That should be plenty.
+However you click through the UI and you should be able to find your way
+to see the output of the build Job, as in <<gitlab_first_build>>:
 
-*******************************************************************************
+.First Build on GitLab
+[[gitlab_first_build]]
+image::images/gitlab_first_build.png["GitLab UI showing the output of the first build"]
 
 
-=== Configuring Jenkins
+Here's a selection of what I saw in the output console:
 
-((("Continuous Integration (CI)", "Jenkins configuration")))
-((("Jenkins", "configuration")))
-You should now be able to visit Jenkins at the URL/IP for your server on port `8080`,
-and see something like <<jenkin-unlock>>.
-
-[[jenkin-unlock]]
-[role="width-75"]
-.Jenkins unlock screen 
-image::images/jenkins-unlock.png["Jenkins' default unlock screen"]
-
-
-
-==== Initial Unlock
-
-The unlock screen is telling us to read a file from disk to unlock the server for first-time use.
-I jumped over to a terminal and printed it like this:
-
-[role="skipme"]
-[subs="specialcharacters,quotes"]
-----
-root@server$ *cat /var/lib/jenkins/secrets/initialAdminPassword*
-----
-
-
-==== Suggested Plugins for Now
-
-Next we're offered the choice to choose "suggested" plugins.
-Suggested ones are fine for now.
-(As a self-respecting nerd, our instinct is to hit "customize" immediately,
-but I don't think it really bought me anything.)
-
-
-==== Configuring the Admin User
-
-Next we set up a username and password to log in to Jenkins with; see <<jenkins-user>>.
-
-[[jenkins-user]]
-[role="width-75"]
-.Jenkins admin user config
-image::images/jenkins-admin-user.png["Jenkins screen asking for username and password"]
-
-
-And once we log in, we should see a welcome screen (<<jenkin-welcome>>).
-
-[[jenkin-welcome]]
-[role="width-75"]
-.A butler--how quaint
-image::images/jenkins-welcome.png["Jenkins welcome screen with invitation to create new job"]
-
-
-////
-[role="pagebreak-before"]
-Adding Plugins
-^^^^^^^^^^^^^^
-
-Follow the links for _Manage Jenkins_ -> _Manage Plugins_ -> _Available_.
-
-We'll want the plugins for:
-
-* 'ShiningPanda'
-* 'Xvfb'
-
-And hit install (<<installing-plugins>>).
-
-[[installing-plugins]]
-[role="width-75"]
-.Installing plugins...
-image::images/twp2_2404.png["Jenkins installing plugins"]
-
-
-
-Telling Jenkins Where to Find Python 3 and Xvfb
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-We need to tell the ShiningPanda plugin where Python 3 is installed 
-(usually '/usr/bin/python3', but you can check with a `which python3`):
-
-* _Manage Jenkins_ -> _Global Tool Configuration_
-
-* _Python_ -> _Python installations_ -> _Add Python_ (see <<add-python-to-jenkins>>; it's
-  safe to ignore the warning message)
-
-* _Xvfb installation_ -> _Add Xvfb installation_; enter **++/usr/bin++** as the
-  installation directory
-
-[[add-python-to-jenkins]]
-.Where did I leave that Python?
-image::images/twp2_2405.png["Adding Python 3"]
-
-
-////
-
-
-
-Finishing Off with HTTPS
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-* TODO: review and update this section
-
-To finish off securing your Jenkins instance, you'll want to set up HTTPS, by
-getting nginx HTTPS to use a self-signed cert, and proxy requests from port 443
-to port 8080. Then you can even block port 8080 on the firewall.  I won't go
-into detail on that now, but here are a few links to instructions which I found
-useful:
-
-* https://wiki.jenkins-ci.org/display/JENKINS/Installing+Jenkins+on+Ubuntu[Official
-Jenkins Ubuntu installation guide]
-
-* https://www.digitalocean.com/community/tutorials/how-to-create-an-ssl-certificate-on-nginx-for-ubuntu-14-04[How
-to create a self-signed SSL certificate]
-
-* http://serverfault.com/questions/250476/how-to-force-or-redirect-to-ssl-in-nginx#424016[How
-to redirect HTTP to HTTPS]
-
-
-
-Setting Up Our Project
-~~~~~~~~~~~~~~~~~~~~~~
-
-((("Continuous Integration (CI)", "project setup")))((("Jenkins", "project setup")))Now
-we've got the basic Jenkins configured, let's set up our project:
-
-* Hit the New Item button.
-
-* Enter 'Superlists' as the name, and then choose "Freestyle project", and hit
-  OK.
-
-* Add the Git repo, as in <<choose-git-repo>>.
-
-[[choose-git-repo]]
-.Get it from Git
-image::images/twp2_2406.png["Setting the git repo"]
-
-* Set it to poll every hour (<<poll-hourly>>; check out the help text here--there are many other options for ways of triggering builds).
-
-[[poll-hourly]]
-.Poll GitHub for changes
-image::images/twp2_2407.png["Config polling GitHub"]
-
-
-* Run the tests inside a Python 3 virtualenv.
-
-* Run the unit tests and functional tests separately.  See
-  <<virtualenv-buildstep>>.
-
-[[virtualenv-buildstep]]
-.Virtualenv build steps
-image::images/twp2_2408.png["Adding Python 3"]
-
-
-
-First Build!
-~~~~~~~~~~~~
-
-((("Jenkins", "first build")))((("Continuous Integration (CI)", "first build")))Hit
-"Build Now", then go and take a look at the "Console Output". You
-should see something like this:
 
 [role="skipme small-code"]
 ----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision d515acebf7e173f165ce713b30295a4a6ee17c07 (origin/master)
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7260707941304155464.sh
-+ pip install -r requirements.txt
-Requirement already satisfied (use --upgrade to upgrade): Django==1.11 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.7/site-packages
-(from -r requirements.txt (line 1))
-    
-Requirement already satisfied (use --upgrade to upgrade): gunicorn==17.5 in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.7/site-packages
-(from -r requirements.txt (line 3))
-Downloading/unpacking requests==2.0.0 (from -r requirements.txt (line 4))
-  Running setup.py egg_info for package requests
-    
-Installing collected packages: requests
-  Running setup.py install for requests
-    
-Successfully installed requests
-Cleaning up...
-+ python manage.py test lists accounts
-...................................................................
- ---------------------------------------------------------------------
-Ran 67 tests in 0.429s
-
-OK
+Running with gitlab-runner 17.7.0~pre.103.g896916a8 (896916a8)
+  on green-1.saas-linux-small-amd64.runners-manager.gitlab.com/default
+  JLgUopmM, system ID: s_deaa2ca09de7
+Preparing the "docker+machine" executor 00:20
+Using Docker executor with image python:latest ...
+Pulling docker image python:latest ...
+[...]
+$ python src/manage.py test lists accounts
 Creating test database for alias 'default'...
+Found 55 test(s).
+System check identified no issues (0 silenced).
+................../builds/hjwp/book-example/.venv/lib/python3.13/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /builds/hjwp/book-example/src/static/
+  mw_instance = middleware(adapted_handler)
+.....................................
+ ---------------------------------------------------------------------
+Ran 55 tests in 0.129s
+OK
 Destroying test database for alias 'default'...
-+ python manage.py test functional_tests
-EEEEEE
+$ pip install selenium
+Collecting selenium
+  Using cached selenium-4.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting urllib3<3,>=1.26 (from urllib3[socks]<3,>=1.26->selenium)
+[...]
+Successfully installed attrs-25.1.0 certifi-2025.1.31 h11-0.14.0 idna-3.10 outcome-1.3.0.post0 pysocks-1.7.1 selenium-4.28.1 sniffio-1.3.1 sortedcontainers-2.4.0 trio-0.29.0 trio-websocket-0.12.1 typing_extensions-4.12.2 urllib3-2.3.0 websocket-client-1.8.0 wsproto-1.2.0
+$ cd src && python manage.py test
+Creating test database for alias 'default'...
+Found 63 test(s).
+System check identified no issues (0 silenced).
+......../builds/hjwp/book-example/.venv/lib/python3.13/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /builds/hjwp/book-example/src/static/
+  mw_instance = middleware(adapted_handler)
+...............................................EEEEEEEE
 ======================================================================
-ERROR: functional_tests.test_layout_and_styling (unittest.loader._FailedTest)
+ERROR: test_layout_and_styling (functional_tests.test_layout_and_styling.LayoutAndStylingTest.test_layout_and_styling)
  ---------------------------------------------------------------------
-ImportError: Failed to import test module: functional_tests.test_layout_and_styling
-[...]
-ImportError: No module named 'selenium'
-
-Ran 6 tests in 0.001s
-
-FAILED (errors=6)
-
-Build step 'Virtualenv Builder' marked build as failure
-----
-
-Ah.  We need Selenium in our virtualenv.
-
-
-Let's add a manual installation of Selenium to our build 
-steps:
-
-[role="skipme"]
-----
-    pip install -r requirements.txt
-    python manage.py test accounts lists
-    pip install selenium fabric3
-    python manage.py test functional_tests
-----
-
-
-TIP: Some people like to use a file called 'test-requirements.txt' to specify 
-    packages that are needed for the tests, but not the main app.
-
-
-And hit "Build Now" again. 
-
-Next one of two things will happen.  Either you'll see some error messages
-like this in your console output:
-
-
-[role="skipme"]
-----
+Traceback (most recent call last):
+  File "/builds/hjwp/book-example/src/functional_tests/base.py", line 30, in setUp
     self.browser = webdriver.Firefox()
+                   ~~~~~~~~~~~~~~~~~^^
+
 [...]
-selenium.common.exceptions.WebDriverException: Message: 'The browser appears to
-have exited before we could connect. The output was: b"\\n(process:19757):
-GLib-CRITICAL **: g_slice_set_config: assertion \'sys_page_size == 0\'
-failed\\nError: no display specified\\n"' 
-[...]
-selenium.common.exceptions.WebDriverException: Message: connection refused
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly closed with status 255
+ ---------------------------------------------------------------------
+Ran 63 tests in 8.658s
+FAILED (errors=8)
+
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly closed with status 255
 ----
 
-Or possibly your build will just hang altogether (that happened to me at
-least once).  The reason is that Firefox can't start, because it doesn't
-have a display to run on.
+You can see we got through the unit tests,
+and then in the full test run we have 8 errors out of 63 tests.
+The FTs are all failing.
+
+I'm "lucky" because I've done this sort of thing many times before,
+so I know what to expect:  it's failing because Firefox isn't installed
+in the image we're using.
 
 
-Setting Up a Virtual Display So the FTs Can Run Headless
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Let's modify the script, and an `apt install`.
+Again we'll do it as late as possible.
 
-((("Jenkins", "virtual display setup", id="Jvirtual23")))((("Continuous Integration (CI)", "virtual display setup", id="CIvirtual24")))((("virtual displays", id="virtdisp24")))As
-you can see from the traceback, Firefox is unable to start because the
-server doesn't have a display.
+[role="sourcecode"]
+..gitlab-ci.yml (ch25l002)
+====
+[source,yaml]
+----
+# This is the main build
+test:
+  script:
+    - pip install -r requirements.txt
+    # unit tests
+    - python src/manage.py test lists accounts
+    # (if those pass) all tests, incl. functional.
+    - apt update -y && apt install -y firefox-esr  # <1>
+    - pip install selenium
+    - cd src && python manage.py test
+----
+====
 
+<1> We use the Debian Linux `apt` package manager to install Firefox.
+    `firefox-esr` is the "extended support release",
+    which is a more stable version of Firefox to test against.
 
-There are two ways to deal with this problem. The first is to switch to using
-a headless browser, like PhantomJS or SlimerJS.  Those tools definitely have
-their place--they're faster, for one thing--but they also have
-disadvantages.  The first is that they're not "real" web browsers, so you can't
-be sure you're going to catch all the strange quirks and behaviours of the
-actual browsers your users use.  The second is that they can behave quite
-differently inside Selenium, and often require some rewriting of FT code.
+If you run it again, and wait a bit, you'll see we get a slightly different failure:
 
-TIP: I would look into using headless browsers as a "dev-only" tool, to speed
-    up the running of FTs on the developer's machine, while the tests on the CI
-    server use actual browsers.
-
-
-[role="pagebreak-before"]
-The alternative is to set up a virtual display:  we get the server to pretend
-it has a screen attached to it, so Firefox runs happily. There are a few tools
-out there to do this; we'll use one called "Xvfb" 
-(X Virtual Framebuffer)footnote:[Check out https://pypi.python.org/pypi/PyVirtualDisplay[pyvirtualdisplay]
-as a way of controlling virtual displays from Python.]
-because it's easy to install and use, and because it has a convenient Jenkins
-plugin (now you know why we installed it earlier).
-
-We go back to our project and hit "Configure" again, then find the section
-called "Build Environment".  Using the virtual display is as simple as
-ticking the box marked "Start Xvfb before the build, and shut it down after",
-as in <<xvfb-tickbox>>.
-
-[[xvfb-tickbox]]
-.Sometimes config is easy
-image::images/twp2_2409.png["Tickbox saying we want Xvfb"]
-
-
-The build does much better now:
 
 [role="skipme small-code"]
 ----
+$ apt-get update -y && apt-get install -y firefox-esr
+Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [48.0 kB]
 [...]
-Xvfb starting$ /usr/bin/Xvfb :2 -screen 0 1024x768x24 -fbdir
-/var/lib/jenkins/2013-11-04_03-27-221510012427739470928xvfb
+The following NEW packages will be installed:
+  adwaita-icon-theme alsa-topology-conf alsa-ucm-conf at-spi2-common
+  at-spi2-core dbus dbus-bin dbus-daemon dbus-session-bus-common
+  dbus-system-bus-common dbus-user-session dconf-gsettings-backend
+  dconf-service dmsetup firefox-esr fontconfig fontconfig-config
 [...]
-+ python manage.py test lists accounts
-...............................................................
+Get:117 http://deb.debian.org/debian-security bookworm-security/main amd64
+firefox-esr amd64 128.7.0esr-1~deb12u1 [69.8 MB]
+[...]
+Selecting previously unselected package firefox-esr.
+Preparing to unpack .../105-firefox-esr_128.7.0esr-1~deb12u1_amd64.deb ...
+Adding 'diversion of /usr/bin/firefox to /usr/bin/firefox.real by firefox-esr'
+Unpacking firefox-esr (128.7.0esr-1~deb12u1) ...
+[...]
+Setting up firefox-esr (128.7.0esr-1~deb12u1) ...
+update-alternatives: using /usr/bin/firefox-esr to provide
+/usr/bin/x-www-browser (x-www-browser) in auto mode
+[...]
+======================================================================
+ERROR: test_multiple_users_can_start_lists_at_different_urls
+(functional_tests.test_simple_list_creation.NewVisitorTest.test_multiple_users_can_start_lists_at_different_urls)
  ---------------------------------------------------------------------
-Ran 63 tests in 0.410s
-
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in
-/var/lib/jenkins/shiningpanda/jobs/ddc1aed1/virtualenvs/d41d8cd9/lib/python3.7/site-packages
-Cleaning up...
+Traceback (most recent call last):
+  File "/builds/hjwp/book-example/src/functional_tests/base.py", line 30, in setUp
+    self.browser = webdriver.Firefox()
+                   ~~~~~~~~~~~~~~~~~^^
+[...]
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly
+closed with status 1
+ ---------------------------------------------------------------------
+Ran 63 tests in 3.654s
+FAILED (errors=8)
 ----
+
+We can see Firefox installing OK, but we still get an error.
+This time it's exit code 1.
+
+
+==== Trying to reproduce a CI error locally
+
+The cycle of "change _.gitlab-ci.yml_, push, wait for a build, check results"
+is painfully slow.
+
+Let's see if we can reproduce this error locally.
+
+To reproduce the CI environment locally, I put together a quick Dockerfile,
+by copy-pasting the steps in the `script` section, and prefixing them with `RUN` commands:
+
+
+[role="sourcecode"]
+.infra/Dockerfile.ci (ch25l003)
+====
+[source,dockerfile]
+----
+FROM python:slim
+
+RUN pip install virtualenv
+RUN virtualenv .venv
+
+# this won't work
+# RUN source .venv/bin/activate
+# use full path to venv instead.
+
+COPY requirements.txt requirements.txt
+RUN .venv/bin/pip install -r requirements.txt
+RUN apt update -y && apt install -y firefox-esr
+RUN .venv/bin/pip install selenium
+
+COPY infra/debug-ci.py debug-ci.py
+CMD .venv/bin/python debug-ci.py
+----
+====
+
+And let's add a little debug script at _debug-ci.py_:
+
+
+[role="sourcecode"]
+.infra/debug-ci.py (ch25l004)
+====
+[source,python]
+----
+from selenium import webdriver
+
+# just try to open a selenium session
+webdriver.Firefox().quit()
+----
+====
+
+We build and run it like this:
+
+[role="skipme"]
+[subs="specialcharacters,macros"]
+----
+$ pass:specialcharacters,quotes[*docker build -f infra/Dockerfile.ci -t debug-ci . && \
+  docker run -it debug-ci*]
+[...]
+ => [internal] load build definition from infra/Dockerfile.ci         0.0s
+ => => transferring dockerfile: [...]
+ => [internal] load metadata for docker.io/library/python:slim [...]
+ => [1/8] FROM docker.io/library/python:slim@sha256:[...]
+ => CACHED [2/8] RUN pip install virtualenv                           0.0s
+ => CACHED [3/8] RUN virtualenv .venv                                 0.0s
+ => CACHED [4/8] COPY requirements.txt requirements.txt               0.0s
+ => CACHED [5/8] RUN .venv/bin/pip install -r requirements.txt        0.0s
+ => CACHED [6/8] RUN apt update -y && apt install -y firefox-esr      0.0s
+ => CACHED [7/8] RUN .venv/bin/pip install selenium                   0.0s
+ => [8/8] COPY infra/debug-ci.py debug-ci.py                          0.0s
+ => exporting to image                                                0.0s
+ => => exporting layers                                               0.0s
+ => => writing image sha256:[...]
+ => => naming to docker.io/library/debug-ci                           0.0s
+Traceback (most recent call last):
+  File
+  "//.venv/lib/python3.13/site-packages/selenium/webdriver/common/driver_finder.py",
+  line 67, in _binary_paths
+    output = SeleniumManager().binary_paths(self._to_args())
+[...]
+selenium.common.exceptions.WebDriverException: Message: Unsupported
+platform/architecture combination: linux/aarch64
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "//debug-ci.py", line 4, in <module>
+    webdriver.Firefox().quit()
+    ~~~~~~~~~~~~~~~~~^^
+[...]
+selenium.common.exceptions.NoSuchDriverException: Message: Unable to obtain
+driver for firefox; For documentation on this error, please visit:
+https://www.selenium.dev/documentation/webdriver/troubleshooting/errors/driver_location
+----
+
+You might not see this--that "Unsupported platform/architecture combination" error is spurious,
+it's because I was on a Mac.  Let's try again with:
+
+[role="ignore-errors"]
+[subs="specialcharacters,macros"]
+----
+$ pass:specialcharacters,quotes[*docker build -f infra/Dockerfile.ci -t debug-ci --platform=linux/amd64 . && \
+  docker run --platform=linux/amd64 -it debug-ci*]
+[...]
+Traceback (most recent call last):
+  File "//debug-ci.py", line 4, in <module>
+    webdriver.Firefox().quit()
+[...]
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly
+closed with status 1
+----
+
+OK, that's a repro of our issue.  But no further clues yet!
+
+==== Enabling Debug Logs for Selenium / Firefox / Webdriver
+
+Getting debug information out of Selenium can be a bit fiddly.
+I tried two avenues, setting `options` and setting the `service`,
+the former of which doesn't really work as far as I can tell,
+but the latter does.  There is some limited info in the
+https://www.selenium.dev/documentation/webdriver/browsers/firefox/#log-output[Selenium docs].
+
+[role="sourcecode"]
+.infra/debug-ci.py (ch25l005)
+====
+[source,python]
+----
+import subprocess
+
+from selenium import webdriver
+
+options = webdriver.FirefoxOptions()  # <1>
+options.log.level = "trace"
+
+service = webdriver.FirefoxService(  # <2>
+    log_output=subprocess.STDOUT, service_args=["--log", "trace"]
+)
+
+# just try to open a selenium session
+webdriver.Firefox(options=options, service=service).quit()
+----
+====
+
+<1> This is how I attempted to increase the log level using `options`.
+    I had to reverse-engineer it from the source code,
+    and it doesn't seem to work anyway,
+    but I thought I"d leave it here for future reference
+
+<2> This is the `FirefoxService` config class,
+    which _does_ seem to let you print some debug info.
+    I'm configuring it to print to standard-out.
+
+Sure enough we can see some output now!
+
+[role="ignore-errors small-code"]
+[subs="specialcharacters,macros"]
+----
+$ pass:specialcharacters,quotes[*docker build -f infra/Dockerfile.ci -t debug-ci --platform=linux/amd64 . && \
+  docker run --platform=linux/amd64 -it debug-ci*]
+[...]
+1234567890111   geckodriver     INFO    Listening on 127.0.0.1:XXXX
+1234567890112   webdriver::server       DEBUG   -> POST /session
+{"capabilities": {"firstMatch": [{}], "alwaysMatch": {"browserName": "firefox",
+"acceptInsecureCerts": true, ... , "moz:firefoxOptions": {"binary":
+"/usr/bin/firefox", "prefs": {"remote.active-protocols": 3}, "log": {"level":
+"trace"}}}}}
+1234567890111   geckodriver::capabilities       DEBUG   Trying to read firefox
+version from ini files
+1234567890111   geckodriver::capabilities       DEBUG   Trying to read firefox
+version from binary
+1234567890111   geckodriver::capabilities       DEBUG   Found version 128.7esr
+1740029792102   mozrunner::runner       INFO    Running command:
+MOZ_CRASHREPORTER="1" MOZ_CRASHREPORTER_NO_REPORT="1"
+MOZ_CRASHREPORTER_SHUTDOWN="1" [...]
+"--remote-debugging-port" [...]
+"-no-remote" "-profile" "/tmp/rust_mozprofile[...]
+1234567890111   geckodriver::marionette DEBUG   Waiting 60s to connect to
+browser on 127.0.0.1
+1234567890111   geckodriver::browser    TRACE   Failed to open
+/tmp/rust_mozprofile[...]
+1234567890111   geckodriver::marionette TRACE   Retrying in 100ms
+Error: no DISPLAY environment variable specified
+1234567890111   geckodriver::browser    DEBUG   Browser process stopped: exit
+status: 1
+1234567890112   webdriver::server       DEBUG   <- 500 Internal Server Error
+{"value":{"error":"unknown error","message":"Process unexpectedly closed with
+status 1","stacktrace":""}}
+Traceback (most recent call last):
+  File "//debug-ci.py", line 13, in <module>
+    webdriver.Firefox(options=options, service=service).quit()
+[...]
+selenium.common.exceptions.WebDriverException: Message: Process unexpectedly
+closed with status 1
+----
+
+Well, it wasn't immediately obvious what's going on there,
+but I did eventually get a clue from the line that says `no DISPLAY environment variable specified`
+
+Out of curiosity, I thought I'd try running `firefox` directly:
+
+
+[role="ignore-errors"]
+[subs="specialcharacters,quotes"]
+----
+$ *docker build -f infra/Dockerfile.ci -t debug-ci --platform=linux/amd64 . && \
+  docker run --platform=linux/amd64 -it debug-ci firefox*
+[...]
+Error: no DISPLAY environment variable specified
+----
+
+Sure enough, the same error.
+
+
+==== Enabling Headless Mode for Firefox
+
+And if you search around for this error,
+you'll eventually find enough pointers to the answer:
+Firefox is crashing because it can't find a display.
+Servers are "headless", meaning they don't have a screen.
+Thankfully Firefox has a headless mode,
+which we can enable by setting an environment variable,
+`MOZ_HEADLESS`.
+
+Let's confirm that locally. We'll use the `-e` flag for `docker run`:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:specialcharacters,quotes[*docker build -f infra/Dockerfile.ci -t debug-ci --platform=linux/amd64 . && \
+  docker run -e MOZ_HEADLESS=1 --platform=linux/amd64 -it debug-ci*]
+1234567890111   geckodriver     INFO    Listening on 127.0.0.1:43137
+[...]
+*** You are running in headless mode.
+[...]
+1234567890112   webdriver::server       DEBUG   Teardown [...]
+1740030525996   Marionette      DEBUG   Closed connection 0
+1234567890111   geckodriver::browser    DEBUG   Browser process stopped: exit
+status: 0
+1234567890112   webdriver::server       DEBUG   <- 200 OK [...]
+----
+
+It takes quite a long time to run,
+and there's lots of debug out, but... it looks OK!
+
+Let's set that environment variable in our CI script:
+
+[role="sourcecode"]
+..gitlab-ci.yml (ch25l006)
+====
+[source,yaml]
+----
+variables:
+  # Put pip-cache in home folder so we can use gitlab cache
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  # Make Firefox run headless.
+  MOZ_HEADLESS: "1"
+----
+====
+
+TIP: Using a local Docker image to repro the CI environment
+  is a hint that it might be worth investing time in running CI
+  in a custom Docker image that you fully control;
+  this is an another way of improving _reproducibility_.
+  We won't have time to go into detail in this book though.
+
+
+=== A Common Bugbear: Flaky tests
+
+That worked!  or at least it almost did.
+All but one of the FTs passed for me,
+but there was one unexpected error:
 
 [role="skipme small-code"]
 ----
 + python manage.py test functional_tests
 ......F.
 ======================================================================
-FAIL: test_can_start_a_list_for_one_user
+FAIL: test_can_start_a_todo_list
 (functional_tests.test_simple_list_creation.NewVisitorTest)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
   File "...goat-book/functional_tests/test_simple_list_creation.py", line
-43, in test_can_start_a_list_for_one_user
+38, in test_can_start_a_todo_list
     self.wait_for_row_in_list_table('2: Use peacock feathers to make a fly')
   File "...goat-book/functional_tests/base.py", line 51, in
 wait_for_row_in_list_table
@@ -450,40 +676,37 @@ wait_for_row_in_list_table
 AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
 peacock feathers']
  ---------------------------------------------------------------------
-Ran 8 tests in 89.275s
-
-FAILED (errors=1)
-Creating test database for alias 'default'...
-[{'secure': False, 'domain': 'localhost', 'name': 'sessionid', 'expiry':
-1920011311, 'path': '/', 'value': 'a8d8bbde33nreq6gihw8a7r1cc8bf02k'}]
-Destroying test database for alias 'default'...
-Build step 'Virtualenv Builder' marked build as failure
-Xvfb stopping
-Finished: FAILURE
 ----
 
-((("", startref="CIvirtual24")))((("", startref="Jvirtual23")))((("", startref="virtdisp24")))Pretty
-close!  To debug that failure, we'll need screenshots though.
 
-NOTE: This error was due to the performance of my Jenkins instance--you may see
-    a different error, or none at all. In any case, the following tools for taking
-    screenshots and dealing with race conditions will come in useful. Read on!
+Now you might not see this error,
+but it's common for the switch to CI to flush out some "flaky" tests,
+things that will fail intermittently.
+In CI a common cause is the "noisy neighbour" problem,
+where the CI server might be much slower than your own machine,
+thus flushing out some race conditions, or in this case,
+just randomly hanging for a few seconds, taking us past the default timeout.
 
 
+Let's give ourselves some tools to help debug though.
 
-Taking Screenshots
-~~~~~~~~~~~~~~~~~~
 
-((("Continuous Integration (CI)", "screenshots", id="CIscreen24")))((("screenshots", id="screen24")))((("debugging", "screenshots for", id="DBscreen24")))((("HTML", "screenshot dumps", id="HTMLscreen24")))To
-be able to debug unexpected failures that happen on a remote PC, it
-would be good to see a picture of the screen at the moment of the failure,
-and maybe also a dump of the HTML of the page.  We can do that using some
-custom logic in our FT class `tearDown`. We have to do a bit of introspection of
-`unittest` internals, a private attribute called `._outcome`, but
-this will work:
+=== Taking Screenshots
+
+((("Continuous Integration (CI)", "screenshots", id="CIscreen24")))
+((("screenshots", id="screen24")))
+((("debugging", "screenshots for", id="DBscreen24")))
+To be able to debug unexpected failures that happen on a remote server,
+it would be good to see a picture of the screen at the moment of the failure,
+and maybe also a dump of the HTML of the page.
+
+We can do that using some custom logic in our FT class `tearDown`.
+We'll need to do a bit of introspection of `unittest` internals,
+a private attribute called `._outcome`,
+but this will work:
 
 [role="sourcecode"]
-.src/functional_tests/base.py (ch23l006)
+.src/functional_tests/base.py (ch25l007)
 ====
 [source,python]
 ----
@@ -513,13 +736,14 @@ SCREEN_DUMP_LOCATION = Path(__file__).absolute().parent / "screendumps"
 ====
 
 
-We first create a directory for our screenshots if necessary. Then we 
-iterate through all the open browser tabs and pages, and use some Selenium
-methods, `get_screenshot_as_file` and `browser.page_source`, for our image and
-HTML dumps:
+We first create a directory for our screenshots if necessary.
+Then we iterate through all the open browser tabs and pages,
+and use a Selenium methods, `get_screenshot_as_file()`
+and the attribute `browser.page_source`,
+for our image and HTML dumps, respectively:
 
 [role="sourcecode"]
-.src/functional_tests/base.py (ch23l007)
+.src/functional_tests/base.py (ch25l008)
 ====
 [source,python]
 ----
@@ -535,12 +759,12 @@ HTML dumps:
 ----
 ====
 
-[role="pagebreak-before"]
-And finally here's a way of generating a unique filename identifier, which
-includes the name of the test and its class, as well as a timestamp:
+
+And finally here's a way of generating a unique filename identifier,
+which includes the name of the test and its class, as well as a timestamp:
 
 [role="sourcecode small-code"]
-.src/functional_tests/base.py (ch23l008)
+.src/functional_tests/base.py (ch25l009)
 ====
 [source,python]
 ----
@@ -552,328 +776,625 @@ includes the name of the test and its class, as well as a timestamp:
 ----
 ====
 
-You can test this first locally by deliberately breaking one of the tests, with
-a `self.fail()` for example, and you'll see something like this:
+You can test this first locally by deliberately breaking one of the tests,
+with a `self.fail()` for example, and you'll see something like this:
 
-[role="dofirst-ch21l009"]
-----
-[...]
-.Fscreenshotting to ...goat-book/src/functional_tests/screendumps/MyListsTest.t
-est_logged_in_users_lists_are_saved_as_my_lists-[...]
-dumping page HTML to ...goat-book/src/functional_tests/screendumps/MyListsTest.
-test_logged_in_users_lists_are_saved_as_my_lists-[...]
-----
 
-Revert the `self.fail()`, then commit and push:
-
-[role="dofirst-ch21l010"]
+[role="dofirst-ch25l010"]
 [subs="specialcharacters,quotes"]
 ----
-$ *git diff*  # changes in base.py
+$ *./src/manage.py test functional_tests.test_my_lists*
+[...]
+Fscreenshotting to ...goat-book/src/functional_tests/screendumps/MyListsTest.te
+st_logged_in_users_lists_are_saved_as_my_lists-[...]
+dumping page HTML to ...goat-book/src/functional_tests/screendumps/MyListsTest.
+test_logged_in_users_lists_are_saved_as_my_lists-[...]
+Fscreenshotting to ...goat-book/src/functional_tests/screendumps/MyListsTest.te
+st_logged_in_users_lists_are_saved_as_my_lists-2025-02-18T11.29.00.png
+dumping page HTML to ...goat-book/src/functional_tests/screendumps/MyListsTest.
+test_logged_in_users_lists_are_saved_as_my_lists-2025-02-18T11.29.00.html
+----
+
+
+=== Saving Build Outputs (or Debug Files) as Artifacts
+
+We also need to tell gitlab to "save" these files
+for us to be able to actually look at them
+This is called "artifacts":
+
+[role="sourcecode"]
+..gitlab-ci.yml (ch25l012)
+====
+[source,yaml]
+----
+test:
+  [...]
+
+  script:
+    [...]
+
+  artifacts: # <1>
+    when: always  # <2>
+    paths: # <1>
+      - src/functional_tests/screendumps/
+----
+====
+
+<1> `artifacts` is the name of the key,
+    and the `paths` argument is fairly self-explanatory.
+    You can use wildcards here,
+    more info in the https://docs.gitlab.com/ci/jobs/job_artifacts/[GitLab docs].
+
+<2> One thing the docs _didn't_ make obvious is that you need `when: always`
+    because otherwise it won't save artifacts for failed jobs.
+    That was annoyingly hard to figure out!
+
+
+In any case that should work.
+If you commit the code and then push it back to Gitlab,
+we should be able to see a new build job.
+
+[role="dofirst-ch25l010-1"]
+[subs="specialcharacters,quotes"]
+----
 $ *echo "src/functional_tests/screendumps" >> .gitignore*
 $ *git commit -am "add screenshot on failure to FT runner"*
 $ *git push*
 ----
+// gitignore = ch25l011
 
-And when we rerun the build on Jenkins, we see something like this:
 
-[role="skipme"]
+In its output, we'll see the screenshots and html dumps being saved:
+
+
+[role="skipme small-code"]
 ----
-screenshotting to /var/lib/jenkins/jobs/Superlists/.../functional_tests/
-screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.png
-dumping page HTML to /var/lib/jenkins/jobs/Superlists/.../functional_tests/
-screendumps/LoginTest.test_login_with_persona-window0-2014-01-22T17.45.12.html
+screendumps/LoginTest.test_can_get_email_link_to_log_in-window0-2014-01-22T17.45.12.html
+Fscreenshotting to /builds/hjwp/book-example/src/functional_tests/screendumps/NewVisitorTest.test_can_start_a_todo_list-2025-02-17T17.51.01.png
+dumping page HTML to /builds/hjwp/book-example/src/functional_tests/screendumps/NewVisitorTest.test_can_start_a_todo_list-2025-02-17T17.51.01.html
+Not Found: /favicon.ico
+.screenshotting to /builds/hjwp/book-example/src/functional_tests/screendumps/NewVisitorTest.test_multiple_users_can_start_lists_at_different_urls-2025-02-17T17.51.06.png
+dumping page HTML to /builds/hjwp/book-example/src/functional_tests/screendumps/NewVisitorTest.test_multiple_users_can_start_lists_at_different_urls-2025-02-17T17.51.06.html
+======================================================================
+FAIL: test_can_start_a_todo_list (functional_tests.test_simple_list_creation.NewVisitorTest.test_can_start_a_todo_list)
+[...]
 ----
 
-We can go and visit these in the "workspace", which is the folder Jenkins
-uses to store our source code and run the tests in, as in
-<<screenshots-in-workspace>>.
 
-[[screenshots-in-workspace]]
-[role="width-75"]
-.Visiting the project workspace
-image::images/twp2_2410.png["workspace files including screenshot"]
+And to the right some new UI options appear to **Browse** the artifacts,
+as in <<gitlab_ui_for_browse_artifacts>>.
 
-And then we look at the screenshot, as shown in <<normal-screenshot>>.
-
-[[normal-screenshot]]
-[role="width-75"]
-.Screenshot looking normal
-image::images/twp2_2411.png["Screenshot of site page"]
+.Artifacts Appear on the Right of the Build Job
+[[gitlab_ui_for_browse_artifacts]]
+image::images/gitlab_ui_for_browse_artifacts.png["GitLab UI tab showing the option to browse artifacts"]
 
 
+And if you navigate through, you'll see something like <<gitlab_ui_show_screenshot>>:
 
-If in Doubt, Try Bumping the Timeout!
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Our Screenshot in the GitLab UI, Looking Unremarkable
+[[gitlab_ui_show_screenshot]]
+image::images/gitlab_ui_show_screenshot.png["GitLab UI showing a normal-looking screenshot of the site"]
 
-((("", startref="CIscreen24")))((("", startref="screen24")))((("", startref="DBscreen24")))((("", startref="HTMLscreen24")))((("Continuous Integration (CI)", "timeout bumping")))((("Jenkins", "timeout bumping")))Hm.  No obvious clues there.  Well, when in doubt, bump the timeout, as the
-old adage goes:
+
+
+=== If in Doubt, Try Bumping the Timeout!
+
+((("", startref="CIscreen24")))
+((("", startref="screen24")))
+((("", startref="DBscreen24")))
+((("Continuous Integration (CI)", "timeout bumping")))
+((("CI", "timeout bumping")))
+Hm.  No obvious clues there.
+Well, when in doubt, bump the timeout, as the old adage goes:
 
 [role="sourcecode skipme"]
 .src/functional_tests/base.py
 ====
 [source,python]
 ----
-MAX_WAIT = 20
+MAX_WAIT = 10
 ----
 ====
 
-Then we can rerun the build on Jenkins using "Build Now", and confirm it now
-works, as in <<outlook-brighter>>.
+Then we can rerun the build by pushing, and confirm it now works,
 
-[[outlook-brighter]]
-[role="width-75"]
-.The outlook is brighter
-image::images/twp2_2412.png["Build showing a recent pass and sun-peeking-through-clouds logo"]
 
-Jenkins uses blue to indicate passing builds rather than green, which is a bit
-disappointing, but look at the sun peeking through the clouds:  that's cheery!
-It's an indicator of a moving average ratio of passing builds to failing
-builds.  Things are looking up!
+=== A Successful Python Test Run
+
+At this point we should get a working pipeline, <<gitlab_pipeline_success>>:
+
+.A Successful GitLab Pipeline
+[[gitlab_pipeline_success]]
+image::images/gitlab_pipeline_success.png["GitLab UI showing a successful pipeline run"]
 
 
 
 
+=== Running Our JavaScript Tests in CI
 
-Running Our QUnit JavaScript Tests in Jenkins with PhantomJS
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+((("Continuous Integration (CI)", "QUnit JavaScript tests", id="CIjs5")))
+((("JavaScript testing", "in CI", secondary-sortas="CI", id="JSCI")))
+There's a set of tests we almost forgot--the JavaScript tests.
+Currently our "test runner" is an actual web browser.
+To get them running in CI, we need a command-line test runner.
 
-((("Continuous Integration (CI)", "QUnit JavaScript tests", id="CIqunit24")))((("Jenkins", "QUnit JavaScript tests with", id="Jqunit24")))((("PhantomJS", id="phantom24")))((("QUnit", id="qunit24")))((("JavaScript testing", "in Jenkins with PhantomJS", secondary-sortas="Jenkins", id="JSTjenkins24")))There's
-a set of tests we almost forgot--the JavaScript tests. Currently
-our "test runner" is an actual web browser.  To get Jenkins to run them, we
-need a command-line test runner.  Here's a chance to use PhantomJS.
+NOTE: Our JavaScript tests currently test the interaction
+    between our code and the bootstrap framework/CSS,
+    so we still need a real browser to be able to make our
+    visibility checks work.
 
 
-Installing node
-^^^^^^^^^^^^^^^
+Thankfully, the Jasmine docs point us straight towards the kind of tool we need:
+https://github.com/jasmine/jasmine-browser-runner[Jasmine Browser Runner].
 
-It's time to stop pretending we're not in the JavaScript game.  We're doing
-web development.  That means we do JavaScript.  That means we're going to end
-up with node.js on our computers.  It's just the way it has to be.
 
-Follow the instructions on the http://nodejs.org/[node.js homepage]. There are
-installers for Windows and Mac, and repositories for popular Linux
-distros.footnote:[Make sure you get the latest version. On Ubuntu, use the PPA
-rather than the default package.]
+==== Installing node
 
-Once we have node, we can install phantom:
+It's time to stop pretending we're not in the JavaScript game.
+We're doing web development.  That means we do JavaScript.
+That means we're going to end up with node.js on our computers.
+It's just the way it has to be.
 
-[role="skipme"]
-[subs="specialcharacters,quotes"]
-----
-$ *npm install -g phantomjs-prebuilt*  # the -g means "system-wide".
-----
-
-Next we pull down a QUnit/PhantomJS test runner.  There are several out there
-(I even wrote a basic one to be able to test the QUnit listings in this book), 
-but the best one to get is probably the one that's linked from the
-http://qunitjs.com/plugins/[QUnit plugins page]. At the time of writing, its
-repo was at https://github.com/jonkemp/qunit-phantomjs-runner.  The only file
-you need is 'runner.js'.
-
-You should end up with this:
+Follow the instructions on the http://nodejs.org/[node.js homepage],
+and follow the instructions there.
+It should guide you through installing the "node version manager" (NVM),
+and then to getting the latest version of node.
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-$ *tree src/lists/static/tests/*
-src/lists/static/tests/
-├── qunit-2.0.1.css
-├── qunit-2.0.1.js
-├── runner.js
-└── tests.html
-
-0 directories, 4 files
+$ *nvm install 22*  # or whichver the latest version is
+Installing Node v22.14.0 (arm64)
+[...]
+$ *node -v*
+v22.14.0
 ----
 
-Let's try it out:
 
+==== Installing and Configuring the Jasmine Browser Runner
+
+The docs suggest we install it like this,
+and then run the `init` command to generate a default config file:
+
+// TODO: unskip. should be able to do some sort of rule=with-cd thingie
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-$ *phantomjs src/lists/static/tests/runner.js src/lists/static/tests/tests.html*
-Took 24ms to run 2 tests. 2 passed, 0 failed.
+$ *cd src/lists/static*
+
+$ *npm install --save-dev jasmine-browser-runner jasmine-core*
+[...]
+added 151 packages in 4s
+
+$ *cat package.json*  # this is the equivalent of requirement.txt
+{
+  "devDependencies": {
+    "jasmine-browser-runner": "^3.0.0",
+    "jasmine-core": "^5.6.0"
+  }
+}
+
+$ *ls node_modules/*
+# will show several dozen directories
+
+$ *npx jasmine-browser-runner init*
+Wrote configuration to spec/support/jasmine-browser.mjs.
 ----
 
-Just to be sure, let's deliberately break something:
+Well we now have about a million files in _node_modules/_
+(which is JavaScript's verions of a virtualenv essentially),
+and we also have a new config file in _spec/support/jasmine-browser.mjs_.
 
-[role="sourcecode skipme"]
-.src/lists/static/tests/Spec.js (ch23l019)
+That's not the ideal place, because we've said our tests live in a folder called _tests_,
+so let's move the config file in there.
+
+[subs="specialcharacters,quotes"]
+----
+$ *mv spec/support/jasmine-browser.mjs tests/jasmine-browser-runner.config.mjs*
+$ *rm -rf spec*
+----
+
+Then let's edit it slightly, to specify a few things correctly:
+
+[role="sourcecode"]
+.src/lists/static/tests/jasmine-browser-runner.config.mjs (ch25l013)
 ====
-[source,javascript]
+[source,js]
 ----
-  it("sense-check our html fixture", () => {
+export default {
+  srcDir: ".",  // <1>
+  srcFiles: [
+    "*.js"
+  ],
+  specDir: "tests",  // <2>
+  specFiles: [
+    "**/*[sS]pec.js"
+  ],
+  helpers: [
+    "helpers/**/*.js"
+  ],
+  env: {
+    stopSpecOnExpectationFailure: false,
+    stopOnSpecFailure: false,
+    random: true,
+    forbidDuplicateNames: true
+  },
+  listenAddress: "localhost",
+  hostname: "localhost",
+  browser: {
+    name: "headlessFirefox"  // <3>
+  }
+};
+----
+====
+
+<1> our source files are in the current directory,
+    _src/lists/static_, ie _lists.js_
+
+<2> and our spec files are in _tests/_
+
+<3> And here we say we want to use the "headless"
+    version of Firefox.
+    (we could have done this by setting `MOZ_HEADLESS`
+    at the command line again, but this saves us from having to remember).
+
+
+Let's try running it now. We use the `--config` option to path it
+the now non-standard path to the config file:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *npx jasmine-browser-runner runSpecs --config=tests/jasmine-browser-runner.config.mjs*
+Jasmine server is running here: http://localhost:62811
+Jasmine tests are here:         ...goat-book/src/lists/static/tests
+Source files are here:          ...goat-book/src/lists/static
+Running tests in the browser...
+Randomized with seed 17843
+Started
+.F.
+
+Failures:
+1) Superlists tests error message should be hidden on input
+  Message:
+    Expected true to be false.
+  Stack:
+    <Jasmine>
+    @http://localhost:62811/__spec__/Spec.js:46:40
+    <Jasmine>
+
+3 specs, 1 failure
+Finished in 0.014 seconds
+Randomized with seed 17843 (jasmine-browser-runner runSpecs --seed=17843)
+----
+
+Could be worse!   1 failure out of 3 specs.
+
+Unfortunately, it's the most important test:
+
+[role="sourcecode currentcontents"]
+.src/lists/static/tests/Spec.js
+====
+[source,python]
+----
+  it("error message should be hidden on input", () => {
+    initialize(inputSelector);
+    textInput.dispatchEvent(new InputEvent("input"));
+
     expect(errorMsg.checkVisibility()).toBe(false);
   });
 ----
 ====
 
-Sure enough:
+Ah yes, if you remember I said, the whole reason we need to use a browser-based test runner,
+is because our visibility checks depend on the bootstrap CSS framework?
+
+In the HTML spec runner which we'd configured so far,
+we load Bootstrap using a `<link>` tag:
+
+[role="sourcecode currentcontents"]
+.src/lists/static/tests/SpecRunner.html
+====
+[source,python]
+----
+  <!-- Bootstrap CSS -->
+  <link href="../bootstrap/css/bootstrap.min.css" rel="stylesheet">
+----
+====
+
+And here's how we load it for `jasmine-browser-runner`:
+
+[role="sourcecode"]
+.src/lists/static/tests/jasmine-browser-runner.config.mjs (ch25l014)
+====
+[source,js]
+----
+export default {
+  srcDir: ".",
+  srcFiles: [
+    "*.js"
+  ],
+  specDir: "tests",
+  specFiles: [
+    "**/*[sS]pec.js"
+  ],
+  cssFiles: [  // <1>
+    "bootstrap/css/bootstrap.min.css"  // <1>
+  ],
+  helpers: [
+    "helpers/**/*.js"
+  ],
+----
+====
+
+<1> The `cssFiles` key is how you tell the runner to load, er, some CSS.
+    I found that out in the https://jasmine.github.io/api/browser-runner/edge/Configuration.html[docs]
+
+
+Let's give that a go...
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-$ *phantomjs lists/static/tests/runner.js lists/static/tests/tests.html*
+$ *npx jasmine-browser-runner runSpecs --config=tests/jasmine-browser-runner.config.mjs*
+Jasmine server is running here: http://localhost:62901
+Jasmine tests are here:         /Users/harry.percival/workspace/Book-TDD-Web-Dev-Python/source/chapter_25_CI/superlists/src/lists/static/tests
+Source files are here:          /Users/harry.percival/workspace/Book-TDD-Web-Dev-Python/source/chapter_25_CI/superlists/src/lists/static
+Running tests in the browser...
+Randomized with seed 06504
+Started
+...
 
-Test failed: errors should be hidden on keypress
-    Failed assertion: expected: false, but was: true
-file://...goat-book/lists/static/tests/tests.html:27:15
 
-Took 27ms to run 2 tests. 1 passed, 1 failed.
+3 specs, 0 failures
+Finished in 0.016 seconds
+Randomized with seed 06504 (jasmine-browser-runner runSpecs --seed=06504)
 ----
 
-All right!  Let's unbreak that, commit and push the runner, and then add it to
-our [keep-together]#Jenkins# build:
+Hooray!  That works locally, let's get it into CI.
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
 ----
-$ *git checkout lists/static/list.js*
-$ *git add lists/static/tests/runner.js*
-$ *git commit -m "Add phantomjs test runner for javascript tests"*
-$ *git push* 
+# add the package.json, which saves our node depenencies
+$ *git add src/lists/static/package.json src/lists/static/package-lock.json*
+# ignore the node_modules/ directory
+$ *echo "node_modules/" >> .gitignore*
+# and our config file
+$ *git add src/lists/static/tests/jasmine-browser-runner.config.mjs*
+$ *git commit -m "config for node + jasmine-browser-runner for JS tests"*
 ----
+//015,016,017
 
 
-Adding the Build Steps to Jenkins
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Edit the project configuration again, and add a step for each set of 
-JavaScript tests, as per <<js-unit-tests-jenkey>>.
 
 
-[[js-unit-tests-jenkey]]
-.Add a build step for our JavaScript unit tests
-image::images/new_jenkins_phantomjs_screenshot.png["JS test runner setup"]
+==== Adding A Build Step for Js
 
-You'll also need to install PhantomJS on the server:
+
+We now want two different build steps,
+so let's rename `test` to `test-python` and move all its
+specific bits like `variables` and `before_script` inside it,
+and then create a separate step calleed `test-js`,
+with a similar structure:
+
+[role="sourcecode"]
+..gitlab-ci.yml (ch25l018)
+====
+[source,yaml]
+----
+test-python:
+  # Use the same image as our Dockerfile
+  image: python:slim  # <1>
+
+  variables:  # <1>
+    # Put pip-cache in home folder so we can use gitlab cache
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    # Make Firefox run headless.
+    MOZ_HEADLESS: "1"
+
+  cache:  # <1>
+    paths:
+      - .cache/pip
+
+  # "setUp" phase, before the main build
+  before_script:  # <1>
+    - python --version ; pip --version  # For debugging
+    - pip install virtualenv
+    - virtualenv .venv
+    - source .venv/bin/activate
+
+  script:
+    - pip install -r requirements.txt
+    # unit tests
+    - python src/manage.py test lists accounts
+    # (if those pass) all tests, incl. functional.
+    - apt update -y && apt install -y firefox-esr
+    - pip install selenium
+    - cd src && python manage.py test
+
+  artifacts:
+    when: always
+    paths:
+      - src/functional_tests/screendumps/
+
+test-js:  # <2>
+  image: node:slim
+  script:
+    - apt update -y && apt install -y firefox-esr  # <3>
+    - cd src/lists/static
+    - npm install  # <4>
+    - npx jasmine-browser-runner runSpecs
+      --config=tests/jasmine-browser-runner.config.mjs  # <5>
+----
+====
+
+<1> `image`, `variables`, `cache`, and `before_script` all move
+    out of the top level and into the `test-python` step,
+    since they're all specific to this step only, now.
+
+<2> Here's our new step, `test-js`.
+
+<3> We install Firefox into the node image,
+    just like we do for the Python one.
+
+<4> We don't need to specify _what_ to `npm install`,
+    because that's all in the _package-lock.json_ file.
+
+<5> And here's our command to run the tests.
+
+And slap me over the head with a wet fish if that doesn't pass first go!
+See <<gitlab_pipeline_js_success>> for a successful pipeline run.
+
+
+.Wow, There are Those JS Tests, Passing on the First Attempt!
+[[gitlab_pipeline_js_success]]
+image::images/gitlab_pipeline_js_success.png["GitLab UI showing a successful pipeline run with JS tests"]
+
+((("", startref="CIjs5")))
+((("", startref="JSCI")))
+
+
+
+=== Tests now pass
+
+And there we are!  A complete CI build featuring all of our tests! <<gitlab_pipeline_overview_success.png>>:
+
+.Here are Both Our Jobs in all their Green Glory
+[[gitlab_pipeline_overview_success.png]]
+image::images/gitlab_pipeline_overview_success.png["GitLab UI the pipeline overview, with both build jobs green"]
+
+
+Nice to know that, no matter how lazy I get
+about running the full test suite on my own machine, the CI server will catch me.
+Another one of the Testing Goat's agents in cyberspace, watching over us...
+
+
+
+I've moved it to an appendix tho, cos it's so gitlab-heavy.
+
+.Alternatives: Woodpecker and Forgejo
+*******************************************************************************
+
+I want to give a shout out to https://woodpecker-ci.org/[Woodpecker CI]
+and https://forgejo.com/[Forgejo], two of the newer self-hosted CI options.
+And while I'm at it, to https://www.jenkins.io/[Jenkins],
+which did a great job for the first and second editions,
+and still does for many people.
+
+If you want true independence from overly commercial interests,
+then self-hosted is the way to go.
+You'll need your own server for both of these.
+
+I tried both, and managed to get them working within an hour or two.
+Their documentation is good.
+
+If you do decide to give them a go, I'd say,
+be a bit cautious about security options.
+
+For example, you might decide you don't want any old person from the Internet
+to be able to sign up for an account on your server:
+
 
 [role="skipme"]
-[subs="specialcharacters,quotes"]
 ----
-root@server:$ *add-apt-repository -y ppa:chris-lea/node.js*
-root@server:$ *apt update*
-root@server:$ *apt install nodejs*
-root@server:$ *npm install -g phantomjs-prebuilt*
+DISABLE_REGISTRATION: true
 ----
 
-And there we are!  A complete CI build featuring all of our tests!
+But more power to you for giving it a go, I say!
+
+*******************************************************************************
 
 
-[role="skipme"]
-----
-Started by user harry
-Building in workspace /var/lib/jenkins/jobs/Superlists/workspace
-Fetching changes from the remote Git repository
-Fetching upstream changes from https://github.com/hjwp/book-example.git
-Checking out Revision 936a484038194b289312ff62f10d24e6a054fb29 (origin/chapter_1
-Xvfb starting$ /usr/bin/Xvfb :1 -screen 0 1024x768x24 -fbdir /var/lib/jenkins/20
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7092102504259037999.sh
+=== Some Things We Didn't Cover
 
-+ pip install -r requirements.txt
-[...]
+==== Defining a Docker image for CI
 
-+ python manage.py test lists
-.................................
- ---------------------------------------------------------------------
-Ran 43 tests in 0.229s
+We spent quite a bit of time debugging, for example the unhelpful messages
+when Firefox wasn't installed.
+Just as we did when preparing our deployment,
+being able to have an environment that you can run on your local machine
+that's as close as possible to what you have remotely,
+is a big help;  that's why we chose to use Docker image.
 
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
+In CI our tests also run a Docker image (`python:slim` and `node:slim`),
+so one common pattern is to define a Docker image,
+in your repo, that you will use for CI.
+Ideally it would also be as similar as possible to the one you use in production!
+A typical solution here is to use "multi-stage" Docker builds,
+with a base stage, a prod stage, and a dev/ci stage.
+In our case, that latter would have Firefox, selenium,
+and other test-only dependencies in it, that we don't need for prod.
 
-+ python manage.py test accounts
-..................
- ---------------------------------------------------------------------
-Ran 18 tests in 0.078s
+You can then run your tests locally inside the same Docker image that's used in CI.
+This
 
-OK
-Creating test database for alias 'default'...
-Destroying test database for alias 'default'...
-
-[workspace] $ /bin/sh -xe /tmp/hudson2967478575201471277.sh
-+ phantomjs lists/static/tests/runner.js lists/static/tests/tests.html
-Took 32ms to run 2 tests. 2 passed, 0 failed.
-+ phantomjs lists/static/tests/runner.js accounts/static/tests/tests.html
-Took 47ms to run 11 tests. 11 passed, 0 failed.
-
-[workspace] $ /bin/sh -xe /tmp/shiningpanda7526089957247195819.sh
-+ pip install selenium
-Requirement already satisfied (use --upgrade to upgrade): selenium in /var/lib/
-
-Cleaning up...
-[workspace] $ /bin/sh -xe /tmp/shiningpanda2420240268202055029.sh
-+ python manage.py test functional_tests
-........
- ---------------------------------------------------------------------
-Ran 8 tests in 76.804s
-
-OK
-----
+TIP: _Reproducibility_ is one of the key attributes we're aiming for.
+    The more your project grows in complexity,
+    the more it's worth investing in minimising the differences
+    between local dev, CI, and prod.
 
 
+==== Caching
+
+We touched on the use of caches in CI for the pip download cache,
+but as CI pipelines grow in maturity,
+you'll find you can make more and more use of caching.
+
+It's a topic for another time, but this is yet another way
+of trying to speed up the feedback cycle.
 
 
-((("", startref="CIqunit24")))
-((("", startref="Jqunit24")))
-((("", startref="phantom24")))
-((("", startref="qunit24")))
-((("", startref="JSTjenkins24")))
-Nice to know that, no matter how lazy I get about running the full test suite
-on my own machine, the CI server will catch me.  Another one of the Testing
-Goat's agents in cyberspace, watching over us...
+==== Automated Deployment, aka Continuous Delivery (CD)
+
+The natural next step is to finish our journey into automation,
+and set up a pipeline that will deploy our code all the way to production,
+each time we push code... as long as the tests pass!
+
+I work through an example of how to do that in <<appendix_CD>>.
+I definitely encourage you to take a look.
+
+Now, onto our last chapter of coding, everyone!
 
 
-
-More Things to Do with a CI Server
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-((("Continuous Integration (CI)", "additional uses for")))I've
-only scratched the surface of what you can do with Jenkins and CI servers.
-For example, you can make it much smarter about how it monitors your repo for
-new commits.footnote:[See this reader's 
-https://blog.longearsfor.life/blog/2018/07/30/jenkins-and-github-integration-testinggoat-book/[blog post on the topic for example]]
-
-Perhaps more interestingly, you can use your CI server to automate your staging
-tests as well as your normal functional tests.  If all the FTs pass, you can
-add a build step that deploys the code to staging, and then reruns the FTs 
-against that--automating one more step of the process, and ensuring that your
-staging server is automatically kept up to date with the latest code.
-
-Some people even use a CI server as the way of deploying their production
-releases!
-
-
-.Tips on CI and Selenium Best Practices
+.Best Practices for CI (including Selenium Tips)
 *******************************************************************************
 
 Set up CI as soon as possible for your project::
-    ((("Selenium", "best CI practices")))((("Continuous Integration (CI)", "tips")))As
-soon as your functional tests take more than a few seconds to run,
-    you'll find yourself avoiding running them all. Give this job to a CI
-    server, to make sure that all your tests are getting run somewhere.
-    
+    As soon as your functional tests take more than a few seconds to run,
+    you'll find yourself avoiding running them all.
+    Give this job to a CI server,
+    to make sure that all your tests are getting run somewhere.
+    ((("Selenium", "best CI practices")))
+    ((("Continuous Integration (CI)", "tips")))
+
+Optimise for fast feedback::
+    CI feedback loops can be frustratingly slow.
+    Optimising things to get results quicker is worth the effort.
+    Run your fastest tests first,
+    and try to minimise time spent on, eg, dependency installation,
+    by using caches.
 
 Set up screenshots and HTML dumps for failures::
-    ((("screenshots")))((("debugging", "screenshots for")))((("HTML", "screenshot dumps")))Debugging
-test failures is easier if you can see what the page looked
+    Debugging test failures is easier if you can see what the page looked
     like when the failure occurred.  This is particularly useful for debugging
     CI failures, but it's also very useful for tests that you run locally.
+    ((("screenshots")))
+    ((("debugging", "screenshots for")))
+    ((("HTML", "screenshot dumps")))
 
 Be prepared to bump your timeouts::
-    A CI server may not be as speedy as your laptop, especially if it's under
-    load, running multiple tests at the same time.  Be prepared to be even
-    more generous with your timeouts, in order to minimise the chance of
-    random failures.
+    A CI server may not be as speedy as your laptop,
+    especially if it's under load, running multiple tests at the same time.
+    Be prepared to be even more generous with your timeouts,
+    in order to minimise the chance of random failures.
+    ((("Flaky tests")))
 
-Look into hooking up CI and staging::
-    ((("Continuous Integration (CI)", "staging and")))((("staging sites", "continuous integrations and")))Tests
-that use `LiveServerTestCase` are all very well for dev boxes,
-    but the true reassurance comes from running your tests against a real 
-    server.  Look into getting your CI server to deploy to your staging server,
-    and run the functional tests against that instead.  It has the side benefit
-    of testing your automated deploy scripts.((("", startref="CI24")))
-    
+Take the next step, CD (Continuous Delivery)::
+    Once we're running tests automatically,
+    we can take the next step which is to automated our deployments
+    (when the tests pass). See <<appendix_CD>> for a worked example.
+    ((("Continuous Delivery (CD)")))
 
 *******************************************************************************
 
