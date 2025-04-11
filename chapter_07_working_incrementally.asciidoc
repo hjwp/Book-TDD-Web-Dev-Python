@@ -693,7 +693,7 @@ FAIL: test_can_start_a_todo_list
 (functional_tests.tests.NewVisitorTest.test_can_start_a_todo_list)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "...goat-book/functional_tests/tests.py", line 63, in
+  File "...goat-book/functional_tests/tests.py", line 62, in
 test_can_start_a_todo_list
 [...]
 AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
@@ -710,6 +710,64 @@ test_multiple_users_can_start_lists_at_different_urls
 AssertionError: 'Buy peacock feathers' unexpectedly found in 'Your To-Do
 list\n1: Buy peacock feathers'
 ----
+
+
+.Another Race Condition example
+*******************************************************************************
+You may have noticed that the assertions around line 63 are in a slightly
+unexpected order:
+
+[role="sourcecode currentcontents"]
+.functional_tests/tests.py
+====
+[source,python]
+----
+    # The page updates again, and now shows both items on her list
+    self.wait_for_row_in_list_table("2: Use peacock feathers to make a fly")
+    self.wait_for_row_in_list_table("1: Buy peacock feathers")
+----
+====
+
+Try putting them the other way around, 1 then 2, and run the FTs a few times.
+There's a good chance you'll notice an inconsistency in the results.
+Sometimes you see:
+
+[role="skipme"]
+----
+AssertionError: '1: Buy peacock feathers' not found in ['1: Use peacock
+feathers to make a fly']
+----
+
+and sometimes you'll see
+
+
+[role="skipme"]
+----
+AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
+peacock feathers']
+----
+
+That's because of a race condition between the Selenium assertions in the FT,
+and the server returning our new page.
+Just before we hit ENTER,
+the page is still showing `1: Buy peacock feathers`.
+Our next assertions is then checking for `1: Buy peacock feathers`,
+which is already on the page.
+But, at the same time, the server is busy returning a new page that says
+`1: Use peacock feathers to make a fly`.
+
+So, depending on who gets there first,
+the first assert may pass or fail,
+so you may get an error on the first assert, or on the second.
+
+That's why I put the assertions "backwards",
+so we check for `2: Use peacock feathers` _first_,
+because it should _never_ be present on the old page,
+meaning as soon as we detect it, we must be on the new page.
+
+Subtle, right?  Selenium tests are fiddly like that.
+
+*******************************************************************************
 
 
 Not only is our new test failing, but the old one is too.
@@ -919,7 +977,10 @@ $ *touch lists/templates/list.html*
 A blank template, which gives us this error--good to know the tests are
 there to make sure we fill it in:
 
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*python manage.py test lists*]
+[...]
 AssertionError: False is not true : Couldn't find 'itemey 1' in the following
 response
 ----
@@ -2002,7 +2063,7 @@ FAIL: test_can_start_a_todo_list
 (functional_tests.tests.NewVisitorTest.test_can_start_a_todo_list)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "...goat-book/functional_tests/tests.py", line 63, in
+  File "...goat-book/functional_tests/tests.py", line 62, in
 test_can_start_a_todo_list
     self.wait_for_row_in_list_table("2: Use peacock feathers to make a fly")
 [...]
