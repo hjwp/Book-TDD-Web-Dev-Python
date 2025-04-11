@@ -41,7 +41,7 @@ class Commit:
         return [
             l[1:]
             for l in self.all_lines
-            if l.startswith("+") and l[1:].strip() and not l[1] == "+"
+            if l.startswith("+") and l[1:].strip() and l[1] != "+"
         ]
 
     @property
@@ -49,7 +49,7 @@ class Commit:
         return [
             l[1:]
             for l in self.all_lines
-            if l.startswith("-") and l[1:].strip() and not l[1] == "-"
+            if l.startswith("-") and l[1:].strip() and l[1] != "-"
         ]
 
     @property
@@ -98,6 +98,10 @@ class SourceTree:
         if cwd is None:
             cwd = self.tempdir
 
+        env = os.environ.copy()
+        if "manage.py test" in command:
+            # prevent stdout and stderr from appearing to come out in wrong order
+            env["PYTHONUNBUFFERED"] = "1"
         actual_command = command
         if command.startswith("fab deploy"):
             actual_command = f"cd deploy_tools && {command}"
@@ -107,6 +111,7 @@ class SourceTree:
             )
         elif command.startswith("curl"):
             actual_command = command.replace("curl", "curl --silent --show-error")
+
         process = subprocess.Popen(
             actual_command,
             shell=True,
@@ -117,6 +122,7 @@ class SourceTree:
             stdin=subprocess.PIPE,
             preexec_fn=os.setsid,
             universal_newlines=True,
+            env=env,
         )
         process._command = command
         self.processes.append(process)
