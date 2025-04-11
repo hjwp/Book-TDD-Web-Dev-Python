@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+import os
 import unittest
 
 from book_tester import (
@@ -7,9 +7,10 @@ from book_tester import (
     Command,
 )
 
+
 class Chapter6Test(ChapterTest):
-    chapter_name = 'chapter_06_explicit_waits_1'
-    previous_chapter = 'chapter_05_post_and_database'
+    chapter_name = "chapter_06_explicit_waits_1"
+    previous_chapter = "chapter_05_post_and_database"
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
@@ -20,20 +21,19 @@ class Chapter6Test(ChapterTest):
         self.assertEqual(type(self.listings[2]), Command)
 
         # skips
-        self.skip_with_check(15, 'msg eg') # git
+        self.skip_with_check(15, "msg eg")  # git
 
         # other prep
         self.start_with_checkout()
         self.unset_PYTHONDONTWRITEBYTECODE()
-        self.run_command(Command('python3 manage.py migrate --noinput'))
+        self.run_command(Command("python3 manage.py migrate --noinput"))
 
         # hack fast-forward
-        skip = False
-        if skip:
+        if os.environ.get("SKIP"):
             self.pos = 127
-            self.sourcetree.run_command('git switch {}'.format(
-                self.sourcetree.get_commit_spec('ch06l036-2')
-            ))
+            self.sourcetree.run_command(
+                f"git switch {self.sourcetree.get_commit_spec('ch06l036-2')}"
+            )
 
         while self.pos < len(self.listings):
             print(self.pos)
@@ -43,5 +43,5 @@ class Chapter6Test(ChapterTest):
         self.check_final_diff()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

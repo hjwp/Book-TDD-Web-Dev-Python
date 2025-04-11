@@ -1,8 +1,6 @@
-import io
 import os
 import re
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
@@ -563,7 +561,6 @@ class ChapterTest(unittest.TestCase):
 
     def check_test_code_cycle(self, pos, test_command_in_listings=True, ft=False):
         self.write_to_file(self.listings[pos])
-        self._strip_out_any_pycs()
         if test_command_in_listings:
             pos += 1
             self.assertIn("test", self.listings[pos])
@@ -582,18 +579,11 @@ class ChapterTest(unittest.TestCase):
         if "PYTHONDONTWRITEBYTECODE" in os.environ:
             del os.environ["PYTHONDONTWRITEBYTECODE"]
 
-    def _strip_out_any_pycs(self):
-        return
-        self.sourcetree.run_command(
-            r"find . -name __pycache__ -exec rm -rf {} \;", ignore_errors=True
-        )
-
     def run_test_and_check_result(self, bdd=False):
         if bdd:
             self.assertIn("behave", self.listings[self.pos])
         else:
             self.assertIn("test", self.listings[self.pos])
-        self._strip_out_any_pycs()
         if bdd:
             test_run = self.run_command(self.listings[self.pos], ignore_errors=True)
         else:
@@ -882,7 +872,7 @@ class ChapterTest(unittest.TestCase):
                 fixed = Command(
                     fixed.replace(
                         "docker run --platform=linux/amd64 -t debug-ci",
-                        "docker run -e PYTHON_COLORS=0 --platform=linux/amd64 -t debug-ci"
+                        "docker run -e PYTHON_COLORS=0 --platform=linux/amd64 -t debug-ci",
                     )
                 )
             next_listing = self.listings[self.pos + 1]
@@ -947,7 +937,6 @@ class ChapterTest(unittest.TestCase):
             self.pos += 1
 
         elif listing.type == "output":
-            self._strip_out_any_pycs()
             test_run = self.run_unit_tests()
             if "OK" in test_run and "OK" not in listing:
                 print("unit tests pass, must be an FT:\n", test_run)
