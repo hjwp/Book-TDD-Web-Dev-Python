@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import unittest
 
 from book_tester import (
@@ -22,16 +21,16 @@ class Chapter5Test(ChapterTest):
         self.assertEqual(type(self.listings[1]), CodeListing)
         self.assertEqual(type(self.listings[2]), Command)
 
-        views_pos = 18
-        assert "def home_page" in self.listings[views_pos].contents
+        views_pos = 17
+        self.find_with_check(views_pos, "def home_page")
 
-        nutemplate_pos = 82
-        print(self.listings[nutemplate_pos])
-        assert '{"items": items}' in self.listings[nutemplate_pos].contents
+        nutemplate_pos = 84
+        nl = self.find_with_check(nutemplate_pos, '{"items": items}')
+        print(nl)
 
-        migrate_pos = 86
-        assert "migrate" in self.listings[migrate_pos]
-        assert self.listings[migrate_pos].type == "interactive manage.py"
+        migrate_pos = 88
+        ml = self.find_with_check(migrate_pos, "migrate")
+        assert ml.type == "interactive manage.py"
 
         self.start_with_checkout()
         self.start_dev_server()

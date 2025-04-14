@@ -500,21 +500,41 @@ class ChapterTest(unittest.TestCase):
             else:
                 self.assertLineIn(line.rstrip(), [l.strip() for l in actual_lines])
 
-        if len(expected_lines) > 4 and "[..." not in expected_fixed:
-            if expected.type != "qunit output":
-                self.assertMultiLineEqual(actual_fixed.strip(), expected_fixed.strip())
+        if (
+            len(expected_lines) > 4
+            and "[..." not in expected_fixed
+            and expected.type != "qunit output"
+        ):
+            self.assertMultiLineEqual(actual_fixed.strip(), expected_fixed.strip())
 
         expected.was_checked = True
 
-    def skip_with_check(self, pos, expected_content):
+    def find_with_check(self, pos, expected_content):
         listing = self.listings[pos]
+        listing_text = lambda l: getattr(l, "contents", l)
+        first_match = next(
+            (
+                (ix, l)
+                for ix, l in enumerate(self.listings)
+                if expected_content in listing_text(l)
+            ),
+            None,
+        )
         all_listings = "\n".join(str(t) for t in enumerate(self.listings))
-        error = f'Could not find {expected_content} at pos {pos}: "{listing}". Listings were:\n{all_listings}'
+        error = f'Could not find {expected_content} at pos {pos}: ("{listing}"). ' + (
+            f"Did you mean {first_match}?"
+            if first_match
+            else f"Listings were:\n{all_listings}"
+        )
         if hasattr(listing, "contents"):
             if expected_content not in listing.contents:
                 raise Exception(error)
         elif expected_content not in listing:
             raise Exception(error)
+        return listing
+
+    def skip_with_check(self, pos, expected_content):
+        listing = self.find_with_check(pos, expected_content)
         listing.skip = True
 
     def replace_command_with_check(self, pos, old, new):
