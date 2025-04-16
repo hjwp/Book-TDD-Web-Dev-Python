@@ -24,15 +24,15 @@ class Chapter8Test(ChapterTest):
         self.unset_PYTHONDONTWRITEBYTECODE()
 
         # skips
-        self.skip_with_check(25, "the -w means ignore whitespace")
-        self.skip_with_check(28, "leave static, for now")
-        self.skip_with_check(50, "will now show all the bootstrap")
+        self.skip_with_check(24, "the -w means ignore whitespace")
+        self.skip_with_check(27, "leave static, for now")
+        self.skip_with_check(49, "will now show all the bootstrap")
 
         # hack fast-forward
         if os.environ.get("SKIP"):
-            self.pos = 55
+            self.pos = 9
             self.sourcetree.run_command(
-                "git checkout {}".format(self.sourcetree.get_commit_spec("ch08l018"))
+                f"git checkout {self.sourcetree.get_commit_spec('ch08l003')}"
             )
 
         while self.pos < len(self.listings):
