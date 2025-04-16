@@ -24,11 +24,11 @@ class Chapter5Test(ChapterTest):
         views_pos = 17
         self.find_with_check(views_pos, "def home_page")
 
-        nutemplate_pos = 84
+        nutemplate_pos = 85
         nl = self.find_with_check(nutemplate_pos, '{"items": items}')
         print(nl)
 
-        migrate_pos = 88
+        migrate_pos = 89
         ml = self.find_with_check(migrate_pos, "migrate")
         assert ml.type == "interactive manage.py"
 
