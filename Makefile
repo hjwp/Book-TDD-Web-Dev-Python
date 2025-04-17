@@ -27,6 +27,7 @@ part%.forbook.asciidoc: part%.asciidoc
 book.html: part1.forbook.asciidoc
 book.html: part2.forbook.asciidoc
 book.html: part3.forbook.asciidoc
+book.html: part4.forbook.asciidoc
 book.html: $(SOURCES)
 
 
