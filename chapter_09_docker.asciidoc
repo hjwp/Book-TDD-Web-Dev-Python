@@ -234,6 +234,21 @@ TIP: I'm deliberately choosing a different port to run Dockerised Django on (888
     we're looking at Docker, when we're actually looking at a local `runserver`
     that I've left running in some terminal somewhere.
 
+.Ports
+*******************************************************************************
+Ports are what let you have multiple connections open at the same time on a single machine,
+the reason you can load two different websites at the same time, for example.
+
+Each network adapter has a range of ports, numbered from 0 to 65535.
+In a client/server connection, the client knows the port of the server,
+and the client operating system chooses a random local port for its side of the connection.
+
+When a server is "listening" on a port,
+no other service can bind to that port at the same time.
+That's why you can't run `manage.py runserver` in two different terminals
+at the same time, because both want to use port 8080 by default.
+*******************************************************************************
+
 We'll use the `--failfast` option to exit as soon as a single test fails:
 
 
@@ -475,9 +490,6 @@ What do we need to do?  Something like this, right?
 We create a new file called _Dockerfile_ in the base folder of our repo,
 next to the `src/` directory we made earlier:
 
-// JAN: I'd suggest to use python3.11:slim or python3:12 slim. Keeping image tags too open leads to issues in a couple of months (not always, but waaay too often)
-
-
 
 [role="sourcecode"]
 .Dockerfile (ch09l003)
@@ -603,7 +615,6 @@ superlists   latest    522824a399de   2 minutes ago    164MB
 NOTE: If you see an error about `failed to solve / compute cache key` and `src: not found`
   it may be because you saved the Dockerfile into the wrong place.
   Have another look at the directory tree from earlier <<tree-with-src-and-dockerfile>>.
-
 
 
 
@@ -743,19 +754,7 @@ WARNING: Make sure you use the `-it` flags to the Docker `run`
 .How to Stop a Docker Container
 *******************************************************************************
 If you've got a container that's "hanging" in a terminal window,
-you can kill it from another one.
-// CSANAD:  `docker stop` would trigger a graceful SIGTERM, `docker kill` sends a SIGKILL.
-//          SIGKILL would terminate the container even when SIGTERM cannot, but it could
-// also result in broken DB, leave the port "in use" or other side effects. I would prefer
-// using `docker stop` over `kill` and mention `kill` in case the container is still stuck.
-//
-// However, if we leave it with just `docker kill`, then maybe we should mention these
-// possible side effects and also the title should reflect it like:
-// "How to Forcefully Stop a Docker Container" (since "How to Kill a Container" may sound a bit
-// harsh...
-
-
-// DAVID: are we actually killing it from another container?
+you can kill it from another terminal.
 
 The docker daemon lets you list all the currently running containers
 with `docker ps`:
@@ -771,12 +770,16 @@ CONTAINER ID   IMAGE        COMMAND                  CREATED         STATUS     
 This tells us a bit about each container, including a unique ID,
 and a randomly-generated name (you can override that if you want to).
 
-We can use the ID or the name to kill the container with `docker kill`:
+We can use the ID or the name to kill the container with `docker stop`:footnote:[
+There is also a `docker kill` if you're in a hurry.
+But `docker stop` will send a `SIGKILL` if its initial `SIGTERM`
+doesn't work within a certain timeout.  More info in
+https://docs.docker.com/reference/cli/docker/container/stop/[the docker docs].]
 
 [role="skipme"]
 [subs="quotes"]
 ----
-$ *docker kill 0818e1b8e9bf*
+$ *docker stop 0818e1b8e9bf*
 0818e1b8e9bf
 ----
 
@@ -906,7 +909,7 @@ Let's try it now.  Notice that the shell prompt will change from your default Ba
 to `root@container-id`.  Watch out for those in future listings,
 so that you can be sure of what's being run inside vs outside containers.
 
-// I'll use a little hackery:
+// TODO: can use a little hackery, either in listing or in book_tester
 // $ pass:quotes[*docker exec -it $(docker ps --filter "ancestor=superlists" -q) bash*]
 
 [role="skipme"]
@@ -981,12 +984,11 @@ But we're just mapping 8888 to 8888, and that will look like this:
 $ *docker build -t superlists . && docker run -p 8888:8888 -it superlists*
 ----
 
-Now that will _change_ the error we see, but only quite subtly (see <<firefox-connection-reset>>).
+Now that will _change_ the error we see, but only quite subtly (see <<firefox-connection-reset>>).footnote:[
+TIP: If you use Chrome as your web browser,
+its error is something like "localhost didn’t send any data. ERR_EMPTY_RESPONSE"]
 Things clearly aren't working yet.
 
-// DAVID: FWIW in Chrome the message is "127.0.0.1 didn’t send any data."
-
-//RITA: If at all possible, I suggest using the light or daytime theme for all browser screenshots to make them easier to read.
 
 [[firefox-connection-reset]]
 .Cannot connect on that port
@@ -999,7 +1001,7 @@ Similarly, if you try our `curl -iv` (outside the container) once again,
 you'll see the error has changed from "Failed to connect",
 to "Empty reply":
 
-// TODO: CI consistently says "connection reset by peer",
+// CI consistently says "connection reset by peer",
 // locally it's empty reply, no matter what curl version
 
 [role="ignore-errors skipme"]
@@ -1016,7 +1018,6 @@ $ pass:quotes[*curl -iv localhost:8888*]
 * Empty reply from server
 * Closing connection
 curl: (52) Empty reply from server
-
 ----
 
 NOTE: Depending on your system, instead of `(52) Empty reply from server`,
@@ -1024,24 +1025,23 @@ NOTE: Depending on your system, instead of `(52) Empty reply from server`,
   They mean the same thing: we can connect but we don't get a response.
 
 
-
 ==== Essential Googling the Error Message
 
-The need to map ports and the `-p` argument to `docker run` are something you just learn,
-fairly early on in learning Docker.  But the next debugging step is quite a bit more obscure
+The need to map ports and the `-p` argument to `docker run` are something you just pick up,
+fairly early on in learning Docker.
+But the next debugging step is quite a bit more obscure
 (although admittedly Itamar does address it in his
 https://pythonspeed.com/articles/docker-connection-refused/[docker networking article],
 did I already mention how excellent it is?).
 
 
-But if we haven't read that, we can always resort to the tried and tested "Googling the error message" technique instead
-(<<googling-the-error>>).
+But if we haven't read that, we can always resort to the tried and tested
+"Googling the error message" technique instead (<<googling-the-error>>).
 
 
 [[googling-the-error]]
 .An indispensable publication (source: https://news.ycombinator.com/item?id=11459601[])
-image::images/orly-essential-googling-the-error-message.png["Cover of a fake O'Reilly book called Googling the Error Message",400]
-
+image::images/orly-essential-googling-the-error-message.png["Cover of a fake O'Reilly book called Essential Googling the Error Message",400]
 
 Everyone's search results are a little different,
 and mine are perhaps shaped by years of working with Docker and Django,
@@ -1049,7 +1049,13 @@ but I found the answer in my very first result
 (see <<google-results-screenshot>>),
 when I searched for "cannot access django runserver inside docker",
 and the result was was a https://stackoverflow.com/questions/49476217/docker-cant-access-django-server[stackoverflow post],
-saying something about needing to specify `0.0.0.0` as the IP address.
+saying something about needing to specify `0.0.0.0` as the IP address.footnote:[
+Kids these days will probably ask an AI right?
+I have to say I tried it out, with the prompt being
+"i'm trying to run django inside a docker container,
+and i've mapped port 8888, but i still can't connect.
+can you suggest what the problem might be?",
+and it come up with a pretty good answer.]
 
 
 [[google-results-screenshot]]
@@ -1059,17 +1065,13 @@ image::images/google-results-with-stackoverflow.png["Google results with a usefu
 
 We're nearing the edges of my understanding of Docker now,
 but as I understand it, `runserver` binds to `127.0.0.1` by default,
-but that IP address doesn't correspond to the network adapter _inside_
+but that IP address doesn't correspond to a network adapter _inside_
 the container that's actually connected to the outside world,
 via the port mapping we defined earlier.
 
 The long and short of it is that
 we need use the long-form `ipaddr:port` version of the `runserver` command,
 using the magic "wilcard" IP address `0.0.0.0`:
-
-// DAVID: Some readers might not be that comfortable with the idea of ports.
-// I think this could do with more explanation.
-
 
 
 [role="sourcecode"]
@@ -1114,10 +1116,10 @@ Looking good!
 
 .On Debugging
 *******************************************************************************
-Let me let you in on a little secret.  I'm actually bad at debugging.
+Let me let you in on a little secret.  I'm actually not that good at debugging.
 We all have our psychological strengths and weaknesses,
-and one of my weaknesses is
-that when I run into a problem I can't see an obvious solution to,
+and one of my weaknesses is that
+when I run into a problem I can't see an obvious solution to,
 I want to throw up my hands way too soon
 and say "well, this is hopeless, it can't be fixed",
 and give up.
@@ -1132,7 +1134,7 @@ eliminate various aspects of the problem and simplify things down,
 find the parts that do and don't work,
 until you eventually find the cause.
 
-It always seems hopeless at first!  But eventually you get there.
+It might seems hopeless at first!  But eventually you usually get there :)
 
 *******************************************************************************
 
@@ -1144,7 +1146,7 @@ A quick visual inspection confirms--the site is up (<<site-in-docker-is-up>>)!
 
 [[site-in-docker-is-up]]
 .The site in Docker is up!
-image::images/twp2_0903.png["The front page of the site, at least, is up"]
+image::images/site-in-docker-is-up.png["The front page of the site, at least, is up"]
 
 
 Let's see what our functional tests say:
@@ -1175,12 +1177,15 @@ element: [id="id_list_table"]; For documentation [...]
 Although the FTs can connect happily and interact with our site,
 they are failing as soon as they try to submit a new item.
 
-It's because we haven't set up the database (which, as you may remember,
-we highlighted as one of the "danger areas" of deployment).
-You might have spotted the yellow Django debug page (<<django-debug-screen>>)
-telling us as much, or if you tried it manually.
+[[django-debug-screen]]
+.But the database isn't
+image::images/twp2_0904.png["Django DEBUG page showing database error"]
 
-// DAVID: Grammar on that last sentence?
+You might have spotted the yellow Django debug page (<<django-debug-screen>>)
+telling us why.
+It's because we haven't set up the database
+(which, as you may remember, we highlighted as one of the "danger areas" of deployment).
+
 
 NOTE: The tests saved us from potential embarrassment there.
     The site _looked_ fine when we loaded its front page.
@@ -1192,16 +1197,11 @@ NOTE: The tests saved us from potential embarrassment there.
     You can't check everything. The tests can.
 
 
-[[django-debug-screen]]
-.But the database isn't
-image::images/twp2_0904.png["Django DEBUG page showing database error"]
-
 
 To be fair, if you look back through the `runserver` command output
 each time we've been starting our container,
 you'll see it's been warning us about this issue:
 
-// DAVID: mix between 'you' and 'our' reads weirdly.
 
 [role="skipme"]
 ----
@@ -1214,7 +1214,8 @@ Run 'python manage.py migrate' to apply them.
 
 NOTE: If you don't see this error,
     it's because your src folder had the database file in it, unlike mine.
-    For the sake of argument, run `rm src/db.sqlite3` and re-run the build & run commands,
+    For the sake of argument,
+    run `rm src/db.sqlite3` and re-run the build & run commands,
     and you should be able to reproduce the error.  I promise it's instructive!
 
 
@@ -1263,24 +1264,41 @@ Ran 3 tests in 26.965s
 OK
 ----
 
-The problem is that this saves our database image into our system image,
+The problem is that this saves our database file into our system image,
 which is not what we want,
 because the system image is mean to be something fixed and stateless,
 whereas the database is living, stateful data that should change over time.
-// XUAN: would love to have more explantion for this, especially on how you arrive at the diagnosis of the problem, and why we don't want that.
-// That can help with understanding the following section of mounting the files inside the container as well.
 
-// DAVID: This is an important point which might need a bit more explanation.
-// What would happen if we did?
+.What would happen if we kept the database file in the image
+*******************************************************************************
+You can try this as a little experiment.
+Assuming you've got the `manage.py migrate` line in your Dockerfile:
+
+1. Create a new todo list and keep a note of its URL, eg at http://localhost:8888/lists/1/
+2. Now, `docker stop` your container, and rebuild a new one with the same
+  `build && run` command we used earlier
+
+3. Go back and try to retrieve your old list.  It's gone!
+
+This is because rebuilding the image
+will give us a brand new database each time.
+
+What we actually want,
+is for our database storage to be "outside" the container somehow,
+so it can persist between different versions of our Docker image.
+
+*******************************************************************************
 
 === Mounting files inside the container.
 
-We want the database on the server to have totally separate data from the one on our machine.
+We want the database on the server to be totally separate data from the data in
+the system image.
 
-In most deployments, you'd probably be talking to a separate database server, like postgres.
+In most deployments, you'd probably be talking to a separate database server,
+like Postgres.
 
 For the purposes of this book,
-the easiest analogy to a server that's "outside" our container,
+the easiest analogy to a database that's "outside" our container,
 is to access the database from the filesystem outside the container.
 
 That also gives us a convenient excuse to talk about mounting files in Docker,
@@ -1304,8 +1322,8 @@ CMD python manage.py runserver 0.0.0.0:8888
 ====
 
 
-Then let's make sure we _do_ have the database on our own machine,
-by running `migrate`:
+Then let's make sure we _do_ have the database on our local filesystem,
+by running `migrate`, on our local machine.
 (when we moved everything into `./src`, we left the database file behind).
 
 [subs="specialcharacters,quotes"]
@@ -1331,7 +1349,7 @@ $ *echo src/db.sqlite3 >> .dockerignore*
 ----
 //ch09l010, ch09l011
 
-Now we can rebuild and try mounting our database file.
+Now we rebuild, and try mounting our database file.
 The extra flag to add to the Docker run command is `--mount`,
 where we specify `type=bind`, the `source` path on our machine,
 and the `target` path _inside_ the container:
@@ -1344,9 +1362,9 @@ $ *docker build -t superlists . && docker run \
   -it superlists*
 ----
 
-TIP: The old syntax for mounts was `-v`.
-    One of the advantages of the new `--mount` syntax is that it will fail hard
-    if the path you're trying to mount into the container does not exist
+TIP: You're likely to come across the old syntax for mounts, which was `-v`.
+    One of the advantages of the new `--mount` version is that
+    it will fail hard if the path you're trying to mount does not exist
     (it says something like `bind source path does not exist`)
     This avoids a lot of pain, ask me how I know this.
 
@@ -1368,7 +1386,6 @@ OK
 ----
 
 AMAZING IT ACTUALLY WORKSSSSSSSS.
-//RITA: I'd rather add exclamation marks than extend the word.
 
 Ahem, that's definitely good enough for now!  Let's commit.
 
@@ -1378,8 +1395,6 @@ Ahem, that's definitely good enough for now!  Let's commit.
 $ *git add -A .*  # add Dockerfile, .dockerignore, .gitignore
 $ *git commit -am"First cut of a Dockerfile"*
 ----
-
-// DAVID: This is the second cut really?
 
 Phew.  Well, it took a bit of hacking about,
 but now we can be reassured that the basic Docker plumbing works.
