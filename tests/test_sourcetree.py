@@ -128,7 +128,7 @@ class ApplyFromGitRefTest(unittest.TestCase):
 
     def _checkout_commit(self, commit):
         commit_spec = self.sourcetree.get_commit_spec(commit)
-        self.sourcetree.run_command("git switch " + commit_spec)
+        self.sourcetree.run_command("git checkout " + commit_spec)
         self.sourcetree.run_command("git reset")
 
     def test_raises_if_too_many_files_in_commit(self):
