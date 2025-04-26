@@ -74,7 +74,7 @@ Let's go through and see if we can fix things one by one.
 
 ////
 HARRY
-manage.py check --deploy gives 
+manage.py check --deploy gives
 WARNINGS:
 ?: (security.W004) You have not set a value for the SECURE_HSTS_SECONDS setting. If your entire site is served only over SSL, you may want to consider setting a value and enabling HTTP Strict Transport Security. Be sure to read the documentation first; enabling HSTS carelessly can cause serious, irreversible problems.
 ?: (security.W008) Your SECURE_SSL_REDIRECT setting is not set to True. Unless your site should be available over both SSL and non-SSL connections, you may want to either set this setting True or configure a load balancer or reverse-proxy server to redirect all connections to HTTPS.
@@ -129,7 +129,7 @@ COPY src /src
 
 WORKDIR /src
 
-CMD gunicorn --bind :8888 superlists.wsgi:application  # <2>
+CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]  # <2>
 ----
 ====
 
@@ -139,11 +139,6 @@ CMD gunicorn --bind :8888 superlists.wsgi:application  # <2>
   It needs to know a path to a WSGI server,
   which is usually a function called `application`.
   Django provides one in _superlists/wsgi.py_.
-
-// CSANAD:  shouldn't we try it out before adding this to the Dockerfile?
-//          `cd src` and then
-// `gunicorn --bind :8888 superlists.wsgi:application`
-
 
 As in the previous chapter, we can use the `docker build && docker run`
 pattern to try out our changes by rebuilding and rerunning our container:
@@ -160,7 +155,7 @@ TIP: If you see an error saying
   `Bind for 0.0.0.0:8888 failed: port is already allocated.`,
   it'll be because you still have a container running from the previous chapter.
   Do you remember how to use `docker ps`, and `docker stop`?
-  Otherwise, skip back to <<how-to-stop-a-docker-container>>.
+  If not, have another look at <<how-to-stop-a-docker-container>>.
 
 ==== The FTs catch a problem with static files
 
@@ -423,7 +418,7 @@ COPY src /src
 
 WORKDIR /src
 
-CMD gunicorn --bind :8888 superlists.wsgi:application
+CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 ----
 ====
 
@@ -496,8 +491,7 @@ Environment variables also have the advantage of working for non-Django stuff to
 
 ==== Setting DEBUG=True and SECRET_KEY
 
-//RITA: What do you mean by "this"? Please add a word or two for context.
-There are lots of ways you might do this.
+There are lots of ways you might set these settings.
 
 Here's what I propose; it may seem a little fiddly,
 but I'll provide a little justification for each choice.
@@ -526,7 +520,6 @@ else:
 // CSANAD: I think variable names like "something_false" are confusing, since
 //         we need to set something to true so that they mean false.
 // How about `DJANGO_ENV_PRODUCTION` or something similar?
-// TODO yes i like this
 
 <1> We say we'll use an environment variable called `DJANGO_DEBUG_FALSE`
     to switch debug mode off, and in effect require production settings
@@ -568,7 +561,8 @@ Now let's set that environment variable in our Dockerfile using the `ENV` direct
 WORKDIR /src
 
 ENV DJANGO_DEBUG_FALSE=1
-CMD gunicorn --bind :8888 superlists.wsgi:application
+
+CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 ----
 ====
 
@@ -595,7 +589,6 @@ KeyError: 'DJANGO_SECRET_KEY'
 Oops. I forgot to set said secret key env var,
 mere seconds after having dreamt it up!
 
-
 ==== Setting Environment Variables at the Docker Command Line
 
 We've said we can't keep the secret key in our source code,
@@ -621,6 +614,13 @@ $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_t
 [...]
 AssertionError: 'To-Do' not found in 'Bad Request (400)'
 ----
+
+
+NOTE: The eagle-eyed might spot a message saying
+    `UserWarning: No directory at: /src/static/`.
+    That's a little clue about a problem with static files,
+    that we're going to deal with shortly.
+    Let's deal with this 400 issue first.
 
 
 
@@ -704,10 +704,6 @@ $ *docker build -t superlists . && docker run \
 An FT run (or just looking at the site) reveals that we've had a regression
 in our static files:
 
-// CSANAD: worth mentioning there was another clue. in the logs, once Gunicorn
-//         starts running you can see:
-// `UserWarning: No directory at: /src/static/`
-
 [role="small-code"]
 [subs="specialcharacters,macros"]
 ----
@@ -717,9 +713,19 @@ AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
 FAILED (failures=1)
 ----
 
+And you might have seen this warning message in the `docker run` output:
 
-We saw this before when switching from the Django dev server to Gunicorn,
-so we introduced Whitenoise.
+[role="skipme"]
+[subs="specialcharacters"]
+----
+/venv/lib/python3.13/site-packages/django/core/handlers/base.py:61:
+UserWarning: No directory at: /src/static/
+  mw_instance = middleware(adapted_handler)
+----
+
+We saw this at the beginning of the chapter,
+when switching from the Django dev server to Gunicorn,
+and that was why we introduced Whitenoise.
 Similarly, when we switch DEBUG off,
 Whitenoise stops automagically finding static files in our code,
 and instead we need to run `collectstatic`:
@@ -735,12 +741,11 @@ WORKDIR /src
 RUN python manage.py collectstatic
 
 ENV DJANGO_DEBUG_FALSE=1
-CMD gunicorn --bind :8888 superlists.wsgi:application
+
+CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 ----
 ====
 
-
-// DAVID: It would be nice to explain the difference between RUN and CMD.
 
 // DAVID: Interestingly when I did this I put the RUN directive after the ENV
 // directive, which led to a KeyError: 'DJANGO_SECRET_KEY' which foxed me for a bit.
@@ -748,7 +753,8 @@ CMD gunicorn --bind :8888 superlists.wsgi:application
 
 
 
-Well, it was fiddly, but that should get us to passing tests after we build & run the docker container!
+Well, it was fiddly, but that should get us to passing tests
+after we build & run the docker container!
 
 [subs="specialcharacters,quotes"]
 ----
@@ -810,7 +816,8 @@ Dockerfile should gain some lines a bit like this:
 ====
 [source,dockerfile]
 ----
-RUN addgroup --system nonroot && adduser --system --no-create-home --disabled-password --group nonroot
+RUN addgroup --system nonroot && \
+    adduser --system --no-create-home --disabled-password --group nonroot
 
 USER nonroot
 ----
