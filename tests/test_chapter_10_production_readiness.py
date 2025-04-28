@@ -22,19 +22,27 @@ class Chapter10Test(ChapterTest):
         # self.sourcetree.run_command("mkdir -p static/stuff")
 
         # skips
-        self.skip_with_check(43, "should show dockerfile")
-        self.skip_with_check(46, "should now be clean")
-        self.skip_with_check(51, "otherwise")
+        self.skip_with_check(46, "should show dockerfile")
+        self.skip_with_check(49, "should now be clean")
+        self.skip_with_check(54, "otherwise")
 
         # vm_restore = "MANUAL_END"
 
         # hack fast-forward
-        if os.environ.get("SKIP"):
-            self.pos = 29
+        if target_listing := os.environ.get("SKIPTO"):
             self.sourcetree.run_command("uv pip install gunicorn whitenoise")
-            self.sourcetree.run_command(
-                "git switch {}".format(self.sourcetree.get_commit_spec("ch10l007"))
-            )
+            commit_spec = self.sourcetree.get_commit_spec(target_listing)
+            while True:
+                listing = self.listings[self.pos]
+                found = False
+                if getattr(listing, "commit_ref", None) == target_listing:
+                    found = True
+                    print("Skipping to pos", self.pos)
+                    self.sourcetree.run_command(f"git checkout {commit_spec}")
+                    break
+                self.pos += 1
+            if not found:
+                raise Exception(f"Could not find {target_listing}")
 
         # if DO_SERVER_COMMANDS:
         #     subprocess.check_call(["vagrant", "snapshot", "restore", vm_restore])
