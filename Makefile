@@ -80,6 +80,10 @@ clean-docker:
 	docker rmi -f superlists 
 	# env PATH=misc:$PATH
 
+.PHONY: chap-10-test-db-perms
+chap-10-test-db-perms:
+	sudo echo hi
+
 # exhaustively list all test targets for nice tab-completion
 .PHONY: test_chapter_01
 test_chapter_01: chapter_01.html $(TMPDIR) $(VENV)/bin
@@ -109,7 +113,7 @@ test_chapter_08_prettification: chapter_08_prettification.html $(TMPDIR) $(VENV)
 test_chapter_09_docker: chapter_09_docker.html $(TMPDIR) $(VENV)/bin clean-docker
 	$(VENV)/bin/pytest -s ./tests/test_chapter_09_docker.py
 .PHONY: test_chapter_10_production_readiness
-test_chapter_10_production_readiness: chapter_10_production_readiness.html $(TMPDIR) $(VENV)/bin clean-docker
+test_chapter_10_production_readiness: chap-10-test-db-perms chapter_10_production_readiness.html $(TMPDIR) $(VENV)/bin clean-docker
 	$(VENV)/bin/pytest -s ./tests/test_chapter_10_production_readiness.py
 .PHONY: test_chapter_11_server_prep
 test_chapter_11_server_prep: chapter_11_server_prep.html $(TMPDIR) $(VENV)/bin

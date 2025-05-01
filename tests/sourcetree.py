@@ -117,7 +117,7 @@ class SourceTree:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE,
-            preexec_fn=os.setsid,
+            # preexec_fn=os.setsid,  # disabled to get passwordless sudo to work
             universal_newlines=True,
             env=env,
         )

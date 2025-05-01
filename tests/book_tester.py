@@ -905,6 +905,24 @@ class ChapterTest(unittest.TestCase):
                 listing.was_checked = True
                 self.pos += 1
 
+        elif listing.type == "docker exec":
+            container_id = self.sourcetree.run_command(
+                "docker ps --filter=ancestor=superlists -q"
+            ).strip()
+            fixed = Command(listing.replace("container-id-or-name", container_id))
+            next_listing = self.listings[self.pos + 1]
+            if next_listing.type == "output" and not next_listing.skip:
+                output = self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
+                self.assert_console_output_correct(output, next_listing)
+                next_listing.was_checked = True
+                self.pos += 2
+            else:
+                self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
+                listing.was_checked = True
+                self.pos += 1
+
         elif listing.type == "other command":
             print("A COMMAND")
             next_listing = self.listings[self.pos + 1]

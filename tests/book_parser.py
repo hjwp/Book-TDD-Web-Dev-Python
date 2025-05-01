@@ -80,6 +80,8 @@ class Command(str):
             return "interactive manage.py"
         if "docker run" in self and "-it" in self:
             return "docker run tty"
+        if "docker exec" in self and "container-id-or-name" in self:
+            return "docker exec"
         if "ottg.co.uk" in self:
             return "against staging"
         return "other command"
