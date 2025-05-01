@@ -102,14 +102,11 @@ class SourceTree:
         if "manage.py test" in command:
             # prevent stdout and stderr from appearing to come out in wrong order
             env["PYTHONUNBUFFERED"] = "1"
+
+        # TODO: move this out into book_tester.py,
+        # this is not the right level of abstraction for this hack.
         actual_command = command
-        if command.startswith("fab deploy"):
-            actual_command = f"cd deploy_tools && {command}"
-            actual_command = actual_command.replace(
-                "fab deploy",
-                "fab -D -i ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key deploy",
-            )
-        elif command.startswith("curl"):
+        if command.startswith("curl"):
             actual_command = command.replace("curl", "curl --silent --show-error")
 
         process = subprocess.Popen(
@@ -129,6 +126,7 @@ class SourceTree:
         if "runserver" in command:
             # can't read output, stdout.read just hangs.
             # TODO: readline?  see below.
+            # TODO: could also try UNBUFFERED?
             return
         if "docker run" in command and "superlists" in command and not ignore_errors:
             output = ""

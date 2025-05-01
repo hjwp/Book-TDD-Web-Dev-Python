@@ -61,9 +61,6 @@ class Chapter10Test(ChapterTest):
             ]
         )
         self.assert_all_listings_checked(self.listings)
-        # if DO_SERVER_COMMANDS:
-        #     subprocess.run(["vagrant", "snapshot", "delete", "MAKING_END"], check=False)
-        #     subprocess.run(["vagrant", "snapshot", "save", "MAKING_END"], check=True)
 
 
 if __name__ == "__main__":
