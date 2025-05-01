@@ -479,7 +479,15 @@ $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_t
 OK
 ----
 
-Hooray.
+Hooray.  That's a commit!
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am "Use requirements.txt in Dockerfile"
+----
+
+
 
 === Using Environment Variables to Adjust Settings for Production
 
@@ -802,7 +810,8 @@ OK
 
 We're nearly ready to ship to production!
 
-Let's quickly adjust our gitignore, since the static folder is in a new place:
+Let's quickly adjust our gitignore, since the static folder is in a new place,
+and do another commit to mark this bit of incremental progress:
 
 //0010
 [subs="specialcharacters,quotes"]
@@ -819,7 +828,7 @@ $ *git commit -am "Add collectstatic to dockerfile, and new location to gitignor
 
 === Switching to a nonroot user
 
-By default, Docker containers run as root.
+Let's do one more! By default, Docker containers run as root.
 Although container security is a very well-tested ground by now,
 experts agree it's still good practice to use an unprivileged user
 inside your container.
@@ -827,34 +836,15 @@ inside your container.
 The main fiddly thing, for us, will be dealing with permissions
 for the _db.sqlite3_ file.  It will need:
 
-1. To be writable by the nonroot user
-2. To be in a directory that's writable by the nonroot user
+1. To be writable by the nonroot user.
+2. To be in a _directory_ that's writable by the nonroot user.footnote:[
+This is surprising.  It's due to SQLite wanting to write various additional
+temporary files during operation.  More info here https://sqlite.org/tempfiles.html]
 
-Let's say that our nonroot user is going to be called `nonroot`,
+==== Making the Database File Path Configurable
 
-Since they will have a writable home directory at `/home/nonroot`,
-we'll put the database file in there
-(which they'll have write access to of course),
-
-Because we're mounting the file from outside though,
-that's not quite enough to make it writable.
-We'll need to set the owner of the file to be `nonroot` as well.
-Because of the way Linux permissions work,footnote:[
-Linux permissions aren't actually implemented using the string names of users,
-instead they integer user IDs (called UIDs).
-The way we map from the uids to strings is using a special file called _/etc/passwd_.
-Because /etc/passwd is not the same inside an outside the container,
-the uids to username mappings inside and outside are not necessarily the same.
-However, the permission uids are just numbers, and they actually are stored inside
-individual files, so they don't change when you mount files.
-There's more info here https://stackoverflow.com/a/26514736]
-we'll have to use integer user ids (uids).
-This might seem a bit magical if you're not used to Linux permissions,
-so you'll have to trust me I'm afraid.
-
-
-Anyways, first let's make the path to the database file
-configurable using an environment variable:
+First let's make the path to the database file configurable
+using an environment variable:
 
 [role="sourcecode"]
 .src/superlists/settings.py (ch10l011)
@@ -896,7 +886,8 @@ DATABASES = {
 
 
 Now let's change the Dockerfile to set that env var,
-and to create and switch to our nonroot user:
+and to create and switch to our nonroot user,
+which we may as well call "nonroot" (although it could be anything!):
 
 [role="sourcecode "]
 .Dockerfile (ch10l012)
@@ -917,8 +908,7 @@ CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 ====
 
 <1> We use the `adduser` command to create our user,
-    explicitly setting the home directory to _/home/nonroot_, and, more importantly,
-    the numerical uid to 1234.footnote:[
+    explicitly setting its uid to 1234.footnote:[
     a more or less arbitrary number,
     the first non-system user on a system is usually 1000,
     so it's nice that this won't be the same as the `elspeth` user outside the container,
@@ -927,14 +917,43 @@ CMD ["gunicorn", "--bind", ":8888", "superlists.wsgi:application"]
 <3> The `USER` directive in the Dockerfile tells Docker to run
     everything as that user by default.
 
-Let's test this out locally:
+
+==== Using UIDs to Set Permissions Across Host/Container Mounts
+
+Our user will now have a writable home directory at `/home/nonroot`,
+so we'll put the database file in there.
+That takes care of the "writable directory" requirement.
+
+Because we're mounting the file from outside though,
+that's not quite enough to make the file itself writable.
+We'll need to set the _owner_ of the file to be `nonroot` as well.
+Because of the way Linux permissions work,
+we're going to use integer user ids (uids).
+This might seem a bit magical if you're not used to Linux permissions,
+so you'll have to trust me I'm afraid.footnote:[
+Linux permissions aren't actually implemented using the string names of users,
+instead they integer user IDs (called UIDs).
+The way we map from the uids to strings is using a special file called _/etc/passwd_.
+Because /etc/passwd is not the same inside an outside the container,
+the uids to username mappings inside and outside are not necessarily the same.
+However, the permission uids are just numbers, and they actually are stored inside
+individual files, so they don't change when you mount files.
+There's more info here https://stackoverflow.com/a/26514736]
+
 
 First, let's create a file with the right permissions, outside the container:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *touch container.db.sqlite3*
+
+# change the owner to uid 1234
 $ *sudo chown 1234 container.db.sqlite3*
+
+# This next step is needed on non-Linux dev environments,
+# to make sure that the container host VM can write to the file.
+# Change the file to be group-writeable as well as owner-writeable:
+$ *sudo chmod g+rw container.db.sqlite3*
 ----
 
 Now let's rebuild and run our container,
@@ -958,12 +977,23 @@ As a first check that we can write to the database from inside the container,
 let's use `docker exec` to populate the db tables using `manage.py migrate`:
 
 ----
+$ *docker ps*  # note container id
 $ *docker exec -it <container_id> python manage.py migrate*
-[...]
+Operations to perform:
+  Apply all migrations: auth, contenttypes, lists, sessions
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  [...]
+  Applying lists.0001_initial... OK
+  Applying lists.0002_item_text... OK
+  Applying lists.0003_list... OK
+  Applying lists.0004_item_list... OK
+  Applying sessions.0001_initial... OK
 ----
 
 
-And re-run the FTs again to be sure that worked:
+And, as after every incremental change,
+we re-run our FT suite to make sure everything works:
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -973,11 +1003,16 @@ $ pass:quotes[*TEST_SERVER=localhost:8888 python src/manage.py test functional_t
 OK
 ----
 
+Great!  We wrap up with a bit of housekeeping,
+we'll add this new database file to our `.gitignore`,
+and commit:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *echo container.db.sqlite3 >> .gitignore*
+$ *git commit -am"Switch to nonroot user"*
 ----
+
 
 
 === Configuring logging
@@ -989,14 +1024,13 @@ switching DEBUG off means that Django's default logging configuration changes.
 
 ==== Provoking a deliberate error
 
-To test this, we'll provoke a deliberate error by deleting the database file.
+To test this, we'll provoke a deliberate error by corrupting the database file.
 
 
 
 [subs="specialcharacters,quotes"]
 ----
-$ *rm src/db.sqlite3*
-$ *touch src/db.sqlite3*  # otherwise the --mount type=bind will complain
+$ *echo 'bla' > container.db.sqlite3*
 ----
 
 Now if you run the tests, you'll see they fail;
@@ -1107,14 +1141,86 @@ Traceback (most recent call last):
   line 328, in execute
     return super().execute(query, params)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-django.db.utils.OperationalError: no such table: lists_list
+django.db.utils.DatabaseError: file is not a database
 ----
 
-Re-create the database with `./src/manage.py migrate` and we'll be back to a working state.
+We can fix and re-create the database by doing:
 
-Don't forget to commit our changes to _settings.py_ and _Dockerfile_,
-and I think we can call it job done!
-We've at least touched on many or most of the things you might need to think about
+[subs="specialcharacters,quotes"]
+----
+$ *echo > container.db.sqlite3*
+$ *docker exec -it <container_id> python manage.py migrate*
+----
+
+And re-run the FTs to check we're back to a working state.
+
+Let's do a final commit for this change:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am "Add logging config to settings.py"*
+----
+
+
+=== Exercise for the Reader: Using the Django "check" Command
+
+I don't have time in this book to cover every last aspect of
+production-readiness.
+Apart from anything else, this is a fast-changing area,
+and security updates to Django and its best practice recommandations
+change frequently, so things I write now might be incomplete
+by the time you read the book.
+
+I _have_ given a decent overview of the various different axes
+along which you'll need to make production-readiness changes,
+so hopefully you have a toolset for how to do this sort of work.
+
+If you'd like to dig into this a little bit more,
+or if you're preparing a real project for release into the wild,
+The next step is to read up on Django's 
+https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/[Deployment Checklist].
+
+The first suggestion is to use Django's "self-check" command,
+`manage.py check --deploy`.
+Here's what it reported as outstanding when I ran it in April 2025:
+
+[role="skipme"]
+[subs="specialcharacters,quotes"]
+----
+$ *docker exec <container-id> python manage.py check --deploy*
+System check identified some issues:
+
+WARNINGS:
+?: (security.W004) You have not set a value for the SECURE_HSTS_SECONDS
+setting. If your entire site is served only over SSL, you may want to consider
+setting a value and enabling HTTP Strict Transport Security. Be sure to read
+the documentation first; enabling HSTS carelessly can cause serious,
+irreversible problems.
+?: (security.W008) Your SECURE_SSL_REDIRECT setting is not set to True. Unless
+your site should be available over both SSL and non-SSL connections, you may
+want to either set this setting True or configure a load balancer or
+reverse-proxy server to redirect all connections to HTTPS.
+?: (security.W009) Your SECRET_KEY has less than 50 characters, less than 5
+unique characters, or it's prefixed with 'django-insecure-' indicating that it
+was generated automatically by Django. Please generate a long and random value,
+otherwise many of Django's security-critical features will be vulnerable to
+attack.
+?: (security.W012) SESSION_COOKIE_SECURE is not set to True. Using a
+secure-only session cookie makes it more difficult for network traffic sniffers
+to hijack user sessions.
+?: (security.W016) You have 'django.middleware.csrf.CsrfViewMiddleware' in your
+MIDDLEWARE, but you have not set CSRF_COOKIE_SECURE to True. Using a
+secure-only CSRF cookie makes it more difficult for network traffic sniffers to
+steal the CSRF token.
+----
+
+Why not pick one of these and have a go at fixing it?
+
+
+=== Wrap-Up
+
+We might not have addressed every last issue that `check --deploy`,
+but we've at least touched on many or most of the things you might need to think about
 when considering production-readiness,
 we've worked in small steps and used our tests all the way along,
 and we're now ready to deploy our container to a real server!
@@ -1131,7 +1237,7 @@ TIP: One more recommendation for PythonSpeed and its
 .Production-Readiness Config
 *******************************************************************************
 
-((("production-ready deployment", "best practices for")))
+((("production-ready deployment")))
 A few things to think about when trying to prepare a production-ready configuration:
 
 Don't use the Django dev server in production::
@@ -1160,5 +1266,9 @@ Think about logging and observability::
   At a minimum you need a way of getting logs and tracebacks out of your server,
   and in more advanced environments you'll want to think about metrics and tracing too.
   But we can't cover all that in this book!
+
+Use the Django "check" command::
+  `python manage.py check --deploy` can give you a list of additional settings
+  to check for production-readiness.
 
 *******************************************************************************
