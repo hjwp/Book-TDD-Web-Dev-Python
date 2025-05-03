@@ -1082,21 +1082,48 @@ on the server:
 ----
 ====
 
-// CSANAD: I would remind the reader we need to run ansible-playbook again.
+NOTE: You can map a different port on the outside
+    to the one that's "inside" the Docker container.
+    In this case, we can map the public-facing standard HTTP port 80 on the host
+    to the arbitrarily-chosen port 8888 on the inside.
 
-That gets us to:
+
+Let's push that up with `ansible-playbook`:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*ansible-playbook --user=elspeth -i staging.ottg.co.uk, infra/deploy-playbook.yaml -v*]
+[...]
+----
+
+And now give the FTs another go:
 
 [role="skipme"]
+[subs="specialcharacters,macros"]
 ----
+$ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test functional_tests*]
+[...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: [id="id_list_table"]; [...]
+[...]
+Ran 3 tests in 21.047s
+
+FAILED (errors=3)
 ----
+
+3/3 failed again, but the FTs did get a little further along.
+If you saw what was happening,
+or if you go and visit the site manually in your browser,
+you'll see that the home page loads fine,
+but as soon as we try and create a new list item,
+it crashes with a 500 Error.
 
 
 === Mounting the database on the server and running migrations
 
-Taking a look at the logs from the server,
-we can see that the database is not initialised:
+Let's do another bit of manual debugging,
+and take a look at the logs from our container with `docker logs`.
+You'll see an `OperationalError`:
 
 
 [role="server-commands"]
@@ -1108,12 +1135,32 @@ django.db.utils.OperationalError: no such table: lists_list
 ----
 
 
-// RITA: Please expand this intro sentence. Here's how to do what?
+It looks like our database isn't initialised.
+Aha! Another of those deployment "danger areas".
 
-We need to mount the `db.sqlite3` file from the filesystem outside the container,
-just like we did in local dev, and we need to run migrations each time we deploy too.
+Just like we did on our own machine,
+we need to mount the `db.sqlite3` file from the filesystem outside the container.
+We'll also want to run migrations to create the database,
+and, in fact, each time we deploy,
+so that any updates to the database schema
+get applied to the database on the server.
+Here's the plan:
 
-Here's how to do that in our playbook:
+1. On the host machine, we'll store the database in elspeth's home folder,
+  it's as good a place as any.
+
+2. We'll set its uid to `1234`,
+  just like we did in <<chapter_10_production_readiness>>.
+  to match the UID of the `nonroot` user inside the container.
+
+3. Inside the container, we'll use the path `/home/nonroot/db.sqlite3`,
+  again, just like in the last chapter.
+
+4. We'll run the migrations with a `docker exec`,
+  or the ansible equivalent thereof.
+
+Here's what that looks like:
+
 
 [role="sourcecode"]
 .infra/deploy-playbook.yaml (ch12l007)
