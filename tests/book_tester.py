@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -377,7 +378,7 @@ class ChapterTest(unittest.TestCase):
         self.assertEqual(
             type(command),
             Command,
-            "passed a non-Command to run-command:\n%s" % (command,),
+            f"passed a non-Command to run-command:\n{command}",
         )
         if command == "git push":
             command.was_run = True
@@ -412,7 +413,7 @@ class ChapterTest(unittest.TestCase):
             print("tabz")
         if line not in lines:
             raise AssertionError(
-                "%s not found in:\n%s" % (repr(line), "\n".join(repr(l) for l in lines))
+                f"{repr(line)} not found in:\n" + "\n".join(repr(l) for l in lines)
             )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
@@ -421,11 +422,15 @@ class ChapterTest(unittest.TestCase):
         self.assertEqual(
             type(expected),
             Output,
-            "passed a non-Output to run-command:\n%s" % (expected,),
+            f"passed a non-Output to run-command:\n{expected}",
         )
 
         if str(self.tempdir) in actual:
             actual = actual.replace(str(self.tempdir), "...goat-book")
+            if sys.platform == "darwin":
+                # for some reason macos does full paths to virtualenvs
+                # when linux doesnt
+                actual = actual.replace("...goat-book/.venv", "./.venv")
             actual = actual.replace("/private", "")  # macos thing
 
         if ls:
@@ -892,6 +897,24 @@ class ChapterTest(unittest.TestCase):
                         "docker run -e PYTHON_COLORS=0 --platform=linux/amd64 -t debug-ci",
                     )
                 )
+            next_listing = self.listings[self.pos + 1]
+            if next_listing.type == "output" and not next_listing.skip:
+                output = self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
+                self.assert_console_output_correct(output, next_listing)
+                next_listing.was_checked = True
+                self.pos += 2
+            else:
+                self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
+                listing.was_checked = True
+                self.pos += 1
+
+        elif listing.type == "docker exec":
+            container_id = self.sourcetree.run_command(
+                "docker ps --filter=ancestor=superlists -q"
+            ).strip()
+            fixed = Command(listing.replace("container-id-or-name", container_id))
             next_listing = self.listings[self.pos + 1]
             if next_listing.type == "output" and not next_listing.skip:
                 output = self.run_command(fixed, ignore_errors=listing.ignore_errors)
