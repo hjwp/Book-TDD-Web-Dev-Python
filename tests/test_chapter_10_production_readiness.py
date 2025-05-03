@@ -31,7 +31,7 @@ class Chapter10Test(ChapterTest):
         self.skip_with_check(57, "Change the file to be group-writeable as well")
         self.skip_with_check(61, "note container id")
 
-        # hack fast-forward
+        # hack fast-forward, nu way
         if target_listing := os.environ.get("SKIPTO"):
             self.sourcetree.run_command("uv pip install gunicorn whitenoise")
             commit_spec = self.sourcetree.get_commit_spec(target_listing)

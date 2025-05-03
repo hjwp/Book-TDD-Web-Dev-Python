@@ -897,19 +897,74 @@ HOME=/home/nonroot
 ----
 
 
+===== `docker inspect`
 
-// DAVID: suggest you get us to we shell in and see the env file there.
+Another option--useful for debugging other things too,
+like image IDs and mounts--is to use `docker inspect`
+
+[role="server-commands"]
+[subs="specialcharacters,quotes"]
+----
+elspeth@server:~$ *docker inspect superlists*
+[
+    {
+        [...]
+        "Config": {
+            [...]
+            "Env": [
+                "DJANGO_DEBUG_FALSE=1",
+                "DJANGO_SECRET_KEY=cXACJZTvoPfWFSBSTdixJTlXCWYTnJlC",
+                "DJANGO_ALLOWED_HOST=staging.ottg.co.uk",
+                "DJANGO_DB_PATH=/home/nonroot/db.sqlite3",
+                "PATH=/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+                "PYTHON_VERSION=3.13.3",
+                "PYTHON_SHA256=40f868bcbdeb8149a3149580bb9bfd407b3321cd48f0be631af955ac92c0e041"
+            ],
+            "Cmd": [
+                "gunicorn",
+                "--bind",
+                ":8888",
+                "superlists.wsgi:application"
+            ],
+            "Image": "superlists",
+            "Volumes": null,
+            "WorkingDir": "/src",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": {}
+        },
+        "NetworkSettings": {
+          [...]
+        }
+    }
+]
+----
+
+There's a lot of output!
+It's more or less everything that Docker knows about the container.
+But if you scroll around, you can usually get some useful info for debugging
+and diagnostics, like, in this case,
+the `Env` parameter which tells us what environment variables were set for the container.
 
 
-Looks good!  What do our tests think?
+TIP: `docker inspect` is also useful
+    for checking exactly which image ID a container is using,
+    and which filesystem mounts are configured.
 
-// DAVID: this command assumes we'll be in a different working directory
-// to the previous command.
-// Also... I originally just pasted this as-is, which contacted YOUR server. Another
+Looking good!
+
+
+=== Running FTs to Check on our Deploy
+
+Enough manual checking via SSH, let's see what our tests think.
+The `TEST_SERVER` adaptation we made in <<chapter_09_docker>>
+can also be used to check against our staging server.
+
+// DAVID: I originally just pasted this as-is, which contacted YOUR server. Another
 // reason to get them to set environment variables at the start of the chapter.
-==== More debugging
 
-We run our tests as usual and run into a new problem:
+Let's see what they think:
 
 [role="skipme"]
 [subs="specialcharacters,macros"]
@@ -918,17 +973,21 @@ $ pass:quotes[*TEST_SERVER=staging.ottg.co.uk python src/manage.py test function
 [...]
 selenium.common.exceptions.WebDriverException: Message: Reached error page:
 about:neterror?e=connectionFailure&u=http%3A//staging.ottg.co.uk/[...]
+[...]
+Ran 3 tests in 5.014s
+
+FAILED (errors=3)
 ----
 
-// SEBASTIAN: It's awesome that by this moment by using `TEST_SERVER` one is able to run tests against "staging". Just wow!
-
-
+None of them passed. Hm.
 That `neterror` makes me think it's another networking problem.
 
 NOTE: If your domain provider puts up a temporary holding page,
     you may get a 404 rather than a connection error at this point,
     and the traceback might have NoSuchElementException instead.
 
+
+==== Manual Debugging With `curl` Against the Staging Server
 
 Let's try our standard debugging technique, of using `curl`
 both locally and then from inside the container on the server.
@@ -942,18 +1001,12 @@ $ pass:quotes[*curl -iv staging.ottg.co.uk*]
 curl: (7) Failed to connect to staging.ottg.co.uk port 80 after 25 ms: Couldn't
 connect to server
 ----
-// CSANAD: my curl output looks a little different, saying "Connection refused"
-//
-// $ curl -iv 192.168.122.23
-// *   Trying 192.168.122.23:80...
-// * connect to 192.168.122.23 port 80 failed: Connection refused
-// * Failed to connect to 192.168.122.23 port 80 after 2 ms: Connection refused
-// * Closing connection 0
-// curl: (7) Failed to connect to 192.168.122.23 port 80 after 2 ms: Connection refused
 
 
 NOTE: Similarly, depending on your domain/hosting provider,
     you may see "Host not found" here instead.
+    Or, if your version of `curl` is different, you might see
+    "Connection Refused".
 
 
 Now let's ssh in to our server and take a look at the docker logs:
