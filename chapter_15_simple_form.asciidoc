@@ -23,7 +23,7 @@ and making sure each of them tests only one thing at a time.
 
 // SEBASTIAN: One bigger thing is that I'd put at the beginning
 // something to set the expectations and do a little priming of the reader
-// - that we're indeed gonna do be doing some refactor 
+// - that we're indeed gonna do be doing some refactor
 // and in such a case functional tests shield us.
 
 // DAVID: Keeping the test suite passing
@@ -523,7 +523,7 @@ replace the old `<input ..>` with `{{ form.text }}`:
 [source,html]
 ----
   <form method="POST" action="{% block form_action %}{% endblock %}" >
-    {{ form.text }}
+    {{ form.text }}  <1>
     {% csrf_token %}
     {% if error %}
       <div class="invalid-feedback">{{ error }}</div>
@@ -532,7 +532,16 @@ replace the old `<input ..>` with `{{ form.text }}`:
 ----
 ====
 
-`{{ form.text }}` renders just the HTML input for the `text` field of the form.
+<1> `{{ form.text }}` renders just the HTML input for the `text` field of the form.
+
+
+And we're back to passing unit tests:
+
+----
+Ran 18 tests in 0.019s
+
+OK
+----
 
 
 
@@ -540,27 +549,28 @@ replace the old `<input ..>` with `{{ form.text }}`:
 
 ((("find and replace")))
 ((("grep command")))
-One thing we have done, though, is change our form--it no longer uses
-the same `id` and `name` attributes.  You'll see if we run our functional
-tests that they fail the first time they try to find the input box:
-
-// SEBASTIAN: To me, it's a bit late to see functional tests mentioned in this chapter only now.
-//      How about mentioning that we expect them to pass, as this whole effort is mostly a refactoring
-//      that does not change the behaviour of the application?
+One thing we have done, though, is change our form--it
+no longer uses the same `id` and `name` attributes.
+You'll see if we run our functional tests,
+they fail the first time they try to find the input box:
 
 ----
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: [id="id_new_item"]; [...]
+[...]
+Ran 4 tests in 6.524s
+
+FAILED (errors=4)
 ----
 
 We'll need to fix this, and it's going to involve a big find and replace.
-Before we do that, let's do a commit, to keep the rename separate from
-the logic change:
+Before we do that, let's do a commit,
+to keep the rename separate from the logic change:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff* # review changes in base.html, views.py and its tests
-$ *git commit -am "use new form in home_page. NB breaks stuff"*
+$ *git commit -am "WIP - use new form in home_page. NB breaks stuff"*
 ----
 
 
@@ -579,7 +589,7 @@ self.browser.find_element(By.ID, "id_new_item").send_keys(Keys.ENTER)
 [...]
 ----
 
-That's a good call for a refactor.
+That's a good call for a refactor within the FTs.
 Let's make a new helper method in _base.py_:
 
 [role="sourcecode"]
@@ -625,13 +635,41 @@ Or:
 I won't show you every single one; I'm sure you can manage this for yourself!
 You can redo the `grep` to check that you've caught them all.
 
-We're past the first step,
-but now we have to bring the rest of the application code in line with the change.
-We need to find any occurrences of the old `id` (`id_new_item`)
-and `name` (`item_text`) and replace them too,
-with `id_text` and `text`, respectively:
+We've done the FT side of the rename.
+If you run them you'll see a change,
+the FTS are no longer falling over trying to find `id_new_item`,
+instead they can't find `id_list_table`.
+Interspersed, you'll an exception bubbling up from our views code,
+`KeyError: 'item_text'`, pointing us towards where we now need to make the fix
+on the application side:
 
-// DAVID: this instruction could be given more clearly.
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test functional_tests*]
+[...]
+    item = Item(text=request.POST["item_text"], list=nulist)
+                     ~~~~~~~~~~~~^^^^^^^^^^^^^
+    [...]
+django.utils.datastructures.MultiValueDictKeyError: 'item_text'
+[...]
+
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]; [...]
+[...]
+
+Ran 4 tests in 35.495s
+
+FAILED (errors=4)
+----
+
+So we're done on the FT side,
+but now we have to bring the rest of the application code in line with the change.
+Let's look through our application code for any references to the old
+`id` attribute, `id_new_item`; we'll need to replace them with `id_text`,
+just like we did in the FTs.
+On top of that, we'll also need to look for any occurences of the old `name`
+attribute, `item_text`, and replace them with just `text`.
+
 
 [role="ignore-errors"]
 [subs="specialcharacters,quotes"]
@@ -640,7 +678,8 @@ $ *grep -r id_new_item src/lists/*
 ----
 
 Good, there are no references to `id_new_item` left--except maybe in some
-`*.pyc` files, which are safe to ignore.
+`.pyc` files, which are safe to ignore.
+
 What about `name`/ `item_text`?
 
 [subs="specialcharacters,macros"]
@@ -659,11 +698,50 @@ src/lists/tests/test_views.py:            data={"item_text": ""},
 
 We can ignore the migration which is just using `item_text` as metadata.
 So the changes we need to make are all in _views.py_ and _test_views.py_.
+Let's go ahead and make those.
+I'm sure you can manage your own find and replace!
+They should look something like this:
 
-We can go ahead and make those.
-Once we're done, we rerun the unit tests to check that everything still works:
 
-[role="dofirst-ch11l022"]
+[role="sourcecode"]
+.src/lists/tests/test_views.py (ch14l015)
+====
+[source,diff]
+----
+@@ -17,25 +17,25 @@ class HomePageTest(TestCase):
+
+ class NewListTest(TestCase):
+     def test_can_save_a_POST_request(self):
+-        self.client.post("/lists/new", data={"item_text": "A new list item"})
++        self.client.post("/lists/new", data={"text": "A new list item"})
+         self.assertEqual(Item.objects.count(), 1)
+         new_item = Item.objects.get()
+         self.assertEqual(new_item.text, "A new list item")
+[...]
+----
+====
+
+Or, in _views.py_:
+
+[role="sourcecode dofirst-ch14l016"]
+.src/lists/views.py (ch14l017)
+====
+[source,diff]
+----
+@@ -11,7 +11,7 @@ def home_page(request):
+
+ def new_list(request):
+     nulist = List.objects.create()
+-    item = Item(text=request.POST["item_text"], list=nulist)
++    item = Item(text=request.POST["text"], list=nulist)
+[...]
+----
+====
+
+
+Once you're done, rerun the unit tests to confirm that the application is self-consistent:
+
+[role="dofirst-ch14l018"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test lists*]
@@ -673,7 +751,9 @@ Ran 18 tests in 0.126s
 OK
 ----
 
-And the functional tests too, where we can see three errors:
+
+Now let's see if we've made progress on the functional tests.
+You'll find they now warn us about two different problems.
 
 ----
 ERROR: test_layout_and_styling (functional_tests.test_layout_and_styling.Layout
@@ -701,10 +781,31 @@ element: .invalid-feedback; [...]
 [...]
 ----
 
-// TODO re-order the steps for this chapter: it would be better to start with
-// the `id_text` related errors first, and only then fix the validation.
+1. The input box is not being displayed for existing list items,
+2. Our error message is not being displayed, when submitting a brand new item.
 
-Let's start with the latter.
+
+We'll get there! Before we make any more changes though,
+let's commit our application-level rename:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git status*
+$ *git commit -am "rename all item input ids and names. still broken"*
+----
+
+
+==== Ensuring errors are displayed
+
+Our problems affect both the existing list items view, `view_list()`,
+and the view that handles creating brand new lists from the home page,
+`new_list()`.
+
+Let's start with the latter,
+since it comes first logically,
+and it will make sure that we know how to use our new form
+from end to end.
+
 Checking _views.py_ and the `new_list` view we can see
 it's because if we detect a validation error,
 we're not actually passing the form to the _home.html_ template:
@@ -722,14 +823,7 @@ except ValidationError:
 ====
 
 ((("", startref="FDVviews14")))
-We'll want to use the form in this view too.
-Before we make any more changes though, let's do a commit:
-
-[subs="specialcharacters,quotes"]
-----
-$ *git status*
-$ *git commit -am "rename all item input ids and names. still broken"*
-----
+This is where we want to use our new form.
 
 
 === Using the Form in a View That Takes POST Requests
@@ -880,54 +974,6 @@ That means we're going to need to rework `view_list` as well,
 before we can get back to a working state.
 ((("", startref="FDVpost14")))
 
-
-=== Using the Form in the Other View
-
-((("form data validation", "processing POST and GET requests", id="FDVproget14")))
-This list view handles both GET and POST requests.
-Let's start with checking that the form is used in GET requests.
-We can have a new test for that:
-
-[role="sourcecode"]
-.src/lists/tests/test_views.py (ch14l027)
-====
-[source,python]
-----
-class ListViewTest(TestCase):
-    [...]
-
-    def test_displays_item_form(self):
-        mylist = List.objects.create()
-        response = self.client.get(f"/lists/{mylist.id}/")
-        self.assertIsInstance(response.context["form"], ItemForm)
-        self.assertContains(response, 'name="text"')
-----
-====
-
-That gives:
-
-----
-KeyError: 'form'
-----
-
-Here's a minimal implementation. We initialise our `ItemForm()` at the end of the view,
-and change the `render()` call so it passes `"form"` to the template:
-
-[role="sourcecode"]
-.src/lists/views.py (ch14l028)
-====
-[source,python]
-----
-def view_list(request, list_id):
-    [...]
-    form = ItemForm()
-    return render(
-        request,
-        "list.html",
-        {"list": our_list, "form": form, "error": error},
-    )
-----
-====
 
 
 ==== A Helper Method for Several Short Tests
