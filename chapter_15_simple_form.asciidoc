@@ -801,35 +801,41 @@ Our problems affect both the existing list items view, `view_list()`,
 and the view that handles creating brand new lists from the home page,
 `new_list()`.
 
-Let's start with the latter,
-since it comes first logically,
-and it will make sure that we know how to use our new form
-from end to end.
+Let's start with the latter, since it comes first logically,
+and it will make sure that we know how to use our new form from end to end.
 
-Checking _views.py_ and the `new_list` view we can see
-it's because if we detect a validation error,
-we're not actually passing the form to the _home.html_ template:
+Looking into _views.py_ and the `new_list()` view we can see
+that we're not using our new form at all:
 
 [role="sourcecode currentcontents"]
 .src/lists/views.py
 ====
 [source,python]
 ----
-except ValidationError:
-    nulist.delete()
-    error = "You can't have an empty list item"
-    return render(request, "home.html", {"error": error})
+def new_list(request):
+    nulist = List.objects.create()
+    item = Item(text=request.POST["text"], list=nulist)
+    try:
+        item.full_clean()
+        item.save()
+    except ValidationError:
+        nulist.delete()
+        error = "You can't have an empty list item"
+        return render(request, "home.html", {"error": error})  # <1>
+    return redirect(nulist)
 ----
 ====
 
 ((("", startref="FDVviews14")))
-This is where we want to use our new form.
 
 
 === Using the Form in a View That Takes POST Requests
 
 ((("form data validation", "processing POST requests", id="FDVpost14")))
-Now we want to adjust the unit tests for the `new_list` view,
+How shall we evolve our view so that it uses a form instead of
+the manual manipulation of `request.POST` and the error message.
+
+So we want to adjust the unit tests for the `new_list()` view,
 especially the one that deals with validation.
 Let's take a look at it now:
 
@@ -918,7 +924,7 @@ def new_list(request):
 
 That view is now looking much nicer!
 
-But, we have a regression:
+But, we have a regression in the unit tests:
 
 ----
     self.assertContains(response, html.escape(EMPTY_ITEM_ERROR))
@@ -930,8 +936,8 @@ list item' in the following response
 
 ==== Using the Form to Display Errors in the Template
 
-We're failing because we're not yet using the form
-to display errors in the template:
+We're failing because we're not yet _using_ the form
+to display errors in the template.  Here's how to do that:
 
 [role="sourcecode"]
 .src/lists/templates/base.html (ch14l026)
@@ -948,13 +954,14 @@ to display errors in the template:
 ----
 ====
 
-<1> `form.errors` contains a list of all the errors for the form.
+<1> We change the `if` to look at `form.errors`:
+    it contains a list of all the errors for the form.
 
 <2> `form.errors.text` is magical Django template syntax
     for `form.errors["text"]`,
     i.e., the list of errors for the text field in particular.
 
-What does that do to our tests?
+What does that do to our unit tests?
 
 ----
 ======================================================================
@@ -970,7 +977,7 @@ An unexpected failure--it's actually in the tests for our final view, `view_list
 Because we've changed the way errors are displayed in _all_ templates,
 we're no longer showing the error that we manually pass into the template.
 
-That means we're going to need to rework `view_list` as well,
+That means we're going to need to rework existing list view, `view_list()`, as well,
 before we can get back to a working state.
 ((("", startref="FDVpost14")))
 
@@ -978,11 +985,11 @@ before we can get back to a working state.
 
 ==== A Helper Method for Several Short Tests
 
-
 ((("helper methods")))
-Next we want to use the form errors in the second view.
-We'll split our current single test for the invalid case
-(`test_validation_errors_end_up_on_lists_page`)
+So now we want to use the form errors in the existing lists view.
+
+For clarity, let's split our current single test for the invalid case
+(`test_validation_errors_end_up_on_lists_page()`)
 into several separate ones:
 
 [role="sourcecode"]
@@ -1051,8 +1058,8 @@ AssertionError: False is not true : Couldn't find 'You can&#x27;t have an empty
 list item' in the following response
 ----
 
-Now let's see if we can properly rewrite the view to use our form.  Here's a
-first cut:
+Now let's see if we can properly rewrite the view to use our form.
+Here's a good stab at it:
 
 
 [role="sourcecode"]
@@ -1082,8 +1089,7 @@ OK
 ----
 
 
-
-How about the FTs?
+Phew! How about the FTs?
 
 
 ----
@@ -1094,9 +1100,16 @@ tion.ItemValidationTest.test_cannot_add_empty_list_items)
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: .invalid-feedback; [...]
+[...]
+
+Ran 4 tests in 14.897s
+
+FAILED (errors=1)
 ----
 
-Nope.
+Well!  We're down to 1 error out of 4, that's progress!
+What about this last remaining problem?
+
 
 [role="pagebreak-before"]
 === An Unexpected Benefit: Free Client-Side Validation from HTML5
@@ -1117,15 +1130,17 @@ It seems like the browser is preventing the user
 from even submitting the input when it's empty.
 
 It's because Django has added the `required` attribute to the HTML input
-(take another look at our `as_p()` printouts from earlier
-if you don't believe me).
+(take another look at our `as_p()` printouts from earlier if you don't believe me,
+or have a look at the source in Dev tools).
 This is a
-https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Input#attr-required[feature of HTML5],
-and browsers nowadays will do some validation at the client side
-if they see it,
+https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Input#attr-required[feature of HTML5];
+browsers nowadays will do some validation at the client side if they can,
 preventing users from even submitting invalid input.
+That's actually good news!
 
-Let's change our FT to reflect that:
+But, we were working based on incorrect assumptions
+about what the user experience was going to be.
+Let's change our FT to reflect this new expectation.
 
 [role="sourcecode small-code"]
 .src/functional_tests/test_list_item_validation.py (ch14l032)
