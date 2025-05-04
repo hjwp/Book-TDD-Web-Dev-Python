@@ -123,13 +123,19 @@ def strip_git_hashes(output):
         r"index XXXXXXX\.\.XXXXXXX 100644",
         output,
     )
-    fixed_commit_numbers = re.sub(
+    fixed_diff_commits = re.sub(
         r"^[a-f0-9]{7} ",
         r"XXXXXXX ",
         fixed_indexes,
         flags=re.MULTILINE,
     )
-    return fixed_commit_numbers
+    fixed_git_log_commits = re.sub(
+        r"\* [a-f0-9]{7} ",
+        r"* abc123d ",
+        fixed_diff_commits,
+        flags=re.MULTILINE,
+    )
+    return fixed_git_log_commits
 
 
 def strip_callouts(output):
@@ -678,6 +684,7 @@ class ChapterTest(unittest.TestCase):
             "test_",
             "base.py",
             "test_my_lists.py",
+            "deploy-playbook.yaml",
         ]
         self.assertTrue("diff" in self.listings[pos] or "status" in self.listings[pos])
         git_output = self.run_command(self.listings[pos])

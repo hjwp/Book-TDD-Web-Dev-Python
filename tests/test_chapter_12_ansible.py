@@ -22,7 +22,8 @@ class Chapter12Test(ChapterTest):
         # self.sourcetree.run_command('mkdir -p static/stuff')
 
         # skips
-        # self.skip_with_check(13, "we also need the Docker")
+        self.skip_with_check(62, "git diff")
+        self.skip_with_check(63, "should show our changes")
 
         # vm_restore = 'MANUAL_END'
 
@@ -44,7 +45,6 @@ class Chapter12Test(ChapterTest):
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
-        self.sourcetree.run_command("git add . && git commit -m ch11")
         self.check_final_diff(ignore=["gunicorn==19"])
         # if DO_SERVER_COMMANDS:
         #     subprocess.run(['vagrant', 'snapshot', 'delete', 'MAKING_END'], check=False)

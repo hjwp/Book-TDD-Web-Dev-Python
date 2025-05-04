@@ -44,9 +44,6 @@ so don't worry, we'll be taking the time to look under the hood
 and make sure we know how things work.]
 so we'll use an infrastructure automation tool called Ansible.
 
-// SEBASTIAN: to reassure readers - automating anything requires deep understanding, so they will not miss anything.
-//  Perhaps this is even more important. When I first read this, I was like "ohhh, I'm gonna miss some fun!"
-
 Automation is also key to making sure our tests give us true confidence over our deployments.
 If we go to the trouble of building a staging server,footnote:[
 Depending on where you work, what I'm calling a "staging" server,
@@ -61,7 +58,6 @@ we give ourselves much more confidence.
 
 The buzzword for automating your deployments these days is "Infrastructure as Code" (IaC).
 
-// RITA: Perhaps move this to the It Worksss section so the reader sees it when their site actually goes live?
 NOTE: Why not ping me a note once your site is live on the web,
     and send me the URL?
     It always gives me a warm and fuzzy feeling...
@@ -70,13 +66,6 @@ NOTE: Why not ping me a note once your site is live on the web,
 ////
 DAVID overall notes
 
-The main challenge is that I found that when I ran into problems I lacked the
-mental model to troubleshoot - it's possible that others who don't have access
-to Harry(TM) will give up. I think talking through what Ansible is doing, maybe
-even a diagram at the beginning of the chapter to show what we're aiming for?
-In particular, it's difficult to understand where the Ansible error logs are
-coming from (i.e. local, server, container...)
-
 I also think we're missing some stuff at the end about how all this might look
 as a development workflow. Maybe talk about setting up scripts (so we don't
 have to remember the ansible command?) And what about releasing to production?
@@ -84,40 +73,11 @@ It doesn't need much, it just feels unfinished to me.
 
 A few small things:
 
-*  I think you should make more of the fact that our functional tests can be
-  run against a real website hosted elsewhere. The fact that we can do that
-  was not obvious to me when we wrote those tests. Worth talking about a bit
-  more?
-
-* Shouldn't we commit our changes to Git at some point, as per the
-  other chapters?
-
 * Will we be returning to this again in the book? I'd like to
   know whether I can destroy my Digital Ocean droplet yet, don't want to get
   billed needlessly.
 ////
 
-////
-SEBASTIAN overall notes
-All in all, I am not very fond of the current shape of this chapter.
-
-The summary is great and the choice of technologies is the best I can imagine.
-
-However, I got lost several times while reading through the chapter.
-There are too many open loops.
-
-
-I think (my opinion) the chapter needs reorganizing so that readers can more quickly see a given piece of tech in action. I'd cut some content.
-
-If you like some more specific suggestions, I can spend more time and provide them.
-
-Also, I must say I'm not following when provisioning starts and where it ends.
-In my book (figuratively speaking),
-installing docker falls under the definition of provisioning
-(which was meant NOT to be automated)
-while the remaining steps, like exporting and reimporting docker image,
-are something different (deployment?).
-////
 
 .Feedback request
 *******************************************************************************
@@ -325,6 +285,42 @@ TIP: Look out for that `elspeth@server`
 SSHing in to check things worked is a key server debugging skill!
 It's something we want to practice on our staging server,
 because ideally we'll want to avoid doing it on production machines.
+
+
+
+.Docker Debugging
+*******************************************************************************
+
+((("debugging", "Docker")))
+Here's a run-down of some of the debugging tools, some we've already seen,
+and some new ones we'll use in this chapter.
+When things don't go to plan, they can help shed some light.
+All of them should be run on the server, inside an SSH session:
+
+- You can check the Container logs using
+  `docker logs superlists`.
+
+- You can run things "inside" the container with
+  `docker exec <container-id-or-name> <cmd>`.
+  A couple of useful examples include `docker exec superlists env`,
+  to print environment variables, and just
+  `docker exec -it superlists bash` to open an interactive bash shell,
+  inside the container.
+
+- You can get lots of detailed info on the _container_ using
+  `docker inspect superlists`.
+  This is a good place to go check on environment variables,
+  port mappings, and exactly which image was running, for example.
+
+
+- You can get detailed info on the _image_ with
+  `docker image inspect superlists`.
+  You might need this to check the exact image hash,
+  to make sure it's the same one you built locally.
+
+
+*******************************************************************************
+
 
 
 === Allowing Rootless Docker access
@@ -673,7 +669,19 @@ both named "superlists" and based on an image called "superlists".
 
 The `Status: Exited` is a bit more worrying though.
 
-Let's take a look at the logs of our new container,
+Still, that's a good bit of progress, so let's do a commit
+(back on your own machine):
+
+[role="small-code"]
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am"Build our image, use export/import to get it on the server, try and run it"*
+----
+
+
+===== Docker Logs
+
+Now, back on the server, let's take a look at the logs of our new container,
 to see if we can figure out what's happened:
 
 
@@ -1111,7 +1119,7 @@ Ran 3 tests in 21.047s
 FAILED (errors=3)
 ----
 
-3/3 failed again, but the FTs did get a little further along.
+3/3 failed again, but the FTs _did_ get a little further along.
 If you saw what was happening,
 or if you go and visit the site manually in your browser,
 you'll see that the home page loads fine,
@@ -1144,6 +1152,7 @@ We'll also want to run migrations to create the database,
 and, in fact, each time we deploy,
 so that any updates to the database schema
 get applied to the database on the server.
+
 Here's the plan:
 
 1. On the host machine, we'll store the database in elspeth's home folder,
@@ -1157,7 +1166,7 @@ Here's the plan:
   again, just like in the last chapter.
 
 4. We'll run the migrations with a `docker exec`,
-  or the ansible equivalent thereof.
+  or the Ansible equivalent thereof.
 
 Here's what that looks like:
 
@@ -1208,9 +1217,9 @@ Here's what that looks like:
 <3> Here is the `mounts` config, which works a lot like the `--mount` flag to
     `docker run`.
 
-<4> And we use the API for `docker exec` to run the migration command inside
-    the container.
-
+<4> And we use the `docker.container_exec` module
+    to give us the functionality of `docker exec`,
+    to run the migration command inside the container.
 
 
 Let's give that playbook a run and...
@@ -1233,12 +1242,11 @@ staging.ottg.co.uk         : ok=9    changed=2    unreachable=0    failed=0
 skipped=0    rescued=0    ignored=0
 ----
 
+Try the tests...
 
 === It workssss
 
-// RITA: I'd prefer to call the section "It works!" with an exclamation point or two, but OK. Please expand the first sentence of the section to be more than just "Hooray." What was achieved? What does the following result indicate?
-
-Hooray
+Hooray!
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -1253,43 +1261,19 @@ Ran 3 tests in 13.537s
 OK
 ----
 
-////
-==== Making Sure Our Container Starts on Boot
 
-((("Container", "automatic booting/reloading of")))
-Our final step is to make sure
-that the server starts up our container automatically on boot,
-and reloads it automatically if it crashes.
+All the tests pass!
+That gives us confidence that our automated deploy script can reproduce a fully working app,
+on a server, hosted on the public internet.
 
-(used to need systemd, now you can just set restart_policy.
-////
+That's worthy of a commit:
 
-// DAVID: Maybe you should say this debugging stuff at the beginning, not the end!
-
-.More Debugging Tips and Commands
-*******************************************************************************
-
-A few more places to look and things to try, now that we've introduced
-Docker into the mix, should things not go according to plan--all of these
-should be run on the server, inside an SSH session:
-
-- You can check the Container logs using
-  `docker logs superlists`.
-// CSANAD: we already used this a lot, so this isn't "more debugging tip"
-
-- You can get detailed info on the Container using
-  `docker inspect superlists`.
-  This is a good place to go check on environment variables,
-  port mappings, and exactly which image was running, for example.
-
-- You can inspect the image with
-  `docker image inspect superlists`.
-  You might need this to check the exact image hash,
-  to make sure it's the same one you built locally.
-
-((("debugging", "Docker")))
-
-*******************************************************************************
+[subs="specialcharacters,quotes"]
+----
+$ *git diff*
+# should show our changes in deploy-playbook yaml
+$ *git commit -am"Save secret key on server, set env vars, mount db, run migrations. It works :)"*
+----
 
 
 
@@ -1318,7 +1302,11 @@ like yours.((("", startref="ansible29")))
 === Deploying to Prod
 
 
-So, let's try using it for our live site!
+Now that we are confident in our deploy script,
+let's try using it for our live site!
+
+The main change is to the `-i` flag, where we pass in the production
+domain name, instead of the staging one:
 
 [role="small-code against-server"]
 [subs=""]
@@ -1363,6 +1351,11 @@ Have a look at the tag in the history:
 [subs="specialcharacters,quotes"]
 ----
 $ *git log --graph --oneline --decorate*
+* 1d4d814 (HEAD -> main) Save secret key on server, set env vars, mount db, run
+migrations. It works :)
+* 95e0fe0 Build our image, use export/import to get it on the server, try and
+run it
+* 5a36957 Made a start on an ansible playbook for deployment
 [...]
 ----
 
@@ -1378,11 +1371,15 @@ Tell your mum, if no one else is interested!
 Or, tell me!  I'm always delighted to see a new reader's site!
 obeythetestinggoat@gmail.com
 
-In the next chapter, it's back to coding again.((("", startref="Fstage11")))
+Congratulations again for getting through this block of deployment chapters,
+I know they can be challenging.  I hope you got something out of them,
+as well as seeing a practical example of how to take these kinds of complex changes,
+and break them down into small, incremental steps, getting frequent feedback
+from our tests and manual investigations along the way.
 
-// DAVID: maybe more of a conclusion here? It's quite a heavy chapter,
-// a bit of an anticlimax to stop here. I want some inspiring note to end on.
-// In particular, how does this tie into TDD?
+
+In the next chapter, it's back to coding again.
+((("", startref="Fstage11")))
 
 
 === Further Reading
@@ -1392,10 +1389,14 @@ There's no such thing as the One True Way in deployment;
 I've tried to set you off on a reasonably sane path,
 but there are plenty of things you could do differently,
 and lots, lots more to learn besides.
-Here are some resources I used for inspiration:
+Here are some resources I used for inspiration,
+(including a couple I've already mentioned):
 
 
 * The original https://12factor.net/[12-factor App] manifesto from the Heroku team
+
+* The official Django Docs'
+  https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/[Deployment Checklist]
 
 * https://hynek.me/talks/deploy-friendly/[How to Write Deployment-Friendly Apps] by Hynek Schlawack
 
@@ -1403,9 +1404,13 @@ Here are some resources I used for inspiration:
   https://www.feldroy.com/two-scoops-of-django[Two Scoops of Django]
   by Dan Greenfeld and Audrey Roy
 
+* The PythonSpeed
+  https://pythonspeed.com/docker/[Docker Packaging for Python Developers] guide.
+
+
 
 [role="pagebreak-before less_space"]
-.Automated Deployment Recap
+.Automated Deployment / IaC Recap
 *******************************************************************************
 
 Here's a brief recap of what we've been through,
