@@ -41,7 +41,7 @@ class Commit:
         return [
             l[1:]
             for l in self.all_lines
-            if l.startswith("+") and l[1:].strip() and not l[1] == "+"
+            if l.startswith("+") and l[1:].strip() and l[1] != "+"
         ]
 
     @property
@@ -49,7 +49,7 @@ class Commit:
         return [
             l[1:]
             for l in self.all_lines
-            if l.startswith("-") and l[1:].strip() and not l[1] == "-"
+            if l.startswith("-") and l[1:].strip() and l[1] != "-"
         ]
 
     @property
@@ -98,15 +98,17 @@ class SourceTree:
         if cwd is None:
             cwd = self.tempdir
 
+        env = os.environ.copy()
+        if "manage.py test" in command:
+            # prevent stdout and stderr from appearing to come out in wrong order
+            env["PYTHONUNBUFFERED"] = "1"
+
+        # TODO: move this out into book_tester.py,
+        # this is not the right level of abstraction for this hack.
         actual_command = command
-        if command.startswith("fab deploy"):
-            actual_command = f"cd deploy_tools && {command}"
-            actual_command = actual_command.replace(
-                "fab deploy",
-                "fab -D -i ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key deploy",
-            )
-        elif command.startswith("curl"):
+        if command.startswith("curl"):
             actual_command = command.replace("curl", "curl --silent --show-error")
+
         process = subprocess.Popen(
             actual_command,
             shell=True,
@@ -115,14 +117,16 @@ class SourceTree:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             stdin=subprocess.PIPE,
-            preexec_fn=os.setsid,
+            # preexec_fn=os.setsid,  # disabled to get passwordless sudo to work
             universal_newlines=True,
+            env=env,
         )
         process._command = command
         self.processes.append(process)
         if "runserver" in command:
             # can't read output, stdout.read just hangs.
             # TODO: readline?  see below.
+            # TODO: could also try UNBUFFERED?
             return
         if "docker run" in command and "superlists" in command and not ignore_errors:
             output = ""

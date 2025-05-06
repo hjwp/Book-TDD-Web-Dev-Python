@@ -20,14 +20,11 @@ class Chapter7Test(ChapterTest):
         self.assertEqual(self.listings[1].type, "output")
 
         # skips
-        self.skip_with_check(53, "should show 5 changed files")  # git
-        self.skip_with_check(58, "add a message summarising")  # git
-        self.skip_with_check(75, "5 changed files")  # git
-        self.skip_with_check(77, "forms x2")  # git
-        self.skip_with_check(104, "3 changed files")  # git
-        touch_pos = 42
-        touch = self.listings[touch_pos]
-        assert "touch" in touch
+        self.skip_with_check(57, "should show 4 changed files")  # git
+        self.skip_with_check(62, "add a message summarising")  # git
+        self.skip_with_check(79, "5 changed files")  # git
+        self.skip_with_check(81, "forms x2")  # git
+        self.skip_with_check(108, "3 changed files")  # git
 
         # other prep
         self.start_with_checkout()
@@ -41,19 +38,6 @@ class Chapter7Test(ChapterTest):
                 # "git switch {}".format(self.sourcetree.get_commit_spec("ch07l035"))
                 "git switch {}".format(self.sourcetree.get_commit_spec("ch07l041"))
             )
-
-        while self.pos < touch_pos:
-            print(self.pos)
-            self.recognise_listing_and_process_it()
-
-        # special-case: we have a touch followed by some output.
-        # just do this one manually
-        if self.pos < touch_pos + 1:
-            output = self.run_command(touch)
-            self.assertFalse(output)
-            touch.was_checked = True
-            self.pos = touch_pos + 1
-
         while self.pos < len(self.listings):
             print(self.pos)
             self.recognise_listing_and_process_it()

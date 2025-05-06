@@ -2,14 +2,15 @@
 import getpass
 import os
 import subprocess
+from pathlib import Path
 
 from chapters import CHAPTERS
 
 REMOTE = "local" if "harry" in getpass.getuser() else "origin"
-BASE_FOLDER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_FOLDER = Path(__file__).parent.parent
 
 
-def fetch_if_possible(target_dir):
+def fetch_if_possible(target_dir: Path):
     fetch = subprocess.Popen(
         ["git", "fetch", REMOTE],
         cwd=target_dir,
@@ -32,9 +33,12 @@ def fetch_if_possible(target_dir):
 
 
 def update_sources_for_chapter(chapter, previous_chapter=None):
-    source_dir = os.path.join(BASE_FOLDER, "source", chapter, "superlists")
+    source_dir = BASE_FOLDER/ "source"/ chapter/ "superlists"
+    if not source_dir.exists():
+        print("No folder at", source_dir, "skipping...")
+        return
     print("updating", source_dir)
-    subprocess.check_output(["git", "submodule", "update", source_dir])
+    subprocess.check_output(["git", "submodule", "update", str(source_dir)])
     commit_specified_by_submodule = (
         subprocess.check_output(["git", "log", "-n 1", "--format=%H"], cwd=source_dir)
         .decode()
@@ -47,10 +51,9 @@ def update_sources_for_chapter(chapter, previous_chapter=None):
 
     if previous_chapter is not None:
         # make sure branch for previous chapter is available to start tests
-        prev_chap_source_dir = os.path.join(
-            BASE_FOLDER, "source", previous_chapter, "superlists"
-        )
-        subprocess.check_output(["git", "checkout", previous_chapter], cwd=source_dir)
+        prev_chap_source_dir = BASE_FOLDER/ "source"/ previous_chapter/ "superlists"
+        
+        subprocess.check_output(["git", "checkout", str(previous_chapter)], cwd=source_dir)
         # we use the submodule commit,
         # as specfified in the previous chapter source/x dir
         prev_chap_commit_specified_by_submodule = (
@@ -81,9 +84,9 @@ def update_sources_for_chapter(chapter, previous_chapter=None):
 
 
 def checkout_testrepo_branches():
-    testrepo_dir = os.path.join(BASE_FOLDER, "tests/testrepo")
+    testrepo_dir = BASE_FOLDER/ "tests/testrepo"
     for branchname in ["chapter_16", "master", "chapter_20", "chapter_17"]:
-        subprocess.check_output(["git", "checkout", branchname], cwd=testrepo_dir)
+        subprocess.check_output(["git", "checkout", str(branchname)], cwd=testrepo_dir)
 
 
 def main():

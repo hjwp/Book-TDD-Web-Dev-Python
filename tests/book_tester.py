@@ -1,4 +1,3 @@
-import io
 import os
 import re
 import subprocess
@@ -124,13 +123,19 @@ def strip_git_hashes(output):
         r"index XXXXXXX\.\.XXXXXXX 100644",
         output,
     )
-    fixed_commit_numbers = re.sub(
+    fixed_diff_commits = re.sub(
         r"^[a-f0-9]{7} ",
         r"XXXXXXX ",
         fixed_indexes,
         flags=re.MULTILINE,
     )
-    return fixed_commit_numbers
+    fixed_git_log_commits = re.sub(
+        r"\* [a-f0-9]{7} ",
+        r"* abc123d ",
+        fixed_diff_commits,
+        flags=re.MULTILINE,
+    )
+    return fixed_git_log_commits
 
 
 def strip_callouts(output):
@@ -317,10 +322,7 @@ class ChapterTest(unittest.TestCase):
     def check_final_diff(self, ignore=None, diff=None):
         if diff is None:
             diff = self.run_command(Command(f"git diff -w repo/{self.chapter_name}"))
-        # try:
         print("checking final diff", diff)
-        # except io.BlockingIOError:
-        # pass
         self.assertNotIn("fatal:", diff)
         start_marker = "diff --git a/\n"
         commit = Commit.from_diff(start_marker + diff)
@@ -382,7 +384,7 @@ class ChapterTest(unittest.TestCase):
         self.assertEqual(
             type(command),
             Command,
-            "passed a non-Command to run-command:\n%s" % (command,),
+            f"passed a non-Command to run-command:\n{command}",
         )
         if command == "git push":
             command.was_run = True
@@ -417,7 +419,7 @@ class ChapterTest(unittest.TestCase):
             print("tabz")
         if line not in lines:
             raise AssertionError(
-                "%s not found in:\n%s" % (repr(line), "\n".join(repr(l) for l in lines))
+                f"{repr(line)} not found in:\n" + "\n".join(repr(l) for l in lines)
             )
 
     def assert_console_output_correct(self, actual, expected, ls=False):
@@ -426,11 +428,15 @@ class ChapterTest(unittest.TestCase):
         self.assertEqual(
             type(expected),
             Output,
-            "passed a non-Output to run-command:\n%s" % (expected,),
+            f"passed a non-Output to run-command:\n{expected}",
         )
 
         if str(self.tempdir) in actual:
             actual = actual.replace(str(self.tempdir), "...goat-book")
+            if sys.platform == "darwin":
+                # for some reason macos does full paths to virtualenvs
+                # when linux doesnt
+                actual = actual.replace("...goat-book/.venv", "./.venv")
             actual = actual.replace("/private", "")  # macos thing
 
         if ls:
@@ -502,21 +508,41 @@ class ChapterTest(unittest.TestCase):
             else:
                 self.assertLineIn(line.rstrip(), [l.strip() for l in actual_lines])
 
-        if len(expected_lines) > 4 and "[..." not in expected_fixed:
-            if expected.type != "qunit output":
-                self.assertMultiLineEqual(actual_fixed.strip(), expected_fixed.strip())
+        if (
+            len(expected_lines) > 4
+            and "[..." not in expected_fixed
+            and expected.type != "qunit output"
+        ):
+            self.assertMultiLineEqual(actual_fixed.strip(), expected_fixed.strip())
 
         expected.was_checked = True
 
-    def skip_with_check(self, pos, expected_content):
+    def find_with_check(self, pos, expected_content):
         listing = self.listings[pos]
+        listing_text = lambda l: getattr(l, "contents", l)
+        first_match = next(
+            (
+                (ix, l)
+                for ix, l in enumerate(self.listings)
+                if expected_content in listing_text(l)
+            ),
+            None,
+        )
         all_listings = "\n".join(str(t) for t in enumerate(self.listings))
-        error = f'Could not find {expected_content} at pos {pos}: "{listing}". Listings were:\n{all_listings}'
+        error = f'Could not find {expected_content} at pos {pos}: ("{listing}"). ' + (
+            f"Did you mean {first_match}?"
+            if first_match
+            else f"Listings were:\n{all_listings}"
+        )
         if hasattr(listing, "contents"):
             if expected_content not in listing.contents:
                 raise Exception(error)
         elif expected_content not in listing:
             raise Exception(error)
+        return listing
+
+    def skip_with_check(self, pos, expected_content):
+        listing = self.find_with_check(pos, expected_content)
         listing.skip = True
 
     def replace_command_with_check(self, pos, old, new):
@@ -563,7 +589,6 @@ class ChapterTest(unittest.TestCase):
 
     def check_test_code_cycle(self, pos, test_command_in_listings=True, ft=False):
         self.write_to_file(self.listings[pos])
-        self._strip_out_any_pycs()
         if test_command_in_listings:
             pos += 1
             self.assertIn("test", self.listings[pos])
@@ -582,18 +607,11 @@ class ChapterTest(unittest.TestCase):
         if "PYTHONDONTWRITEBYTECODE" in os.environ:
             del os.environ["PYTHONDONTWRITEBYTECODE"]
 
-    def _strip_out_any_pycs(self):
-        return
-        self.sourcetree.run_command(
-            r"find . -name __pycache__ -exec rm -rf {} \;", ignore_errors=True
-        )
-
     def run_test_and_check_result(self, bdd=False):
         if bdd:
             self.assertIn("behave", self.listings[self.pos])
         else:
             self.assertIn("test", self.listings[self.pos])
-        self._strip_out_any_pycs()
         if bdd:
             test_run = self.run_command(self.listings[self.pos], ignore_errors=True)
         else:
@@ -666,6 +684,7 @@ class ChapterTest(unittest.TestCase):
             "test_",
             "base.py",
             "test_my_lists.py",
+            "deploy-playbook.yaml",
         ]
         self.assertTrue("diff" in self.listings[pos] or "status" in self.listings[pos])
         git_output = self.run_command(self.listings[pos])
@@ -882,9 +901,27 @@ class ChapterTest(unittest.TestCase):
                 fixed = Command(
                     fixed.replace(
                         "docker run --platform=linux/amd64 -t debug-ci",
-                        "docker run -e PYTHON_COLORS=0 --platform=linux/amd64 -t debug-ci"
+                        "docker run -e PYTHON_COLORS=0 --platform=linux/amd64 -t debug-ci",
                     )
                 )
+            next_listing = self.listings[self.pos + 1]
+            if next_listing.type == "output" and not next_listing.skip:
+                output = self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
+                self.assert_console_output_correct(output, next_listing)
+                next_listing.was_checked = True
+                self.pos += 2
+            else:
+                self.run_command(fixed, ignore_errors=listing.ignore_errors)
+                listing.was_run = True
+                listing.was_checked = True
+                self.pos += 1
+
+        elif listing.type == "docker exec":
+            container_id = self.sourcetree.run_command(
+                "docker ps --filter=ancestor=superlists -q"
+            ).strip()
+            fixed = Command(listing.replace("container-id-or-name", container_id))
             next_listing = self.listings[self.pos + 1]
             if next_listing.type == "output" and not next_listing.skip:
                 output = self.run_command(fixed, ignore_errors=listing.ignore_errors)
@@ -947,7 +984,6 @@ class ChapterTest(unittest.TestCase):
             self.pos += 1
 
         elif listing.type == "output":
-            self._strip_out_any_pycs()
             test_run = self.run_unit_tests()
             if "OK" in test_run and "OK" not in listing:
                 print("unit tests pass, must be an FT:\n", test_run)

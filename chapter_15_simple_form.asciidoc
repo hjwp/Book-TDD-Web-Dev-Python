@@ -1,6 +1,14 @@
 [[chapter_15_simple_form]]
 == A Simple Form
 
+.A Note for Early Release Readers
+****
+With Early Release ebooks, you get books in their earliest form—the author's raw and unedited content as they write—so you can take advantage of these technologies long before the official release of these titles.
+
+This will be the 15th chapter of the final book. The GitHub repo is available at https://github.com/hjwp/book-example.
+
+If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the author at obeythetestinggoat@gmail.com.
+****
 
 At the end of the last chapter,
 we were left with the thought that there was too much duplication
@@ -15,7 +23,7 @@ and making sure each of them tests only one thing at a time.
 
 // SEBASTIAN: One bigger thing is that I'd put at the beginning
 // something to set the expectations and do a little priming of the reader
-// - that we're indeed gonna do be doing some refactor 
+// - that we're indeed gonna do be doing some refactor
 // and in such a case functional tests shield us.
 
 // DAVID: Keeping the test suite passing
@@ -249,7 +257,7 @@ and which fields we want it to use.
 like assigning sensible HTML form input types to different types of field,
 and applying default validation.
 Check out the
-https://docs.djangoproject.com/en/5.1/topics/forms/modelforms/[docs]
+https://docs.djangoproject.com/en/5.2/topics/forms/modelforms/[docs]
 for more info.
 
 We now have some different-looking form HTML:
@@ -291,9 +299,7 @@ class ItemForm(forms.models.ModelForm):
 
 That gets the test passing.
 
-Testing and Customising Form Validation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
+==== Testing and Customising Form Validation
 
 Now let's see if the `ModelForm` has picked up the same validation rules which we
 defined on the model.  We'll also learn how to pass data into the form, as if
@@ -517,7 +523,7 @@ replace the old `<input ..>` with `{{ form.text }}`:
 [source,html]
 ----
   <form method="POST" action="{% block form_action %}{% endblock %}" >
-    {{ form.text }}
+    {{ form.text }}  <1>
     {% csrf_token %}
     {% if error %}
       <div class="invalid-feedback">{{ error }}</div>
@@ -526,7 +532,16 @@ replace the old `<input ..>` with `{{ form.text }}`:
 ----
 ====
 
-`{{ form.text }}` renders just the HTML input for the `text` field of the form.
+<1> `{{ form.text }}` renders just the HTML input for the `text` field of the form.
+
+
+And we're back to passing unit tests:
+
+----
+Ran 18 tests in 0.019s
+
+OK
+----
 
 
 
@@ -534,27 +549,28 @@ replace the old `<input ..>` with `{{ form.text }}`:
 
 ((("find and replace")))
 ((("grep command")))
-One thing we have done, though, is change our form--it no longer uses
-the same `id` and `name` attributes.  You'll see if we run our functional
-tests that they fail the first time they try to find the input box:
-
-// SEBASTIAN: To me, it's a bit late to see functional tests mentioned in this chapter only now.
-//      How about mentioning that we expect them to pass, as this whole effort is mostly a refactoring
-//      that does not change the behaviour of the application?
+One thing we have done, though, is change our form--it
+no longer uses the same `id` and `name` attributes.
+You'll see if we run our functional tests,
+they fail the first time they try to find the input box:
 
 ----
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: [id="id_new_item"]; [...]
+[...]
+Ran 4 tests in 6.524s
+
+FAILED (errors=4)
 ----
 
 We'll need to fix this, and it's going to involve a big find and replace.
-Before we do that, let's do a commit, to keep the rename separate from
-the logic change:
+Before we do that, let's do a commit,
+to keep the rename separate from the logic change:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *git diff* # review changes in base.html, views.py and its tests
-$ *git commit -am "use new form in home_page. NB breaks stuff"*
+$ *git commit -am "WIP - use new form in home_page. NB breaks stuff"*
 ----
 
 
@@ -573,7 +589,7 @@ self.browser.find_element(By.ID, "id_new_item").send_keys(Keys.ENTER)
 [...]
 ----
 
-That's a good call for a refactor.
+That's a good call for a refactor within the FTs.
 Let's make a new helper method in _base.py_:
 
 [role="sourcecode"]
@@ -619,13 +635,41 @@ Or:
 I won't show you every single one; I'm sure you can manage this for yourself!
 You can redo the `grep` to check that you've caught them all.
 
-We're past the first step,
-but now we have to bring the rest of the application code in line with the change.
-We need to find any occurrences of the old `id` (`id_new_item`)
-and `name` (`item_text`) and replace them too,
-with `id_text` and `text`, respectively:
+We've done the FT side of the rename.
+If you run them you'll see a change,
+the FTS are no longer falling over trying to find `id_new_item`,
+instead they can't find `id_list_table`.
+Interspersed, you'll an exception bubbling up from our views code,
+`KeyError: 'item_text'`, pointing us towards where we now need to make the fix
+on the application side:
 
-// DAVID: this instruction could be given more clearly.
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test functional_tests*]
+[...]
+    item = Item(text=request.POST["item_text"], list=nulist)
+                     ~~~~~~~~~~~~^^^^^^^^^^^^^
+    [...]
+django.utils.datastructures.MultiValueDictKeyError: 'item_text'
+[...]
+
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: [id="id_list_table"]; [...]
+[...]
+
+Ran 4 tests in 35.495s
+
+FAILED (errors=4)
+----
+
+So we're done on the FT side,
+but now we have to bring the rest of the application code in line with the change.
+Let's look through our application code for any references to the old
+`id` attribute, `id_new_item`; we'll need to replace them with `id_text`,
+just like we did in the FTs.
+On top of that, we'll also need to look for any occurences of the old `name`
+attribute, `item_text`, and replace them with just `text`.
+
 
 [role="ignore-errors"]
 [subs="specialcharacters,quotes"]
@@ -634,7 +678,8 @@ $ *grep -r id_new_item src/lists/*
 ----
 
 Good, there are no references to `id_new_item` left--except maybe in some
-`*.pyc` files, which are safe to ignore.
+`.pyc` files, which are safe to ignore.
+
 What about `name`/ `item_text`?
 
 [subs="specialcharacters,macros"]
@@ -653,11 +698,50 @@ src/lists/tests/test_views.py:            data={"item_text": ""},
 
 We can ignore the migration which is just using `item_text` as metadata.
 So the changes we need to make are all in _views.py_ and _test_views.py_.
+Let's go ahead and make those.
+I'm sure you can manage your own find and replace!
+They should look something like this:
 
-We can go ahead and make those.
-Once we're done, we rerun the unit tests to check that everything still works:
 
-[role="dofirst-ch11l022"]
+[role="sourcecode"]
+.src/lists/tests/test_views.py (ch14l015)
+====
+[source,diff]
+----
+@@ -17,25 +17,25 @@ class HomePageTest(TestCase):
+
+ class NewListTest(TestCase):
+     def test_can_save_a_POST_request(self):
+-        self.client.post("/lists/new", data={"item_text": "A new list item"})
++        self.client.post("/lists/new", data={"text": "A new list item"})
+         self.assertEqual(Item.objects.count(), 1)
+         new_item = Item.objects.get()
+         self.assertEqual(new_item.text, "A new list item")
+[...]
+----
+====
+
+Or, in _views.py_:
+
+[role="sourcecode dofirst-ch14l016"]
+.src/lists/views.py (ch14l017)
+====
+[source,diff]
+----
+@@ -11,7 +11,7 @@ def home_page(request):
+
+ def new_list(request):
+     nulist = List.objects.create()
+-    item = Item(text=request.POST["item_text"], list=nulist)
++    item = Item(text=request.POST["text"], list=nulist)
+[...]
+----
+====
+
+
+Once you're done, rerun the unit tests to confirm that the application is self-consistent:
+
+[role="dofirst-ch14l018"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test lists*]
@@ -667,7 +751,9 @@ Ran 18 tests in 0.126s
 OK
 ----
 
-And the functional tests too, where we can see three errors:
+
+Now let's see if we've made progress on the functional tests.
+You'll find they now warn us about two different problems.
 
 ----
 ERROR: test_layout_and_styling (functional_tests.test_layout_and_styling.Layout
@@ -695,29 +781,12 @@ element: .invalid-feedback; [...]
 [...]
 ----
 
-// TODO re-order the steps for this chapter: it would be better to start with
-// the `id_text` related errors first, and only then fix the validation.
+1. The input box is not being displayed for existing list items,
+2. Our error message is not being displayed, when submitting a brand new item.
 
-Let's start with the latter.
-Checking _views.py_ and the `new_list` view we can see
-it's because if we detect a validation error,
-we're not actually passing the form to the _home.html_ template:
 
-[role="sourcecode currentcontents"]
-.src/lists/views.py
-====
-[source,python]
-----
-except ValidationError:
-    nulist.delete()
-    error = "You can't have an empty list item"
-    return render(request, "home.html", {"error": error})
-----
-====
-
-((("", startref="FDVviews14")))
-We'll want to use the form in this view too.
-Before we make any more changes though, let's do a commit:
+We'll get there! Before we make any more changes though,
+let's commit our application-level rename:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -726,10 +795,47 @@ $ *git commit -am "rename all item input ids and names. still broken"*
 ----
 
 
+==== Ensuring errors are displayed
+
+Our problems affect both the existing list items view, `view_list()`,
+and the view that handles creating brand new lists from the home page,
+`new_list()`.
+
+Let's start with the latter, since it comes first logically,
+and it will make sure that we know how to use our new form from end to end.
+
+Looking into _views.py_ and the `new_list()` view we can see
+that we're not using our new form at all:
+
+[role="sourcecode currentcontents"]
+.src/lists/views.py
+====
+[source,python]
+----
+def new_list(request):
+    nulist = List.objects.create()
+    item = Item(text=request.POST["text"], list=nulist)
+    try:
+        item.full_clean()
+        item.save()
+    except ValidationError:
+        nulist.delete()
+        error = "You can't have an empty list item"
+        return render(request, "home.html", {"error": error})  # <1>
+    return redirect(nulist)
+----
+====
+
+((("", startref="FDVviews14")))
+
+
 === Using the Form in a View That Takes POST Requests
 
 ((("form data validation", "processing POST requests", id="FDVpost14")))
-Now we want to adjust the unit tests for the `new_list` view,
+How shall we evolve our view so that it uses a form instead of
+the manual manipulation of `request.POST` and the error message.
+
+So we want to adjust the unit tests for the `new_list()` view,
 especially the one that deals with validation.
 Let's take a look at it now:
 
@@ -745,7 +851,7 @@ class NewListTest(TestCase):
         response = self.client.post("/lists/new", data={"text": ""})
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "home.html")
-        expected_error = escape("You can't have an empty list item")
+        expected_error = html.escape("You can't have an empty list item")
         self.assertContains(response, expected_error)
 ----
 ====
@@ -760,7 +866,7 @@ instead of the hardcoded string for that error message:
 ====
 [source,python]
 ----
-from lists.forms import ItemForm, EMPTY_ITEM_ERROR
+from lists.forms import EMPTY_ITEM_ERROR, ItemForm
 [...]
 
 class NewListTest(TestCase):
@@ -771,7 +877,7 @@ class NewListTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "home.html")
         self.assertIsInstance(response.context["form"], ItemForm)
-        self.assertContains(response, escape(EMPTY_ITEM_ERROR))
+        self.assertContains(response, html.escape(EMPTY_ITEM_ERROR))
 ----
 ====
 
@@ -818,10 +924,10 @@ def new_list(request):
 
 That view is now looking much nicer!
 
-But, we have a regression:
+But, we have a regression in the unit tests:
 
 ----
-    self.assertContains(response, escape(EMPTY_ITEM_ERROR))
+    self.assertContains(response, html.escape(EMPTY_ITEM_ERROR))
 [...]
 AssertionError: False is not true : Couldn't find 'You can&#x27;t have an empty
 list item' in the following response
@@ -830,8 +936,8 @@ list item' in the following response
 
 ==== Using the Form to Display Errors in the Template
 
-We're failing because we're not yet using the form
-to display errors in the template:
+We're failing because we're not yet _using_ the form
+to display errors in the template.  Here's how to do that:
 
 [role="sourcecode"]
 .src/lists/templates/base.html (ch14l026)
@@ -848,13 +954,14 @@ to display errors in the template:
 ----
 ====
 
-<1> `form.errors` contains a list of all the errors for the form.
+<1> We change the `if` to look at `form.errors`:
+    it contains a list of all the errors for the form.
 
 <2> `form.errors.text` is magical Django template syntax
     for `form.errors["text"]`,
     i.e., the list of errors for the text field in particular.
 
-What does that do to our tests?
+What does that do to our unit tests?
 
 ----
 ======================================================================
@@ -870,67 +977,19 @@ An unexpected failure--it's actually in the tests for our final view, `view_list
 Because we've changed the way errors are displayed in _all_ templates,
 we're no longer showing the error that we manually pass into the template.
 
-That means we're going to need to rework `view_list` as well,
+That means we're going to need to rework existing list view, `view_list()`, as well,
 before we can get back to a working state.
 ((("", startref="FDVpost14")))
 
 
-=== Using the Form in the Other View
-
-((("form data validation", "processing POST and GET requests", id="FDVproget14")))
-This list view handles both GET and POST requests.
-Let's start with checking that the form is used in GET requests.
-We can have a new test for that:
-
-[role="sourcecode"]
-.src/lists/tests/test_views.py (ch14l027)
-====
-[source,python]
-----
-class ListViewTest(TestCase):
-    [...]
-
-    def test_displays_item_form(self):
-        mylist = List.objects.create()
-        response = self.client.get(f"/lists/{mylist.id}/")
-        self.assertIsInstance(response.context["form"], ItemForm)
-        self.assertContains(response, 'name="text"')
-----
-====
-
-That gives:
-
-----
-KeyError: 'form'
-----
-
-Here's a minimal implementation. We initialise our `ItemForm()` at the end of the view,
-and change the `render()` call so it passes `"form"` to the template:
-
-[role="sourcecode"]
-.src/lists/views.py (ch14l028)
-====
-[source,python]
-----
-def view_list(request, list_id):
-    [...]
-    form = ItemForm()
-    return render(
-        request,
-        "list.html",
-        {"list": our_list, "form": form, "error": error},
-    )
-----
-====
-
 
 ==== A Helper Method for Several Short Tests
 
-
 ((("helper methods")))
-Next we want to use the form errors in the second view.
-We'll split our current single test for the invalid case
-(`test_validation_errors_end_up_on_lists_page`)
+So now we want to use the form errors in the existing lists view.
+
+For clarity, let's split our current single test for the invalid case
+(`test_validation_errors_end_up_on_lists_page()`)
 into several separate ones:
 
 [role="sourcecode"]
@@ -963,7 +1022,7 @@ class ListViewTest(TestCase):
 
     def test_for_invalid_input_shows_error_on_page(self):
         response = self.post_invalid_input()
-        self.assertContains(response, escape(EMPTY_ITEM_ERROR))
+        self.assertContains(response, html.escape(EMPTY_ITEM_ERROR))
 ----
 ====
 
@@ -999,8 +1058,8 @@ AssertionError: False is not true : Couldn't find 'You can&#x27;t have an empty
 list item' in the following response
 ----
 
-Now let's see if we can properly rewrite the view to use our form.  Here's a
-first cut:
+Now let's see if we can properly rewrite the view to use our form.
+Here's a good stab at it:
 
 
 [role="sourcecode"]
@@ -1030,8 +1089,7 @@ OK
 ----
 
 
-
-How about the FTs?
+Phew! How about the FTs?
 
 
 ----
@@ -1042,37 +1100,47 @@ tion.ItemValidationTest.test_cannot_add_empty_list_items)
 [...]
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: .invalid-feedback; [...]
+[...]
+
+Ran 4 tests in 14.897s
+
+FAILED (errors=1)
 ----
 
-Nope.
+Well!  We're down to 1 error out of 4, that's progress!
+What about this last remaining problem?
+
 
 [role="pagebreak-before"]
 === An Unexpected Benefit: Free Client-Side Validation from HTML5
 
 ((("HTML5")))
-What's going on here?  Let's add our usual `time.sleep` before the error,
-and take a look at what's happening
-or spin up the site manually with `manage.py runserver` if you prefer
-(see <<html5_popup_screenshot>>).
+How shall we find out what's going on here?
+One option is to add the usual `time.sleep` just before the error in the FTs,
+and take a look at what's happening while they run.
+Alternatively, spin up the site manually with `manage.py runserver` if you prefer.
+Either way, you should see something like <<html5_popup_screenshot>>.
 
 
 [[html5_popup_screenshot]]
 .HTML5 validation says no
-image::images/twp2_1401.png["The input with a popup saying 'please fill out this field'"]
+image::images/html5-validation-popup.png["The input with a popup saying 'please fill out this field'"]
 
 It seems like the browser is preventing the user
 from even submitting the input when it's empty.
 
 It's because Django has added the `required` attribute to the HTML input
-(take another look at our `as_p()` printouts from earlier
-if you don't believe me).
+(take another look at our `as_p()` printouts from earlier if you don't believe me,
+or have a look at the source in Dev tools).
 This is a
-https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Input#attr-required[feature of HTML5],
-and browsers nowadays will do some validation at the client side
-if they see it,
+https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Input#attr-required[feature of HTML5];
+browsers nowadays will do some validation at the client side if they can,
 preventing users from even submitting invalid input.
+That's actually good news!
 
-Let's change our FT to reflect that:
+But, we were working based on incorrect assumptions
+about what the user experience was going to be.
+Let's change our FT to reflect this new expectation.
 
 [role="sourcecode small-code"]
 .src/functional_tests/test_list_item_validation.py (ch14l032)
@@ -1208,24 +1276,21 @@ using a form is a nice way of encapsulating that logic.
 // DAVID: I wonder if this is slightly missing the point.
 // Our functional tests here are very high level - using a headless browser.
 // But many developers use the Django test client
-// (https://docs.djangoproject.com/en/5.1/topics/testing/tools/#the-test-client)
+// (https://docs.djangoproject.com/en/5.2/topics/testing/tools/#the-test-client)
 // for this kind of thing, which doesn't have browser validation built in.
 // So we could use that if we really wanted to test the server side validation.
 //
 // [Update]: I just clocked that we are doing exactly this in test_views.py. Might be worth just calling it out a bit more?
-//
-
 //
 // This might be a good opportunity to mention that as an option
 // (even if we don't go into detail here)
 // and discuss the trade offs of using Selenium versus the test client, versus both.
 
 ((("HTML5")))
-Also, not all browsers ('cough--Safari--cough')
-// TODO this is probably not true any more.
-// SEBASTIAN: quick google search shows its indeed not true anymore
-fully implement HTML5,
-so some users are still going to see our custom error message.
+Also, not all browsers fully implement HTML5,footnote:[
+Safari was a notable laggard in the last edition,
+it's up to date now]
+so some users might still see our custom error message.
 And if or when we come to letting users access our data via an API
 (see <<appendix_rest_api>>),
 then our validation messages will come back into use.
@@ -1311,14 +1376,15 @@ Here's how we can implement a custom save method:
 ====
 [source,python]
 ----
+class ItemForm(forms.models.ModelForm):
+    class Meta:
+        [...]
+
     def save(self, for_list):
         self.instance.list = for_list
         return super().save()
 ----
 ====
-
-// DAVID: worth showing where this goes in the class, in case someone is thrown by the weird inner class?
-// (I know it doesn't actually matter, but might reduce friction.)
 
 The `.instance` attribute on a form represents the database object
 that is being modified or created.
@@ -1335,9 +1401,7 @@ Ran 23 tests in 0.086s
 OK
 ----
 
-// DAVID: Maybe I took a wrong turn somewhere but I only have 22 tests.
-
-Finally, we can refactor our views. `new_list` first:
+Finally, we can refactor our views. `new_list()` first:
 
 
 [role="sourcecode"]
@@ -1362,7 +1426,9 @@ Rerun the test to check that everything still passes:
 Ran 23 tests in 0.086s
 OK
 ----
-Then, refactor `view_list`:
+
+
+Then, refactor `view_list()`:
 
 [role="sourcecode"]
 .src/lists/views.py (ch14l037)
@@ -1426,7 +1492,7 @@ Thin views::
     If you find yourself looking at complex views, and having to write a lot of
     tests for them, it's time to start thinking about whether that logic could
     be moved elsewhere: possibly to a form, like we've done here.
-    +
+    +++<br />+++
     Another possible place would be a custom method on the model class.
     And--once the complexity of the app demands it--out of Django-specific
     files and into your own classes and functions, that capture your core
@@ -1437,17 +1503,15 @@ Thin views::
 
 
 Each test should test one thing::
-    The heuristic is to be suspicious if there's more than one assertion in a
-    test. Sometimes two assertions are closely related, so they belong
-    together. But often your first draft of a test ends up testing multiple
-    behaviours, and it's worth rewriting it as several tests. Helper functions
-    can keep them from getting too bloated.
+    The heuristic is to be suspicious if there's more than one assertion
+    in a unit test.
+    Sometimes two assertions are closely related, so they belong together.
+    But often your first draft of a test ends up testing multiple behaviours,
+    and it's worth rewriting it as several tests,
+    so that each one can pinpoint specific problems more precisely,
+    and one failure doesn't mask another.
+    Helper functions can keep them your tests getting too bloated.
     ((("", startref="UIform14")))
     ((("unit tests", "testing only one thing")))
     ((("testing best practices")))
 *******************************************************************************
-
-// DAVID: Is that `+` a typo? It renders as-is in the html version of the page when I build it locally.
-
-// DAVID: Second tip: should this specify unit tests? It's certainly not the case for our functional tests.
-// Also this tip is missing the 'why', i.e. that it makes it easier to identify the precise bug.

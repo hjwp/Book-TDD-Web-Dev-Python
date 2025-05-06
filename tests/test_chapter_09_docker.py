@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 import os
-import subprocess
 import unittest
 
-from book_tester import DO_SERVER_COMMANDS, ChapterTest
+from book_tester import ChapterTest
 
 
 class Chapter9Test(ChapterTest):
@@ -17,11 +16,15 @@ class Chapter9Test(ChapterTest):
         self.assertEqual(self.listings[0].type, "code listing with git ref")
         self.assertEqual(self.listings[1].type, "test")
 
-        # skips
-        self.skip_with_check(20, "naming to docker.io/library/superlists")
-        self.skip_with_check(27, "naming to docker.io/library/superlists")
-        self.skip_with_check(27, "naming to docker.io/library/superlists")
-        self.skip_with_check(73, "add Dockerfile, .dockerignore, .gitignore")
+        # skips:
+
+        # docker build output, we want to run the 'docker build'
+        # but not check output
+        self.skip_with_check(29, "naming to docker.io/library/superlists")
+        self.skip_with_check(36, "naming to docker.io/library/superlists")
+        self.skip_with_check(36, "naming to docker.io/library/superlists")
+        # normal git one
+        self.skip_with_check(82, "add Dockerfile, .dockerignore, .gitignore")
 
         self.start_with_checkout()
         # simulate having a db.sqlite3 and a static folder from previous chaps

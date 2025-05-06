@@ -18,117 +18,41 @@ make it accessible on the Internet with a real domain name,
 and setup the authentication and credentials we need
 to be able to control it remotely with SSH and Ansible.
 
-////
-DAVID overall notes
 
-The main challenge is that I found that when I ran into problems I lacked the
-mental model to troubleshoot - it's possible that others who don't have access
-to Harry(TM) will give up. I think talking through what Ansible is doing, maybe
-even a diagram at the beginning of the chapter to show what we're aiming for?
-In particular, it's difficult to understand where the Ansible error logs are
-coming from (i.e. local, server, container...)
+.Feedback request
+*******************************************************************************
+Just to reinforce the message from the Early Release note above,
+your feedback is enthusiastically solicited!
 
-I also think we're missing some stuff at the end about how all this might look
-as a development workflow. Maybe talk about setting up scripts (so we don't
-have to remember the ansible command?) And what about releasing to production?
-It doesn't need much, it just feels unfinished to me.
+This chapter is entirely new for this edition of the book,
+so I'd love to hear about how people get on with it.
+Are the explanations clear?
+Did you manage to make the various listings and scripts work
+without a hitch?
 
-A few small things:
-
-*  I think you should make more of the fact that our functional tests can be
-  run against a real website hosted elsewhere. The fact that we can do that
-  was not obvious to me when we wrote those tests. Worth talking about a bit
-  more?
-
-* Shouldn't we commit our changes to Git at some point, as per the
-  other chapters?
-
-* Will we be returning to this again in the book? I'd like to
-  know whether I can destroy my Digital Ocean droplet yet, don't want to get
-  billed needlessly.
-////
-
-////
-SEBASTIAN overall notes
-All in all, I am not very fond of the current shape of this chapter.
-
-The summary is great and the choice of technologies is the best I can imagine.
-
-However, I got lost several times while reading through the chapter.
-There are too many open loops.
-For example, SSH is mentioned but then we jump into all other technologies
-without seeing what SSH is and how it will play with the rest.
-
-
-I think (my opinion) the chapter needs reorganizing
-so that readers can more quickly see a given piece of tech in action.
-I'd cut some content.
-
-If you like some more specific suggestions,
-I can spend more time and provide them.
-
-Also, it's mentioned that the server will be provisioned manually without automation,
-but then we get ansible infra/ansible-provision.yaml. [note - now renamed]
-I must say I'm not following when provisioning starts and where it ends.
-In my book (figuratively speaking),
-installing docker falls under the definition of provisioning
-(which was meant NOT to be automated)
-while the remaining steps, like exporting and reimporting docker image,
-are something different (deployment?).
-////
-
-
-.Warning, chapter under construction
-****************************************************************
-As part of my work on the third edition of the book,
-I'm making big changes to the deployment chapters.
-This chapter is still a little "bare bones"
-and could do with a bit more explanatory content and guidance,
-but the core steps are all there, so I hope you'll be able to follow along.
-
-So as always I really, really need feedback.
-So please hit me up at obeythetestinggoat@gmail.com, or via
+Hit me up at obeythetestinggoat@gmail.com, or via
 https://github.com/hjwp/Book-TDD-Web-Dev-Python/issues[GitHub Issues]
 and Pull Requests.
 
 I hope you enjoy the new version!
-****************************************************************
-
-
-=== Getting a Domain Name
-
-((("domain names")))
-We're going to need a couple of domain names at this point in the book--they
-can both be subdomains of a single domain.
-I'm going to use _superlists.ottg.co.uk_ and _staging.ottg.co.uk_.
-If you don't already own a domain, this is the time to register one!
-Again, this is something I really want you to _actually_ do.
-If you've never registered a domain before,
-just pick any old registrar and buy a cheap one--it
-should only cost you $5 or so, and you can even find free ones.
-I promise seeing your site on a "real" website will be a thrill.
-
-// DAVID: just wondering if it's worth giving them the option to cheat and
-// specify a domain name in a hosts file?
+*******************************************************************************
 
 
 === Manually Provisioning a Server to Host Our Site
-
-// TODO: revise this section?  I used to assume provisioning included installing dependencies,
-// but now we have docker, so at least some of that job is part of deployment after all.
-
-
-// HP: ok taking on suggestion from earlier,
-// maybe get rid of the provisioning/deployment distinction,
-// and instead talk about "spinning up" aka "starting" a server being the only manual step
-
 
 ((("staging sites", "manual server provisioning", id="SSserver09")))
 ((("server provisioning", id="seerver09")))
 We can separate out "deployment" into two tasks:
 
-- _Provisioning_ a new server to be able to host the code
-- _Deploying_ a new version of the code to an existing server
+- _Provisioning_ a new server to be able to host the code.
+  This includes choosing an operating system,
+  getting basic credentials to log in,
+  and configuring DNS.
+
+- _Deploying_ our application to an existing server,
+  which includes getting our Docker image onto the server,
+  starting a container, and configuring it to talk to the database
+  and the outside world.
 
 Infrastructure-as-code tools can let you automate both of these,
 but the provisioning parts tend to be quite vendor-specific,
@@ -148,10 +72,12 @@ There are loads of different solutions out there these days,
 but they broadly fall into two camps:
 
 - Running your own (probably virtual) server, aka VPS (Virtual Private Server)
-- Using a ((("Platform-As-A-Service (PaaS)")))Platform-As-A-Service (PaaS)
-  offering like Heroku or my old employers, PythonAnywhere.
 
-((("PythonAnywhere")))
+- Using a Platform-As-A-Service (PaaS)
+  offering like Heroku or my old employers, PythonAnywhere.
+  ((("Platform-As-A-Service (PaaS)")))
+  ((("PythonAnywhere")))
+
 With a PaaS, you don't get your own server,
 instead you're renting a "service" at a higher level of abstraction.
 Particularly for small sites,
@@ -170,8 +96,6 @@ They're unlikely to ever go away,
 and knowing a bit about them will get you some respect
 from all the grizzled dinosaurs out there.
 
-// SEBASTIAN: Nice, and seem-to-be timeless choice!
-
 
 ==== Spinning Up Our Own Server
 
@@ -186,7 +110,8 @@ any solution should be fine, as long as:
 
 * It's on the public internet (ie, it has a public IP address).
 
-* You can SSH into it.
+* You can SSH into it (I recommend using a non-root user account,
+  with sudo access, and public/private key authentication)
 
 I'm recommending Ubuntu as a distro:footnote[
 Linux as an operating system comes in lots of different flavours,
@@ -198,26 +123,6 @@ because it's popular and I'm used to it.
 If you know what you're doing, you can probably get away with using
 something else, but I won't be able to help you as much if you get stuck.
 
-* TODO: explictly recommend passwordless / public key auth.
-
-
-////
-TODO: feedback from stephanie g:
-I'm a little unclear if Digital Ocean is a PaaS like Heroku or not.
-I think no because you wrote that we wouldn't use PaaS
-but I don't really understand the distinction of "spinning up a server with PaaS"
-vs "spinning up a server without a PaaS"
-
-I didn't (still don't really) know what a "distro" is, [done]
-what Ubuntu's alternatives are, [done]
-or how to tell "what a server is running,"
-how to make sure I have root access to it and can SSH into it.
-Or why we make a non root user.
-
-Generally, I'm having trouble mapping all these things
-(PaaS, hosting a server, Digital Ocean, Ubuntu, Linux, Ansible, etc.)
-and their relationship to each other
-////
 
 [[step-by-step-guide]]
 .Step-by-step Instructions for Spinning up a Server
@@ -234,6 +139,7 @@ https://github.com/hjwp/Book-TDD-Web-Dev-Python/blob/main/server-quickstart.md[v
 I didn't want to include it in the book itself because,
 inevitably, I do end up specifying a specific commercial provider in there.
 
+
 *******************************************************************************
 
 NOTE: Some people get to this chapter, and are tempted to skip the domain bit,
@@ -246,14 +152,11 @@ NOTE: Some people get to this chapter, and are tempted to skip the domain bit,
 
 
 
-////
 
-TODO: good advice but not quite sure it's phrased quite right for the new version of the chapter.
-
-.General Server Debugging Tips
+.General Tip For Working With Infrastructure
 *******************************************************************************
 
-The most important lesson to remember from this chapter is,
+The most important lesson to remember over the next few chapters chapter is,
 as always but more than ever, to work incrementally,
 make one change at a time, and run your tests frequently.
 
@@ -262,12 +165,27 @@ and make other unrelated changes in the hope that things will start working agai
 instead, stop, go backward if necessary to get to a working state,
 and figure out what went wrong before moving forward again.
 
-It's just as easy to fall into the Refactoring-Cat trap on the server!
+It's just as easy to fall into the Refactoring-Cat trap when working with infrastructure!
 
 *******************************************************************************
-////
 
-// JAN: It would also be beneficial to state at least some range of server size (e.g., 2GB of memory). e.g., the smallest EC2 instances can have quite some troubles when running Django in Docker
+
+=== Getting a Domain Name
+
+((("domain names")))
+We're going to need a couple of domain names at this point in the book--they
+can both be subdomains of a single domain.
+I'm going to use _superlists.ottg.co.uk_ and _staging.ottg.co.uk_.
+If you don't already own a domain, this is the time to register one!
+Again, this is something I really want you to _actually_ do.
+If you've never registered a domain before,
+just pick any old registrar and buy a cheap one--it
+should only cost you $5 or so, and you can even find free ones.
+I promise seeing your site on a "real" website will be a thrill.
+
+// DAVID: just wondering if it's worth giving them the option to cheat and
+// specify a domain name in a hosts file?
+
 
 
 === Configuring DNS for Staging and Live Domains
@@ -370,9 +288,6 @@ $ *ssh elspeth@staging.ottg.co.uk*
 elspeth@server$: *echo "hello world"*
 hello world
 ----
-
-
-* TODO: suggest passwordless login with keypairs?
 
 
 TIP: Look out for that `elspeth@server`
@@ -690,19 +605,6 @@ PLAY RECAP *********************************************************************
 staging.ottg.co.uk         : ok=2    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
 ----
 
-////
-TODO: add user to docker group:
-
-
-#
-- name: Add our user to the docker group, so we don't need sudo/become
-  ansible.builtin.user:
-    name: '{{ ansible_user }}'
-    groups: docker
-
-- name: Reset ssh connection to allow the user/group change to take effect
-  ansible.builtin.meta: reset_connection
-////
 
 
 Looking good!
@@ -733,7 +635,8 @@ SSH::
   but now and again you just gotta open up a shell on that box!
 
 Ansible::
+  Ansible will be our deployment automation tool.
   We've had the barest of teasers,
-  but we have Ansible and we're ready to learn how to use it.
+  but we have it installed and we're ready to learn how to use it.
 
 *******************************************************************************
