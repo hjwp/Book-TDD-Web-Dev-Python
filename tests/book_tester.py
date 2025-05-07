@@ -558,6 +558,22 @@ class ChapterTest(unittest.TestCase):
             setattr(new_listing, attr, val)
         self.listings[pos] = new_listing
 
+    def skip_forward_if_skipto_set(self) -> None:
+        if target_listing := os.environ.get("SKIPTO"):
+            self.sourcetree.run_command("uv pip install gunicorn whitenoise")
+            commit_spec = self.sourcetree.get_commit_spec(target_listing)
+            while True:
+                listing = self.listings[self.pos]
+                found = False
+                self.pos += 1
+                if getattr(listing, "commit_ref", None) == target_listing:
+                    found = True
+                    print("Skipping to pos", self.pos)
+                    self.sourcetree.run_command(f"git checkout {commit_spec}")
+                    break
+            if not found:
+                raise Exception(f"Could not find {target_listing}")
+
     def _run_tree(self, target="", no_report=False):
         return self.sourcetree.run_command(
             f"tree -v -I __pycache__ {'--noreport' if no_report else ''} {target}"

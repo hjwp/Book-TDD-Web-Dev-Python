@@ -34,6 +34,7 @@ and making sure each of them tests only one thing at a time.
 // we have the test suite failing for quite a while (even to the point where we're
 // making git commits while the suite is failing).
 
+
 === Moving Validation Logic into a Form
 
 TIP: In Django, a complex view is a code smell.
@@ -72,7 +73,7 @@ First we add a new file for our form unit tests, and we start with a test that
 just looks at the form HTML:
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py
+.src/lists/tests/test_forms.py (ch15l001)
 ====
 [source,python]
 ----
@@ -96,11 +97,12 @@ Let's make a minimal form.  It inherits from the base `Form` class, and has
 a single field called `item_text`:
 
 [role="sourcecode"]
-.src/lists/forms.py
+.src/lists/forms.py (ch15l002)
 ====
 [source,python]
 ----
 from django import forms
+
 
 class ItemForm(forms.Form):
     item_text = forms.CharField()
@@ -123,29 +125,37 @@ the placeholder attribute and the Bootstrap CSS classes.  Let's make our
 unit test into a test for that:
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py
+.src/lists/tests/test_forms.py (ch14l003)
 ====
 [source,python]
 ----
 class ItemFormTest(TestCase):
-
     def test_form_item_input_has_placeholder_and_css_classes(self):
         form = ItemForm()
-        self.assertIn('placeholder="Enter a to-do item"', form.as_p())
-        self.assertIn('class="form-control form-control-lg"', form.as_p())
+
+        rendered = form.as_p()
+
+        self.assertIn('placeholder="Enter a to-do item"', rendered)
+        self.assertIn('class="form-control form-control-lg"', rendered)
 ----
 ====
-// DAVID: what about splitting this up into arrange/act/assert and calling .as_p() only once
-// (in the act block?)
 
 
-That gives us a fail which justifies some real coding.
+That gives us a fail which justifies some real coding:
+
+[subs="specialcharacters"]
+----
+    self.assertIn('placeholder="Enter a to-do item"', rendered)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'placeholder="Enter a to-do item"' not found in [...]
+----
+
 How can we customise the input for a form field? Using a "widget".
 Here it is with just the placeholder:
 
 
 [role="sourcecode"]
-.src/lists/forms.py
+.src/lists/forms.py (ch15l004)
 ====
 [source,python]
 ----
@@ -172,19 +182,18 @@ name="item_text" placeholder="Enter a to-do item" required id="id_item_text">\n
 And then:
 
 [role="sourcecode"]
-.src/lists/forms.py
+.src/lists/forms.py (ch15l005)
 ====
 [source,python]
 ----
-        widget=forms.fields.TextInput(
+        widget=forms.widgets.TextInput(
             attrs={
                 "placeholder": "Enter a to-do item",
-                "class": "form-control input-lg",
+                "class": "form-control form-control-lg",
             }
         ),
 ----
 ====
-// DAVID: the tests still fail. Should the second class here be form-control-lg, as in the test?
 
 NOTE: Doing this sort of widget customisation would get tedious
     if we had a much larger, more complex form.
@@ -211,9 +220,8 @@ You might use the interactive console, or write some exploratory code
 and rewrite it properly later).
 
 Here we're actually using a unit test as a way of experimenting with the forms API.
-It's actually a pretty good way of learning how it works.
+It can be a surprisingly good way of learning how something works.
 
-// DAVID: double "actually".
 
 *******************************************************************************
 
@@ -227,12 +235,11 @@ It's actually a pretty good way of learning how it works.
 What's next?
 We want our form to reuse the validation code that we've already defined on our model.
 Django provides a special class that can autogenerate a form for a model, called `ModelForm`.
-As you'll see, it's configured using a special attribute called `Meta`:
+As you'll see, it's configured using a special inner class called `Meta`:
 
-// DAVID: would it be more accurate to say "using a special inner class called `Meta`"?
 
 [role="sourcecode"]
-.src/lists/forms.py
+.src/lists/forms.py (ch15l006)
 ====
 [source,python]
 ----
@@ -242,16 +249,26 @@ from lists.models import Item
 
 
 class ItemForm(forms.models.ModelForm):
-
-    class Meta:
+    class Meta:  # <1>
         model = Item
         fields = ("text",)
+
+    # item_text = forms.CharField(  #<1>
+    #     widget=forms.widgets.TextInput(
+    #         attrs={
+    #             "placeholder": "Enter a to-do item",
+    #             "class": "form-control form-control-lg",
+    #         }
+    #     ),
+    # )
 ----
 ====
 
+<1> In `Meta` we specify which model the form is for,
+    and which fields we want it to use.
 
-In `Meta` we specify which model the form is for,
-and which fields we want it to use.
+<2> We'll comment out our manually-created field for now.
+
 
 ++ModelForm++s do all sorts of smart stuff,
 like assigning sensible HTML form input types to different types of field,
@@ -270,15 +287,18 @@ rows="10" required id="id_text">\n</textarea>\n    \n    \n      \n    \n
 ----
 
 
-It's lost our placeholder and CSS class. But you can also see that it's using
-`name="text"` instead of `name="item_text"`. We can probably live with that.
-But it's using a `textarea` instead of a normal input, and that's not the UI we
-want for our app. Thankfully, you can override widgets for `ModelForm` fields,
+It's lost our placeholder and CSS class.
+And you can also see that it's using
+`name="text"` instead of `name="item_text"`.
+We can probably live with that.
+But it's using a `textarea` instead of a normal input,
+and that's not the UI we want for our app.
+Thankfully, you can override widgets for `ModelForm` fields,
 similarly to the way we did it with the normal form:
 
 
 [role="sourcecode"]
-.src/lists/forms.py
+.src/lists/forms.py (ch15l007)
 ====
 [source,python]
 ----
@@ -286,7 +306,7 @@ class ItemForm(forms.models.ModelForm):
     class Meta:
         model = Item
         fields = ("text",)
-        widgets = {
+        widgets = {  # <1>
             "text": forms.widgets.TextInput(
                 attrs={
                     "placeholder": "Enter a to-do item",
@@ -297,20 +317,28 @@ class ItemForm(forms.models.ModelForm):
 ----
 ====
 
+<1> We restore some of our commented-out code here,
+    but modified slightly, from being an attribute declaration,
+    to a key in a dict.
+
 That gets the test passing.
+
 
 ==== Testing and Customising Form Validation
 
-Now let's see if the `ModelForm` has picked up the same validation rules which we
-defined on the model.  We'll also learn how to pass data into the form, as if
-it came from the user:
+Now let's see if the `ModelForm` has picked up the same validation rules
+which we defined on the model.
+We'll also learn how to pass data into the form, as if it came from the user:
 
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py (ch11l008)
+.src/lists/tests/test_forms.py (ch15l008)
 ====
 [source,python]
 ----
+    def test_form_item_input_has_placeholder_and_css_classes(self):
+        [...]
+
     def test_form_validation_for_blank_items(self):
         form = ItemForm(data={"text": ""})
         form.save()
@@ -330,10 +358,16 @@ want.  The API for checking form validation 'before' we try to save any
 data is a function called `is_valid`:
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py (ch11l009)
+.src/lists/tests/test_forms.py (ch15l009)
 ====
 [source,python]
 ----
+def test_form_item_input_has_placeholder_and_css_classes(self):
+    [...]
+
+def test_form_validation_for_blank_items(self):
+    [...]
+
 def test_form_validation_for_blank_items(self):
     form = ItemForm(data={"text": ""})
     self.assertFalse(form.is_valid())
@@ -341,11 +375,11 @@ def test_form_validation_for_blank_items(self):
 ----
 ====
 
-Calling `form.is_valid()` returns `True` or `False`, but it also has the
-side effect of validating the input data, and populating the `errors`
-attribute.  It's a dictionary mapping the names of fields to lists of
-errors for those fields (it's possible for a field to have more than
-one error).
+Calling `form.is_valid()` returns `True` or `False`,
+but it also has the side effect of validating the input data,
+and populating the `errors` attribute.
+It's a dictionary mapping the names of fields to lists of errors for those fields
+(it's possible for a field to have more than one error).
 
 That gives us:
 
@@ -361,7 +395,7 @@ changing `error_messages`, another `Meta` variable:
 
 
 [role="sourcecode"]
-.src/lists/forms.py (ch11l010)
+.src/lists/forms.py (ch15l010)
 ====
 [source,python]
 ----
@@ -384,12 +418,12 @@ changing `error_messages`, another `Meta` variable:
 OK
 ----
 
-You know what would be even better than messing about with all these
-error strings?  Having a constant:
+You know what would be even better than messing about with all these error strings?
+Having a constant:
 
 
 [role="sourcecode"]
-.src/lists/forms.py (ch11l011)
+.src/lists/forms.py (ch15l011)
 ====
 [source,python]
 ----
@@ -399,10 +433,11 @@ EMPTY_ITEM_ERROR = "You can't have an empty list item"
 ----
 ====
 
-Rerun the tests to see that they pass...OK.  Now we change the test:
+Rerun the tests to see that they pass...OK.
+Now we can change the tests too.
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py (ch11l012)
+.src/lists/tests/test_forms.py (ch15l012)
 ====
 [source,python]
 ----
@@ -416,12 +451,12 @@ from lists.forms import EMPTY_ITEM_ERROR, ItemForm
 ----
 ====
 
+TIP: This is a good example of re-using constants in tests.
+    It makes it easier to change the error message later.
+
+
 And the tests still pass:
 
-// DAVID: Might be better to update the test to use the constant at this point,
-// too. It's a bit distracting when it happens later in the chapter.
-// (Might be worth mentioning that it's good for tests not to require changing if
-// you change a piece of configuration like this EMPTY_ITEM_ERROR constant.)
 
 ----
 OK
@@ -937,7 +972,8 @@ list item' in the following response
 ==== Using the Form to Display Errors in the Template
 
 We're failing because we're not yet _using_ the form
-to display errors in the template.  Here's how to do that:
+to display errors in the template.
+Here's how to do that:
 
 [role="sourcecode"]
 .src/lists/templates/base.html (ch14l026)
@@ -981,6 +1017,64 @@ That means we're going to need to rework existing list view, `view_list()`, as w
 before we can get back to a working state.
 ((("", startref="FDVpost14")))
 
+
+=== Using the Form in the Existing Lists View
+
+((("form data validation", "processing POST and GET requests", id="FDVproget14")))
+This list view handles both GET and POST requests.  As a reminder:
+
+* A normal GET renders a template containing both the list and the form to add a new item.
+* A valid POST request should have its form contents processed, and return a redirect
+* An invalid POST request should re-render the template with the list, and the form with errors in.
+
+(See <<single-endpoint-for-forms>> in the previous chapter if a diagram would be helpful).
+We're doing this stuff "manually" for now, and we want to switch to using our form.
+
+Let's start by checking that the form is used in GET requests.
+We can have a new test for that:
+
+[role="sourcecode"]
+.src/lists/tests/test_views.py (ch14l027)
+====
+[source,python]
+----
+class ListViewTest(TestCase):
+    [...]
+
+    def test_displays_item_form(self):
+        mylist = List.objects.create()
+        response = self.client.get(f"/lists/{mylist.id}/")
+        self.assertIsInstance(response.context["form"], ItemForm)
+        self.assertContains(response, 'name="text"')
+----
+====
+
+That gives:
+
+----
+KeyError: 'form'
+----
+
+Here's a minimal implementation. We initialise our `ItemForm()` at the end of the view,
+and change the `render()` call so it passes `"form"` to the template,
+_as well as_ the list of errors.  Yes, later we'll get the errors form the form too!
+But we want to move one step at a time, working state to working state.
+
+[role="sourcecode"]
+.src/lists/views.py (ch14l028)
+====
+[source,python]
+----
+def view_list(request, list_id):
+    [...]
+    form = ItemForm()
+    return render(
+        request,
+        "list.html",
+        {"list": our_list, "form": form, "error": error},
+    )
+----
+====
 
 
 ==== A Helper Method for Several Short Tests
@@ -1056,6 +1150,11 @@ ewTest.test_for_invalid_input_shows_error_on_page)
 [...]
 AssertionError: False is not true : Couldn't find 'You can&#x27;t have an empty
 list item' in the following response
+[...]
+
+Ran 22 tests in 0.021s
+
+FAILED (failures=1)
 ----
 
 Now let's see if we can properly rewrite the view to use our form.
@@ -1191,8 +1290,6 @@ class ItemValidationTest(FunctionalTest):
 ----
 ====
 
-// DAVID: Is it just me or do the earlier chapters have it as 'Buy milk'?
-
 <1> Instead of checking for our custom error message,
     we check using the CSS pseudoselector `:invalid`,
     which the browser applies to any HTML5 input that has invalid input.
@@ -1273,22 +1370,9 @@ so you always need the server side as well
 if you really care about data integrity;
 using a form is a nice way of encapsulating that logic.
 
-// DAVID: I wonder if this is slightly missing the point.
-// Our functional tests here are very high level - using a headless browser.
-// But many developers use the Django test client
-// (https://docs.djangoproject.com/en/5.2/topics/testing/tools/#the-test-client)
-// for this kind of thing, which doesn't have browser validation built in.
-// So we could use that if we really wanted to test the server side validation.
-//
-// [Update]: I just clocked that we are doing exactly this in test_views.py. Might be worth just calling it out a bit more?
-//
-// This might be a good opportunity to mention that as an option
-// (even if we don't go into detail here)
-// and discuss the trade offs of using Selenium versus the test client, versus both.
-
 ((("HTML5")))
 Also, not all browsers fully implement HTML5,footnote:[
-Safari was a notable laggard in the last edition,
+Safari was a notable laggard in the last decade,
 it's up to date now]
 so some users might still see our custom error message.
 And if or when we come to letting users access our data via an API

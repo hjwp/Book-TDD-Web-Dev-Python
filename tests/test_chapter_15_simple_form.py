@@ -4,7 +4,7 @@ import unittest
 from book_tester import ChapterTest
 
 
-class Chapter14Test(ChapterTest):
+class Chapter15Test(ChapterTest):
     chapter_name = "chapter_15_simple_form"
     previous_chapter = "chapter_14_database_layer_validation"
 
@@ -12,27 +12,19 @@ class Chapter14Test(ChapterTest):
         self.parse_listings()
 
         # sanity checks
-        self.assertEqual(self.listings[0].type, "code listing")
-        self.assertEqual(self.listings[1].type, "code listing")
+        self.assertEqual(self.listings[0].type, "code listing with git ref")
+        self.assertEqual(self.listings[1].type, "code listing with git ref")
         self.assertEqual(self.listings[2].type, "output")
 
         # skips
-        self.skip_with_check(30, "# review changes")  # diff
+        self.skip_with_check(31, "# review changes")  # diff
 
         # prep
         self.start_with_checkout()
         self.prep_database()
 
         # hack fast-forward
-        skip = False
-        if skip:
-            self.pos = 48  # 31
-            self.sourcetree.run_command(
-                "git switch {}".format(
-                    # self.sourcetree.get_commit_spec('ch11l015')
-                    self.sourcetree.get_commit_spec("ch14l023")
-                )
-            )
+        self.skip_forward_if_skipto_set()
 
         while self.pos < len(self.listings):
             print(self.pos)
