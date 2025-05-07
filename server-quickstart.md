@@ -133,21 +133,18 @@ sudo echo hi
 
 ## Registering a domain name
 
-There's one more thing you need to do in the book, which
-is to map a domain name to your server's IP address.
+There's one more thing you need to do in the book,
+which is to map a domain name to your server's IP address.
 
-If you don't already own a domain name you can use (you don't
-have to use the *www.* subdomain, you could use *superlists.yourdomain.com*),
-then you'll need to get one from a "domain registrar".  There are loads
-out there, I quite like Gandi or the slightly-more-friendly 123-reg.
+If you don't already own a domain name you can use
+(you don't have to use the *www.* subdomain, you could use *superlists.yourdomain.com*),
+then you'll need to get one from a "domain registrar".
+There are loads out there, I quite like Gandi or the slightly-more-friendly 123-reg.
 
-If you want a free one there's [dot.tk](http://www.dot.tk).
-Be aware that their business model is based on ads,
-so there will be ads all over your domain until you configure it.
-<!-- CSANAD: first I thought this website was down, but then I realized my
-browser blocked it. Unless there are no better alternatives, I don't think
-recommending a services that don't use TLS is good. -->
-
+There aren't any registrars offering free domain names any more,
+but the cheapest registrar I've found is https://www.ionos.co.uk/,
+where last I checked you could get a domain for one pound, like $1.50, for a year.
+But I haven't used them myself personally.
 
 
 # Pull requests and suggestions accepted!
