@@ -16,8 +16,9 @@ or if you notice missing material within this chapter,
 please reach out to the author at obeythetestinggoat@gmail.com.
 ****
 
-Let's look at some more advanced forms usage.  We've helped our users
-to avoid blank list items, so now let's help them avoid duplicate items.
+Let's look at some more advanced forms usage.
+We've helped our users to avoid blank list items,
+so now let's help them avoid duplicate items.
 
 Our validation constraint so far has been about preventing blank items,
 and as you may remember, it turned out we can enforce that very easily in the frontend.
@@ -27,12 +28,12 @@ so this chapter will lean more heavily on server-side validation,
 and bubbling errors from the backend back up to the UI.
 
 This chapter goes into the more intricate details of Django's forms framework,
-so you have my official permission to skip it
+so you have my official permission to skim through it
 if you already know all about customising Django forms and how to display errors in the UI,
 or if you're reading this book for the TDD rather than for the Django.
 
 If you're still learning Django, there's good stuff in here!
-If you want to skip ahead, that's OK too.
+If you want to just skim-read, that's OK too.
 Make sure you take a quick look at the
 <<testing-for-silliness,aside on developer silliness>>,
 and the <<what-to-test-in-views,recap on testing views>> at the end.
@@ -103,6 +104,7 @@ Ran 2 tests in 9.613s
 
 // DAVID: Side note: The favicon 404s are getting pretty distracting by this point, I wonder if it would be
 // worth fixing / silencing that somehow earlier in the book?
+// HARRY: could do it like this https://stackoverflow.com/a/38917888
 
 OK, so we know the first of the two tests passes now.
 Is there a way to run just the failing one, I hear you ask?
@@ -117,7 +119,7 @@ selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: .invalid-feedback; [...]
 ----
 
-
+// TODO; commit ft.
 
 ==== Preventing Duplicates at the Model Layer
 
@@ -200,6 +202,8 @@ exists.']}
 [[testing-for-silliness]]
 .An Aside on When to Test for Developer Silliness
 *******************************************************************************
+
+// TODO: i kinda want to back to "stupidity".  talk to Rita about it.
 
 One of the judgement calls in testing is when you should write tests that sound
 like "check that we haven't done something weird".  In general, you should
@@ -379,6 +383,8 @@ Now let's run the migration:
 $ pass:quotes[*python src/manage.py migrate*]
 ----
 
+.What to do if you see an IntegrityError when running migrations
+*******************************************************************************
 When you run the migration, you may encounter the following error:
 
 [role="skipme"]
@@ -407,14 +413,10 @@ so the data in it is not important.
 
 In <<chapter_18_second_deploy>>, we'll deploy our new code to production,
 and discuss what to do if we run into migrations and data integrity issues at that point.
-
-// DAVID: Shall we get them to run migrations again, since they deleted the database?
+*******************************************************************************
 
 Now if we change our duplicates test to do a `.save` instead of a
 `.full_clean`...
-
-// CSANAD: maybe the migrations are a little too long of an insertion between
-// the premise (some errors show up upon save() and actually trying it out.
 
 
 [role="sourcecode"]
@@ -462,7 +464,6 @@ OK
 ((("", startref="FTduplicate15")))((("", startref="DITfunctional15")))And
 now it's time to commit our model-layer changes:
 
-// DAVID: Why are we not committing the change to the functional tests, out of interest?
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -486,7 +487,7 @@ element: .invalid-feedback; [...]
 
 ----
 
-In case you didn't see it as it flew past, the site is 500ing.footnote:[It's showing a server error, code 500.  Gotta get with the jargon!]
+In case you didn't see it as it flew past, the site is 500ing.footnote:[It's showing a server error, code 500.]
 A quick unit test at the view level ought to clear this up:
 
 // DAVID: You've lost me on what thought process you took from that FT failure to writing this test.
@@ -649,17 +650,17 @@ ListItemFormTest.test_form_validation_for_duplicate_items)
 AssertionError: True is not false
 ----
 
-The next step requires a little knowledge of Django's internals, but you
+The next step requires a little knowledge of Django's validation system,
 can read up on it in the Django docs on
 https://docs.djangoproject.com/en/5.2/ref/models/instances/#validating-objects[model
 validation] and
 https://docs.djangoproject.com/en/5.2/ref/forms/validation/[form validation].
 
-Django uses a method called `validate_unique`, both on forms and models, and
-we can use both, in conjunction with the `instance` attribute:
+We can customise validation for a field by implementing a `clean_<fieldname>`
+method, and raising a `ValidationError` if the field is invalid:
 
 [role="sourcecode"]
-.src/lists/forms.py
+.src/lists/forms.py (ch15l013-1)
 ====
 [source,python]
 ----
@@ -667,30 +668,18 @@ from django.core.exceptions import ValidationError
 [...]
 
 class ExistingListItemForm(ItemForm):
-
     def __init__(self, for_list, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance.list = for_list
 
-    def validate_unique(self):
-        try:
-            self.instance.validate_unique()
-        except ValidationError as e:
-            e.error_dict = {"text": [DUPLICATE_ITEM_ERROR]}
-            self._update_errors(e)
+    def clean_text(self):
+        text = self.cleaned_data["text"]
+        if self.instance.list.item_set.filter(text=text).exists():
+            raise forms.ValidationError(DUPLICATE_ITEM_ERROR)
+        return text
 ----
 ====
-//ch10l018
 
-That's a bit of Django voodoo right there, but we basically take the validation
-error, adjust its error message, and then pass it back into the form.
-
-// DAVID: Too much voodoo IMO. A simpler approach would be to override the
-// `clean` method and then use the ORM to check there isn't already an item with that name.
-// It would also allow us to avoid mutating the list instance that's passed in, which could
-// in theory cause unexpected side effects for calling code doing something weird.
-// (You might also want to mention, in passing, that this code assumes that only one person
-// is editing a list at a time.)
 
 And we're there!  A quick commit:
 
@@ -781,7 +770,6 @@ from lists.forms import ExistingListItemForm, ItemForm
 [...]
 def view_list(request, list_id):
     our_list = List.objects.get(id=list_id)
-    form = ExistingListItemForm(for_list=our_list)
     if request.method == "POST":
         form = ExistingListItemForm(for_list=our_list, data=request.POST)
         if form.is_valid():
@@ -792,8 +780,6 @@ def view_list(request, list_id):
     [...]
 ----
 ====
-
-// DAVID: remove the first form= ?
 
 And that 'almost' fixes everything, except for an unexpected fail:
 
@@ -809,8 +795,6 @@ Let's make a quick unit test for that:
 // Also, when the tests are failing it's a smell to be writing another test - we should be trying
 // to get these passing first, no?
 
-//IDEA: add the form class names here so ppl know which test_form_save and save()
-
 [role="sourcecode"]
 .src/lists/tests/test_forms.py (ch15l017)
 ====
@@ -821,11 +805,13 @@ class ExistingListItemFormTest(TestCase):
     def test_form_save(self):
         mylist = List.objects.create()
         form = ExistingListItemForm(for_list=mylist, data={"text": "hi"})
+        self.assertTrue(form.is_valid())
         new_item = form.save()
-        self.assertEqual(new_item, Item.objects.all()[0])
+        self.assertEqual(new_item, Item.objects.get())
 [...]
 ----
 ====
+
 We can make our form call the grandparent save method:
 
 [role="sourcecode"]
@@ -836,16 +822,17 @@ We can make our form call the grandparent save method:
 class ExistingListItemForm(ItemForm):
     [...]
     def save(self):
-        return forms.models.ModelForm.save(self)
+        return forms.models.ModelForm.save(self)  # <1>
 ----
 ====
 
-NOTE: Personal opinion here: I could have used `super`, but I prefer not to use
-    `super` when it requires arguments, say, to get a grandparent method. I find
-    Python 3's `super()` with no args is awesome to get the immediate parent.
+<1> This manually calls the grandparent `save()`.
+    Personal opinion here: I could have used `super()`,
+    but I prefer not to use `super()` when it requires arguments,
+    say, to get a grandparent.
+    I find Python 3's `super()` with no args is awesome to get the immediate parent.
     Anything else is too error-prone, and I find it ugly besides. YMMV.
 
-// DAVID: I had to look up what YMMV meant.
 // SEBASTIAN: IMHO it's actually Django's fault that it handles code reuse using inheritance and methods overriding
 //      Wouldn't do the same thing, but it's your book and your opinion so I shall close my mouth :D
 
@@ -875,67 +862,67 @@ AssertionError: '' != "You've already got this in your list"
 // DAVID: I also get:
 // AssertionError: '2: Make tea' not found in ['1: Make tea', '2: Purchase milk']
 
-The error message isn't being displayed because we are not using the Bootstrap
-classes. Although it would have been nice to minimise hand-written HTML and
-use Django instead, it seems like we need to bring back our custom
-`<input>` and add a few attributes manually:
+The error message isn't being displayed because we are not using the Bootstrap classes.
+Let's write a new unit test.
+We want this behaviour for both types of form really,
+so it can go in 
 
-// JAN: Can't you simply add the end version of the code below? These Git views are awful to read and even worse for copy&paste ...
-// CSANAD: I actually like these. They show quite clearly what to remove and what to add and IMO the reader also learns more from
-// typing these rather than just copying and pasting. If they really want to just copy and paste, then they could just open the
-// book-example repo anyway.
 
 [role="sourcecode"]
-.src/lists/templates/base.html (ch15l019)
+.src/lists/tests/test_forms.py (ch15l019-1)
 ====
-[source,diff]
+[source,python]
 ----
-@@ -16,10 +16,22 @@
-           <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
+class ItemFormTest(TestCase):
+    def test_form_item_input_has_placeholder_and_css_classes(self):
+        [...]
+    def test_form_validation_for_blank_items(self):
+        [...]
 
-           <form method="POST" action="{% block form_action %}{% endblock %}" >
--            {{ form.text }}
-             {% csrf_token %}
-+            <input  <1>
-+              id="id_text"
-+              name="text"
-+              class="form-control  <2>
-+                     form-control-lg
-+                     {% if form.errors %}is-invalid{% endif %}"
-+              placeholder="Enter a to-do item"
-+              value="{{ form.text.value }}"
-+              aria-describedby="id_text_feedback"  <3>
-+              required
-+            />
-             {% if form.errors %}
--              <div class="invalid-feedback">{{ form.errors.text }}</div>
-+              <div id="id_text_feedback" class="invalid-feedback">  <3>
-+                {{ form.errors.text.0 }}  <4>
-+              </div>
-             {% endif %}
-           </form>
-         </div>
+    def test_invalid_form_has_bootstrap_is_invalid_css_class(self):
+        form = ItemForm(data={"text": ""})
+        self.assertFalse(form.is_valid())
+        field = form.fields["text"]
+        self.assertEqual(
+            field.widget.attrs["class"],  # <1>
+            "form-control form-control-lg is-invalid",
+        )
+
+    def test_form_save_handles_saving_to_a_list(self):
+        [...]
 ----
 ====
 
-<1> We hand-craft the `<input>` and the most important custom setting will be its
-    `class`.
+<1> Here's where we inspect the `class` attribute on the input field widget
 
-<2> As you can see, we can use conditionals even for providing additional `class` -es.footnote:[
-    We've split the input tag across multiple lines so it fits nicely on the screen.
-    If you've not seen that before, it may look a little weird to you,
-    but I promise it is valid HTML.
-    You don't have to use it if you don't like it though.]
 
-<3> We add an `id` to the error message, to be able to use `aria-describedby` on the input,
-    as recommended in the Bootstrap docs;
-    it makes the error message more accessible to screen readers.
+And here's how we can make it work, by customising the `is_valid()` method:
 
-<4> If you just try to use `form.errors.text` you'll see
-    that Django injects a `<ul>` list,
-    because the forms framework can report multiple errors for each field.
-    We know we've only got one, so we can use use `form.errors.text.0`.
+[role="sourcecode"]
+.src/lists/forms.py (ch15l019-2)
+====
+[source,python]
+----
+class ItemForm(forms.models.ModelForm):
+    class Meta:
+        [...]
 
+    def is_valid(self):
+        result = super().is_valid()
+        if not result:
+            self.fields["text"].widget.attrs["class"] += " is-invalid"
+        return result
+
+    def save(self, for_list):
+        [...]
+----
+====
+
+////
+old content follows
+
+this was from when we went back to using handrolled html.
+am sad to lose it tbh.
 NOTE:  Another flip-flop!
   We spent most of the last chapter switching from handcrafted HTML
   to having our form autogenerated by Django, and now we're switching back.
@@ -947,6 +934,7 @@ NOTE:  Another flip-flop!
   but at some points you meet the limits of what the framework designers have anticipated,
   and it's time to go back to doing the work yourself.
   It doesn't mean you should always reinvent the wheel!
+////
 
 Now let's run the FT for validation again:
 
@@ -994,36 +982,35 @@ so I'll pick some text values designed to test that hypothesis:
 ====
 [source,python]
 ----
-class ItemModelTest(TestCase):
-    [...]
+class ListModelTest(TestCase):
+    def test_get_absolute_url(self):
+        [...]
 
-    def test_list_ordering(self):
+    def test_list_items_order(self):
         list1 = List.objects.create()
         item1 = Item.objects.create(list=list1, text="i1")
         item2 = Item.objects.create(list=list1, text="item 2")
         item3 = Item.objects.create(list=list1, text="3")
         self.assertEqual(
-            Item.objects.all(),
+            list1.item_set.all(),
             [item1, item2, item3],
         )
 ----
 ====
-// DAVID: Why not write a test that specifies the functionality we actually want?
 
 TIP: FTs are a slow feedback loop.
     Switch to unit tests when you want to drill down on edge case bugs.
 
 
-That gives us a new failure, but it's not a very readable one:
+That gives us a new failure, but it's not very readable:
 
 ----
-AssertionError: <QuerySet [<Item: Item object (1)>, <Item[40 chars]3)>]> !=
+AssertionError: <QuerySet [<Item: Item object (3)>, <Item[40 chars]2)>]> !=
 [<Item: Item object (1)>, <Item: Item obj[29 chars](3)>]
 ----
 
-
-We need a better string representation for our objects.  Let's add another
-unit test:
+We need a better string representation for our `Item` model.
+Let's add another unit test:
 
 
 NOTE: Ordinarily you would be wary of adding more failing tests
@@ -1039,9 +1026,11 @@ NOTE: Ordinarily you would be wary of adding more failing tests
 ====
 [source,python]
 ----
-def test_string_representation(self):
-    item = Item(text="some text")
-    self.assertEqual(str(item), "some text")
+class ItemModelTest(TestCase):
+    [...]
+    def test_string_representation(self):
+        item = Item(text="some text")
+        self.assertEqual(str(item), "some text")
 ----
 ====
 
@@ -1071,13 +1060,11 @@ Now we're down to one failure, and the ordering test has a more readable
 failure message:
 
 ----
-AssertionError: <QuerySet [<Item: i1>, <Item: item 2>, <Item: 3>]> != [<Item:
+AssertionError: <QuerySet [<Item: 3>, <Item: i1>, <Item: item 2>]> != [<Item:
 i1>, <Item: item 2>, <Item: 3>]
-
 ----
 
 That confirms our suspicion that the ordering was alphabetical.
-// DAVID: does it? they are in the same order.
 
 We can fix that in the `class Meta`:
 
@@ -1113,7 +1100,7 @@ in our test:
 [source,python]
 ----
     self.assertEqual(
-        list(Item.objects.all()),
+        list(list1.item_set.all()),
         [item1, item2, item3],
     )
 ----
@@ -1127,7 +1114,7 @@ in our test:
 That works; we get a fully passing unit test suite:
 
 ----
-Ran 33 tests in 0.034s
+Ran 34 tests in 0.034s
 
 OK
 ----

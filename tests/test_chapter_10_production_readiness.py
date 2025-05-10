@@ -13,22 +13,6 @@ class Chapter10Test(ChapterTest):
     chapter_name = "chapter_10_production_readiness"
     previous_chapter = "chapter_09_docker"
 
-    def skip_forward_if_skipto_set(self) -> None:
-        if target_listing := os.environ.get("SKIPTO"):
-            self.sourcetree.run_command("uv pip install gunicorn whitenoise")
-            commit_spec = self.sourcetree.get_commit_spec(target_listing)
-            while True:
-                listing = self.listings[self.pos]
-                found = False
-                self.pos += 1
-                if getattr(listing, "commit_ref", None) == target_listing:
-                    found = True
-                    print("Skipping to pos", self.pos)
-                    self.sourcetree.run_command(f"git checkout {commit_spec}")
-                    break
-            if not found:
-                raise Exception(f"Could not find {target_listing}")
-
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
 
