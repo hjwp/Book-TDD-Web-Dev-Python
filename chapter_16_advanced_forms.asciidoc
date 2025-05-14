@@ -1162,19 +1162,384 @@ Ran 5 tests in 19.048s
 OK
 ----
 
-Hooray! Time for a final commit, and a wrap-up of what we've learned about
-testing views over the last few chapters.
-
+Hooray! Time for a final commit:
 
 
 [subs="specialcharacters,quotes"]
 ----
 *git status*
 *git add src*
-*git commit -m "Fix list item ordering, go back to html5 in FT"*
+*git commit -m "Add is-invalid css class, fix list item ordering"*
 ----
 ((("", startref="DITlist15")))
-// DAVID: Any reason not just to do `git commit -am ...` here?
+
+
+=== On The Tradeoffs of Django Modelforms, and Frameworks in General
+
+Let's come back to our scratchpad item:
+
+[role="scratchpad"]
+*****
+* review amount of hackery in forms.py
+*****
+
+
+Let's take a look at the current state of our forms classes.
+We've got a real mix of presentation logic,
+validation logic, and ORM/storage logic:
+
+
+[role="sourcecode currentcontents"]
+.src/lists/forms.py
+====
+[source,python]
+----
+class ItemForm(forms.models.ModelForm):
+    class Meta:
+        model = Item
+        fields = ("text",)
+        widgets = {
+            "text": forms.widgets.TextInput(
+                attrs={
+                    "placeholder": "Enter a to-do item",  # <1>
+                    "class": "form-control form-control-lg",  # <1>
+                }
+            ),
+        }
+        error_messages = {"text": {"required": EMPTY_ITEM_ERROR}}
+
+    def is_valid(self):
+        result = super().is_valid()
+        if not result:
+            self.fields["text"].widget.attrs["class"] += " is-invalid"  # <1>
+        return result
+
+    def save(self, for_list):  # <3>
+        self.instance.list = for_list
+        return super().save()
+
+
+class ExistingListItemForm(ItemForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.list = for_list  # <3>
+
+    def clean_text(self):
+        text = self.cleaned_data["text"]
+        if self.instance.list.item_set.filter(text=text).exists():  <2>
+            raise forms.ValidationError(DUPLICATE_ITEM_ERROR)  <2>
+        return text
+
+    def save(self):
+        return forms.models.ModelForm.save(self)  # <3>
+----
+====
+
+<1> Presentation logic
+<2> Validation logic
+<3> ORM/storage logic
+
+////
+I'm also nervous about the fact that we're overriding parts of the forms
+API, like `is_valid()`, and `save()`. Not only that, but;
+
+[role="sourcecode currentcontents"]
+.src/lists/forms.py
+====
+[source,python]
+----
+class ItemForm(forms.models.ModelForm):
+    def save(self, for_list):  # <1>
+        [...]
+
+class ExistingListItemForm(ItemForm):
+    def __init__(self, for_list, *args, **kwargs):  # <2>
+        [...]
+    def save(self):  # <3>
+        return forms.models.ModelForm.save(self)
+----
+====
+
+<1> Here we not only override the forms API method,
+    but we actually _change_ the API, meaning that `ItemForm` no longer matches
+    the normal forms API
+
+<2> It's the same here where we override the constructor to add the `for_list` argument.
+
+<3> And in this one, we change the `save()` API _again_,
+    so the API isn't even consistent within our own inheritance hierarchy.
+
+Without wanting to get all OO-nerdy, this is a violation of the
+Liskov Substitution Principle, which basically says that subclasses should
+look like their parents.footnote:[
+Read a better write-up here: https://realpython.com/solid-principles-python/]
+////
+
+I think what's happened is that we've reached the limits of the Django forms framework's sweet spot.
+`ModelForms` can be great _because_ they can do presentation, validation and database storage all in one go, so you can get a lot done without much code.
+But once you want to customise the default behaviours for each of those things,
+the code you _do_ end up writing starts to get hard to understand.
+
+Let's see what things would look like if we tried to:
+1. Moved the responsibility for presentation and the rendering of HTML back into the tamplate
+2. Stop using `ModelForm` and do any database logic more explicitly,
+  with less magic
+// 3. Tried to remove some of the Liskov violations
+
+==== Moving Presentation Logic Back Into the Template
+
+So, rather than using the `{{ form.text }}` magic in our template,
+let's bring back our hand-crafted HTML.
+It'll be longer,
+but at least all of our bootstrap classes will be in one place,
+where we expect then, in the template:
+
+[role="sourcecode"]
+.src/lists/templates/base.html (ch15l025)
+====
+[source,diff]
+----
+@@ -16,10 +16,22 @@
+           <h1 class="display-1 mb-4">{% block header_text %}{% endblock %}</h1>
+
+           <form method="POST" action="{% block form_action %}{% endblock %}" >
+-            {{ form.text }}
+             {% csrf_token %}
++            <input  <1>
++              id="id_text"
++              name="text"
++              class="form-control  <2>
++                     form-control-lg
++                     {% if form.errors %}is-invalid{% endif %}"
++              placeholder="Enter a to-do item"
++              value="{{ form.text.value | default:'' }}"  <3>
++              aria-describedby="id_text_feedback"  <4>
++              required
++            />
+             {% if form.errors %}
+-              <div class="invalid-feedback">{{ form.errors.text }}</div>
++              <div id="id_text_feedback" class="invalid-feedback">  <4>
++                {{ form.errors.text.0 }}  <5>
++              </div>
+             {% endif %}
+           </form>
+         </div>
+----
+====
+
+<1> Here's our artisan `<input>` once again,
+  and the most important custom setting will be its `class` attributes.
+
+<2> As you can see, we can use conditionals even for providing additional `class` -es.footnote:[
+    We've split the input tag across multiple lines so it fits nicely on the screen.
+    If you've not seen that before, it may look a little weird,
+    but I promise it is valid HTML.
+    You don't have to use it if you don't like it though.]
+
+<3> The `| default` "filter" is a way to avoid the string "None"
+    from showing up as the value in our input field.
+
+<4> We add an `id` to the error message,
+    to be able to use `aria-describedby` on the input,
+    as recommended in the Bootstrap docs;
+    it makes the error message more accessible to screen readers.
+
+<5> If you just try to use `form.errors.text` you'll see
+    that Django injects a `<ul>` list,
+    because the forms framework can report multiple errors for each field.
+    We know we've only got one, so we can use use `form.errors.text.0`.
+
+// TODO: show a screenshot of this bullet point earlier
+
+
+NOTE:  Another flip-flop!
+  We spent most of the last chapter switching from handcrafted HTML
+  to having our form autogenerated by Django, and now we're switching back.
+  It's a little frustrating,
+  and I could have gone back and changed the book's outline to avoid the back and forth,
+  but I prefer to show software development as it really is.
+  We often try things out and end up changing our minds.
+  Particularly with frameworks like Django,
+  you can find yourself taking advantage of auto-generated shortcuts for as long as they work,
+  but at some points you meet the limits of what the framework designers have anticipated,
+  and it's time to go back to doing the work yourself.
+  It doesn't mean you should always reinvent the wheel!
+
+Now let's start tidying up our forms.
+We can start by deleting the three presentation-layer tests from `ItemFormTest`,
+
+[role="sourcecode"]
+.src/lists/tests/test_forms.py (ch15l026)
+====
+[source,diff]
+----
+@@ -10,28 +10,11 @@ from lists.models import Item, List
+
+
+ class ItemFormTest(TestCase):
+-    def test_form_item_input_has_placeholder_and_css_classes(self):
+-        form = ItemForm()
+-
+-        rendered = form.as_p()
+-
+-        self.assertIn('placeholder="Enter a to-do item"', rendered)
+-        self.assertIn('class="form-control form-control-lg"', rendered)
+-
+     def test_form_validation_for_blank_items(self):
+         form = ItemForm(data={"text": ""})
+         self.assertFalse(form.is_valid())
+         self.assertEqual(form.errors["text"], [EMPTY_ITEM_ERROR])
+
+-    def test_invalid_form_has_bootstrap_is_invalid_css_class(self):
+-        form = ItemForm(data={"text": ""})
+-        self.assertFalse(form.is_valid())
+-        field = form.fields["text"]
+-        self.assertEqual(
+-            field.widget.attrs["class"],
+-            "form-control form-control-lg is-invalid",
+-        )
+-
+     def test_form_save_handles_saving_to_a_list(self):
+         mylist = List.objects.create()
+         form = ItemForm(data={"text": "do me"})
+@@ -42,11 +25,6 @@ class ItemFormTest(TestCase):
+
+
+ class ExistingListItemFormTest(TestCase):
+-    def test_form_renders_item_text_input(self):
+-        list_ = List.objects.create()
+-        form = ExistingListItemForm(for_list=list_)
+-        self.assertIn('placeholder="Enter a to-do item"', form.as_p())
+-
+     def test_form_validation_for_blank_items(self):
+         list_ = List.objects.create()
+         form = ExistingListItemForm(for_list=list_, data={"text": ""})
+----
+====
+
+And now we can remove all that custom logic from the base `ItemForm` class:
+
+
+[role="sourcecode dofirst-ch15l027-1"]
+.src/lists/forms.py (ch15l027)
+====
+[source,diff]
+----
+@@ -11,22 +11,8 @@ class ItemForm(forms.models.ModelForm):
+     class Meta:
+         model = Item
+         fields = ("text",)
+-        widgets = {
+-            "text": forms.widgets.TextInput(
+-                attrs={
+-                    "placeholder": "Enter a to-do item",
+-                    "class": "form-control form-control-lg",
+-                }
+-            ),
+-        }
+         error_messages = {"text": {"required": EMPTY_ITEM_ERROR}}
+
+-    def is_valid(self):
+-        result = super().is_valid()
+-        if not result:
+-            self.fields["text"].widget.attrs["class"] += " is-invalid"
+-        return result
+-
+     def save(self, for_list):
+         self.instance.list = for_list
+         return super().save()
+----
+====
+
+
+Deleting code yay!
+
+At this point we should be down to 31 passing tests:
+
+----
+Ran 31 tests in 0.024s
+
+OK
+----
+
+==== Switching Back to Simple Forms
+
+Now let's change our forms away from being `ModelForms` and back to regular forms.
+
+We'll keep the `save()` methods for now,
+but we'll switch to using the ORM more explicitly,
+rather than relying on the ModelForm magic:
+
+
+[role="sourcecode"]
+.src/lists/forms.py (ch15l028)
+====
+[source,diff]
+----
+@@ -7,27 +7,29 @@ EMPTY_ITEM_ERROR = "You can't have an empty list item"
+ DUPLICATE_ITEM_ERROR = "You've already got this in your list"
+
+
+-class ItemForm(forms.models.ModelForm):
+-    class Meta:
+-        model = Item
+-        fields = ("text",)
+-        error_messages = {"text": {"required": EMPTY_ITEM_ERROR}}
++class ItemForm(forms.Form):
++    text = forms.CharField(
++        error_messages={"required": EMPTY_ITEM_ERROR},
++        required=True,
++    )
+
+     def save(self, for_list):
+-        self.instance.list = for_list
+-        return super().save()
++        return Item.objects.create(
++            list=for_list,
++            text=self.cleaned_data["text"],
++        )
+
+
+ class ExistingListItemForm(ItemForm):
+     def __init__(self, for_list, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.instance.list = for_list
++        self._for_list = for_list
+
+     def clean_text(self):
+         text = self.cleaned_data["text"]
+-        if self.instance.list.item_set.filter(text=text).exists():
++        if self._for_list.item_set.filter(text=text).exists():
+             raise forms.ValidationError(DUPLICATE_ITEM_ERROR)
+         return text
+
+     def save(self):
+-        return forms.models.ModelForm.save(self)
++        return super().save(for_list=self._for_list)
+----
+====
+
+We should still have passing tests at this point:
+
+----
+Ran 31 tests in 0.026s
+
+OK
+----
+
+And we're in a better place I think!
+
+////
+
+We still have the Liskov violations on the `__init__()` and `save()`,
+but perhaps we can live with those for now.
+
+TODO: start by addressing this in 15, ch14l034,
+no need to pass the `for_list=` into the save() method.
+
+Then the custom constructor
+////
+
 
 === Wrapping Up: What We've Learned About Testing Django
 

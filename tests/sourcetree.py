@@ -248,8 +248,8 @@ class SourceTree:
             if diff.new_lines == commit_withwhitespace.new_lines:
                 return
             raise ApplyCommitException(
-                "diff new lines did not match.\n"
-                "{diff.new_lines}\n!=\n{commit.new_lines}"
+                f"diff new lines did not match.\n"
+                f"{diff.new_lines}\n!=\n{commit.new_lines}"
             )
 
         listing_lines = [strip_comments(l) for l in listing.contents.split("\n")]
