@@ -79,9 +79,10 @@ on port 8888:
 ----
 $ *docker build -t superlists . && docker run \
     -p 8888:8888 \
-    --mount type=bind,source="$PWD/src/db.sqlite3",target=/src/db.sqlite3 \
+    --mount type=bind,source="$PWD/container.db.sqlite3",target=/home/nonroot/db.sqlite3 \
     -e DJANGO_SECRET_KEY=sekrit \
     -e DJANGO_ALLOWED_HOST=localhost \
+    -e DJANGO_DB_PATH=/home/nonroot/db.sqlite3 \
     -it superlists*
 [...]
  => => naming to docker.io/library/superlists [...]
@@ -91,9 +92,32 @@ $ *docker build -t superlists . && docker run \
 [2025-01-27 22:37:02 +0000] [8] [INFO] Booting worker with pid: 8
 ----
 
+// TODO: we really should have shellscripts for this
+
+NOTE: If you see an error about `bind source path does not exist`,
+    you've lost your container database somehow.
+    Create a new one with  `touch container.db.sqlite3`.
+
+
+Now let's make sure our container database is fully up to date,
+by running `migrate` inside the container:
+
+[subs="specialcharacters,quotes"]
+----
+$ *docker exec $(docker ps --filter=ancestor=superlists -q) python manage.py migrate*
+Operations to perform:
+  Apply all migrations: accounts, auth, contenttypes, lists, sessions
+Running migrations:
+[...]
+----
+
+NOTE: That little `$(docker ps --filter=ancestor=superlists -q)`
+    is a neat way to avoid manually looking up the container ID.
+    An alternative would be to just set the container name explicitly
+    in our `docker run` commands, using `--name`.
+
 
 And now let's do an FT run:
-
 
 [role="small-code"]
 [subs="specialcharacters,macros"]
@@ -239,9 +263,10 @@ this one fishing the env var out of the shell we're in:
 ----
 $ *docker build -t superlists . && docker run \
     -p 8888:8888 \
-    --mount type=bind,source="$PWD/src/db.sqlite3",target=/src/db.sqlite3 \
+    --mount type=bind,source="$PWD/container.db.sqlite3",target=/home/nonroot/db.sqlite3 \
     -e DJANGO_SECRET_KEY=sekrit \
     -e DJANGO_ALLOWED_HOST=localhost \
+    -e DJANGO_DB_PATH=/home/nonroot/db.sqlite3 \
     -e EMAIL_PASSWORD \
     -it superlists*
 ----
@@ -439,75 +464,47 @@ Now let's see if we can get our FTs to pass against the server:
 // ----
 
 
-=== Setting Secret Environment Variables on the Server
+=== An Alternative Method for Setting Secret Environment Variables on the Server
 
 ((("environment variables")))
 ((("secret values")))
-Just as in <<chapter_12_ansible>>,
-the place we set environment variables on the server is in the _superlists.env_ file.
+In <<chapter_12_ansible>>, we dealt with setting the `SECRET_KEY` by
+generating a random value, and then saving it to a file on the server.
 
-Let's add it to the template first:
-
-* TODO: update to new ansible config where env vars are passed directly
+We could use a similar technique here, but just to give you an alternative,
+I'll show how to pass the environment variable directly up to the container,
+without storing it in a file:
 
 [role="sourcecode"]
-.infra/env.jinja (ch23l011)
-====
-[source,python]
-----
-DJANGO_DEBUG_FALSE=1
-DJANGO_SECRET_KEY={{ secret_key }}
-DJANGO_ALLOWED_HOST={{ host }}
-EMAIL_PASSWORD={{ email_password }}
-----
-====
-
-And now we add the line to the ansible deploy playbook
-that looks up EMAIL_PASSWORD in our local environment:
-
-
-[role="sourcecode dofirst=ch23l012-1"]
 .infra/deploy-playbook.yaml (ch23l012)
 ====
 [source,python]
 ----
-    - name: Ensure .env file exists
-      ansible.builtin.template:
-        src: env.jinja
-        dest: ~/superlists.env
-        force: true  # update file if contents changed
-      vars:
-        host: "{{ inventory_hostname }}"
-        secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters') }}"
-        email_password: "{{ lookup('env', 'EMAIL_PASSWORD') }}"  <1>
+        env:
+          DJANGO_DEBUG_FALSE: "1"
+          DJANGO_SECRET_KEY: "{{ secret_key.content | b64decode }}"
+          DJANGO_ALLOWED_HOST: "{{ inventory_hostname }}"
+          DJANGO_DB_PATH: "/home/nonroot/db.sqlite3"
+          EMAIL_PASSWORD: "{{ lookup('env', 'EMAIL_PASSWORD') }}"  # <1>
 ----
 ====
 
-<1> We use another call to `lookup()`,
-    this one with the `env` parameter,
-    which is equivalent to `os.environ.get()` in Python.
+<1> `lookup()` with `env` as its argument is how you look up _local_ environment variables,
+    ie the ones set on the computer you're runing Ansible from.
 
-// TODO: backport that force=true from ch23l012-1
+This means you'll need the `EMAIL_PASSWORD` environment variable
+to be set on your local machine, every time you want to run Ansible.
 
+In terms of pros and cons of the two approaches:
 
-////
-TODO: sidebar on making the secret key only update if changed.
+* Saving the secret to a file on the server means you don't need to "remember"
+  or store the secret anywhere on your own machine
 
-- name: Check secret key already exists
-  shell: grep -c "SECRET_KEY" ~/superlists.env  || true
-  register: secret_key_line_count
+* In contrast, always passing it up from the local environment does
+  mean you can change the value of the secret at any time.
 
-- name: add secret key line if not already there
-  when: secret_key_line_count.stdout == "0"
-  lineinfile:
-    dest: ~/superlists.env
-    line: SECRET_KEY={{ secret_key }}
-  vars:
-    secret_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters') }}"
-
-or bite the bullet and do it here?
-////
-
+* In terms of security they are fairly equivalent,
+  since in either case the environment variable is visible via `docker inspect`
 
 
 === Moving on to the next failure
@@ -917,9 +914,10 @@ Next, against Docker. Rebuild first:
 ----
 $ *docker build -t superlists . && docker run \
     -p 8888:8888 \
-    --mount type=bind,source="$PWD/src/db.sqlite3",target=/src/db.sqlite3 \
+    --mount type=bind,source="$PWD/container.db.sqlite3",target=/home/nonroot/db.sqlite3 \
     -e DJANGO_SECRET_KEY=sekrit \
     -e DJANGO_ALLOWED_HOST=localhost \
+    -e DJANGO_DB_PATH=/home/nonroot/db.sqlite3 \
     -e EMAIL_PASSWORD \
     -it superlists*
 ----

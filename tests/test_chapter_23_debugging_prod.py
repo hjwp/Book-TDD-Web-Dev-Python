@@ -32,6 +32,7 @@ class Chapter18Test(ChapterTest):
         # prep
         self.start_with_checkout()
         self.prep_database()
+        self.sourcetree.run_command("touch container.db.sqlite3")
 
         # vm_restore = "FABRIC_END"
 
@@ -43,16 +44,6 @@ class Chapter18Test(ChapterTest):
 
         while self.pos < len(self.listings):
             print(self.pos)
-            # if self.pos == deploy_pos + 1 and DO_SERVER_COMMANDS:
-            #     print("hacking in code update on server")
-            #     self.run_server_command(
-            #         "cd /home/elspeth/sites/staging.ottg.co.uk"
-            #         " && git switch chapter_23_debugging_prod"
-            #         " && git reset --hard origin/chapter_23_debugging_prod",
-            #     )
-            #     self.run_server_command(
-            #         "sudo systemctl restart gunicorn-staging.ottg.co.uk"
-            #     )
             self.recognise_listing_and_process_it()
 
         self.assert_all_listings_checked(self.listings)
