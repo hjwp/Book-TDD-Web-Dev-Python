@@ -20,8 +20,8 @@ class Chapter16Test(ChapterTest):
         self.assertEqual(self.listings[2].type, "output")
 
         # skip some inline bash comments
-        self.skip_with_check(13, "if you're on Windows")
-        self.skip_with_check(15, "delete all the other stuff")
+        self.skip_with_check(15, "if you're on Windows")
+        self.skip_with_check(17, "delete all the other stuff")
 
         # hack fast-forward
         self.skip_forward_if_skipto_set()
