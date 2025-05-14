@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import unittest
 
 from book_tester import ChapterTest
@@ -23,11 +22,7 @@ class Chapter25Test(ChapterTest):
         # self.skip_with_check(22, 'switch back to master') # comment
 
         # hack fast-forward
-        if os.environ.get("SKIP"):
-            self.pos = 21
-            self.sourcetree.run_command(
-                f"git checkout {self.sourcetree.get_commit_spec('ch25l005')}"
-            )
+        self.skip_forward_if_skipto_set()
 
         while self.pos < len(self.listings):
             print(self.pos)

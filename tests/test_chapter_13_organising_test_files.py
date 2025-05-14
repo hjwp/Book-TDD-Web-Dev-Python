@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import unittest
 
 from book_tester import ChapterTest
@@ -22,11 +21,7 @@ class Chapter13Test(ChapterTest):
         self.prep_database()
 
         # hack fast-forward
-        if os.environ.get("SKIP"):
-            self.pos = 6
-            self.sourcetree.run_command(
-                f"git checkout {self.sourcetree.get_commit_spec('ch13l002')}"
-            )
+        self.skip_forward_if_skipto_set()
 
         while self.pos < len(self.listings):
             print(self.pos, self.listings[self.pos].type)

@@ -29,11 +29,7 @@ class Chapter8Test(ChapterTest):
         self.skip_with_check(49, "will now show all the bootstrap")
 
         # hack fast-forward
-        if os.environ.get("SKIP"):
-            self.pos = 9
-            self.sourcetree.run_command(
-                f"git checkout {self.sourcetree.get_commit_spec('ch08l003')}"
-            )
+        self.skip_forward_if_skipto_set()
 
         while self.pos < len(self.listings):
             print(self.pos)

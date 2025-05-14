@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import unittest
 
 from book_tester import (
@@ -29,11 +28,7 @@ class Chapter6Test(ChapterTest):
         self.run_command(Command("python3 manage.py migrate --noinput"))
 
         # hack fast-forward
-        if os.environ.get("SKIP"):
-            self.pos = 16
-            self.sourcetree.run_command(
-                f"git checkout {self.sourcetree.get_commit_spec('ch06l003')}"
-            )
+        self.skip_forward_if_skipto_set()
 
         while self.pos < len(self.listings):
             print(self.pos)

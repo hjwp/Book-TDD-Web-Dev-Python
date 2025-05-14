@@ -27,11 +27,7 @@ class Chapter11Test(ChapterTest):
         # vm_restore = 'MANUAL_END'
 
         # hack fast-forward
-        if os.environ.get("SKIP"):
-            self.pos = 42
-            self.sourcetree.run_command(
-                f"git switch {self.sourcetree.get_commit_spec('ch08l003')}"
-            )
+        self.skip_forward_if_skipto_set()
 
         # if DO_SERVER_COMMANDS:
         #     subprocess.check_call(['vagrant', 'snapshot', 'restore', vm_restore])
