@@ -24,11 +24,7 @@ class Chapter16Test(ChapterTest):
         self.skip_with_check(15, "delete all the other stuff")
 
         # hack fast-forward
-        if os.environ.get("SKIP"):
-            self.pos = 10
-            self.sourcetree.run_command(
-                "git switch {}".format(self.sourcetree.get_commit_spec("ch16l004"))
-            )
+        self.skip_forward_if_skipto_set()
 
         while self.pos < len(self.listings):
             print(self.pos)
