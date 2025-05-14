@@ -160,7 +160,7 @@ def test_CAN_save_same_item_to_different_lists(self):
 ====
 
 I always like to put a little comment for tests which are checking
-that a particular use case should 'not' raise an error; otherwise,
+that a particular use case should _not_ raise an error; otherwise,
 it can be hard to see what's being tested:
 
 ----
@@ -283,8 +283,8 @@ OK
 ----
 
 You might want to take a quick peek at the
-https://docs.djangoproject.com/en/5.2/ref/models/options/[Django docs on model
-`Meta` attributes] at this point.
+https://docs.djangoproject.com/en/5.2/ref/models/options/[Django docs on model `Meta` attributes]
+at this point.
 
 
 
@@ -407,7 +407,7 @@ we have at least one database record which _used_ to be valid
 but after introducing our new constraint, the `unique_together`,
 it's no longer compatible.
 
-To fix this problem, we can just delete `src/db.sqlite3` and run the migration again.
+To fix this problem, locally we can just delete `src/db.sqlite3` and run the migration again.
 We can do this because the database on our laptop is only used for dev,
 so the data in it is not important.
 
@@ -576,7 +576,7 @@ from lists.forms import (
 class ExistingListItemFormTest(TestCase):
     def test_form_renders_item_text_input(self):
         list_ = List.objects.create()
-        form = ExistingListItemForm(for_list=list_)
+        form = ExistingListItemForm(for_list=list_)  # <1>
         self.assertIn('placeholder="Enter a to-do item"', form.as_p())
 
     def test_form_validation_for_blank_items(self):
@@ -594,7 +594,11 @@ class ExistingListItemFormTest(TestCase):
 ----
 ====
 
-Next we iterate through a few TDD cycles  until we get a form with a
+<1> We're specifying that our new `ExistingListItemForm` will take
+    an argument `for_list=` in its constructor,
+    to be able to specify which list the item is for.
+
+Next we iterate through a few TDD cycles until we get a form with a
 custom constructor, which just ignores its `for_list` argument.
 (I won't show them all, but I'm sure you'll do them, right? Remember, the Goat
 sees all.)
@@ -727,8 +731,8 @@ django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
 lists_item.text
 ----
 
-Our fix for this is to switch to using the new form class.  Before we implement
-it, let's find the tests where we check the form class, and adjust them:
+Our fix for this is to switch to using the new form class.
+Before we implement it, let's find the tests where we check the form class, and adjust them:
 
 [role="sourcecode"]
 .src/lists/tests/test_views.py (ch15l015)
@@ -751,6 +755,8 @@ class ListViewTest(TestCase):
         self.assertIsInstance(response.context["form"], ExistingListItemForm)
 ----
 ====
+
+// TODO: make a note - this adjustment of the form class was annoying wasn't it?
 
 That gives us:
 
@@ -781,18 +787,23 @@ def view_list(request, list_id):
 ----
 ====
 
-And that 'almost' fixes everything, except for an unexpected fail:
+And that _almost_ fixes everything, except for an unexpected fail:
 
 ----
+  File "...goat-book/src/lists/views.py", line 26, in view_list
+    form.save()
+    ~~~~~~~~~^^
 TypeError: ItemForm.save() missing 1 required positional argument: 'for_list'
 ----
 
-Our custom save method from the parent `ItemForm` is no longer needed.
+It's happening when we try to call `form.save()`.
+What's gone wrong is that `ExistingListItemForm` has inherited
+the custom save method from `ItemForm`,
+which we don't need for `ExistingListItemForm`.
+
 Let's make a quick unit test for that:
 
-// DAVID: I didn't clock what was going on here at first. Maybe spell out that it's inheriting
-// the custom save method?
-// Also, when the tests are failing it's a smell to be writing another test - we should be trying
+// DAVID: When the tests are failing it's a smell to be writing another test - we should be trying
 // to get these passing first, no?
 
 [role="sourcecode"]
@@ -848,6 +859,7 @@ OK
 ----
 
 But we still have something to do about our FTs:
+
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test functional_tests.test_list_item_validation*]
@@ -859,14 +871,16 @@ AssertionError: '' != "You've already got this in your list"
 + You've already got this in your list
 ----
 
-// DAVID: I also get:
-// AssertionError: '2: Make tea' not found in ['1: Make tea', '2: Purchase milk']
+The error message isn't being displayed because Bootstrap requires form elements
+with errors to have _another_ custom class, `is-invalid`.
 
-The error message isn't being displayed because we are not using the Bootstrap classes.
-Let's write a new unit test.
+// TODO: screenshot of devtools trying this out.
+
+I'm starting to get a bit nervous about the amount of hackery
+we're doing in our forms now, but let's try this out nonetheless.
+
 We want this behaviour for both types of form really,
-so it can go in 
-
+so it can go in the tests for the parent `ItemForm` class:
 
 [role="sourcecode"]
 .src/lists/tests/test_forms.py (ch15l019-1)
@@ -896,7 +910,7 @@ class ItemFormTest(TestCase):
 <1> Here's where we inspect the `class` attribute on the input field widget
 
 
-And here's how we can make it work, by customising the `is_valid()` method:
+And here's how we can make it work, by overriding the `is_valid()` method:
 
 [role="sourcecode"]
 .src/lists/forms.py (ch15l019-2)
@@ -908,35 +922,33 @@ class ItemForm(forms.models.ModelForm):
         [...]
 
     def is_valid(self):
-        result = super().is_valid()
+        result = super().is_valid()  # <1>
         if not result:
-            self.fields["text"].widget.attrs["class"] += " is-invalid"
-        return result
+            self.fields["text"].widget.attrs["class"] += " is-invalid"  # <2>
+        return result  # <3>
 
     def save(self, for_list):
         [...]
 ----
 ====
 
-////
-old content follows
+<1> We make sure to call the parent `is_valid()` method first,
+    so we can do all the normal built-in validation.
 
-this was from when we went back to using handrolled html.
-am sad to lose it tbh.
-NOTE:  Another flip-flop!
-  We spent most of the last chapter switching from handcrafted HTML
-  to having our form autogenerated by Django, and now we're switching back.
-  It's a little frustrating, and I could have gone back and changed the book's text to avoid the back and forth,
-  but I prefer to show software development as it really is.
-  We often try things out and end up changing our minds.
-  Particularly with frameworks like Django,
-  you can find yourself taking advantage of auto-generated shortcuts for as long as they work,
-  but at some points you meet the limits of what the framework designers have anticipated,
-  and it's time to go back to doing the work yourself.
-  It doesn't mean you should always reinvent the wheel!
-////
+<2> Here's how we add the extra CSS class to our widget
 
-Now let's run the FT for validation again:
+<3> And we remember to return the result.
+
+It's not _too_ bad, but as I say I'm getting nervous about the amount
+of fiddly code in our forms classes.
+Let's make a note on our scratchpad, and come back to it when our FT is passing paperhaps:
+
+[role="scratchpad"]
+*****
+* review amount of hackery in forms.py
+*****
+
+Speaking of our FT, let's see how it does now?
 
 [subs="specialcharacters,macros"]
 ----
@@ -1073,6 +1085,8 @@ We can fix that in the `class Meta`:
 ====
 [source,python]
 ----
+class Item(models.Model):
+    [...]
     class Meta:
         ordering = ("id",)
         unique_together = ("list", "text")
@@ -1086,12 +1100,15 @@ AssertionError: <QuerySet [<Item: i1>, <Item: item 2>, <Item: 3>]> != [<Item:
 i1>, <Item: item 2>, <Item: 3>]
 ----
 
-Urp?  It has worked; you can see the items _are_ in the same order, but the
-tests are confused.  I keep running into this problem actually--Django
-querysets don't compare well with lists.  We can fix it by converting the
-queryset to a listfootnote:[You could also check out `assertSequenceEqual` from `unittest`, and
-`assertQuerysetEqual` from Django's test tools, although I confess when I last
-looked at `assertQuerysetEqual` I was quite baffled...]
+Urp?  It has worked; you can see the items _are_ in the same order,
+but the tests are confused.
+
+I keep running into this problem actually--Django
+QuerySets don't compare well with lists.
+We can fix it by converting the QuerySet to a listfootnote:[You could also check out `assertSequenceEqual` from `unittest`, and
+`assertQuerysetEqual` from Django's test tools,
+although I confess when I last looked at `assertQuerysetEqual`
+I was quite baffled...]
 in our test:
 
 [role="sourcecode"]
@@ -1118,8 +1135,6 @@ Ran 34 tests in 0.034s
 
 OK
 ----
-
-// DAVID: The test passes even if we don't add the ordering clause.
 
 ((("", startref="triprep15")))
 ((("", startref="queryset15")))
@@ -1154,6 +1169,7 @@ testing views over the last few chapters.
 
 [subs="specialcharacters,quotes"]
 ----
+*git status*
 *git add src*
 *git commit -m "Fix list item ordering, go back to html5 in FT"*
 ----
@@ -1162,16 +1178,15 @@ testing views over the last few chapters.
 
 === Wrapping Up: What We've Learned About Testing Django
 
-((("class-based generic views (CBGVs)", "key tests and assertions")))((("Django framework", "class-based generic views")))We're
-now at a point where our app looks a lot more like a "standard"
-Django app, and it implements the three common Django layers: models,
-forms, and views.  We no longer have any "training wheels&#x201d;-style tests,
-and our code looks pretty much like code we'd be happy to see in a
-real app.
+((("class-based generic views (CBGVs)", "key tests and assertions")))
+((("Django framework", "class-based generic views")))
+We're now at a point where our app looks a lot more like a "standard" Django app,
+and it implements the three common Django layers: models, forms, and views.
+We no longer have any "training wheels&#x201d;-style tests,
+and our code looks pretty much like code we'd be happy to see in a real app.
 
-We have one unit test file for each of our key source code files.  Here's
-a recap of the biggest (and highest-level) one, 'test_views' (the listing
-shows just the key tests and assertions, and your order may vary):
+We have one unit test file for each of our key source code files.
+Here's a recap of the biggest (and highest-level) one, _test_views_
 
 
 [[what-to-test-in-views]]
@@ -1221,17 +1236,9 @@ class ListViewTest(TestCase):
 ----
 ====
 
-// SEBASTIAN: I must say I got lost while reading this listing.
-//      This is not a complete listing, is it?
-//      I know this would make it much longer, but I usually use ellipsis ... to
-//      show code that's been omitted. At least blank lines between scenarios might be helpful
-//      WDYT?
-
-
 <1> Use the Django Test Client.
 
 <2> Check the template used.
-// CSANAD: we aren't asserting anything else in this test
 
 <3> Check that the received objects are the right ones.
 
