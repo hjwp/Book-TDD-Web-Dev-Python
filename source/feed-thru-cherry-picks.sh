@@ -17,10 +17,8 @@ cd "$CHAP/superlists"
 # which is the last commit of the $PREV branch as it was *before* our new version.
 # We assume that the repo version in $CHAP/superlists has *not* got this latest version yet.
 # (so that's why we don't do the git fetch until after this step)
-# START_COMMIT="$(git rev-list -n 1 "$REPO/$PREV")"
-# CHAP_COMMIT_LIST="$START_COMMIT..$REPO/$CHAP"
-START_COMMIT="$(git rev-list -n 1 "origin/$PREV")"
-CHAP_COMMIT_LIST="$START_COMMIT..origin/$CHAP"
+START_COMMIT="$(git rev-list -n 1 "$REPO/$PREV")"
+CHAP_COMMIT_LIST="$START_COMMIT..$REPO/$CHAP"
 
 # check START_COMMIT exists in $CHAP branch's history
 # https://stackoverflow.com/a/4129070/366221
