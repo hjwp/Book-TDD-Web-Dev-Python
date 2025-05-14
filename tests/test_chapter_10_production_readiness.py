@@ -51,7 +51,7 @@ class Chapter10Test(ChapterTest):
 
         self.check_final_diff(
             ignore=[
-                "Django==5.1",
+                "Django==5.2",
                 "gunicorn==2",
                 "whitenoise==6.",
             ]

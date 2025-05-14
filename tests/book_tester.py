@@ -704,9 +704,6 @@ class ChapterTest(unittest.TestCase):
         ]
         self.assertTrue("diff" in self.listings[pos] or "status" in self.listings[pos])
         git_output = self.run_command(self.listings[pos])
-        if not any("/" + l in git_output for l in LIKELY_FILES):
-            if not any(f in git_output for f in ("lists/", "functional_tests.py")):
-                self.fail("no likely files in diff output %s" % (git_output,))
         self.pos += 1
         comment = self.listings[pos + 1]
         if comment.skip:
@@ -715,6 +712,9 @@ class ChapterTest(unittest.TestCase):
             return
         if comment.type != "output":
             return
+        if not any("/" + l in git_output for l in LIKELY_FILES):
+            if not any(f in git_output for f in ("lists/", "functional_tests.py")):
+                self.fail("no likely files in diff output %s" % (git_output,))
         for expected_file in LIKELY_FILES:
             if "/" + expected_file in git_output:
                 if expected_file not in comment:

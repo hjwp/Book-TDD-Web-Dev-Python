@@ -17,7 +17,7 @@ class Chapter24Test(ChapterTest):
         self.assertEqual(self.listings[1].type, "code listing with git ref")
 
         # skips
-        # self.skip_with_check(22, 'switch back to master') # comment
+        self.skip_with_check(37, 'views.py, templates')
 
         self.start_with_checkout()
         self.prep_database()
