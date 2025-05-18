@@ -86,10 +86,124 @@ To get our browser to send a POST request, we need to do two things:
    so I thought I'd draw your attention to it.]
    with `method="POST"`.
 
+
+=== Testing the Contract Between Frontend and Backend
+
+If you remember in the last chapter, we said we wanted to come back
+and revisit the "smoke test" of our homepage template content.
+Let's have a quick look at our unit tests:
+
+
+[role="sourcecode currentcontents"]
+.lists/tests.py
+====
+[source,python]
+----
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+        response = self.client.get("/")
+        self.assertTemplateUsed(response, "home.html")
+
+    def test_renders_homepage_content(self):
+        response = self.client.get("/")
+        self.assertContains(response, "To-Do")
+----
+====
+
+What's _important_ about our homepage content?
+How can we obey both the "don't test constants" rule
+and the "test behaviour, not implementation" rule?
+
+The specific spelling of the word "To-Do" is not important.
+As we've just seen, the most important _behaviour_ that our homepage is enabling,
+is the ability to submit a to-do item.
+The way we're going to deliver that is by adding a `<form>` tag with `method="POST"`,
+and inside that, making sure our `<input>` has a `name="item_text"`.
+
+Our FTs are telling us that it's not working at a high level,
+so what unit tests can we write at the lower level?  Let's start with the form:
+
+
+[role="sourcecode"]
+.lists.tests.py (ch05l001)
+====
+[source,python]
+----
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+        [...]
+
+    def test_renders_input_form(self):  # <1>
+        response = self.client.get("/")
+        self.assertContains(response, '<form method="POST">')  # <2>
+----
+====
+
+<1> We change the name of the test
+<2> And we assert on the `<form>` tag specifically
+
+That gives us:
+
+[subs="specialcharacters,quotes"]
+----
+$ *./manage.py test*
+[...]
+AssertionError: False is not true : Couldn't find '<form method="POST">' in the following response
+b'<html>\n  <head>\n    <title>To-Do lists</title>\n  </head>\n  <body>\n
+<h1>Your To-Do list</h1>\n    <input id="id_new_item" placeholder="Enter a
+to-do item" />\n    <table id="id_list_table">\n    </table>\n
+</body>\n</html>\n'
+----
+
+
 Let's adjust our template at 'lists/templates/home.html':
 
 [role="sourcecode"]
-.lists/templates/home.html (ch05l001)
+.lists/templates/home.html (ch05l002)
+====
+    <h1>Your To-Do list</h1>
+    <form method="POST">
+      <input id="id_new_item" placeholder="Enter a to-do item" />
+    </form>
+----
+====
+
+That gives us passing unit tests:
+
+----
+OK
+----
+
+And next let's add a test for the `name=` attribute on the `<input>` tag:
+
+
+[role="sourcecode"]
+.lists/tests.py (ch05l003)
+====
+[source,python]
+----
+    def test_renders_input_form(self):
+        response = self.client.get("/")
+        self.assertContains(response, '<form method="POST">')
+        self.assertContains(response, '<input name="item_text"')
+----
+====
+
+That gives us this expected failure:
+
+----
+AssertionError: False is not true : Couldn't find '<input name="text"' in the following response
+b'<html>\n  <head>\n    <title>To-Do lists</title>\n  </head>\n  <body>\n
+<h1>Your To-Do list</h1>\n    <form method="POST">\n      <input
+name="item_text" id="id_new_item" placeholder="Enter a to-do item" />\n
+</form>\n    <table id="id_list_table">\n    </table>\n  </body>\n</html>\n'
+----
+
+
+And we fix it like this:
+
+[role="sourcecode"]
+.lists/templates/home.html (ch05l004)
 ====
 [source,html]
 ----
@@ -101,8 +215,13 @@ Let's adjust our template at 'lists/templates/home.html':
 ----
 ====
 
+That gives us passing unit tests:
 
-Now, running our FTs gives us a slightly cryptic, unexpected error:
+----
+OK
+---
+
+Time to go back to our FT. It gives us a slightly cryptic, unexpected error:
 
 [subs="specialcharacters,macros"]
 ----
