@@ -271,7 +271,6 @@ and that they get their own unique URL for their list:
     self.browser.get(self.live_server_url)
     page_text = self.browser.find_element(By.TAG_NAME, "body").text
     self.assertNotIn("Buy peacock feathers", page_text)
-    self.assertNotIn("make a fly", page_text)
 
     # Francis starts a new list by entering a new item. He
     # is less interesting than Edith...
@@ -412,7 +411,10 @@ Running the unit tests gives us an expected fail:
 $ pass:quotes[*python manage.py test lists*]
 [...]
 AssertionError: '/' != '/lists/the-only-list-in-the-world/'
-[...]
+- /
++ /lists/the-only-list-in-the-world/
+ : Response redirected to '/', expected '/lists/the-only-list-in-the-world/':
+Expected '/' to equal '/lists/the-only-list-in-the-world/'.
 ----
 
 We can go adjust our `home_page` view in 'lists/views.py':
@@ -438,7 +440,7 @@ is not a real URL yet:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python manage.py test lists*]
 [...]
 AssertionError: 404 != 200 : Couldn't retrieve redirection page
 '/lists/the-only-list-in-the-world/': response code was 404 (expected 200)
@@ -485,7 +487,7 @@ That gets our unit tests passing:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python manage.py test lists*]
 [...]
 OK
 ----
@@ -495,7 +497,7 @@ What do the FTs think?
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test functional_tests*]
+$ pass:quotes[*python manage.py test functional_tests*]
 [...]
 AssertionError: 'Buy peacock feathers' unexpectedly found in 'Your To-Do
 list\n1: Buy peacock feathers'
@@ -524,9 +526,19 @@ for these two different URLs:
 Let's split out some tests for our new URL.
 
 Open up 'lists/tests.py', and add a new test class called `ListViewTest`.
-Then move the method called `test_displays_all_list_items`
-across from `HomePageTest` into our new class,
-changing just the URL that is invoked by `self.client.get()`:
+Then:
+
+1. Copy across the `test_renders_input_form()` test from `HomePageTest`
+  into our new class.
+
+2. _Move_ the method called `test_displays_all_list_items()`.
+
+3. In both, change just the URL that is invoked by `self.client.get()`:
+
+4. We _won't_ copy across the `test_uses_home_template()` yet,
+    since we're not quite sure what template we want to use yet.
+    We'll stick to the tests that check behaviour, rather than implenentation.
+
 
 [role="sourcecode"]
 .lists/tests.py (ch07l010)
@@ -536,6 +548,8 @@ changing just the URL that is invoked by `self.client.get()`:
 class HomePageTest(TestCase):
     def test_uses_home_template(self):
         [...]
+    def test_renders_input_form(self):
+        [...]
     def test_can_save_a_POST_request(self):
         [...]
     def test_redirects_after_POST(self):
@@ -543,6 +557,11 @@ class HomePageTest(TestCase):
 
 
 class ListViewTest(TestCase):
+    def test_renders_input_form(self):
+        response = self.client.get("/lists/the-only-list-in-the-world/")
+        self.assertContains(response, '<form method="POST">')
+        self.assertContains(response, '<input name="item_text"')
+
     def test_displays_all_list_items(self):
         Item.objects.create(text="itemey 1")
         Item.objects.create(text="itemey 2")
@@ -554,17 +573,16 @@ class ListViewTest(TestCase):
 ----
 ====
 
-Let's try running this test now:
+Let's try running these tests now:
 
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python manage.py test lists*]
 OK
 ----
 
-It passes, because the URL is still pointing
-at the home_page view.
+It passes, because the URL is still pointing at the `home_page` view.
 
 Let's make it point at a new view:
 
@@ -589,7 +607,7 @@ That predictably fails because there is no such view function yet:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python manage.py test lists*]
 [...]
     path("lists/the-only-list-in-the-world/", views.view_list,
 name="view_list"),
@@ -642,6 +660,9 @@ shows existing list items:
 
 [subs="specialcharacters"]
 ----
+FAIL: test_displays_all_list_items
+(lists.tests.ListViewTest.test_displays_all_list_items)
+[...]
 AssertionError: False is not true : Couldn't find 'itemey 1' in the following
 response
 ----
@@ -662,7 +683,7 @@ def view_list(request):
 That gets us to passing unit tests!
 
 ----
-Ran 6 tests in 0.035s
+Ran 8 tests in 0.035s
 
 OK
 ----
@@ -761,7 +782,7 @@ Subtle, right?  Selenium tests are fiddly like that.
 *******************************************************************************
 
 
-Not only is our new test failing, but the old one is too.
+Not only is our new FT failing, but the old one is too.
 That tells us we've introduced a _regression_.  But what?
 
 ((("debugging", "of functional tests")))
@@ -783,16 +804,18 @@ Let's have a quick look at those unit tests to see what they tell us:
 $ *grep -E "class|def" lists/tests.py*
 class HomePageTest(TestCase):
     def test_uses_home_template(self):
+    def test_renders_input_form(self):
     def test_can_save_a_POST_request(self):
     def test_redirects_after_POST(self):
     def test_only_saves_items_when_necessary(self):
 class ListViewTest(TestCase):
+    def test_renders_input_form(self):
     def test_displays_all_list_items(self):
 class ItemModelTest(TestCase):
     def test_saving_and_retrieving_items(self):
 ----
 
-The home page displays the right template, and can handle POST requests,
+The home page displays the right form and template, and can handle POST requests,
 and the _/only-list-in-the-world/_ view knows how to display all items...
 but it doesn't know how to handle POST requests.
 Ah, that gives us a clue.
@@ -833,10 +856,83 @@ Now we could dive in and add POST request handling to our new view,
 but that would involve writing a bunch more tests and code,
 and at this point we'd like to get back to a working state as quickly as possible.
 Actually the _quickest_ thing we can do to get things fixed
-is to just use the existing home page view, which already works, for all POST requests:
+is to just use the existing home page view, which already works,
+for all POST requests.
+
+In other words, we've identified a new important part of the
+behaviour we want from our two views and their templates,
+which is the URL that the form points to.
+Let's add a check for that URL explicitly,
+in our two tests for each view
+(I'll use a diff to show the changes,
+hopefully that makes it nice and clear):
+
+
 
 [role="sourcecode"]
-.lists/templates/home.html (ch07l013)
+.lists/tests.py (ch07l013-1)
+====
+[source,diff]
+----
+@@ -10,7 +10,7 @@ class HomePageTest(TestCase):
+
+     def test_renders_input_form(self):
+         response = self.client.get("/")
+-        self.assertContains(response, '<form method="POST">')
++        self.assertContains(response, '<form method="POST" action="/">')
+         self.assertContains(response, '<input name="item_text"')
+
+     def test_can_save_a_POST_request(self):
+@@ -31,7 +31,7 @@ class HomePageTest(TestCase):
+ class ListViewTest(TestCase):
+     def test_renders_input_form(self):
+         response = self.client.get("/lists/the-only-list-in-the-world/")
+-        self.assertContains(response, '<form method="POST">')
++        self.assertContains(response, '<form method="POST" action="/">')
+         self.assertContains(response, '<input name="item_text"')
+
+     def test_displays_all_list_items(self):
+----
+====
+
+
+That gives us two expected failures:
+
+
+----
+======================================================================
+FAIL: test_renders_input_form
+(lists.tests.HomePageTest.test_renders_input_form)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "...goat-book/superlists/lists/tests.py", line 13, in
+  test_renders_input_form
+    self.assertContains(response, '<form method="POST" action="/">')
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : Couldn't find '<form method="POST"
+action="/">' in the following response
+b'<html>\n  <head>\n    <title>To-Do lists</title>\n  </head>\n  <body>\n
+<h1>Your To-Do list</h1>\n    <form method="POST">\n      <input
+name="item_text" id="id_new_item" placeholder="Enter a to-do item" />\n
+<input type="hidden" name="csrfmiddlewaretoken"
+value="Kk5XLzXT584jFJprzx1uJgahBzrApWcyeK2HFq5342AfdhZVjidWGYqzrAwpuuzW">\n
+</form>\n    <table id="id_list_table">\n      \n    </table>\n
+</body>\n</html>\n'
+
+======================================================================
+FAIL: test_renders_input_form (lists.tests.ListViewTest.test_renders_input_form)
+[...]
+AssertionError: False is not true : Couldn't find '<form method="POST" action="/">' in the following response
+b'<html>\n  <head>\n    <title>To-Do lists</title>\n  </head>\n  <body>\n
+[...]
+----
+
+And so we can fix it like this:
+The input form, for now, will always point at the home URL:
+
+
+[role="sourcecode"]
+.lists/templates/home.html (ch07l013-2)
 ====
 [source,html]
 ----
@@ -844,7 +940,13 @@ is to just use the existing home page view, which already works, for all POST re
 ----
 ====
 
-Try that, and we'll see our FTs get back to a happier place:
+Unit test pass:
+
+----
+OK
+----
+
+And we should see our FTs get back to a happier place:
 
 [subs="specialcharacters,macros"]
 ----
@@ -872,21 +974,21 @@ but at least the old stuff works as well as it used to.
 ((("Red/Green/Refactor")))
 Time for a little tidying up.
 
-In the _Red/Green/Refactor_ dance, we've arrived at green,
-so we should see what needs a refactor.
+In the _Red/Green/Refactor_ dance, our unit tests pass
+and all our old FTs pass, so we've arrived at green.
+That means it's time to see if anything needs a refactor.
+
 We now have two views, one for the home page,
 and one for an individual list.
 Both are currently using the same template,
 and passing it all the list items currently in the database.
 Post requests are only handled by the home page though.
 
-
 It feels like the responsibilities of our two views are a little tangled up.
 Let's try and disentangle them a little.
 
 
 === Another Small Step: A Separate Template for Viewing Lists
-
 
 ((("multiple lists testing", "separate list viewing templates", id="MLTseparate07")))
 ((("templates", "separate list viewing templates", id="TMPseparate07")))
@@ -895,7 +997,10 @@ they should be using different HTML templates; _home.html_ can have the
 single input box, whereas a new template, _list.html_, can take care
 of showing the table of existing items.
 
-Let's add a new test to check that it's using a different template:
+We held off on copying across `test_uses_home_template()` until now,
+because we weren't quite sure what we wanted.
+Now let's add an explicit test to say
+that this view uses a different template:
 
 [role="sourcecode"]
 .lists/tests.py (ch07l014)
@@ -907,6 +1012,9 @@ class ListViewTest(TestCase):
         response = self.client.get("/lists/the-only-list-in-the-world/")
         self.assertTemplateUsed(response, "list.html")
 
+    def test_renders_input_form(self):
+        [...]
+
     def test_displays_all_list_items(self):
         [...]
 ----
@@ -915,8 +1023,6 @@ class ListViewTest(TestCase):
 // DAVID: FWIW I don't think this test adds value, it's an internal detail. We're refactoring anyway
 // so we would expect not to have to change tests - because we don't want tests to be overly coupled
 // to the way our code is factored anyway.
-
-// TODO: add a more behavioural assertion, saying that it has a form that points at the right thing.
 
 Let's see what it says:
 
@@ -943,6 +1049,8 @@ get:
 
 ----
 django.template.exceptions.TemplateDoesNotExist: list.html
+[...]
+FAILED (errors=4)
 ----
 
 Let's create a new file at 'lists/templates/list.html':
@@ -953,15 +1061,29 @@ Let's create a new file at 'lists/templates/list.html':
 $ *touch lists/templates/list.html*
 ----
 
-A blank template, which gives us this error--good to know the tests are
+A blank template, which gives us two error--good to know the tests are
 there to make sure we fill it in:
 
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python manage.py test lists*]
 [...]
+======================================================================
+FAIL: test_displays_all_list_items
+(lists.tests.ListViewTest.test_displays_all_list_items)
+ ---------------------------------------------------------------------
+[...]
 AssertionError: False is not true : Couldn't find 'itemey 1' in the following
 response
+b''
+
+======================================================================
+FAIL: test_renders_input_form (lists.tests.ListViewTest.test_renders_input_form)
+----------------------------------------------------------------------
+[...]
+AssertionError: False is not true : Couldn't find '<form method="POST"
+action="/">' in the following response
+[...]
 ----
 
 The template for an individual list will reuse quite a lot of the stuff
@@ -991,8 +1113,8 @@ so we can remove some lines from _lists/templates/home.html_,
 and maybe slightly tweak the `h1` to say "Start a new To-Do list":
 
 
-I'll present the code change as a diff,
-which hopefully shows a bit more clearly what we need to modify:
+I'll present the code change as a diff again,
+since I think that shows nice and clearly what we need to modify:
 
 [role="sourcecode small-code"]
 .lists/templates/home.html (ch07l018)
@@ -1050,27 +1172,76 @@ OK
 Time to run the functional tests:
 
 ----
+  File "...goat-book/superlists/functional_tests/tests.py", line 96, in
+test_multiple_users_can_start_lists_at_different_urls
+    self.wait_for_row_in_list_table("1: Buy milk")
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+[...]
 AssertionError: '1: Buy milk' not found in ['1: Buy peacock feathers', '2: Buy
 milk']
+
+----------------------------------------------------------------------
+Ran 2 tests in 10.606s
+
+FAILED (failures=1)
 ----
 
+Great!  Only 1 failure, so we know our regression test (the first FT)
+is passing.
+Let's see where we're getting to with the new FT.
+Let's take a look at it again:
 
-Not bad!  Our regression test (the first FT) is passing,
-and our new test is now getting slightly further forwards--it's
-telling us that Francis isn't getting his own list page
-(because he still sees some of Edith's list items).
 
+[role="sourcecode"]
+.lists.tests.py (ch04l004)
+====
+[source,python]
+----
+    def test_multiple_users_can_start_lists_at_different_urls(self):
+        # Edith starts a new to-do list
+        self.browser.get(self.live_server_url)
+        inputbox = self.browser.find_element(By.ID, "id_new_item")
+        inputbox.send_keys("Buy peacock feathers")
+        inputbox.send_keys(Keys.ENTER)
+        self.wait_for_row_in_list_table("1: Buy peacock feathers")  # <1>
+        [...]
+
+        # Now a new user, Francis, comes along to the site.
+        [...]
+
+        # Francis visits the home page.  There is no sign of Edith's
+        # list
+        self.browser.get(self.live_server_url)
+        page_text = self.browser.find_element(By.TAG_NAME, "body").text
+        self.assertNotIn("Buy peacock feathers", page_text)  # <2>
+
+        # Francis starts a new list by entering a new item. He
+        # is less interesting than Edith...
+        inputbox = self.browser.find_element(By.ID, "id_new_item")
+        inputbox.send_keys("Buy milk")
+        inputbox.send_keys(Keys.ENTER)
+        self.wait_for_row_in_list_table("1: Buy milk")   # <3>
+        [...]
+----
+====
+
+<1> Edith's list says "Buy peacock feathers"
+<2> When Francis loads the homepage, there's no sign of Edith's list
+<3> (This is the line where our test fails) When Francis adds a new item,
+    he sees Edith's item as number 1, and his appears as number 2.
+
+Still, that's progress!  The new FT _is_ getting a little further along.
 
 ((("", startref="MLTseparate07")))
 ((("", startref="TMPseparate07")))
 It may feel like we haven't made much headway since,
 functionally, the site still behaves almost exactly like it did
 when we started the chapter,
-but this really is progress.
+but this really _is_ progress.
 We've started on the road to our new design,
 and we've implemented a number of stepping stones
 _without making anything worse than it was before_.
-Let's commit our progress so far:
+Let's commit our work so far:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -1084,6 +1255,10 @@ $ *git diff* # should show we've simplified home.html,
 $ *git commit -a* # add a message summarising the above, maybe something like
                 # "new URL, view and template to display lists"
 ----
+
+NOTE: If this is all feeling a little abstract,
+  now might be a good time to load up the site with `manage.py runserver`
+  and try adding a couple of different lists yourself.
 
 
 === A Third Small Step: A New URL for Adding List Items
@@ -1112,15 +1287,28 @@ If nothing else, it'll simplify the home page view.
 
 ==== A Test Class for New List Creation
 
-Open up 'lists/tests.py',
-and 'move' the `test_can_save_a_POST_request` and `test_redirects_after_POST` methods
-into a new class, then change the URL they POST to:
+Open up _lists/tests.py_, create a new class called `NewListTest`, and
+_move_ the three tests to do with new list creation into it:
+
+1. `test_can_save_a_POST_request()`
+2. `test_redirects_after_POST()`
+3. test_only_saves_items_when_necessary()
+
+Then, change the URL they point to:
+
 
 [role="sourcecode small-code"]
 .lists/tests.py (ch07l020)
 ====
 [source,python]
 ----
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+        [...]
+    def test_renders_input_form(self):
+        [...]
+
+
 class NewListTest(TestCase):
     def test_can_save_a_POST_request(self):
         self.client.post("/lists/new", data={"item_text": "A new list item"})
@@ -1131,19 +1319,28 @@ class NewListTest(TestCase):
     def test_redirects_after_POST(self):
         response = self.client.post("/lists/new", data={"item_text": "A new list item"})
         self.assertRedirects(response, "/lists/the-only-list-in-the-world/")
+
+    def test_only_saves_items_when_necessary(self):
+        self.client.get("/lists/new")
+        self.assertEqual(Item.objects.count(), 0)
+
+
+class ListViewTest(TestCase):
+    def test_uses_list_template(self):
+        [...]
 ----
 ====
 
 TIP: This is another place to pay attention to trailing slashes, incidentally.
     It's `/lists/new`, with no trailing slash.
     The convention I'm using is that
-    URLs without a trailing slash are "action" URLs which modify the database.
+    URLs without a trailing slash are "action" URLs which modify the database.footnote:[
+I don't think this is a very common convention any more these days,
+but I quite like it.
+By all means cast around for a URL naming scheme that makes sense to you,
+in your own projects!]
 
 // DAVID: Is that a common convention? We've already got HTTP methods to denote that,
-// as we can have different methods on the same URL.
-// Also, the way our Django app is configured, it will automatically redirect to a URL
-// with the slash appended, so I'm not sure this makes much sense.
-// https://docs.djangoproject.com/en/5.2/ref/settings/#append-slash
 
 Try running that:
 
@@ -1202,10 +1399,12 @@ def new_list(request):
 ----
 ====
 
-Then we get "The view lists.views.new_list didn't return an HttpResponse
-object".  (This is getting rather familiar!)  We could return a raw
-`HttpResponse`, but since we know we'll need a redirect, let's borrow a line
-from `home_page`:
+Then we get 3 errors saying
+"The view lists.views.new_list didn't return an HttpResponse object".
+(This is getting rather familiar!)
+We could return a raw `HttpResponse`,
+but since we know we'll need a redirect,
+let's borrow a line from `home_page`:
 
 [role="sourcecode"]
 .lists/views.py (ch07l023)
@@ -1217,12 +1416,7 @@ def new_list(request):
 ----
 ====
 
-// DAVID: I do wonder about this approach, given that the application is now
-// vulnerable to a CSRF attack (it changes the database from a GET request).
-// We should be thinking about security even as we incrementally change
-// things, IMO. This is the kind of thing that could be missed later.
-
-That gives:
+That takes us down to just one failure:
 
 ----
     self.assertEqual(Item.objects.count(), 1)
@@ -1242,6 +1436,91 @@ def new_list(request):
     return redirect("/lists/the-only-list-in-the-world/")
 ----
 ====
+
+That gives us a perhaps-slightly-unexpected failure.
+I'll strip it down below to show the relevant parts,
+hopefully you're now getting used to the unexpected-error-debugging
+steps:
+
+
+[subs="callouts"]
+----
+======================================================================
+ERROR: test_only_saves_items_when_necessary  <2>
+(lists.tests.NewListTest.test_only_saves_items_when_necessary)
+ ---------------------------------------------------------------------
+Traceback (most recent call last):
+  [...]
+  File "...goat-book/superlists/lists/tests.py", line 29, in
+test_only_saves_items_when_necessary
+    self.client.get("/lists/new")  <3>
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  [...]
+  File "...goat-book/superlists/lists/views.py", line 14, in new_list
+    Item.objects.create(text=request.POST["item_text"])  <4>
+                             ~~~~~~~~~~~~^^^^^^^^^^^^^
+[...]
+    raise MultiValueDictKeyError(key)
+django.utils.datastructures.MultiValueDictKeyError: 'item_text'  <1>
+
+ ---------------------------------------------------------------------
+Ran 9 tests in 0.013s
+
+FAILED (errors=1)
+----
+
+<1> Check the error
+<2> Check which test failed. Ah, it's our one about not saving items
+    unnecessarily.
+<3> Check where the error comes from in our tests: it's when
+    do a `self.client.get()` request
+<4> Finally check the line in our code that's causing the problem,
+    it's when we try and look into `request.POST[]`.
+    Bearing in mind we now know we're in a get request,
+    that won't work.
+
+Let's add a little guard in our view:
+
+
+[role="sourcecode"]
+.lists/views.py (ch07l024-2)
+====
+[source,python]
+----
+def new_list(request):
+    if request.method == "POST":
+        Item.objects.create(text=request.POST["item_text"])
+        return redirect("/lists/the-only-list-in-the-world/")
+----
+====
+
+That gets us to:
+
+----
+ValueError: The view lists.views.new_list didn't return an HttpResponse object. It returned None instead.
+----
+
+What response _should_ we give for a GET request?
+This view is only supposed to handle POST requests.
+We could return an error of some kind,
+
+
+
+[role="sourcecode"]
+.lists/views.py (ch04l004)
+====
+[source,python]
+----
+from django.http import HttpResponseNotAllowed
+def new_list(request):
+    if request.method == "POST":
+        Item.objects.create(text=request.POST["item_text"])
+        return redirect("/lists/the-only-list-in-the-world/")
+    return HttpResponseNotAllowed(["POST"])
+----
+====
+
+OOOH I CANT BE ARSED
 
 And everything now passes:
 
@@ -1417,7 +1696,7 @@ And we can cross out an item on the to-do list:
 Enough housekeeping with our URLs.
 It's time to bite the bullet and change our models.
 Let's adjust the model unit test.
-Again, I'll use a diff to show you the changes:
+
 
 [role="sourcecode"]
 .lists/tests.py (ch07l029)
@@ -1999,7 +2278,7 @@ That gets us back to passing unit tests:
 
 [subs="specialcharacters,macros"]
 ----
-$ pass:quotes[*python3 manage.py test lists*]
+$ pass:quotes[*python manage.py test lists*]
 [...]
 ......
  ---------------------------------------------------------------------
