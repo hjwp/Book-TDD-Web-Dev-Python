@@ -537,6 +537,10 @@ $ *python manage.py test*
 OK
 ----
 
+And we can double-check with the FTs:
+
+
+
 Our refactor of the code is now complete,
 and the tests mean we're happy that behaviour is preserved.
 Now we can change the tests so that they're no longer testing constants;
@@ -546,13 +550,33 @@ instead, they should just check that we're rendering the right template.
 
 
 
-==== Checking template rendering
+=== Revisiting our Unit Tests
 
+Our unit tests are currently checking HTML by hand,
+certainly that's very close to "testing constants".
 
-The Django test client has a method, `assertTemplateUsed`, which can do just what we want:
+[role="sourcecode currentcontents"]
+.lists/tests.py
+====
+[source,python]
+----
+def test_home_page_returns_correct_html(self):
+    response = self.client.get("/")
+    self.assertContains(response, "<title>To-Do lists</title>")  # <1>
+    self.assertContains(response, "<html>")
+    self.assertContains(response, "</html>")
+----
+====
 
-// TODO: this couples us to an implementation detail.  change it to an assert
-// on the <input> maybe.  should make life in forms chapters easier too.
+We don't want to be duplicating the full content of our HTML
+template in our tests, or even last sections of it.
+What could we do instead?
+
+Rather than testing the full template,
+we could just check that we're using the _right_ template.
+The Django test client has a method, `assertTemplateUsed`,
+which will let us do just that.
+
 
 [role="sourcecode"]
 .lists/tests.py (ch04l005)
@@ -602,9 +626,8 @@ used to render the response. Actual template(s) used: home.html
 ----
 
 That's very helpful!
+
 Let's change the assert back to the right thing.
-While we're at it, we can delete our old assertions,
-and give the test method a more specific name:
 
 
 [role="sourcecode"]
@@ -623,19 +646,103 @@ class HomePageTest(TestCase):
 ====
 
 
-The main point, though, is that instead of testing constants
-we're testing at a higher level of abstraction.
-Great!footnote:[
-I'm glossing over some trade-offs here.
+Now, instead of testing constants we're testing at a higher level of abstraction.
+Great!
+
+
+==== Test Behaviour, Not Implementation
+
+As so often in the world of programming though,
+it's not quite black and white.
+
 Yes, on the plus side, our tests no longer care about the specific content of our HTML
 so they are no longer brittle with respect to minor changes of the copy in our template.
+
 But on the other hand, they depend on some Django implementation details,
 so they are brittle with respect to changing the template rendering library,
 or even just renaming templates.
-So it's a compromise, as always, but `assertTemplateUsed()` is quite a common
-pattern in the Django world for a basic test of 200/GET requests]
+
+In away, testing for the template name
+(and implicitly, even checking that we used a template at all)
+is a lot like testing implementation.
+So what is the _behaviour_ that we want?
+
+Yes, in a sense, the "behaviour" we want from the view is "render the template".
+But from the point of view of the user,
+it's "show me the homepage".
+
+We're also vulnerable to accidentally breaking the template.
+Let's try it now,
+by just deleting all the contents of the template file:
+
+[subs="specialcharacters,quotes"]
+----
+$ *mv lists/templates/home.html lists/templates/home.html.bak*
+$ *touch lists/templates/home.html*
+$ *python manage.py test*
+[...]
+OK
+----
+
+Yes, our FTs will pick up on this, so ultimately we're OK.
 
 
+[subs="specialcharacters,quotes"]
+----
+$ *python functional_tests.py*
+[...]
+    self.assertIn("To-Do", self.browser.title)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'To-Do' not found in ''
+----
+
+But it would be nice to have our unit tests pick up on this too.
+
+[subs="specialcharacters,quotes"]
+----
+$ *mv lists/templates/home.html.bak lists/templates/home.html*
+----
+
+
+Deciding exactly what to test with FTs and what to test with unit tests
+is a fine line, and the objective is not to double-test everything.
+But in general, the more we can test with unit tests the better.
+They run faster, and they give more specific feedback.
+
+So, let's bring back a minimal "smoke test" that what we're rendering
+is actually the home page.
+
+
+
+[role="sourcecode"]
+.lists/tests.py (ch04l008)
+====
+[source,python]
+----
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+        response = self.client.get("/")
+        self.assertTemplateUsed(response, "home.html")  # <1>
+
+    def test_renders_homepage_content(self):
+        response = self.client.get("/")
+        self.assertContains(response, "To-Do")  # <2>
+----
+====
+
+<1> We'll keep this first test, which asserts on whether we're rendering the
+    right "constant".
+
+<2> And this gives us a minimal smoke test that we have got the right
+    content in the template.
+
+
+As our home page template gains more functionality over the next couple of chapters,
+and we'll come back to talking about what to test here in the unit tests,
+and what to leave to the FTs.
+
+TIP: Unit tests give you faster and more specific feedback than FTs.
+  Bear this in mind when deciding what to test where.
 
 
 === On Refactoring
@@ -649,9 +756,7 @@ I'm recommending that you be _able_ to work this way".
 
 In fact, as I was writing this my first instinct was to dive in
 and change the test first--make it
-use the `assertTemplateUsed` function straight away;
-delete the three superfluous assertions,
-leaving just a check of the contents
+use the `assertTemplateUsed()` function straight away;
 against the expected render;
 and then go ahead and make the code change.
 But notice how that actually would have left space
@@ -715,7 +820,7 @@ NOTE: This is another distinction between FTs and unit tests;
 So, we wanted an `<h1>`:
 
 [role="sourcecode"]
-.lists/templates/home.html (ch04l008)
+.lists/templates/home.html (ch04l009)
 ====
 [source,html]
 ----
@@ -741,7 +846,7 @@ OK, let's add an input with that ID:
 
 
 [role="sourcecode"]
-.lists/templates/home.html (ch04l009)
+.lists/templates/home.html (ch04l010)
 ====
 [source,html]
 ----
@@ -763,7 +868,7 @@ AssertionError: '' != 'Enter a to-do item'
 We add our placeholder text...
 
 [role="sourcecode"]
-.lists/templates/home.html (ch04l010)
+.lists/templates/home.html (ch04l011)
 ====
 [source,html]
 ----
@@ -781,7 +886,7 @@ element: [id="id_list_table"]; [...]
 So we can go ahead and put the table onto the page. At this stage it'll just be empty:
 
 [role="sourcecode"]
-.lists/templates/home.html (ch04l011)
+.lists/templates/home.html (ch04l012)
 ====
 [source,html]
 ----
@@ -813,7 +918,7 @@ We can pass a custom error message as an argument to most `assertX` methods in `
 
 
 [role="sourcecode"]
-.functional_tests.py (ch04l012)
+.functional_tests.py (ch04l013)
 ====
 [source,python]
 ----
