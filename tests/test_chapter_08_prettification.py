@@ -21,6 +21,7 @@ class Chapter8Test(ChapterTest):
         # other prep
         self.sourcetree.run_command("python3 manage.py migrate --noinput")
         # self.unset_PYTHONDONTWRITEBYTECODE()
+        self.prep_virtualenv()
         self.sourcetree.run_command("uv pip install pip")
 
         # skips
