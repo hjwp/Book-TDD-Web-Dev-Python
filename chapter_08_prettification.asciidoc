@@ -565,34 +565,43 @@ Does that work?  Woops no, we have an error in our unit tests:
 FAIL: test_renders_input_form
 (lists.tests.ListViewTest.test_renders_input_form)
 [...]
-AssertionError: False is not true : Couldn't find '<form method="POST"
-action="/lists/1/add_item">' in the following response
+AssertionError: False is not true : Couldn't find '<input name="item_text"' in the following response
 [...]
 ----
 
 Ah, it's because our unit tests are currently a little
-brittle with respects to cosmetic changes in our `<input>` tag.
+brittle with respects to whitespace changes in our `<input>` tag,
+which actually don't matter semantically.
 
 Django does provide the `html=True` argument to `assertContains()`,
-but even that is a little too fragile to do what we want.
-
-In tests like this one, we really don't want to be distracted
-by extraneous attributes like the CSS class or the HTML id.
+which does help a bit, but it requires exhaustively
+specifying every attribute of the element we want to check on,
+like this:
 
 [role="sourcecode skipme"]
 .lists/tests.py
 ====
 [source,python]
 ----
-        self.assertContains(response, '<input name="item_text">')
+        self.assertContains(
+            response,
+            '<input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />',
+            html=True,
+        )
 ----
 ====
 
 
-Let's switch to using a proper HTML 
+In tests like this one, we really don't want to be distracted
+by extraneous attributes the HTML id or the exact placeholder text.
+
+
+Let's switch to using a proper HTML parser, the venerable
+https://lxml.de/[lxml].
 
 
 ----
+# we need the 'cssselect' add-on for the nice CSS selectors
 pip install 'lxml[cssselect]'
 ----
 
@@ -613,10 +622,47 @@ class HomePageTest(TestCase):
 
     def test_renders_input_form(self):
         response = self.client.get("/")
-        parsed = lxml.html.fromstring(response.content)
-        [form] = parsed.cssselect("form[method='POST']")
+        parsed = lxml.html.fromstring(response.content)  # <1>
+        [form] = parsed.cssselect("form[method=POST]")  # <2><3>
         self.assertEqual(form.get("action"), "/lists/new")
-        [input] = form.cssselect("input[name='item_text']")
+        [input] = form.cssselect("input[name=item_text]")  # <4>
+----
+====
+
+<1> Here's where we parse the HTML into a structured object
+    to represent the DOM.
+
+<2> Here's where we use a CSS selector to find our form,
+    implicitly also checking that it has `method="POST"`.
+
+<3> The `[form] =` is worth a mention.
+    What we're using here is a special assignment syntax called "unpacking",
+    where the left hand side is a list of variable names,
+    and the right hand side is a list of values.
+    It's a bit like saying `form = parsed.cssselect("form[method=POST]")[0]`,
+    but a bit nicer to read, and a bit more strict too.
+    By only putting one element on the left,
+    we're effectively asserting that there is exactly one element on the right; if there isn't, we'll get an error.
+
+That
+  
+
+[role="sourcecode"]
+.lists/tests.py (ch08l0TODO)
+====
+[source,python]
+----
+class ListViewTest(TestCase):
+    def test_uses_list_template(self):
+        [...]
+
+    def test_renders_input_form(self):
+        mylist = List.objects.create()
+        response = self.client.get(f"/lists/{mylist.id}/")
+        parsed = lxml.html.fromstring(response.content)
+        [form] = parsed.cssselect("form[method=POST]")
+        self.assertEqual(form.get("action"), f"/lists/{mylist.id}/add_item")
+        [input] = form.cssselect("input[name=item_text]")
 ----
 ====
 
