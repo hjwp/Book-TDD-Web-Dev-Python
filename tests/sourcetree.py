@@ -303,7 +303,7 @@ def get_offset(lines, future_lines):
                 if future_line.endswith(line):
                     return future_line[: -len(line)]
 
-    raise Exception("not match found to determine offset")
+    raise Exception(f"not match found to determine offset {lines[0]!r}")
 
 
 def reindent_to_match(code, future_lines):

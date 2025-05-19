@@ -225,7 +225,7 @@ We'll pass in `text=None` instead of `text=""`
 You'll see that _this_ test now passes.
 
 ----
-Ran 10 tests in 0.030s
+Ran 11 tests in 0.030s
 
 OK
 ----
@@ -316,7 +316,7 @@ That gets the unit test to pass:
 
 
 ----
-Ran 11 tests in 0.030s
+Ran 12 tests in 0.030s
 
 OK
 ----
@@ -367,7 +367,7 @@ and if so, we do this:
 ====
 [source,html]
 ----
-  <form method="POST" action="{% block form_action %}{% endblock %}" >
+  <form method="POST" action="{% block form_action %}{% endblock %}">
     <input
       class="form-control form-control-lg {% if error %}is-invalid{% endif %}"  <1>
       name="item_text"
@@ -474,7 +474,7 @@ Now the model validation raises an exception, which comes up through our view:
 
 ----
 [...]
-  File "...goat-book/src/lists/views.py", line 12, in new_list
+  File "...goat-book/src/lists/views.py", line 13, in new_list
     item.full_clean()
 [...]
 django.core.exceptions.ValidationError: {'text': ['This field cannot be
@@ -607,7 +607,7 @@ from django.utils import html
 That passes!
 
 ----
-Ran 12 tests in 0.047s
+Ran 13 tests in 0.047s
 
 OK
 ----
@@ -663,7 +663,7 @@ That gives:
 ----
 [...]
 Traceback (most recent call last):
-  File "...goat-book/src/lists/tests/test_views.py", line 34, in
+  File "...goat-book/src/lists/tests/test_views.py", line 43, in
 test_invalid_list_items_arent_saved
     self.assertEqual(List.objects.count(), 0)
 AssertionError: 1 != 0
@@ -789,45 +789,6 @@ The current situation is that we have one view and URL for displaying a list,
 and one view and URL for processing additions to that list.
 We're going to combine them into one.
 
-Let's change _list.html_, and change the `action` attribute on our form,
-so that it points at the existing list URL:
-
-
-[role="sourcecode"]
-.src/lists/templates/list.html (ch14l030)
-====
-[source,html]
-----
-{% block form_action %}/lists/{{ list.id }}/{% endblock %}
-----
-====
-
-Incidentally, that's another hardcoded URL.  Let's add it to our to-do list,
-and while we're thinking about it, there's one in _home.html_ too:
-
-[role="scratchpad"]
-*****
-* 'Remove hardcoded URLs from views.py'
-* 'Remove the early return from the FT'
-* 'Remove hardcoded URL from forms in list.html and home.html'
-*****
-
-
-This will immediately break our original functional test,
-because the `view_list` page doesn't know how to process POST requests yet:
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python src/manage.py test functional_tests*]
-[...]
-AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
-peacock feathers']
-----
-
-The FTs are warning us that our attempted refactor has introduced a regression.
-Let's try and finish the refactor as soon as we can, and get back to green.
-
-
 NOTE: In this section we're performing a refactor at the application level.
     We execute our application-level refactor by changing or adding unit tests,
     and then adjusting our code.
@@ -835,9 +796,6 @@ NOTE: In this section we're performing a refactor at the application level.
     and when they're back to green we'll know our refactor is done.
     Have another look at the diagram from the end of <<chapter_04_philosophy_and_refactoring>>
     if you need to get your bearings.
-
-
-
 
 ==== Refactor: Transferring the new_item Functionality into view_list
 
@@ -847,16 +805,24 @@ and move them into `ListViewTest`.
 As we do so, we also make them point at the base list URL, instead of '.../add_item':
 
 [role="sourcecode"]
-.src/lists/tests/test_views.py (ch14l031)
+.src/lists/tests/test_views.py (ch14l030)
 ====
 [source,python]
 ----
 class ListViewTest(TestCase):
     def test_uses_list_template(self):
         [...]
+
+    def test_renders_input_form(self):
+        mylist = List.objects.create()
+        response = self.client.get(f"/lists/{mylist.id}/")
+        parsed = lxml.html.fromstring(response.content)
+        [form] = parsed.cssselect("form[method=POST]")
+        self.assertEqual(form.get("action"), f"/lists/{mylist.id}/")  # <1>
+        inputs = form.cssselect("input")
+        self.assertIn("item_text", [input.get("name") for input in inputs])
+
     def test_displays_only_items_for_that_list(self):
-        [...]
-    def test_passes_correct_list_to_template(self):
         [...]
 
     def test_can_save_a_POST_request_to_an_existing_list(self):
@@ -864,7 +830,7 @@ class ListViewTest(TestCase):
         correct_list = List.objects.create()
 
         self.client.post(
-            f"/lists/{correct_list.id}/",  #<1>
+            f"/lists/{correct_list.id}/",  # <2>
             data={"item_text": "A new item for an existing list"},
         )
 
@@ -878,16 +844,16 @@ class ListViewTest(TestCase):
         correct_list = List.objects.create()
 
         response = self.client.post(
-            f"/lists/{correct_list.id}/",  #<1>
+            f"/lists/{correct_list.id}/",  # <2>
             data={"item_text": "A new item for an existing list"},
         )
 
         self.assertRedirects(response, f"/lists/{correct_list.id}/")
-
 ----
 ====
 
-<1> This is where we need to make that url change.
+<1> We want our form to point at the base URL
+<2> And the two tests we've merged in need to target the base URL too.
 
 Note that the `NewItemTest` class disappears completely.
 I've also changed the name of the redirect test
@@ -907,10 +873,83 @@ FAIL: test_can_save_a_POST_request_to_an_existing_list (lists.tests.test_views.
 ListViewTest.test_can_save_a_POST_request_to_an_existing_list)
 [...]
 AssertionError: 0 != 1
+[...]
+FAIL: test_renders_input_form
+(lists.tests.test_views.ListViewTest.test_renders_input_form)
+[...]
+AssertionError: '/lists/1/add_item' != '/lists/1/'
+[...]
+Ran 14 tests in 0.025s
+
+FAILED (failures=3)
+----
+
+That last one is something we can fix in the template.
+Let's go to _list.html_, and change the `action` attribute on our form,
+so that it points at the existing list URL:
+
+
+[role="sourcecode"]
+.src/lists/templates/list.html (ch14l031)
+====
+[source,html]
+----
+{% block form_action %}/lists/{{ list.id }}/{% endblock %}
+----
+====
+
+Incidentally, that's another hardcoded URL.  Let's add it to our to-do list,
+and while we're thinking about it, there's one in _home.html_ too:
+
+[role="scratchpad"]
+*****
+* 'Remove hardcoded URLs from views.py'
+* 'Remove the early return from the FT'
+* 'Remove hardcoded URL from forms in list.html and home.html'
+*****
+
+
+////
+This will immediately break our original functional test,
+because the `view_list` page doesn't know how to process POST requests yet:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test functional_tests*]
+[...]
+AssertionError: '2: Use peacock feathers to make a fly' not found in ['1: Buy
+peacock feathers']
+----
+
+The FTs are warning us that our attempted refactor has introduced a regression.
+Let's try and finish the refactor as soon as we can, and get back to green.
+
+
+////
+
+
+We're now down to two failing tests
+
+----
+FAIL: test_POST_redirects_to_list_view
+(lists.tests.test_views.ListViewTest.test_POST_redirects_to_list_view)
+[...]
+AssertionError: 200 != 302 : Response didn't redirect as expected: Response
+code was 200 (expected 302)
+[...]
+FAIL: test_can_save_a_POST_request_to_an_existing_list (lists.tests.test_views.
+ListViewTest.test_can_save_a_POST_request_to_an_existing_list)
+[...]
+AssertionError: 0 != 1
+[...]
+Ran 14 tests in 0.025s
+
+FAILED (failures=2)
 ----
 
 
-We change the `view_list` function to handle two types of request:
+Those are both about getting the list view to handle POST requests.
+Let's copy some code across from add item view to do just that:
 
 
 [role="sourcecode"]
@@ -920,17 +959,23 @@ We change the `view_list` function to handle two types of request:
 ----
 def view_list(request, list_id):
     our_list = List.objects.get(id=list_id)
-    if request.method == "POST":
-        Item.objects.create(text=request.POST["item_text"], list=our_list)
-        return redirect(f"/lists/{our_list.id}/")
+    if request.method == "POST":  # <1>
+        Item.objects.create(text=request.POST["item_text"], list=our_list)  # <2>
+        return redirect(f"/lists/{our_list.id}/")  # <2>
     return render(request, "list.html", {"list": our_list})
 ----
 ====
 
-That gets us passing tests:
+<1> We add a branch for when the method is POST
+
+<2> And we copy the `Item.objects.create()` and
+    `redirect()` lines from the `add_item` view.
+
+
+That gets us passing unit tests!
 
 ----
-Ran 13 tests in 0.047s
+Ran 14 tests in 0.047s
 
 OK
 ----
@@ -960,7 +1005,7 @@ urlpatterns = [
 ====
 
 
-And that gets us to the green on the unit tests.
+OK we're back to the green on the unit tests.
 
 ----
 OK
@@ -1023,13 +1068,14 @@ $ *python src/manage.py test functional_tests*
 ERROR: test_cannot_add_empty_list_items (functional_tests.test_list_item_valida
 tion.ItemValidationTest.test_cannot_add_empty_list_items)
 [...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: .invalid-feedback; [...]
 
 Ran 4 tests in 15.276s
 FAILED (errors=1)
 ----
 
-We're back to the one failure in our new functional test.
-
+We're back to working on this one failure in our new functional test.
 
 
 ==== Enforcing Model Validation in view_list
@@ -1101,7 +1147,7 @@ def view_list(request, list_id):
 It works:
 
 ----
-Ran 14 tests in 0.047s
+Ran 15 tests in 0.047s
 
 OK
 ----
