@@ -28,7 +28,6 @@ class Chapter8Test(ChapterTest):
         self.skip_with_check(24, "the -w means ignore whitespace")
         self.skip_with_check(27, "leave static, for now")
         self.skip_with_check(52, "will now show all the bootstrap")
-        self.skip_with_check(55, "we need the 'cssselect'")
 
         # hack fast-forward
         self.skip_forward_if_skipto_set()
