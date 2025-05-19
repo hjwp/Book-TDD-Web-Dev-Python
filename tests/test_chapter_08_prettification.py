@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import unittest
 
 from book_parser import Command, Output
@@ -21,12 +20,14 @@ class Chapter8Test(ChapterTest):
         self.start_with_checkout()
         # other prep
         self.sourcetree.run_command("python3 manage.py migrate --noinput")
-        self.unset_PYTHONDONTWRITEBYTECODE()
+        # self.unset_PYTHONDONTWRITEBYTECODE()
+        self.sourcetree.run_command("uv pip install pip")
 
         # skips
         self.skip_with_check(24, "the -w means ignore whitespace")
         self.skip_with_check(27, "leave static, for now")
-        self.skip_with_check(49, "will now show all the bootstrap")
+        self.skip_with_check(52, "will now show all the bootstrap")
+        self.skip_with_check(55, "we need the 'cssselect'")
 
         # hack fast-forward
         self.skip_forward_if_skipto_set()
