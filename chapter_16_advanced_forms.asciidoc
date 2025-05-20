@@ -277,7 +277,7 @@ class Item(models.Model):
 And that passes:
 
 ----
-Ran 25 tests in 0.024s
+Ran 24 tests in 0.024s
 
 OK
 ----
@@ -349,7 +349,7 @@ That's neater and tidier:
 ----
 $ pass:quotes[*python src/manage.py test lists*]
 [...]
-Ran 26 tests in 0.092s
+Ran 25 tests in 0.092s
 
 OK
 ----
@@ -457,7 +457,7 @@ Let's revert our changes to the test, and see them all passing again:
 ----
 $ pass:quotes[*python src/manage.py test lists*]
 [...]
-Ran 26 tests in 0.092s
+Ran 25 tests in 0.092s
 OK
 ----
 
@@ -737,41 +737,7 @@ django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
 lists_item.text
 ----
 
-Our fix for this is to switch to using the new form class.
-Before we implement it, let's find the tests where we check the form class, and adjust them:
-
-[role="sourcecode"]
-.src/lists/tests/test_views.py (ch15l015)
-====
-[source,python]
-----
-class ListViewTest(TestCase):
-[...]
-
-    def test_displays_item_form(self):
-        mylist = List.objects.create()
-        response = self.client.get(f"/lists/{mylist.id}/")
-        self.assertIsInstance(response.context["form"], ExistingListItemForm)
-        self.assertContains(response, 'name="text"')
-
-    [...]
-
-    def test_for_invalid_input_passes_form_to_template(self):
-        response = self.post_invalid_input()
-        self.assertIsInstance(response.context["form"], ExistingListItemForm)
-----
-====
-
-// TODO: make a note - this adjustment of the form class was annoying wasn't it?
-
-That gives us:
-
-----
-AssertionError: <ItemForm bound=False, valid=False, fields=(text)> is not an
-instance of <class 'lists.forms.ExistingListItemForm'>
-----
-
-So we can adjust the view:
+Our fix for this is to switch to using the new form class:
 
 [role="sourcecode"]
 .src/lists/views.py (ch15l016)
@@ -782,21 +748,25 @@ from lists.forms import ExistingListItemForm, ItemForm
 [...]
 def view_list(request, list_id):
     our_list = List.objects.get(id=list_id)
+    form = ExistingListItemForm(for_list=our_list)
+
     if request.method == "POST":
         form = ExistingListItemForm(for_list=our_list, data=request.POST)
         if form.is_valid():
             form.save()
             [...]
-    else:
-        form = ExistingListItemForm(for_list=our_list)
     [...]
 ----
 ====
 
+// TODO: change to form.save(for_list=our_list) 
+// and then proceed with the different save method
+// via a scratchpad or something
+
 And that _almost_ fixes everything, except for an unexpected fail:
 
 ----
-  File "...goat-book/src/lists/views.py", line 26, in view_list
+  File "...goat-book/src/lists/views.py", line 28, in view_list
     form.save()
     ~~~~~~~~~^^
 TypeError: ItemForm.save() missing 1 required positional argument: 'for_list'
@@ -859,7 +829,7 @@ Let's run the tests!  All the unit tests pass:
 ----
 $ pass:quotes[*python src/manage.py test lists*]
 [...]
-Ran 31 tests in 0.082s
+Ran 30 tests in 0.082s
 
 OK
 ----
@@ -1137,7 +1107,7 @@ in our test:
 That works; we get a fully passing unit test suite:
 
 ----
-Ran 34 tests in 0.034s
+Ran 33 tests in 0.034s
 
 OK
 ----
@@ -1293,6 +1263,10 @@ Let's see what things would look like if we tried to:
 // 3. Tried to remove some of the Liskov violations
 
 ==== Moving Presentation Logic Back Into the Template
+
+
+// TODO: write a test for the is-invalid stuff at the views layer,
+// and talk about higher-level tests giving you more room to refactor
 
 So, rather than using the `{{ form.text }}` magic in our template,
 let's bring back our hand-crafted HTML.
@@ -1460,10 +1434,10 @@ And now we can remove all that custom logic from the base `ItemForm` class:
 
 Deleting code yay!
 
-At this point we should be down to 31 passing tests:
+At this point we should be down to 30 passing tests:
 
 ----
-Ran 31 tests in 0.024s
+Ran 30 tests in 0.024s
 
 OK
 ----
@@ -1528,7 +1502,7 @@ rather than relying on the ModelForm magic:
 We should still have passing tests at this point:
 
 ----
-Ran 31 tests in 0.026s
+Ran 30 tests in 0.026s
 
 OK
 ----
@@ -1574,55 +1548,53 @@ exactly, more like a list of things you should at least consider testing.
 [source,python]
 ----
 class ListViewTest(TestCase):
-  def test_uses_list_template(self):
-      response = self.client.get(f'/lists/{mylist.id}/') #<1>
-      self.assertTemplateUsed(response, 'list.html') #<2>
-  def test_passes_correct_list_to_template(self):
-      self.assertEqual(response.context['list'], correct_list) #<3>
-  def test_displays_item_form(self):
-      self.assertIsInstance(response.context['form'], ExistingListItemForm) #<4>
-      self.assertContains(response, 'name="text"')
-  def test_displays_only_items_for_that_list(self):
-      self.assertContains(response, 'itemey 1') #<5>
-      self.assertContains(response, 'itemey 2') #<5>
-      self.assertNotContains(response, 'other list item 1') #<5>
-  def test_can_save_a_POST_request_to_an_existing_list(self):
-      self.assertEqual(Item.objects.count(), 1) #<6>
-      self.assertEqual(new_item.text, 'A new item for an existing list') #<6>
-  def test_POST_redirects_to_list_view(self):
-      self.assertRedirects(response, f'/lists/{correct_list.id}/') #<6>
-  def test_for_invalid_input_nothing_saved_to_db(self):
-      self.assertEqual(Item.objects.count(), 0) #<6>
-  def test_for_invalid_input_renders_list_template(self):
-      self.assertEqual(response.status_code, 200)
-      self.assertTemplateUsed(response, 'list.html') #<6>
-  def test_for_invalid_input_passes_form_to_template(self):
-      self.assertIsInstance(response.context['form'], ExistingListItemForm) #<7>
-  def test_for_invalid_input_shows_error_on_page(self):
-      self.assertContains(response, html.escape(EMPTY_ITEM_ERROR)) #<7>
-  def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
-      self.assertContains(response, expected_error) #<7>
-      self.assertTemplateUsed(response, 'list.html')
-      self.assertEqual(Item.objects.all().count(), 1)
+    def test_uses_list_template(self):
+        response = self.client.get(f"/lists/{mylist.id}/")  # <1>
+        self.assertTemplateUsed(response, "list.html")  # <2>
+    def test_renders_input_form(self):
+        self.assertIn("text", [input.get("name") for input in inputs])  # <3>
+    def test_displays_only_items_for_that_list(self):
+        self.assertContains(response, "itemey 1")  # <4>
+        self.assertContains(response, "itemey 2")  # <4>
+        self.assertNotContains(response, "other list item")  # <4>
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        self.assertEqual(new_item.text, "A new item for an existing list")  # <5>
+    def test_POST_redirects_to_list_view(self):
+        self.assertRedirects(response, f"/lists/{correct_list.id}/")  # <5>
+    def test_for_invalid_input_nothing_saved_to_db(self):
+        self.assertEqual(Item.objects.count(), 0)  # <6>
+    def test_for_invalid_input_renders_list_template(self):
+        self.assertEqual(response.status_code, 200)  # <6>
+        self.assertTemplateUsed(response, "list.html")  # <6>
+    def test_for_invalid_input_shows_error_on_page(self):
+        self.assertContains(response, html.escape(EMPTY_ITEM_ERROR))  # <6>
+    def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+        self.assertContains(response, expected_error)  # <7>
+        self.assertTemplateUsed(response, "list.html")  # <7>
+        self.assertEqual(Item.objects.all().count(), 1)  # <7>
 ----
 ====
 
 <1> Use the Django Test Client.
 
-<2> Check the template used.
+<2> Optionally (this is a bit of an implementation detail),
+    check the template used.
 
-<3> Check that the received objects are the right ones.
+<3> Check that key parts of your HTML are present.
+    Things that are critical to the integration of frontend and backend
+    are good candidates, like form action and input name attributes.
 
-<4> Check that any forms are of the correct class.
+<4> Think about smoke-testing any other template contents,
+    or any logic in the template:
+    any `{% for %}` or `{% if %}` might deserve a check.
 
-<5> Think about testing template logic:  any `for` or `if` might deserve a
-    minimal test.
+<5> For POST requests, test the valid case via its database side effects,
+    and the redirect response
 
-<6> For POST requests, make sure you test both the valid case and the invalid
-    case.
+<6> For invalid requests, it's worth a basic check that errors
+    make it back to the template.
 
-<7> Optionally, sense-check that your form is rendered, and its errors are
-    displayed.
+<7> You don't _always_ have to have ultra-granular tests though.
 ******************************************************************************
 
 Why these points?  Skip ahead to <<appendix_Django_Class-Based_Views>>, and I'll show how
@@ -1631,6 +1603,8 @@ them to start using class-based views.((("", startref="FDVduplicate15")))((("", 
 // CSANAD: We might want to revisit these again after updating/reviewing the
 // Django Class Based Views.
 
+// TODO: and/or, we can talk about the lesson of higher-level tests
+// allowing for more refactoring freedom
 
 Next we'll try to make our data validation more friendly by using a bit
 of client-side code.  Uh-oh, you know what that means...
