@@ -1176,7 +1176,7 @@ def new_list(request):
 
 === Using the Form in a View That Takes POST Requests
 
-((("form data validation", "processing POST requests", id="FDVpost14")))
+((("form data validation", "processing POST requests")))
 Here's how we can use the form in the `new_list()` view,
 avoiding all the manual manipulation of `request.POST` and the error message:
 
@@ -1210,22 +1210,21 @@ That view is now looking much nicer!
 
 But, we have a regression in the unit tests:
 
-////
+
 ----
-    self.assertContains(response, html.escape(EMPTY_ITEM_ERROR))
+======================================================================
+FAIL: test_validation_errors_are_sent_back_to_home_page_template (lists.tests.t
+est_views.NewListTest.test_validation_errors_are_sent_back_to_home_page_templat
+e)
+ ---------------------------------------------------------------------
 [...]
+    self.assertContains(response, expected_error)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: False is not true : Couldn't find 'You can&#x27;t have an empty
 list item' in the following response
+b'<!doctype html>\n<html lang="en">\n\n  <head>\n    <title>To-Do
+[...]
 ----
-////
-
-----
-self.assertContains(response, expected_error)
-~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError: False is not true : Couldn't find 'You can&#x27;t have an empty
-list item' in the following response
-----
-
 
 ==== Using the Form to Display Errors in the Template
 
@@ -1272,75 +1271,425 @@ An unexpected failure--it's actually in the tests for our final view, `view_list
 Once again, because we've changed the _base_ template which is used
 by _all_views, we've made a change that impacts more places than we intended.
 
-Last time we decided to back out and get to a working state.
-This time, let's try rolling forwards instead.
+Let's follow our standard pattern, get back to a working state,
+and see if we can dig into this a bit.
 
-We're going to need to rework existing list view, `view_list()`, as well,
-before we can get back to a working state.
-((("", startref="FDVpost14")))
+
+==== Get Back to a Working State
+
+Let's restore the old `[% if %}` in the template,
+so we display errors in both old+new cases:
+
+[role="sourcecode"]
+.src/lists/templates/base.html (ch15l029-1)
+====
+[source,html]
+----
+          <form method="POST" action="{% block form_action %}{% endblock %}" >
+            {{ form.text }}
+            {% csrf_token %}
+            {% if error %}
+              <div class="invalid-feedback">{{ error }}</div>
+            {% endif %}
+            {% if form.errors %}
+              <div class="invalid-feedback">{{ form.errors.text }}</div>
+            {% endif %}
+          </form>
+----
+====
+
+
+==== A Helper Method for Several Short Tests
+
+Let's take a look at our tests for both views,
+particularly the ones that check for invalid inputs:
+
+
+[role="sourcecode currentcontents"]
+.src/lists/tests/test_views.py
+====
+[source,python]
+----
+class NewListTest(TestCase):
+    [...]
+    def test_validation_errors_are_sent_back_to_home_page_template(self):
+        response = self.client.post("/lists/new", data={"text": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "home.html")
+        expected_error = html.escape("You can't have an empty list item")
+        self.assertContains(response, expected_error)
+
+    def test_invalid_list_items_arent_saved(self):
+        self.client.post("/lists/new", data={"text": ""})
+        self.assertEqual(List.objects.count(), 0)
+        self.assertEqual(Item.objects.count(), 0)
+
+class ListViewTest(TestCase):
+    [...]
+    def test_validation_errors_end_up_on_lists_page(self):
+        list_ = List.objects.create()
+        response = self.client.post(
+            f"/lists/{list_.id}/",
+            data={"text": ""},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "list.html")
+        expected_error = html.escape("You can't have an empty list item")
+        self.assertContains(response, expected_error)
+----
+====
+
+I see a few problems here:
+
+1. We're check explicitly that errors mean nothing is saved to the DB
+  in `NewListTest` but not in `ListViewTest`.
+
+2. We're mixing up the test for the status code, the template,
+  and finding the error in the result.
+
+
+((("helper methods")))
+Let's be extra meticulous here, and separate out these concerns.
+Ideally each test should have one assert.
+If we used copy-paste, that would start to involve a lot of duplication,
+so using a couple of helper methods is a good idea here.
+
+Here's some better tests in `NewListTest`:
+
+[role="sourcecode"]
+.src/lists/tests/test_views.py (ch15l029-2)
+====
+[source,python]
+----
+from lists.forms import EMPTY_ITEM_ERROR
+[...]
+
+class NewListTest(TestCase):
+    def test_can_save_a_POST_request(self):
+        [...]
+    def test_redirects_after_POST(self):
+        [...]
+
+    def post_invalid_input(self):
+        return self.client.post("/lists/new", data={"text": ""})
+
+    def test_for_invalid_input_nothing_saved_to_db(self):
+        self.post_invalid_input()
+        self.assertEqual(Item.objects.count(), 0)
+
+    def test_for_invalid_input_renders_list_template(self):
+        response = self.post_invalid_input()
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "home.html")
+
+    def test_for_invalid_input_shows_error_on_page(self):
+        response = self.post_invalid_input()
+        self.assertContains(response, html.escape(EMPTY_ITEM_ERROR))
+----
+====
+
+By making a little helper function, `post_invalid_input()`,
+we can make three separate tests without duplicating lots of lines of code.
+
+We've seen this several times now.
+It often feels more natural to write view tests as a single,
+monolithic block of assertions--the view should do this and this and this,
+then return that with this.
+But breaking things out into multiple tests is often worthwhile;
+as we saw in previous chapters,
+it helps you isolate the exact problem you have
+when you later accidentally introduce a bug.
+Helper methods are one of the tools that lower the psychological barrier,
+by reducing boilerplate and keeping the tests readable.
+
+
+Let's do something similar in `ListViewTest`:
+
+
+[role="sourcecode"]
+.src/lists/tests/test_views.py (ch15l029-3)
+====
+[source,python]
+----
+class ListViewTest(TestCase):
+    def test_uses_list_template(self):
+        [...]
+    def test_renders_input_form(self):
+        [...]
+    def test_displays_only_items_for_that_list(self):
+        [...]
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        [...]
+    def test_POST_redirects_to_list_view(self):
+        [...]
+
+    def post_invalid_input(self):
+        mylist = List.objects.create()
+        return self.client.post(f"/lists/{mylist.id}/", data={"text": ""})
+
+    def test_for_invalid_input_nothing_saved_to_db(self):
+        self.post_invalid_input()
+        self.assertEqual(Item.objects.count(), 0)
+
+    def test_for_invalid_input_renders_list_template(self):
+        response = self.post_invalid_input()
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "list.html")
+
+    def test_for_invalid_input_shows_error_on_page(self):
+        response = self.post_invalid_input()
+        self.assertContains(response, html.escape(EMPTY_ITEM_ERROR))
+----
+====
+
+// (See <<single-endpoint-for-forms>> in the previous chapter if a diagram would be helpful).
+
+// TODO - maybe a little aside saying i'm exaggerating here?
+// not sure i would do this IRL.
+// i mean, it's a good idea _in general_,
+// just maybe not for forms???
+
+And let's re-run all our tests:
+
+
+[subs="specialcharacters,quotes"]
+----
+$ *python src/manage.py test lists*
+Found 21 test(s).
+[...]
+OK
+----
+
+Great!  We now feel confident that we have a lot of very specific unit tests,
+that can point us to exactly what goes wrong if we ever make a mistake.
+
+So let's have another go at using our form for _all_ views,
+by fully committing to the `{{ form.errors }}` in the template:
+
+[role="sourcecode"]
+.src/lists/templates/base.html (ch15l029-4)
+====
+[source,diff]
+----
+@@ -18,9 +18,6 @@
+           <form method="POST" action="{% block form_action %}{% endblock %}" >
+             {{ form.text }}
+             {% csrf_token %}
+-            {% if error %}
+-              <div class="invalid-feedback">{{ error }}</div>
+-            {% endif %}
+             {% if form.errors %}
+               <div class="invalid-feedback">{{ form.errors.text }}</div>
+             {% endif %}
+----
+====
+
+And we'll see that exactly one test is failing:
+
+----
+FAIL: test_for_invalid_input_shows_error_on_page (lists.tests.test_views.ListVi
+ewTest.test_for_invalid_input_shows_error_on_page)
+[...]
+AssertionError: False is not true : Couldn't find 'You can&#x27;t have an empty
+list item' in the following response
+----
 
 
 === Using the Form in the Existing Lists View
 
-((("form data validation", "processing POST and GET requests", id="FDVproget14")))
-This list view handles both GET and POST requests.  As a reminder:
+((("form data validation", "processing POST and GET requests")))
+Let's try and work step by step towards fully using our form in this final view.
 
-* A normal GET renders a template containing both the list and the form to add a new item.
-* A valid POST request should have its form contents processed, and return a redirect
-* An invalid POST request should re-render the template with the list, and the form with errors in.
 
-(See <<single-endpoint-for-forms>> in the previous chapter if a diagram would be helpful).
-We're doing this stuff "manually" for now, and we want to switch to using our form.
+==== Using the Form to Pass Errors to the Template
 
-Here's a good stab at it:
+At the moment one test is failing because,
+in the existing lists `view_list()` view,
+we aren't passing populating `form.errors` in the invalid case.
 
-[role="sourcecode small-code"]
-.src/lists/views.py (ch15l030)
+So let's address just that:
+
+
+[role="sourcecode"]
+.src/lists/views.py (ch15l030-1)
 ====
 [source,python]
 ----
 def view_list(request, list_id):
     our_list = List.objects.get(id=list_id)
-    if request.method == "POST":  # <1>
+    error = None
+    form = ItemForm()  # <2>
+
+    if request.method == "POST":
         form = ItemForm(data=request.POST)  # <1>
-        if form.is_valid():  # <2>
-            Item.objects.create(text=request.POST["text"], list=our_list)  # <2>
-            return redirect(our_list)  # <2>
-    else:  # <3>
-        form = ItemForm()  # <3>
-    return render(request, "list.html", {"list": our_list, "form": form})  # <4>
+        try:
+            item = Item(text=request.POST["text"], list=our_list)
+            item.full_clean()
+            item.save()
+            return redirect(our_list)
+        except ValidationError:
+            error = "You can't have an empty list item"
+
+    return render(
+        request, "list.html", {"list": our_list, "form": form, "error": error}  # <3>
+    )
 ----
 ====
 
-<1> In the POST case, we instantiate the form with the POST data.
+<1> Let's add this line, in the `method=POST` branch,
+    and instantiate a form using the POST data.
 
-<2> If the form is valid, we create our new item and redirect.
+<2> We already had this empty form for the GET case,
+    but our new one will override it.
 
-<3> Else, in the GET case, we instantiate a fresh form.
+<3> And it should now drop through to the template here.
+    
 
-<4> Note that the form here is either a fresh form in the GET case,
-    or a form with errors in the POST case when the form is invalid.
-    We drop down into this return statement in both cases.
+That gets us back to a working state!
 
-
-That gets the unit tests passing!
-
+[subs="specialcharacters,quotes"]
 ----
-Ran 18 tests in 0.086s
-
+Found 21 test(s).
+[...]
 OK
 ----
 
+==== Refactoring the View to Use the Form Fully
+
+Now let's start using the form more fully,
+and remove some of the manual error handling.
+
+We remove the `try/except` and replace it with an
+`if form.is_valid()` check, like the one in `new_list()`:
+
+
+[role="sourcecode"]
+.src/lists/views.py (ch15l030-2)
+====
+[source,diff]
+----
+@@ -26,13 +26,11 @@ def view_list(request, list_id):
+
+     if request.method == "POST":
+         form = ItemForm(data=request.POST)
+-        try:
++        if form.is_valid():
+             item = Item(text=request.POST["text"], list=our_list)
+             item.full_clean()
+             item.save()
+             return redirect(our_list)
+-        except ValidationError:
+-            error = "You can't have an empty list item"
+     return render(
+         request, "list.html", {"list": our_list, "form": form, "error": error}
+----
+====
+
+And the tests still pass:
+
+----
+OK
+----
+
+Next, we no longer need the `.full_clean()`,
+so we can go back to using `.objects.create()`:
+
+[role="sourcecode"]
+.src/lists/views.py (ch15l030-3)
+====
+[source,diff]
+----
+@@ -27,9 +27,7 @@ def view_list(request, list_id):
+     if request.method == "POST":
+         form = ItemForm(data=request.POST)
+         if form.is_valid():
+-            item = Item(text=request.POST["text"], list=our_list)
+-            item.full_clean()
+-            item.save()
++            Item.objects.create(text=request.POST["text"], list=our_list)
+             return redirect(our_list)
+----
+====
+
+Tests still pass:
+
+----
+OK
+----
+
+Finally, the `error` variable is always `None`,
+and is no longer needed in the template anyhow:
+
+
+[role="sourcecode"]
+.src/lists/views.py (ch15l030-4)
+====
+[source,diff]
+----
+@@ -21,7 +21,6 @@ def new_list(request):
+
+ def view_list(request, list_id):
+     our_list = List.objects.get(id=list_id)
+-    error = None
+     form = ItemForm()
+
+     if request.method == "POST":
+@@ -30,6 +29,4 @@ def view_list(request, list_id):
+             Item.objects.create(text=request.POST["text"], list=our_list)
+             return redirect(our_list)
+
+-    return render(
+-        request, "list.html", {"list": our_list, "form": form, "error": error}
+-    )
++    return render(request, "list.html", {"list": our_list, "form": form})
+----
+====
+
+And the tests are happy with that!
+
+----
+OK
+----
+
+I think our view is in a pretty good shape now.
+Here it is in non-diff mode, as a recap:
+
+
+[role="sourcecode currentcontents"]
+.src/lists/views.py
+====
+[source,python]
+----
+def view_list(request, list_id):
+    our_list = List.objects.get(id=list_id)
+    form = ItemForm()
+
+    if request.method == "POST":
+        form = ItemForm(data=request.POST)
+        if form.is_valid():
+            Item.objects.create(text=request.POST["text"], list=our_list)
+            return redirect(our_list)
+
+    return render(request, "list.html", {"list": our_list, "form": form})
+----
+====
+
+
+I think we can give ourselves the satisfaction of doing some
+crossing-things-out:
+
 [role="scratchpad"]
 *****
-* _Remove duplication of validation logic in views_
+* _[strikethrough line-through]#Remove duplication of validation logic in views#_
 * _[strikethrough line-through]#Use form in list view, remove hardcoded input from template#_
 *****
 
 Phew! Now, it's been a while, what do our FTs think?
 
 
+[subs="specialcharacters,quotes"]
 ----
+[...]
 ======================================================================
 ERROR: test_cannot_add_empty_list_items (functional_tests.test_list_item_valida
 tion.ItemValidationTest.test_cannot_add_empty_list_items)
@@ -1449,7 +1798,6 @@ class ItemValidationTest(FunctionalTest):
 <2> And its converse in the case of valid inputs.
 
 See how useful and flexible our `self.wait_for()` function is turning out to be?
-((("", startref="FDVproget14")))
 
 Our FT does look quite different from how it started though, doesn't it?
 I'm sure that's raising a lot of questions in your mind right now.
@@ -1486,14 +1834,6 @@ keep tidying up, keep gardening, keep tending your code,
 keep everything neat and tidy and clean and smooth
 and precise and concise and functional and good.
 
-Finally, we can mark the last item on our to-do list from the last chapter as
-done:
-
-[role="scratchpad"]
-*****
-* _[strikethrough line-through]#Remove duplication of validation logic in views#_
-* _[strikethrough line-through]#Use form in list view, remove hardcoded input from template#_
-*****
 
 And it's definitely time for a commit:
 
@@ -1634,7 +1974,7 @@ We'll explore a different way of making a form "know" what list it's for
 in the next chapter.
 
 ----
-Ran 19 tests in 0.086s
+Ran 22 tests in 0.086s
 
 OK
 ----
@@ -1661,7 +2001,7 @@ def new_list(request):
 Rerun the test to check that everything still passes:
 
 ----
-Ran 19 tests in 0.086s
+Ran 22 tests in 0.086s
 OK
 ----
 
@@ -1675,13 +2015,14 @@ Then, refactor `view_list()`:
 ----
 def view_list(request, list_id):
     our_list = List.objects.get(id=list_id)
+    form = ItemForm()
+
     if request.method == "POST":
         form = ItemForm(data=request.POST)
         if form.is_valid():
             form.save(for_list=our_list)
             return redirect(our_list)
-    else:
-        form = ItemForm()
+
     return render(request, "list.html", {"list": our_list, "form": form})
 ----
 ====
@@ -1691,7 +2032,7 @@ We still have full passes:
 // remove unused imports
 [role="dofirst-ch15l038"]
 ----
-Ran 19 tests in 0.111s
+Ran 21 tests in 0.111s
 OK
 ----
 
@@ -1740,16 +2081,6 @@ Thin views::
     ((("complex views vs. thin views")))
 
 
-Be aware of tradeoffs when using frameworks::
-    When we switched to using a ModelForm,
-    we saw that it forced us to change the `name=` attribute
-    in our frontend HTML.
-    Django gave us a lot, it auto-generated the form based on the model,
-    and we have a nice API for doing both validation and saving objects.
-    But we lost something too.
-    We'll revisit this tradeoff in the next chapter.
-
-////
 Each test should test one thing::
     The heuristic is to be suspicious if there's more than one assertion
     in a unit test.
@@ -1762,6 +2093,15 @@ Each test should test one thing::
     ((("", startref="UIform14")))
     ((("unit tests", "testing only one thing")))
     ((("testing best practices")))
-TODO: find a good place for this
-////
+
+
+Be aware of tradeoffs when using frameworks::
+    When we switched to using a ModelForm,
+    we saw that it forced us to change the `name=` attribute
+    in our frontend HTML.
+    Django gave us a lot, it auto-generated the form based on the model,
+    and we have a nice API for doing both validation and saving objects.
+    But we lost something too.
+    We'll revisit this tradeoff in the next chapter.
+
 *******************************************************************************
