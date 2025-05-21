@@ -103,6 +103,14 @@ def strip_selenium_trace_ids(output):
     return fixing
 
 
+def fix_firefox_esr_version(output):
+    return re.sub(
+        r"(\d\d\d\.\d+\.?\d+)esr",
+        r"128.10.1esr",
+        output
+    )
+
+
 def strip_session_ids(output):
     return re.sub(r"^[a-z0-9]{32}$", r"xxx_session_id_xxx", output)
 
@@ -466,6 +474,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = fix_curl_stuff(actual_fixed)
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_selenium_trace_ids(actual_fixed)
+        actual_fixed = fix_firefox_esr_version(actual_fixed)
         actual_fixed = strip_screenshot_timestamps(actual_fixed)
         actual_fixed = fix_sqlite_messages(actual_fixed)
         actual_fixed = fix_creating_database_line(actual_fixed)
@@ -489,6 +498,7 @@ class ChapterTest(unittest.TestCase):
         expected_fixed = strip_session_ids(expected_fixed)
         expected_fixed = strip_localhost_port(expected_fixed)
         expected_fixed = strip_selenium_trace_ids(expected_fixed)
+        expected_fixed = fix_firefox_esr_version(expected_fixed)
         expected_fixed = strip_screenshot_timestamps(expected_fixed)
         expected_fixed = strip_callouts(expected_fixed)
         expected_fixed = standardise_assertionerror_none(expected_fixed)

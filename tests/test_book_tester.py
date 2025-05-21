@@ -629,6 +629,16 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
                 expected.replace("webdriver", "foo"),
             )
 
+    def test_ignores_firefox_esr_version(self):
+        expected = "1234567890111   geckodriver::capabilities       DEBUG   Found version\n128.10esr"
+        actual = "1747863999574	geckodriver::capabilities	DEBUG	Found version 128.10.1esr"
+        self.assert_console_output_correct(actual, Output(expected))
+        with self.assertRaises(AssertionError):
+            self.assert_console_output_correct(
+                actual.replace("128.10.1esr", "1234abc"),
+                Output(expected),
+            )
+
     def test_ignores_docker_image_ids_and_creation_time(self):
         actual = "superlists   latest    522824a399de   2 weeks ago     164MB"
         expected = Output("superlists   latest    522824a399de   2 minutes ago   164MB")
