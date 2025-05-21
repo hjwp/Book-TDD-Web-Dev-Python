@@ -38,15 +38,6 @@ class Chapter10Test(ChapterTest):
             listing = self.listings[self.pos]
             print(self.pos, listing.type, repr(listing))
 
-            if listing == "docker exec container-id-or-name python manage.py migrate*":
-                self.sourcetree.run_command(
-                    listing.replace(
-                        "container-id-or-name",
-                        "$(docker ps --filter=ancestor=superlists -q)",
-                    )
-                )
-                listing.was_run = True
-
             self.recognise_listing_and_process_it()
 
         self.check_final_diff(
