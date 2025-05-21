@@ -157,7 +157,7 @@ test_chapter_21_mocking_2: chapter_21_mocking_2.html $(TMPDIR) $(VENV)/bin
 test_chapter_22_fixtures_and_wait_decorator: chapter_22_fixtures_and_wait_decorator.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s ./tests/test_chapter_22_fixtures_and_wait_decorator.py
 .PHONY: test_chapter_23_debugging_prod
-test_chapter_23_debugging_prod: chapter_23_debugging_prod.html $(TMPDIR) $(VENV)/bin
+test_chapter_23_debugging_prod: get-sudo chapter_23_debugging_prod.html $(TMPDIR) $(VENV)/bin
 	$(VENV)/bin/pytest -s ./tests/test_chapter_23_debugging_prod.py
 .PHONY: test_chapter_24_outside_in
 test_chapter_24_outside_in: chapter_24_outside_in.html $(TMPDIR) $(VENV)/bin

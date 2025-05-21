@@ -33,6 +33,7 @@ class Chapter18Test(ChapterTest):
         self.start_with_checkout()
         self.prep_database()
         self.sourcetree.run_command("touch container.db.sqlite3")
+        self.sourcetree.run_command("sudo chown 1234 container.db.sqlite3")
 
         # vm_restore = "FABRIC_END"
 
