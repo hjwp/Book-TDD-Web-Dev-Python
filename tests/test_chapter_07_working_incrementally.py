@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import unittest
 
 from book_tester import (
@@ -20,11 +19,11 @@ class Chapter7Test(ChapterTest):
         self.assertEqual(self.listings[1].type, "output")
 
         # skips
-        self.skip_with_check(57, "should show 4 changed files")  # git
-        self.skip_with_check(62, "add a message summarising")  # git
-        self.skip_with_check(79, "5 changed files")  # git
-        self.skip_with_check(81, "forms x2")  # git
-        self.skip_with_check(108, "3 changed files")  # git
+        self.skip_with_check(61, "should show 4 changed files")  # git
+        self.skip_with_check(66, "add a message summarising")  # git
+        self.skip_with_check(87, "5 changed files")  # git
+        self.skip_with_check(89, "forms x2")  # git
+        self.skip_with_check(116, "3 changed files")  # git
 
         # other prep
         self.start_with_checkout()

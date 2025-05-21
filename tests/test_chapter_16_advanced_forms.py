@@ -22,7 +22,7 @@ class Chapter16Test(ChapterTest):
         self.prep_database()
 
         # skips
-        self.skip_with_check(28, "# should show changes")  # diff
+        self.skip_with_check(29, "# should show changes")  # diff
 
         # hack fast-forward
         self.skip_forward_if_skipto_set()

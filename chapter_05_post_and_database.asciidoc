@@ -86,10 +86,129 @@ To get our browser to send a POST request, we need to do two things:
    so I thought I'd draw your attention to it.]
    with `method="POST"`.
 
+
+=== Testing the Contract Between Frontend and Backend
+
+If you remember in the last chapter, we said we wanted to come back
+and revisit the "smoke test" of our homepage template content.
+Let's have a quick look at our unit tests:
+
+
+[role="sourcecode currentcontents"]
+.lists/tests.py
+====
+[source,python]
+----
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+        response = self.client.get("/")
+        self.assertTemplateUsed(response, "home.html")
+
+    def test_renders_homepage_content(self):
+        response = self.client.get("/")
+        self.assertContains(response, "To-Do")
+----
+====
+
+What's _important_ about our homepage content?
+How can we obey both the "don't test constants" rule
+and the "test behaviour, not implementation" rule?
+
+The specific spelling of the word "To-Do" is not important.
+As we've just seen, the most important _behaviour_ that our homepage is enabling,
+is the ability to submit a to-do item.
+The way we're going to deliver that is by adding a `<form>` tag with `method="POST"`,
+and inside that, making sure our `<input>` has a `name="item_text"`.
+
+Our FTs are telling us that it's not working at a high level,
+so what unit tests can we write at the lower level?  Let's start with the form:
+
+
+[role="sourcecode"]
+.lists/tests.py (ch05l001)
+====
+[source,python]
+----
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+        [...]
+
+    def test_renders_input_form(self):  # <1>
+        response = self.client.get("/")
+        self.assertContains(response, '<form method="POST">')  # <2>
+----
+====
+
+<1> We change the name of the test
+<2> And we assert on the `<form>` tag specifically
+
+That gives us:
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python manage.py test*]
+[...]
+AssertionError: False is not true : Couldn't find '<form method="POST">' in the
+following response
+b'<html>\n  <head>\n    <title>To-Do lists</title>\n  </head>\n  <body>\n
+<h1>Your To-Do list</h1>\n    <input id="id_new_item" placeholder="Enter a
+to-do item" />\n    <table id="id_list_table">\n    </table>\n
+</body>\n</html>\n'
+----
+
+
 Let's adjust our template at 'lists/templates/home.html':
 
 [role="sourcecode"]
-.lists/templates/home.html (ch05l001)
+.lists/templates/home.html (ch05l002)
+====
+[source,html]
+----
+    <h1>Your To-Do list</h1>
+    <form method="POST">
+      <input id="id_new_item" placeholder="Enter a to-do item" />
+    </form>
+----
+====
+
+That gives us passing unit tests:
+
+----
+OK
+----
+
+And next let's add a test for the `name=` attribute on the `<input>` tag:
+
+
+[role="sourcecode"]
+.lists/tests.py (ch05l003)
+====
+[source,python]
+----
+    def test_renders_input_form(self):
+        response = self.client.get("/")
+        self.assertContains(response, '<form method="POST">')
+        self.assertContains(response, '<input name="item_text"')
+----
+====
+
+That gives us this expected failure:
+
+----
+[...]
+AssertionError: False is not true : Couldn't find '<input name="item_text"' in
+the following response
+b'<html>\n  <head>\n    <title>To-Do lists</title>\n  </head>\n  <body>\n
+<h1>Your To-Do list</h1>\n    <form method="POST">\n      <input
+id="id_new_item" placeholder="Enter a to-do item" />\n    </form>\n    <table
+id="id_list_table">\n    </table>\n  </body>\n</html>\n'
+----
+
+
+And we fix it like this:
+
+[role="sourcecode"]
+.lists/templates/home.html (ch05l004)
 ====
 [source,html]
 ----
@@ -101,8 +220,21 @@ Let's adjust our template at 'lists/templates/home.html':
 ----
 ====
 
+That gives us passing unit tests:
 
-Now, running our FTs gives us a slightly cryptic, unexpected error:
+----
+OK
+----
+
+The lesson here is that we've tried to identify the "contract" between
+the frontend and the backend of our site.  For our HTML form to work,
+it needs the form with the right `method`, and the input with the right `name`,
+Everything else is cosmetic. So that's what we test for in our unit tests.
+
+
+=== Debugging functional tests
+
+Time to go back to our FT. It gives us a slightly cryptic, unexpected error:
 
 [subs="specialcharacters,macros"]
 ----
@@ -147,8 +279,6 @@ Let's take another look at our code:
     How do we figure out what's going on?
 
 
-=== Debugging functional tests
-
 ((("functional tests (FTs)", "debugging techniques")))
 ((("time.sleeps")))
 ((("error messages", seealso="troubleshooting")))
@@ -171,11 +301,14 @@ We'll look at all of these over the course of this book,
 but the `time.sleep` option is the one that leaps to mind with this kind of error in an FT.
 Let's try it now.
 
+
+==== Debugging with time.sleep
+
 Conveniently, we've already got a sleep just before the error occurs;
 let's just extend it a little:
 
 [role="sourcecode"]
-.functional_tests.py (ch05l003)
+.functional_tests.py (ch05l005)
 ====
 [source,python]
 ----
@@ -241,8 +374,11 @@ which has the curly-bracket/percent syntax,
 `{% ... %}`&mdash;famous for being the world's most annoying two-key touch-typing
 combination:
 
+
+// TODO: unit test this?  can use Client(enforce_csrf_checks=True)
+
 [role="sourcecode"]
-.lists/templates/home.html (ch05l004)
+.lists/templates/home.html (ch05l006)
 ====
 [source,html]
 ----
@@ -276,7 +412,7 @@ ignores it and displays the normal home page.
 We can put our normal short `time.sleep` back now though:
 
 [role="sourcecode"]
-.functional_tests.py (ch05l005)
+.functional_tests.py (ch05l007)
 ====
 [source,python]
 ----
@@ -304,24 +440,32 @@ That means a new unit test for the `home_page` view.
 Open up 'lists/tests.py', and add a new method to `HomePageTest`:
 
 [role="sourcecode"]
-.lists/tests.py (ch05l006)
+.lists/tests.py (ch05l008)
 ====
 [source,python]
 ----
 class HomePageTest(TestCase):
     def test_uses_home_template(self):
+        [...]
+    def test_renders_input_form(self):
         response = self.client.get("/")
-        self.assertTemplateUsed(response, "home.html")
+        self.assertContains(response, '<form method="POST">')
+        self.assertContains(response, '<input name="item_text"')  # <2>
 
     def test_can_save_a_POST_request(self):
-        response = self.client.post("/", data={"item_text": "A new list item"})
-        self.assertContains(response, "A new list item")
+        response = self.client.post("/", data={"item_text": "A new list item"})  # <1><2>
+        self.assertContains(response, "A new list item")  # <3>
 ----
 ====
 
-To do a POST, we call `self.client.post`, and as you can see it takes
-a `data` argument which contains the form data we want to send.
-Then we check that the text from our POST request ends up in the rendered HTML.
+<1> To do a POST, we call `self.client.post`, and as you can see it takes
+  a `data` argument which contains the form data we want to send.
+
+<2> Notice the echo of the `item_text` name from earlier.footnote:[
+    You could even define a constant for this, to make the link more explicit.]
+
+<3> Then we check that the text from our POST request ends up in the rendered HTML.
+
 That gives us our expected fail:
 
 [subs="specialcharacters,macros"]
@@ -341,11 +485,12 @@ value="[...]
 
 In (slightly exaggerated) TDD style,
 we can single-mindedly do "the simplest thing that could possibly work"
-to address this test failure, which is to add an `if` and a new code path for POST requests,
+to address this test failure,
+which is to add an `if` and a new code path for POST requests,
 with a deliberately silly return value:
 
 [role="sourcecode"]
-.lists/views.py (ch05l007)
+.lists/views.py (ch05l009)
 ====
 [source,python]
 ----
@@ -354,21 +499,31 @@ from django.shortcuts import render
 
 
 def home_page(request):
-    if request.method == "POST":
-        return HttpResponse("You submitted: " + request.POST["item_text"])
+    if request.method == "POST":  # <1>
+        return HttpResponse("You submitted: " + request.POST["item_text"])  # <2>
     return render(request, "home.html")
 ----
 ====
 
-OK that gets our unit tests passing, but it's not really what we want.footnote:[
+<1> `request.method` lets us check whether we got a POST or a GET request
+
+<2> `request.POST` is a dictionary-like object containing the form data
+    (in this case, the `item_text` value we expect from the form `input` tag).
+
+----
+OK
+----
+
+Fine, that gets our unit tests passing, but it's not really what we want.footnote:[
 But we _did_ learn about `request.method` and `request.POST` right?
 I know it might seem that I'm overdoing it,
 but doing things in tiny little steps really does have a lot of advantages,
 and one of them is that you can really think about (or in this case, learn)
 one thing at a time.]
 
-And even if we were feeling like we could get away with out,
+And even if we were genuinely hoping this was the right solution,
 our FTs are here to remind us that this isn't how things are supposed to work:
+
 
 ----
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
@@ -379,6 +534,8 @@ element: [id="id_list_table"]; [...]
 The list table disappears after the form submission;
 what we really want to do is add the POST submission
 to the todo items table in the home page template.
+
+// TODO: screenshot?
 
 We need some sort of way to pass data from our view,
 to be shown in the template.
@@ -398,7 +555,7 @@ Let's start by seeing how the template syntax lets us include a Python object in
 The notation is `{{ ... }}`, which displays the object as a string:
 
 [role="sourcecode small-code"]
-.lists/templates/home.html (ch05l008)
+.lists/templates/home.html (ch05l010)
 ====
 [source,html]
 ----
@@ -422,7 +579,7 @@ Let's adjust our unit test so that it checks whether we are still using the temp
 
 
 [role="sourcecode"]
-.lists/tests.py (ch05l009)
+.lists/tests.py (ch05l011)
 ====
 [source,python]
 ----
@@ -448,7 +605,7 @@ In theory we can use it for the POST case as well as the default GET case,
 so let's remove the `if request.method == "POST"` and simplify our view right down to:
 
 [role="sourcecode"]
-.lists/views.py (ch05l010)
+.lists/views.py (ch05l012)
 ====
 [source,python]
 ----
@@ -500,7 +657,7 @@ Here's how:
 
 
 [role="sourcecode"]
-.lists/views.py (ch05l011)
+.lists/views.py (ch05l013)
 ====
 [source,python]
 ----
@@ -531,6 +688,7 @@ TIP: If your functional tests show you a different error at this point,
     then read on to the next chapter for a more robust solution.
 
 
+==== Improving Error Messages In Tests
 
 ((("debugging", "improving error messages")))
 Hmm, not a wonderfully helpful error.
@@ -539,7 +697,7 @@ This is probably the most constructive technique,
 because those improved error messages stay around to help debug any future errors:
 
 [role="sourcecode"]
-.functional_tests.py (ch05l012)
+.functional_tests.py (ch05l014)
 ====
 [source,python]
 ----
@@ -550,7 +708,7 @@ self.assertTrue(
 ----
 ====
 
-That gives us a more helpful error message:
+That gives us a more helpful message:
 
 ----
 AssertionError: False is not true : New to-do item did not appear in table.
@@ -566,7 +724,7 @@ but one of my Early Release readers (thanks, Jason!) suggested a much simpler im
 We can replace all four lines of the `assertTrue` with a single `assertIn`:
 
 [role="sourcecode"]
-.functional_tests.py (ch05l013)
+.functional_tests.py (ch05l015)
 ====
 [source,python]
 ----
@@ -600,7 +758,7 @@ The fastest way to get that to pass is with another quick "cheating" change to t
 
 
 [role="sourcecode"]
-.lists/templates/home.html (ch05l014)
+.lists/templates/home.html (ch05l016)
 ====
 [source,html]
 ----
@@ -651,7 +809,7 @@ to add the check for adding a second item to the table
 we begin to see that our first cut solution really isn't going to, um, cut it:
 
 [role="sourcecode"]
-.functional_tests.py (ch05l015)
+.functional_tests.py (ch05l017)
 ====
 [source,python]
 ----
@@ -732,7 +890,7 @@ only methods that begin with `test_` will get run as tests,
 so you can use other methods for your own purposes:
 
 [role="sourcecode"]
-.functional_tests.py (ch05l016)
+.functional_tests.py (ch05l018)
 ====
 [source,python]
 ----
@@ -753,7 +911,7 @@ I like to put helper methods near the top of the class, between the `tearDown`
 and the first test. Let's use it in the FT:
 
 [role="sourcecode"]
-.functional_tests.py (ch05l017)
+.functional_tests.py (ch05l019)
 ====
 [source,python]
 ----
@@ -834,7 +992,7 @@ since it exercises code by specifying how we want it to work.
 Let's create a new class in _lists/tests.py_:
 
 [role="sourcecode"]
-.lists/tests.py (ch05l018)
+.lists/tests.py (ch05l020)
 ====
 [source,python]
 ----
@@ -926,7 +1084,7 @@ creating a class:
 
 [[first-django-model]]
 [role="sourcecode"]
-.lists/models.py (ch05l019)
+.lists/models.py (ch05l021)
 ====
 [source,python]
 ----
@@ -942,7 +1100,7 @@ That gets our test as far as:
 
 ----
 [...]
-  File "...goat-book/lists/tests.py", line 20, in
+  File "...goat-book/lists/tests.py", line 25, in
 test_saving_and_retrieving_items
     first_item.save()
     ^^^^^^^^^^^^^^^
@@ -954,7 +1112,7 @@ model, we make it inherit from the `Model` class:
 
 
 [role="sourcecode"]
-.lists/models.py (ch05l020)
+.lists/models.py (ch05l022)
 ====
 [source,python]
 ----
@@ -1047,7 +1205,7 @@ but you have to define any other columns and attributes you want explicitly;
 here's how we set up a text column:
 
 [role="sourcecode"]
-.lists/models.py (ch05l022)
+.lists/models.py (ch05l024)
 ====
 [source,python]
 ----
@@ -1099,7 +1257,7 @@ self-explanatory:
 
 
 [role="sourcecode"]
-.lists/models.py (ch05l023)
+.lists/models.py (ch05l025)
 ====
 [source,python]
 ----
@@ -1131,7 +1289,7 @@ so it does get saved to the database, and the tests pass...
 $ pass:quotes[*python manage.py test*]
 [...]
 
-Ran 3 tests in 0.010s
+Ran 4 tests in 0.010s
 OK
 ----
 
@@ -1164,7 +1322,7 @@ We can do that by adding three new lines to the existing test called
 +test_can_save_a_POST_request+:
 
 [role="sourcecode"]
-.lists/tests.py (ch05l025)
+.lists/tests.py (ch05l027)
 ====
 [source,python]
 ----
@@ -1183,16 +1341,16 @@ def test_can_save_a_POST_request(self):
 <1> We check that one new `Item` has been saved to the database.
     `objects.count()` is a shorthand for `objects.all().count()`.
 
-<2> `objects.first()` is the same as doing `objects.all()[0]`.
+<2> `objects.first()` is the same as doing `objects.all()[0]`,
+    except it will return `None` if there are no objects.footnote:[
+    You can also use `objects.get()` which will immediately raise an exception
+    if there are no objects in the DB, or if there are more than one.
+    On the plus hand you get a more immediate failure,
+    and you get warned if there are too many objects.
+    The downside is that I find it slightly less readable.
+    As so often, it's a trade-off.]
 
 <3> We check that the item's text is correct.
-
-
-// DAVID: re <2>, Actually it isn't - it returns None if there are no objects.
-// objects.get() is closer as it raises an exception (albeit a different one).
-// I would generally use `get()` over `first()` if I only expect there to be
-// one as I get an earlier failure and it also catches if there are two instead
-// of one.
 
 
 ((("unit tests", "length of")))
@@ -1230,7 +1388,7 @@ you prove to yourself that todo items are persisted,
 by sending more than one:
 
 [role="sourcecode skipme"]
-.lists/tests/test_views.py (ch05l025-1)
+.lists/tests/test_views.py
 ====
 [source,python]
 ----
@@ -1288,7 +1446,7 @@ the perfect way to rewrite this chapter.
 ////
 *******************************************************************************
 
-Writing it down on a scratchpad like this reassures us that we won't forget,
+Writing things down on a scratchpad like this reassures us that we won't forget them,
 so we are comfortable getting back to what we were working on.
 We rerun the tests and see an expected failure:
 
@@ -1300,7 +1458,7 @@ AssertionError: 0 != 1
 Let's adjust our view:
 
 [role="sourcecode"]
-.lists/views.py (ch05l026)
+.lists/views.py (ch05l028)
 ====
 [source,python]
 ----
@@ -1336,7 +1494,7 @@ and sometimes the problem may be so major as to warrant a stop and rethink.
 
 Let's see how the unit tests get on...
 ----
-Ran 3 tests in 0.010s
+Ran 4 tests in 0.010s
 
 OK
 ----
@@ -1359,7 +1517,7 @@ but it's best to keep unit tests to testing one thing at a time,
 so let's add a new one:
 
 [role="sourcecode"]
-.lists/tests.py (ch05l027)
+.lists/tests.py (ch05l029)
 ====
 [source,python]
 ----
@@ -1384,7 +1542,7 @@ That gives us a `1 != 0` failure.  Let's fix it by bringing the
 `if request.method` check back and putting the Item creation in there:
 
 [role="sourcecode"]
-.lists/views.py (ch05l028)
+.lists/views.py (ch05l030)
 ====
 [source,python]
 ----
@@ -1415,7 +1573,7 @@ def home_page(request):
 And that gets the test passing:
 
 ----
-Ran 4 tests in 0.010s
+Ran 5 tests in 0.010s
 
 OK
 ----
@@ -1439,7 +1597,7 @@ instead of expecting a response with the item in it,
 we want it to expect a redirect back to the home page.
 
 [role="sourcecode"]
-.lists/tests.py (ch05l029)
+.lists/tests.py (ch05l031)
 ====
 [source,python]
 ----
@@ -1473,7 +1631,7 @@ We can now tidy up our view substantially:
 
 
 [role="sourcecode"]
-.lists/views.py (ch05l030)
+.lists/views.py (ch05l032)
 ====
 [source,python]
 ----
@@ -1500,7 +1658,7 @@ def home_page(request):
 And the tests should now pass:
 
 ----
-Ran 4 tests in 0.010s
+Ran 5 tests in 0.010s
 
 OK
 ----
@@ -1551,7 +1709,7 @@ And here's the refactored version of _views.py_ using the `.objects.create()`
 helper method that Django provides, for one-line creation of objects:
 
 [role="sourcecode"]
-.lists/views.py (ch05l031)
+.lists/views.py (ch05l033)
 ====
 [source,python]
 ----
@@ -1587,7 +1745,7 @@ You may not always write perfect unit tests with single assertions on your
 first go, but now feels like a good time to separate out our concerns:
 
 [role="sourcecode"]
-.lists/tests.py (ch05l032)
+.lists/tests.py (ch05l034)
 ====
 [source,python]
 ----
@@ -1606,10 +1764,10 @@ first go, but now feels like a good time to separate out our concerns:
 ((("", startref="HTMLpostredirect05")))
 ((("", startref="DThtmlredirect05")))
 ((("", startref="POSTredirect05")))
-And we should now see five tests pass instead of four:
+And we should now see six tests pass instead of five:
 
 ----
-Ran 5 tests in 0.010s
+Ran 6 tests in 0.010s
 
 OK
 ----
@@ -1639,12 +1797,14 @@ and pass them to the template for rendering.
 Let's have a new unit test for that:
 
 [role="sourcecode"]
-.lists/tests.py (ch05l033)
+.lists/tests.py (ch05l035)
 ====
 [source,python]
 ----
 class HomePageTest(TestCase):
     def test_uses_home_template(self):
+        [...]
+    def test_renders_input_form(self):
         [...]
 
     def test_displays_all_list_items(self):
@@ -1670,7 +1830,7 @@ I'm visually separating out the code into three blocks:
 ((("Given / When / Then")))
 
 [role="sourcecode currentcontentss"]
-.lists.tests.py
+.lists/tests.py
 ====
 [source,python]
 ----
@@ -1722,7 +1882,7 @@ The Django template syntax has a tag for iterating through lists,
 
 
 [role="sourcecode"]
-.lists/templates/home.html (ch05l034)
+.lists/templates/home.html (ch05l036)
 ====
 [source,html]
 ----
@@ -1745,7 +1905,7 @@ Just changing the template doesn't get our tests to green; we need to actually
 pass the items to it from our home page view:
 
 [role="sourcecode"]
-.lists/views.py (ch05l035)
+.lists/views.py (ch05l037)
 ====
 [source,python]
 ----
@@ -1873,11 +2033,11 @@ peacock feathers', '1: Use peacock feathers to make a fly']
 ----
 
 
-So close!  We just need to get our list numbering right.  Another awesome
-Django template tag, `forloop.counter`, will help here:
+So close!  We just need to get our list numbering right.
+Another awesome Django template tag, `forloop.counter`, will help here:
 
 [role="sourcecode"]
-.lists/templates/home.html (ch05l036)
+.lists/templates/home.html (ch05l038)
 ====
 [source,html]
 ----

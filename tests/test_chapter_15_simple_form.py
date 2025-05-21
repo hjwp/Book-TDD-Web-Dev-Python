@@ -17,7 +17,7 @@ class Chapter15Test(ChapterTest):
         self.assertEqual(self.listings[2].type, "output")
 
         # skips
-        self.skip_with_check(31, "# review changes")  # diff
+        # self.skip_with_check(31, "# review changes")  # diff
 
         # prep
         self.start_with_checkout()

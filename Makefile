@@ -84,21 +84,25 @@ clean-docker:
 get-sudo:
 	sudo echo 'need sudo access for this test'
 
+.PHONY: no-runservers
+no-runservers:
+	-pkill -f runserver
+
 # exhaustively list all test targets for nice tab-completion
 .PHONY: test_chapter_01
-test_chapter_01: chapter_01.html $(TMPDIR) $(VENV)/bin
+test_chapter_01: chapter_01.html $(TMPDIR) $(VENV)/bin no-runservers
 	$(VENV)/bin/pytest -s ./tests/test_chapter_01.py
 .PHONY: test_chapter_02_unittest
-test_chapter_02_unittest: chapter_02_unittest.html $(TMPDIR) $(VENV)/bin
+test_chapter_02_unittest: chapter_02_unittest.html $(TMPDIR) $(VENV)/bin no-runservers
 	$(VENV)/bin/pytest -s ./tests/test_chapter_02_unittest.py
 .PHONY: test_chapter_03_unit_test_first_view
-test_chapter_03_unit_test_first_view: chapter_03_unit_test_first_view.html $(TMPDIR) $(VENV)/bin
+test_chapter_03_unit_test_first_view: chapter_03_unit_test_first_view.html $(TMPDIR) $(VENV)/bin no-runservers
 	$(VENV)/bin/pytest -s ./tests/test_chapter_03_unit_test_first_view.py
 .PHONY: test_chapter_04_philosophy_and_refactoring
-test_chapter_04_philosophy_and_refactoring: chapter_04_philosophy_and_refactoring.html $(TMPDIR) $(VENV)/bin
+test_chapter_04_philosophy_and_refactoring: chapter_04_philosophy_and_refactoring.html $(TMPDIR) $(VENV)/bin no-runservers
 	$(VENV)/bin/pytest -s ./tests/test_chapter_04_philosophy_and_refactoring.py
 .PHONY: test_chapter_05_post_and_database
-test_chapter_05_post_and_database: chapter_05_post_and_database.html $(TMPDIR) $(VENV)/bin
+test_chapter_05_post_and_database: chapter_05_post_and_database.html $(TMPDIR) $(VENV)/bin no-runservers
 	$(VENV)/bin/pytest -s ./tests/test_chapter_05_post_and_database.py
 .PHONY: test_chapter_06_explicit_waits_1
 test_chapter_06_explicit_waits_1: chapter_06_explicit_waits_1.html $(TMPDIR) $(VENV)/bin

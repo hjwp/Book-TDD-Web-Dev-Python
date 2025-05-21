@@ -21,8 +21,8 @@ class Chapter16Test(ChapterTest):
         # skip some inline bash comments
         self.skip_with_check(15, "if you're on Windows")
         self.skip_with_check(17, "delete all the other stuff")
-        self.skip_with_check(72, "all our js")
-        self.skip_with_check(74, "changes to the base template")
+        self.skip_with_check(73, "all our js")
+        self.skip_with_check(75, "changes to the base template")
 
         # hack fast-forward
         self.skip_forward_if_skipto_set()

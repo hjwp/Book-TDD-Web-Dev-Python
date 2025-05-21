@@ -130,9 +130,10 @@ FAIL: test_layout_and_styling
 (functional_tests.tests.NewVisitorTest.test_layout_and_styling)
  ---------------------------------------------------------------------
 Traceback (most recent call last):
-  File "...goat-book/functional_tests/tests.py", line 120, in
+  File "...goat-book/functional_tests/tests.py", line 119, in
 test_layout_and_styling
     self.assertAlmostEqual(
+[...]
 AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
 
  ---------------------------------------------------------------------
@@ -188,7 +189,7 @@ center-aligned on the page for a new list:
 That gives us another test failure:
 
 ----
-  File "...goat-book/functional_tests/tests.py", line 132, in
+  File "...goat-book/functional_tests/tests.py", line 131, in
 test_layout_and_styling
     self.assertAlmostEqual(
 AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
@@ -524,7 +525,7 @@ of the grid system and the `justify-content-center` class to get what we want:
         <div class="col-lg-6 text-center">
           <h1>{% block header_text %}{% endblock %}</h1>
 
-          <form method="POST" action="{% block form_action %}{% endblock %}" >
+          <form method="POST" action="{% block form_action %}{% endblock %}">
             <input
               name="item_text"
               id="id_new_item"
@@ -558,7 +559,90 @@ TIP: Take the time to browse through the
     It's a shopping trolley brimming full of useful tools
     to use in your site.
 
-Does that work?
+Does that work?  Woops no, we have an error in our unit tests:
+
+----
+FAIL: test_renders_input_form
+(lists.tests.ListViewTest.test_renders_input_form)
+[...]
+AssertionError: False is not true : Couldn't find '<input name="item_text"' in
+the following response
+[...]
+----
+
+Ah, it's because our unit tests are currently a little
+brittle with respects to whitespace changes in our `<input>` tag,
+which actually don't matter semantically.
+
+Django does provide the `html=True` argument to `assertContains()`,
+which does help a bit, but it requires exhaustively
+specifying every attribute of the element we want to check on,
+like this:
+
+[role="sourcecode small-code"]
+.lists/tests.py (ch08l011-1)
+====
+[source,python]
+----
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+        [...]
+
+    def test_renders_input_form(self):
+        response = self.client.get("/")
+        self.assertContains(response, '<form method="POST" action="/lists/new">')
+        self.assertContains(
+            response,
+            '<input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />',
+            html=True,
+        )
+[...]
+
+
+class ListViewTest(TestCase):
+    def test_uses_list_template(self):
+        [...]
+
+    def test_renders_input_form(self):
+        mylist = List.objects.create()
+        response = self.client.get(f"/lists/{mylist.id}/")
+        self.assertContains(
+            response,
+            f'<form method="POST" action="/lists/{mylist.id}/add_item">',
+        )
+        self.assertContains(
+            response,
+            '<input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />',
+            html=True,
+        )
+----
+====
+
+That's not entirely satisfactory,
+because all those extra attributes like `id` and `placeholder`
+aren't really things we want to nail down in unit tests;
+we'd rather have the freedom to change them in the template
+without needing to change the tests as well.
+They're more of a presentation concern than a true part of the contract
+between backend and frontend.
+
+But it does get the tests to pass:
+
+----
+OK
+----
+
+So let's make a note for now to come back to it.
+
+[role="scratchpad"]
+*****
+* _Find a better way to unit test form+input elements_
+*****
+
+
+
+
+And the FTs
 
 ----
 AssertionError: 102.5 != 512 within 10 delta (409.5 difference)
@@ -897,6 +981,239 @@ $ *git commit -m "Use Bootstrap to improve layout"*
 ----
 
 
+=== Parsing HTML for Less Brittle Tests of Key HTML Content
+
+Oh woops, we nearly forgot our scratchpad:
+
+[role="scratchpad"]
+*****
+* _Find a better way to unit test form+input elements_
+*****
+
+When working on layout and styling, you expect to spend most of your time
+in the browser, in a cycle of tweaking your HTML and hitting "refresh" to see
+the effects, with occasional runs of your layout FT, if you have one.
+
+You wouldn't expect to test-drive design with unit tests.
+And sure enough, we haven't run them in a while.
+Because if we had done, we'd have notice they're failing:
+
+----
+FAIL: test_renders_input_form
+(lists.tests.HomePageTest.test_renders_input_form)
+[...]
+AssertionError: False is not true : Couldn't find '<input name="item_text"
+id="id_new_item" placeholder="Enter a to-do item" />' in the following response
+b'<!doctype html>\n<html lang="en">\n\n  <head>\n    <title>To-Do
+[...]
+<input\n              class="form-control form-control-lg"\n
+name="item_text"\n              id="id_new_item"\n
+placeholder="Enter a to-do item"\n            />\n            <input
+[...]
+FAIL: test_renders_input_form
+(lists.tests.ListViewTest.test_renders_input_form)
+[...]
+----
+
+It's also annoyingly hard to see from the tests output,
+but it happened when we introduced the `class=form-control form-control-lg`.
+
+We really don't want this sort of thing breaking our unit tests.
+Using string matching, even whitespace-aware string matching,
+is just the wrong tool for the job.footnote:[
+As famously explained in this
+https://stackoverflow.com/questions/1732348/regex-match-open-tags-except-xhtml-self-contained-tags[classic SO post].]
+Let's switch to using a proper HTML parser, the venerable
+https://lxml.de/[lxml].
+
+
+[subs=""]
+----
+$ <strong>pip install 'lxml[cssselect]'</strong>
+Collecting lxml[cssselect]
+  [...]
+Collecting cssselect>=0.7 (from lxml[cssselect])
+  [...]
+Installing collected packages: lxml, cssselect
+Successfully installed cssselect-1.3.0 lxml-5.4.0
+----
+
+(We need the `cssselect` add-on for the nice CSS selectors).
+
+And here's how we use it to write a more focused version of our test,
+that only cares about the HTML attributes that actually matter
+to the integration of frontend and backend:
+
+1. The `<form>` tag's `method` and `action`
+2. The `<input>` tag's `name`
+
+
+[role="sourcecode"]
+.lists/tests.py (ch08l019)
+====
+[source,python]
+----
+import lxml.html
+[...]
+
+
+class HomePageTest(TestCase):
+    def test_uses_home_template(self):
+        [...]
+
+    def test_renders_input_form(self):
+        response = self.client.get("/")
+        parsed = lxml.html.fromstring(response.content)  # <1>
+        [form] = parsed.cssselect("form[method=POST]")  # <2><3>
+        self.assertEqual(form.get("action"), "/lists/new")
+        [input] = form.cssselect("input[name=item_text]")  # <4>
+----
+====
+
+<1> Here's where we parse the HTML into a structured object
+    to represent the DOM.
+
+<2> Here's where we use a CSS selector to find our form,
+    implicitly also checking that it has `method="POST"`.
+    The `cssselect()` method returns a list matching elements.
+
+<3> The `[form] =` is worth a mention.
+    What we're using here is a special assignment syntax called "unpacking",
+    where the left hand side is a list of variable names,
+    and the right hand side is a list of values.
+    It's a bit like saying `form = parsed.cssselect("form[method=POST]")[0]`,
+    but a bit nicer to read, and a bit more strict too.
+    By only putting one element on the left,
+    we're effectively asserting that there is exactly one element on the right;
+    if there isn't, we'll get an error.footnote:[
+    Read more about tuple unpack and multiple assignment
+    https://treyhunner.com/2018/03/tuple-unpacking-improves-python-code-readability/[on Trey Hunner's excellent blog].]
+
+<4> We use the same kind of assignment to assert that the form contains
+    exactly one input element with the name `item_text`.
+    
+
+
+Here's the same thing in `ListViewTest`:
+
+[role="sourcecode"]
+.lists/tests.py (ch08l020)
+====
+[source,python]
+----
+class ListViewTest(TestCase):
+    def test_uses_list_template(self):
+        [...]
+
+    def test_renders_input_form(self):
+        mylist = List.objects.create()
+        response = self.client.get(f"/lists/{mylist.id}/")
+        parsed = lxml.html.fromstring(response.content)
+        [form] = parsed.cssselect("form[method=POST]")
+        self.assertEqual(form.get("action"), f"/lists/{mylist.id}/add_item")
+        [input] = form.cssselect("input[name=item_text]")
+----
+====
+
+That works!
+
+
+----
+Ran 10 tests in 0.017s
+
+OK
+----
+
+And as always, for any test you've only ever seen Green,
+it's nice to introduce a deliberate failure:
+
+
+[role="sourcecode"]
+.lists/templates/base.html (ch08l021)
+====
+[source,python]
+----
+@@ -18,7 +18,7 @@
+           <form method="POST" action="{% block form_action %}{% endblock %}">
+             <input
+               class="form-control form-control-lg"
+-              name="item_text"
++              name="geoff"
+               id="id_new_item"
+               placeholder="Enter a to-do item"
+             />
+----
+====
+
+And let's see the error message:
+
+----
+    [input] = form.cssselect("input[name=item_text]")
+    ^^^^^^^
+ValueError: not enough values to unpack (expected 1, got 0)
+----
+
+
+Hmm you know what?  I'm actually not that happy with that.
+The `[input] =` syntax is probably another example of
+me being too clever for my own good.
+
+Let's try something else, that gives us a clearer message about
+what _is_ on the page and what isn't.
+
+
+[role="sourcecode"]
+.lists/tests.py (ch08l022)
+====
+[source,python]
+----
+        inputs = form.cssselect("input")  # <1>
+        self.assertIn("item_text", [input.get("name") for input in inputs])  # <2>
+----
+====
+
+<1> We'll get a list of all the inputs in the form
+<2> And then we'll assert that at least one of them has the right `name=`.
+
+That gives us a more self-explanatory message
+
+----
+    self.assertIn("item_text", [input.get("name") for input in inputs])
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'item_text' not found in ['geoff', 'csrfmiddlewaretoken']
+----
+
+Now I feel good about changing our HTML back.
+
+
+[role="sourcecode"]
+.lists/templates/base.html (ch08l023)
+====
+[source,diff]
+----
+@@ -18,7 +18,7 @@
+           <form method="POST" action="{% block form_action %}{% endblock %}">
+             <input
+               class="form-control form-control-lg"
+-              name="geoff"
++              name="item_text"
+               id="id_new_item"
+               placeholder="Enter a to-do item"
+             />
+----
+====
+
+Much better!
+
+[subs="specialcharacters,quotes"]
+----
+$ *git diff* # tests.py
+$ *git commit -am "use lxml for more specific unit test asserts on html content"*
+----
+
+
+
+
 === What We Glossed Over: collectstatic and Other Static Directories
 
 ((("design and layout testing", "collecting static files for deployment", id="DLTcollect08")))
@@ -941,7 +1258,7 @@ Here's a neat way of specifying that folder,
 making it relative to the location of the project base directory:
 
 [role="sourcecode"]
-.superlists/settings.py (ch08l019)
+.superlists/settings.py (ch08l024)
 ====
 [source,python]
 ----
@@ -1006,7 +1323,7 @@ The admin site is one of Django's powerful features,
 but we don't need it for our simple site, so let's disable it for now:
 
 [role="sourcecode"]
-.superlists/settings.py
+.superlists/settings.py (ch08l025)
 ====
 [source,python]
 ----
@@ -1096,6 +1413,9 @@ you'll definitely want some tests for that
 Try to write the minimal tests that will give you confidence
 that your design and layout is working,
 without testing _what_ it actually is.
+That includes unit tests!
+Avoid asserting on the cosmetic aspects of your HTML in your unit tests.
+
 Aim to leave yourself in a position
 where you can freely make changes to the design and layout,
 without having to go back and adjust tests all the time.

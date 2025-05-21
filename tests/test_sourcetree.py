@@ -1,8 +1,8 @@
-import unittest
-from unittest.mock import patch
-import subprocess
-from textwrap import dedent
 import os
+import subprocess
+import unittest
+from textwrap import dedent
+from unittest.mock import patch
 
 from book_parser import CodeListing
 from sourcetree import (

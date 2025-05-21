@@ -19,16 +19,16 @@ class Chapter5Test(ChapterTest):
         # sanity checks
         self.assertEqual(type(self.listings[0]), Output)
         self.assertEqual(type(self.listings[1]), CodeListing)
-        self.assertEqual(type(self.listings[2]), Command)
+        self.assertEqual(type(self.listings[3]), Command)
 
-        views_pos = 17
+        views_pos = 21
         self.find_with_check(views_pos, "def home_page")
 
-        nutemplate_pos = 85
+        nutemplate_pos = 95
         nl = self.find_with_check(nutemplate_pos, '{"items": items}')
         print(nl)
 
-        migrate_pos = 89
+        migrate_pos = 99
         ml = self.find_with_check(migrate_pos, "migrate")
         assert ml.type == "interactive manage.py"
 

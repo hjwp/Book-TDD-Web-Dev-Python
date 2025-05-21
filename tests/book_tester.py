@@ -381,17 +381,23 @@ class ChapterTest(unittest.TestCase):
         codelisting.was_written = True
 
     def run_command(self, command, cwd=None, user_input=None, ignore_errors=False):
-        self.assertEqual(
-            type(command),
-            Command,
-            f"passed a non-Command to run-command:\n{command}",
+        assert isinstance(command, Command), (
+            f"passed a non-Command to run-command:\n{command}"
         )
         if command == "git push":
             command.was_run = True
             return
-        print(f"running command {command} with {ignore_errors=}")
+
+        if command.startswith("curl"):
+            cmd_to_run = command.replace("curl", "curl --silent --show-error")
+        if command.startswith("grep") and sys.platform == "darwin":
+            cmd_to_run = command.replace("grep", "ggrep")
+        else:
+            cmd_to_run = str(command)
+
+        print(f"running command {cmd_to_run} with {ignore_errors=}")
         output = self.sourcetree.run_command(
-            command, cwd=cwd, user_input=user_input, ignore_errors=ignore_errors
+            cmd_to_run, cwd=cwd, user_input=user_input, ignore_errors=ignore_errors
         )
         command.was_run = True
         return output

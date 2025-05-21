@@ -26,8 +26,8 @@ class Chapter4Test(ChapterTest):
         self.start_with_checkout()
         self.start_dev_server()
 
-        self.skip_with_check(27, "add the untracked templates folder")
-        self.skip_with_check(29, "review the changes")
+        self.skip_with_check(36, "add the untracked templates folder")
+        self.skip_with_check(38, "review the changes")
 
         while self.pos < len(self.listings):
             print(self.pos, self.listings[self.pos].type)
