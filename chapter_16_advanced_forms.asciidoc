@@ -55,7 +55,7 @@ and tell a little story about what we want to see happen
 when a user tries to enter the same item twice into their to-do list:
 
 [role="sourcecode"]
-.src/functional_tests/test_list_item_validation.py (ch15l001)
+.src/functional_tests/test_list_item_validation.py (ch16l001)
 ====
 [source,python]
 ----
@@ -119,7 +119,13 @@ selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: .invalid-feedback; [...]
 ----
 
-// TODO; commit ft.
+In any case let's commit it:
+
+[subs="specialcharacters,quotes"]
+----
+$ *git commit -am"Ft for duplicate item validation"*
+----
+
 
 ==== Preventing Duplicates at the Model Layer
 
@@ -128,7 +134,7 @@ So, if we want to start to implement our actual objective for the chapter,
 let's write a new test that checks that duplicate items in the same list raise an error:
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch15l002)
+.src/lists/tests/test_models.py (ch16l002)
 ====
 [source,python]
 ----
@@ -146,7 +152,7 @@ we add another test to make sure we don't overdo it on our integrity constraints
 
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch15l003)
+.src/lists/tests/test_models.py (ch16l003)
 ====
 [source,python]
 ----
@@ -171,7 +177,7 @@ If we want to get it deliberately wrong, we can do this:
 
 
 [role="sourcecode"]
-.src/lists/models.py (ch15l004)
+.src/lists/models.py (ch16l004)
 ====
 [source,python]
 ----
@@ -261,7 +267,7 @@ or in other words, that `text` and `list` must be unique together:
 
 
 [role="sourcecode"]
-.src/lists/models.py (ch15l005)
+.src/lists/models.py (ch16l005)
 ====
 [source,python]
 ----
@@ -298,7 +304,7 @@ couple of much shorter tests.
 Delete `test_saving_and_retrieving_items` and replace it with this:
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch15l006)
+.src/lists/tests/test_models.py (ch16l006)
 ====
 [source,python]
 ----
@@ -328,7 +334,7 @@ While we're at it, we can split this file out into tests for `Item` and tests
 for `List` (there's only one of the latter, `test_get_absolute_url`):
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch15l007)
+.src/lists/tests/test_models.py (ch16l007)
 ====
 [source,python]
 ----
@@ -374,7 +380,7 @@ Migrations for 'lists':
   src/lists/migrations/0005_alter_item_unique_together.py
     ~ Alter unique_together for item (1 constraint(s))
 ----
-//ch15l005-1
+//ch16l005-1
 
 Now let's run the migration:
 
@@ -420,7 +426,7 @@ Now if we change our duplicates test to do a `.save` instead of a
 
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch15l008)
+.src/lists/tests/test_models.py (ch16l008)
 ====
 [source,python]
 ----
@@ -452,7 +458,7 @@ error from the one we want, an `IntegrityError` instead of a `ValidationError`.
 
 Let's revert our changes to the test, and see them all passing again:
 
-[role="dofirst-ch15l008-1"]
+[role="dofirst-ch16l008-1"]
 [subs="specialcharacters,macros"]
 ----
 $ pass:quotes[*python src/manage.py test lists*]
@@ -478,30 +484,37 @@ $ pass:[<strong>git commit -m "Implement duplicate item validation at model laye
 === Experimenting with Duplicate Item Validation at the Views Layer
 
 
-((("duplicate items testing", "at the views layer", secondary-sortas="views layer")))Let's
-try running our FT, just to see where we are:
+((("duplicate items testing", "at the views layer", secondary-sortas="views layer")))
+Let's try running our FT, to see if that's made any difference.
 
 ----
 selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
 element: .invalid-feedback; [...]
-
 ----
 
-In case you didn't see it as it flew past, the site is 500ing.footnote:[It's showing a server error, code 500.]
-A quick unit test at the view level ought to clear this up:
+In case you didn't see it as it flew past, the site is 500ing,footnote:[500ing, showing a server error, code 500.  Of course you can use HTTP Status Codes as verbs!],
+as in <<integrity-error-unique-constraint>> (feel free to try it out manually).
 
-// DAVID: You've lost me on what thought process you took from that FT failure to writing this test.
-// What I would do is actually spin up the site and walk through things manually, to understand the problem better.
-// Also, it's not immediately clear what we're testing in this new test.
+[integrity-error-unique-constraint]
+.Well, At Least It Didn't Make It Into The DB
+image::images/integrity_error_unique_constraint.png["The Django Debug Page showing an IntegrityError, details 'UNIQUE constraint failed: lists_item.list_id, lists_item.text', and traceback"]
+
+
+We need to be clearer on what we want to happen at the views level.
+Let's write a unit test, which very much
+
 
 [role="sourcecode"]
-.src/lists/tests/test_views.py (ch15l009)
+.src/lists/tests/test_views.py (ch16l009)
 ====
 [source,python]
 ----
 class ListViewTest(TestCase):
     [...]
-
+    def test_for_invalid_input_nothing_saved_to_db(self):
+        [...]
+    def test_for_invalid_input_renders_list_template(self):
+        [...]
     def test_for_invalid_input_shows_error_on_page(self):
         [...]
 
@@ -515,27 +528,45 @@ class ListViewTest(TestCase):
         )
 
         expected_error = html.escape("You've already got this in your list")
-        self.assertContains(response, expected_error)
-        self.assertTemplateUsed(response, "list.html")
-        self.assertEqual(Item.objects.all().count(), 1)
+        self.assertContains(response, expected_error)  # <1>
+        self.assertTemplateUsed(response, "list.html")  # <2>
+        self.assertEqual(Item.objects.all().count(), 1)  # <3>
 ----
 ====
 
-Gives:
+<1> Here's our main assertion,
+  which is that we want to see a nice error message on the page
+
+<2> Here's where we check that it's landing on the normal list page.
+
+<3> And we double-check that we haven't saved anything to the DB.footnote:[
+Harry, didn't we spend time in the last chapter making sure all the asserts
+were in different tests?  Absolutely yes.  Feel free to do that!
+If I had to justify myself,
+I'd say that we already have all the granular asserts for _one_ error type,
+and this really is just a smoke test that an additional error type is also handled,
+so arguably it doesn't need to be so granular.]
+
+
+That test confirms that the `IntegrityError` is bubbling all the way up:
 
 ----
+  File "...goat-book/src/lists/views.py", line 28, in view_list
+    form.save(for_list=our_list)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+[...]
 django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
 lists_item.text
 ----
 
-We want to avoid integrity errors! Ideally, we want the call to `is_valid` to
-somehow notice the duplication error before we even try to save, but to do
-that, our form will need to know in advance what list it's being used for.
-
-Let's put a skip on that test for now:
+We want to avoid integrity errors!
+Ideally, we want the call to `is_valid()` to somehow notice
+the duplication error before we even try to save.
+But to do that, our form will need to know in advance what list it's being used for.
+Let's put a skip on this test for now:
 
 [role="sourcecode"]
-.src/lists/tests/test_views.py (ch15l010)
+.src/lists/tests/test_views.py (ch16l010)
 ====
 [source,python]
 ----
@@ -547,7 +578,7 @@ from unittest import skip
 ----
 ====
 
-// TODO: alternatively, try/except on the validation error,
+// IDEA: alternatively, try/except on the validation error,
 // get everything passing, then refactor to use a form.
 // use the forms tests to explore the api (introduce the idea of a spike)
 // maybe get it working, show how the forms-layer tests are annoying
@@ -556,17 +587,19 @@ from unittest import skip
 
 === A More Complex Form to Handle Uniqueness Validation
 
-((("duplicate items testing", "complex form for")))((("uniqueness validation", seealso="duplicate items testing")))The
-form to create a new list only needs to know one thing, the new item text.
-A form which validates that list items are unique needs to know the list too.
-Just as we overrode the save method on our `ItemForm`, this time we'll
-override the constructor on our new form class so that it knows what list it
-applies to.
+((("duplicate items testing", "complex form for")))
+((("uniqueness validation", seealso="duplicate items testing")))
+The form to create a new list only needs to know one thing, the new item text.
+A form which validates that list items are unique
+needs to know what list they're in as well.
+Just as we overrode the save method on our `ItemForm`,
+this time we'll override the _constructor_ on our new form class
+so that it knows what list it applies to.
 
-We duplicate our tests for the previous form, tweaking them slightly:
+Let's duplicate our tests for the previous form, tweaking them slightly:
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py (ch15l011)
+.src/lists/tests/test_forms.py (ch16l011)
 ====
 [source,python]
 ----
@@ -609,17 +642,9 @@ custom constructor, which just ignores its `for_list` argument.
 (I won't show them all, but I'm sure you'll do them, right? Remember, the Goat
 sees all.)
 
-// DAVID: worth spelling out what you mean here - i.e. go through and fix the exact test failure,
-// don't just paste in the whole thing and get it passing in one go.
-
-// JAN: I'm having troubles with lists.models.Item.MultipleObjectsReturned: get() returned more than one Item -- it returned X! lists.tests.test_forms.ItemFormTest.test_form_save/lists.tests.test_forms.ItemFormTest.test_form_save_handles_saving_to_a_list
-// CSANAD: I did not notice anything like that and the automated tests for the
-// book also pass here. Can you compare your code against
-// https://github.com/hjwp/book-example/tree/chapter_16_advanced_forms if that
-// helps?
 
 [role="sourcecode"]
-.src/lists/forms.py (ch15l012)
+.src/lists/forms.py (ch16l012)
 ====
 [source,python]
 ----
@@ -640,7 +665,7 @@ ValueError: ModelForm has no model class specified.
 Then let's see if making it inherit from our existing form helps:
 
 [role="sourcecode"]
-.src/lists/forms.py (ch15l013)
+.src/lists/forms.py (ch16l013)
 ====
 [source,python]
 ----
@@ -666,11 +691,11 @@ https://docs.djangoproject.com/en/5.2/ref/models/instances/#validating-objects[m
 validation] and
 https://docs.djangoproject.com/en/5.2/ref/forms/validation/[form validation].
 
-We can customise validation for a field by implementing a `clean_<fieldname>`
+We can customise validation for a field by implementing a `clean_<fieldname>()`
 method, and raising a `ValidationError` if the field is invalid:
 
 [role="sourcecode"]
-.src/lists/forms.py (ch15l013-1)
+.src/lists/forms.py (ch16l013-1)
 ====
 [source,python]
 ----
@@ -690,8 +715,16 @@ class ExistingListItemForm(ItemForm):
 ----
 ====
 
+That makes the tests happy:
 
-And we're there!  A quick commit:
+----
+Found 29 test(s).
+[...]
+OK (skipped=1)
+----
+
+
+We're there!  A quick commit:
 
 [role="skipme"]
 [subs="specialcharacters,quotes"]
@@ -704,13 +737,13 @@ $ *git commit -m "implement ExistingListItemForm, add DUPLICATE_ITEM_ERROR messa
 
 === Using the Existing List Item Form in the List View
 
-((("duplicate items testing", "in the list view", secondary-sortas="list view", id="DITlist15")))Now
-let's see if we can put this form to work in our view.
+((("duplicate items testing", "in the list view", secondary-sortas="list view", id="DITlist15")))
+Now let's see if we can put this form to work in our view.
 
 We remove the skip, and while we're at it, we can use our new constant. Tidy.
 
 [role="sourcecode"]
-.src/lists/tests/test_views.py (ch15l014)
+.src/lists/tests/test_views.py (ch16l014)
 ====
 [source,python]
 ----
@@ -730,7 +763,7 @@ from lists.forms import (
 ----
 ====
 
-That brings back our integrity error:
+We see our `IntegrityError` once again:
 
 ----
 django.db.utils.IntegrityError: UNIQUE constraint failed: lists_item.list_id,
@@ -740,7 +773,7 @@ lists_item.text
 Our fix for this is to switch to using the new form class:
 
 [role="sourcecode"]
-.src/lists/views.py (ch15l016)
+.src/lists/views.py (ch16l016)
 ====
 [source,python]
 ----
@@ -748,22 +781,46 @@ from lists.forms import ExistingListItemForm, ItemForm
 [...]
 def view_list(request, list_id):
     our_list = List.objects.get(id=list_id)
-    form = ExistingListItemForm(for_list=our_list)
+    form = ExistingListItemForm(for_list=our_list)  # <1>
 
     if request.method == "POST":
-        form = ExistingListItemForm(for_list=our_list, data=request.POST)
+        form = ExistingListItemForm(for_list=our_list, data=request.POST)  # <1>
         if form.is_valid():
-            form.save()
+            form.save(for_list=our_list)  # <2>
             [...]
     [...]
 ----
 ====
 
-// TODO: change to form.save(for_list=our_list) 
-// and then proceed with the different save method
-// via a scratchpad or something
+<1> We swap out `ItemForm` for `ExistingListItemForm`, and pass in the `for_list=`.
 
-And that _almost_ fixes everything, except for an unexpected fail:
+<2> This is a bit annoying, we're duplicating the `for_list=` argument.
+    This form should already know this!
+
+==== Customising the Save Method on Our New Form
+
+Programming by wishful thinking,
+let's specify in our _views.py_ that we wish we could call `save()`
+without the duplicated argument:
+
+[role="sourcecode"]
+.src/lists/views.py (ch16l016-1)
+====
+[source,diff]
+----
+@@ -25,6 +25,6 @@ def view_list(request, list_id):
+     if request.method == "POST":
+         form = ExistingListItemForm(for_list=our_list, data=request.POST)
+         if form.is_valid():
+-            form.save(for_list=our_list)
++            form.save()
+             return redirect(our_list)
+     return render(request, "list.html", {"list": our_list, "form": form})
+
+----
+====
+
+That gives us a failure as expected:
 
 ----
   File "...goat-book/src/lists/views.py", line 28, in view_list
@@ -772,18 +829,12 @@ And that _almost_ fixes everything, except for an unexpected fail:
 TypeError: ItemForm.save() missing 1 required positional argument: 'for_list'
 ----
 
-It's happening when we try to call `form.save()`.
-What's gone wrong is that `ExistingListItemForm` has inherited
-the custom save method from `ItemForm`,
-which we don't need for `ExistingListItemForm`.
+Let's drop down to the forms level,
+and write another unit test for how we want our save method to work:
 
-Let's make a quick unit test for that:
-
-// DAVID: When the tests are failing it's a smell to be writing another test - we should be trying
-// to get these passing first, no?
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py (ch15l017)
+.src/lists/tests/test_forms.py (ch16l017)
 ====
 [source,python]
 ----
@@ -802,7 +853,7 @@ class ExistingListItemFormTest(TestCase):
 We can make our form call the grandparent save method:
 
 [role="sourcecode"]
-.src/lists/forms.py (ch15l018)
+.src/lists/forms.py (ch16l018)
 ====
 [source,python]
 ----
@@ -823,7 +874,7 @@ class ExistingListItemForm(ItemForm):
 // SEBASTIAN: IMHO it's actually Django's fault that it handles code reuse using inheritance and methods overriding
 //      Wouldn't do the same thing, but it's your book and your opinion so I shall close my mouth :D
 
-Let's run the tests!  All the unit tests pass:
+OK, how does that look?  Yep, both the forms level and views level tests now pass.
 
 [subs="specialcharacters,macros"]
 ----
@@ -834,7 +885,11 @@ Ran 30 tests in 0.082s
 OK
 ----
 
-But we still have something to do about our FTs:
+Time to see what our FTs think!
+
+=== The FTs Pick Up an Issue with Bootstrap Classes
+
+Unfortunately, they're telling us we're not done:
 
 [subs="specialcharacters,macros"]
 ----
@@ -847,19 +902,41 @@ AssertionError: '' != "You've already got this in your list"
 + You've already got this in your list
 ----
 
-The error message isn't being displayed because Bootstrap requires form elements
+Let's spin up the server with `runserver`, and try it out manually,
+with DevTools open, to see what's going on.
+If you look through the HTML, you'll see our error div is there,
+with the correct error text, but it's greyed out, indicating that it's hidden,
+as in <<devtools_error_div_hidden>>:
+
+[[devtools_error_div_hidden]]
+.Our Error Div is There But it's Hidden
+image:images/devtools_error_div_hidden.png["Our page has a duplicate item in the table and in the form, and devtools is open showing us that the error IS actually in the page HTML, but it's greyed out, to indicate that it is hidden."]
+
+I had to dig through the docs a little,footnote:[
+https://getbootstrap.com/docs/5.2/forms/validation/#server-side]
+but it turns out that Bootstrap requires form elements
 with errors to have _another_ custom class, `is-invalid`.
 
-// TODO: screenshot of devtools trying this out.
+You can actually try this out in devtools!
+If you double-click, you can actually edit the HTML, and add the class,
+as in <<devtools_closeup_edit_html>>:
 
-I'm starting to get a bit nervous about the amount of hackery
-we're doing in our forms now, but let's try this out nonetheless.
+[[devtools_closeup_edit_html]]
+.Hack it in Manually Yay
+image:images/devtools_closeup_edit_html.png["A close-up on the Devtools HTML inspector, showing one of the HTML elements open for editing.  I'm adding the 'is-invalid' class to the main input field."]
+
+
+=== Conditionally Customising CSS Classes For Invalid Forms
+
+Speaking of hackery, I'm starting to get a bit nervous
+about the amount of hackery we're doing in our forms now,
+but let's try this out nonetheless.
 
 We want this behaviour for both types of form really,
 so it can go in the tests for the parent `ItemForm` class:
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py (ch15l019-1)
+.src/lists/tests/test_forms.py (ch16l019-1)
 ====
 [source,python]
 ----
@@ -883,13 +960,13 @@ class ItemFormTest(TestCase):
 ----
 ====
 
-<1> Here's where we inspect the `class` attribute on the input field widget
+<1> Here's where you can inspect the `class` attribute on the input field widget
 
 
 And here's how we can make it work, by overriding the `is_valid()` method:
 
 [role="sourcecode"]
-.src/lists/forms.py (ch15l019-2)
+.src/lists/forms.py (ch16l019-2)
 ====
 [source,python]
 ----
@@ -966,7 +1043,7 @@ but I suspect that it might be sorting alphabetically based on list text instead
 so I'll pick some text values designed to test that hypothesis:
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch15l020)
+.src/lists/tests/test_models.py (ch16l020)
 ====
 [source,python]
 ----
@@ -1010,7 +1087,7 @@ NOTE: Ordinarily you would be wary of adding more failing tests
 
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch15l021)
+.src/lists/tests/test_models.py (ch16l021)
 ====
 [source,python]
 ----
@@ -1032,7 +1109,7 @@ As well as the other two failures.  Let's start fixing them all now:
 
 
 [role="sourcecode"]
-.src/lists/models.py (ch15l022)
+.src/lists/models.py (ch16l022)
 ====
 [source,python]
 ----
@@ -1057,7 +1134,7 @@ That confirms our suspicion that the ordering was alphabetical.
 We can fix that in the `class Meta`:
 
 [role="sourcecode"]
-.src/lists/models.py (ch15l023)
+.src/lists/models.py (ch16l023)
 ====
 [source,python]
 ----
@@ -1088,7 +1165,7 @@ I was quite baffled...]
 in our test:
 
 [role="sourcecode"]
-.src/lists/tests/test_models.py (ch15l024)
+.src/lists/tests/test_models.py (ch16l024)
 ====
 [source,python]
 ----
@@ -1124,7 +1201,7 @@ Migrations for 'lists':
   src/lists/migrations/0006_alter_item_options.py
     ~ Change Meta options on item
 ----
-//ch15l025
+//ch16l024-1
 
 And as a final check, we rerun 'all' the FTs:
 
@@ -1275,7 +1352,7 @@ but at least all of our bootstrap classes will be in one place,
 where we expect then, in the template:
 
 [role="sourcecode"]
-.src/lists/templates/base.html (ch15l025)
+.src/lists/templates/base.html (ch16l025)
 ====
 [source,diff]
 ----
@@ -1349,7 +1426,7 @@ Now let's start tidying up our forms.
 We can start by deleting the three presentation-layer tests from `ItemFormTest`,
 
 [role="sourcecode"]
-.src/lists/tests/test_forms.py (ch15l026)
+.src/lists/tests/test_forms.py (ch16l026)
 ====
 [source,diff]
 ----
@@ -1400,8 +1477,8 @@ We can start by deleting the three presentation-layer tests from `ItemFormTest`,
 And now we can remove all that custom logic from the base `ItemForm` class:
 
 
-[role="sourcecode dofirst-ch15l027-1"]
-.src/lists/forms.py (ch15l027)
+[role="sourcecode dofirst-ch16l027-1"]
+.src/lists/forms.py (ch16l027)
 ====
 [source,diff]
 ----
@@ -1452,7 +1529,7 @@ rather than relying on the ModelForm magic:
 
 
 [role="sourcecode"]
-.src/lists/forms.py (ch15l028)
+.src/lists/forms.py (ch16l028)
 ====
 [source,diff]
 ----
@@ -1552,6 +1629,7 @@ class ListViewTest(TestCase):
         response = self.client.get(f"/lists/{mylist.id}/")  # <1>
         self.assertTemplateUsed(response, "list.html")  # <2>
     def test_renders_input_form(self):
+        parsed = lxml.html.fromstring(response.content)  # <3>
         self.assertIn("text", [input.get("name") for input in inputs])  # <3>
     def test_displays_only_items_for_that_list(self):
         self.assertContains(response, "itemey 1")  # <4>
@@ -1583,6 +1661,7 @@ class ListViewTest(TestCase):
 <3> Check that key parts of your HTML are present.
     Things that are critical to the integration of frontend and backend
     are good candidates, like form action and input name attributes.
+    Using `lxml` might be overkill, but it does give you less brittle tests.
 
 <4> Think about smoke-testing any other template contents,
     or any logic in the template:
