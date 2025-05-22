@@ -103,14 +103,8 @@ class SourceTree:
             # prevent stdout and stderr from appearing to come out in wrong order
             env["PYTHONUNBUFFERED"] = "1"
 
-        # TODO: move this out into book_tester.py,
-        # this is not the right level of abstraction for this hack.
-        actual_command = command
-        if command.startswith("curl"):
-            actual_command = command.replace("curl", "curl --silent --show-error")
-
         process = subprocess.Popen(
-            actual_command,
+            command,
             shell=True,
             cwd=cwd,
             executable="/bin/bash",
