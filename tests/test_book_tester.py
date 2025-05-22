@@ -686,6 +686,15 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
             bad_actual = "Closing Geoff"
             self.assert_console_output_correct(bad_actual, expected)
 
+    def test_ignores_minor_differences_in_curl_output5(self):
+        actual = "0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying [::1]:8888..."
+        expected = Output("*   Trying ::1:8888...")
+        self.assert_console_output_correct(actual, expected)
+        with self.assertRaises(AssertionError):
+            bad_actual = "10* Hi"
+            expected = Output("*Hi")
+            self.assert_console_output_correct(bad_actual, expected)
+
     def test_ignores_git_localisation_uk_vs_usa(self):
         actual = "Initialized empty Git repository in somewhere/.git/"
         expected = Output("Initialised empty Git repository in somewhere/.git/")

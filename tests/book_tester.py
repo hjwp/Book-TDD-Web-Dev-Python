@@ -104,11 +104,7 @@ def strip_selenium_trace_ids(output):
 
 
 def fix_firefox_esr_version(output):
-    return re.sub(
-        r"(\d\d\d\.\d+\.?\d+)esr",
-        r"128.10.1esr",
-        output
-    )
+    return re.sub(r"(\d\d\d\.\d+\.?\d+)esr", r"128.10.1esr", output)
 
 
 def strip_session_ids(output):
@@ -246,6 +242,14 @@ def fix_curl_stuff(output):
         fixed,
     )
     return fixed
+
+def fix_curl_linebreak_after_download(output):
+    return re.sub(
+        r"\*(\s+)Trying",
+        "\n*\\1Trying",
+        output,
+    )
+
 
 
 SQLITE_MESSAGES = {
@@ -472,6 +476,7 @@ class ChapterTest(unittest.TestCase):
         actual_fixed = strip_session_ids(actual_fixed)
         actual_fixed = strip_docker_image_ids_and_creation_times(actual_fixed)
         actual_fixed = fix_curl_stuff(actual_fixed)
+        actual_fixed = fix_curl_linebreak_after_download(actual_fixed)
         actual_fixed = strip_localhost_port(actual_fixed)
         actual_fixed = strip_selenium_trace_ids(actual_fixed)
         actual_fixed = fix_firefox_esr_version(actual_fixed)
