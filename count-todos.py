@@ -1,5 +1,6 @@
 import csv
 import datetime
+import re
 import sys
 from pathlib import Path
 
@@ -13,5 +14,6 @@ for path in sorted(
     + list(Path(".").rglob("appendix*.asciidoc"))
 ):
     chapter_name = str(path).replace(".asciidoc", "")
-    todos = [path.read_text().count(thing) for thing in MARKERS]
+    contents = path.read_text()
+    todos = [len(re.findall(rf"\b{thing}\b", contents)) for thing in MARKERS]
     out.writerow([today.isoformat(), chapter_name] + todos)
