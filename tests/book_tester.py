@@ -717,7 +717,6 @@ class ChapterTest(unittest.TestCase):
             "home.html",
             "list.html",
             "base.html",
-            "fabfile.py",
             "test_",
             "base.py",
             "test_my_lists.py",

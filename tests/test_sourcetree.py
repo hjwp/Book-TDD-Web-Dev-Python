@@ -618,20 +618,6 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         output = sourcetree.run_command(command, user_input="yes")
         assert "OK" in output
 
-    @patch("sourcetree.subprocess")
-    def test_special_cases_fab_deploy(self, mock_subprocess):
-        mock_subprocess.Popen.return_value.returncode = 0
-        mock_subprocess.Popen.return_value.communicate.return_value = "a", "b"
-        sourcetree = SourceTree()
-        sourcetree.run_command("fab deploy:host=elspeth@staging.ottg.co.uk")
-        expected = (
-            "cd deploy_tools &&"
-            " fab -D -i"
-            " ~/Dropbox/Book/.vagrant/machines/default/virtualbox/private_key"
-            " deploy:host=elspeth@staging.ottg.co.uk"
-        )
-        assert mock_subprocess.Popen.call_args[0][0] == expected
-
 
 class CommitTest(unittest.TestCase):
     def test_init_from_example(self):
