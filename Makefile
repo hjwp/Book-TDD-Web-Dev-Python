@@ -85,6 +85,10 @@ xmllint_%: %.asciidoc
 		-e 's/&nbsp;/\&#160;/g' \
 		| xmllint --noent --noout -
 
+
+%.xml: %.asciidoc
+	asciidoctor -b docbook $<
+
 .PHONY: clean-docker
 clean-docker:
 	-docker kill $$(docker ps -q)
