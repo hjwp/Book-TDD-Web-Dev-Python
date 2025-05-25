@@ -73,11 +73,23 @@ testall4: build
 test_%: %.html $(TMPDIR)
 	$(VENV)/bin/pytest -s --no-summary ./tests/$@.py
 
+.PHONY: xmllint_%
+xmllint_%: %.asciidoc
+	asciidoctor -b docbook $< -o - | sed \
+		-e 's/&mdash;/\&#8212;/g' \
+		-e 's/&ldquo;/\&#8220;/g' \
+		-e 's/&rdquo;/\&#8221;/g' \
+		-e 's/&lsquo;/\&#8216;/g' \
+		-e 's/&rsquo;/\&#8217;/g' \
+		-e 's/&hellip;/\&#8230;/g' \
+		-e 's/&nbsp;/\&#160;/g' \
+		| xmllint --noent --noout -
+
 .PHONY: clean-docker
 clean-docker:
 	-docker kill $$(docker ps -q)
-	docker rmi -f busybox 
-	docker rmi -f superlists 
+	docker rmi -f busybox
+	docker rmi -f superlists
 	# env PATH=misc:$PATH
 
 .PHONY: get-sudo
