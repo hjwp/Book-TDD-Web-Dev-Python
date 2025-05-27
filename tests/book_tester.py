@@ -243,13 +243,13 @@ def fix_curl_stuff(output):
     )
     return fixed
 
+
 def fix_curl_linebreak_after_download(output):
     return re.sub(
         r"\*(\s+)Trying",
         "\n*\\1Trying",
         output,
     )
-
 
 
 SQLITE_MESSAGES = {
@@ -1021,13 +1021,13 @@ class ChapterTest(unittest.TestCase):
 
         elif listing.type == "output":
             test_run = self.run_unit_tests()
-            if "OK" in test_run and "OK" not in listing:
+            if "OK" in test_run.splitlines() and "OK" not in listing.splitlines():
                 print("unit tests pass, must be an FT:\n", test_run)
                 test_run = self.run_fts()
             try:
                 self.assert_console_output_correct(test_run, listing)
             except AssertionError as e:
-                if "OK" in test_run and "OK" in listing:
+                if "OK" in test_run.splitlines() and "OK" not in listing.splitlines():
                     print("got error when checking unit tests", e)
                     test_run = self.run_fts()
                     self.assert_console_output_correct(test_run, listing)
