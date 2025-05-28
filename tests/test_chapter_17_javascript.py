@@ -10,7 +10,6 @@ class Chapter16Test(ChapterTest):
 
     def test_listings_and_commands_and_output(self):
         self.parse_listings()
-        # self.fail('\n'.join(f'{i}: {l.type} -- {l}' for i, l in enumerate(self.listings)))
         self.start_with_checkout()
 
         # sanity checks
@@ -21,8 +20,8 @@ class Chapter16Test(ChapterTest):
         # skip some inline bash comments
         self.skip_with_check(15, "if you're on Windows")
         self.skip_with_check(17, "delete all the other stuff")
-        self.skip_with_check(73, "all our js")
-        self.skip_with_check(75, "changes to the base template")
+        self.skip_with_check(74, "all our js")
+        self.skip_with_check(76, "changes to the base template")
 
         # hack fast-forward
         self.skip_forward_if_skipto_set()
