@@ -1,5 +1,5 @@
 [[chapter_20_mocking_1]]
-== Mocks and Mocking 1: Using Mocks to Test External Dependencies
+== Using Mocks to Test External Dependencies
 
 .A Note for Early Release Readers
 ****
@@ -10,7 +10,6 @@ This will be the 20th chapter of the final book. The GitHub repo is available at
 If you have comments about how we might improve the content and/or examples in this book, or if you notice missing material within this chapter, please reach out to the author at obeythetestinggoat@gmail.com.
 ****
 
-// HARRY: Can you remove "Mocks and Mocking 1" and just use the subtitle for the title of this chapter? It's clear I think that chapters 20 and 21 are conneced
 
 .Warning, Recently Updated
 *******************************************************************************
@@ -34,9 +33,7 @@ so for the purpose of these unit tests, we'll pretend that this nice Django shor
 ((("mocks", "benefits and drawbacks of")))
 
 Am I telling you _not_ to use Django's `mail.outbox`?
-No; use it, it's a neat shortcut.
-// DAVID: More than just a shortcut, it's a much better approach than mocking because it's
-// a documented, swappable API.
+No; use it, it's a neat helper.
 But I want to teach mocks because they're a useful general-purpose tool
 for unit testing external dependencies.
 You may not always be using Django!
@@ -112,10 +109,6 @@ def send_login_email(request):
 
 
 <1> I've added the import of the `send_mail` function as a placeholder for now.
-
-// DAVID: This wrongfooted me as I forgot to include it here (or maybe my IDE linting
-// automatically removed the unused import). Might be better to include in the same snippet
-// as we use it.
 
 If you've got the plumbing right, the tests should pass at this point:
 
@@ -201,7 +194,8 @@ import accounts.views  # <2>
 
 
 class SendLoginEmailViewTest(TestCase):
-    [...]
+    def test_redirects_to_home_page(self):
+        [...]
 
     def test_sends_mail_to_address_from_post(self):
         self.send_mail_called = False
@@ -293,11 +287,18 @@ So let's call `send_mail`, naively:
 ====
 [source,python]
 ----
+from django.core.mail import send_mail  # <1>
+[...]
+
 def send_login_email(request):
-    send_mail()
+    send_mail()  # <2>
     return redirect("/")
 ----
 ====
+
+<1> This import should still be in the file from earlier,
+    but in case an overenthusiastic IDE has removed it,
+    I'm re-listing it for you here.
 
 
 That gives:
@@ -368,8 +369,10 @@ OK
 
 
 Brilliant!  We've managed to write tests for some code, that
-ordinarilyfootnote:[Yes, I know Django already mocks out emails using `mail.outbox` for us,
-but, again, let's pretend it doesn't. What if you were using Flask?
+ordinarilyfootnote:[Again,
+we're acting as if Django's `mail.outbox` didn't exist,
+for the sake of learning.
+After all, what if you were using Flask?
 Or what if this was an API call, not an email?]
 would go out and try to send real emails across the internet,
 and by "mocking out" the `send_email` function,
@@ -442,8 +445,12 @@ from unittest import mock
 from django.test import TestCase
 [...]
 
-    @mock.patch("accounts.views.send_mail")
-    def test_sends_mail_to_address_from_post(self, mock_send_mail):
+class SendLoginEmailViewTest(TestCase):
+    def test_redirects_to_home_page(self):
+        [...]
+
+    @mock.patch("accounts.views.send_mail")  # <1>
+    def test_sends_mail_to_address_from_post(self, mock_send_mail):  # <2>
         self.client.post(
             "/accounts/send_login_email", data={"email": "edith@example.com"}
         )
@@ -458,9 +465,12 @@ from django.test import TestCase
 ====
 // CSANAD: using `self.assertTrue(mock_send_mail.called)` would be nicer.
 
-// SEBASTIAN: I'd give some hint (maybe visual?) that one should look at the decorator.
-//      At first, I got lost as I was expecting something to change in the test itself,
-//      for example mock.patch used as context manager.
+<1> Here's the decorator--we'll go into detail about how it works shortly.
+
+<2> Here's the extra argument we add to the test method.
+    Again, detailed explanation to come,
+    but as you'll see, it's going to do most of the work that `fake_send_mail`
+    was doing before.
 
 If you rerun the tests, you'll see they still pass.
 And since we're always suspicious of any test that still passes after a big change,
@@ -588,18 +598,9 @@ to log in\nStart a new To-Do list'
 ----
 
 Submitting the email address currently has no effect,
-because the form isn't sending the data anywhere.
-// CSANAD: It is sending the data!
-// In the previous chapter at ch18l020 we set the form to
-// `<form method="POST" action="/accounts/send_login_email">`
-// I suggest moving this changing of the hard-coded url higher up, maybe after
-// ch20l004 along something like:
-// "...and while we are at it, we can change the hard-coded url in the form to
-// the named-path we just re-introduced from the spike into `src/accounts/urls.py`:
-// `<form method="POST" action="{% url 'send_login_email' %}">`
 
-Let's wire it up in _base.html_:
-// DAVID: I'm not sure this is correct, my code already is wired up (albeit to the hard-coded url).
+Hmmm.  Currently our form is hardcoded to send to _/accounts/send_login_email_,
+let's switch to using the `{% url %}` syntax just to make sure it's the right URL:
 
 [role="sourcecode small-code"]
 .src/lists/templates/base.html (ch20l012)
@@ -609,12 +610,10 @@ Let's wire it up in _base.html_:
 <form method="POST" action="{% url 'send_login_email' %}">
 ----
 ====
-// DAVID: There are two forms in base.html, might be worth making it clear which one
-// just in case they accidentally do the wrong one.
 
 
-Does that help?  Nope, same error.  Why?
-Because we're not actually displaying a success message after we send the user an email.
+Does that help?  Nope, same error.  Why? Ah, nothing to do with the URL actually,
+it's because we're not displaying a success message after we send the user an email.
 Let's add a test for that.
 
 
@@ -756,8 +755,9 @@ test what happens, not how you do it.
 Mocks often end up erring too much on the side of the "how" rather than the "what".
 
 TIP: Test should be about behaviour, not implementation.
+    If your tests tie you to specific implementation details,
+    they will prevent you from refactoring as freely.
 
-// DAVID: Say a bit about why?
 *******************************************************************************
 
 
@@ -808,8 +808,6 @@ $ pass:quotes[*python src/manage.py test functional_tests.test_login*]
 [...]
 AssertionError: 'Use this link to log in' not found in 'body text tbc'
 ----
-// CSANAD: we haven't changed the views or the models, and we just had the unit
-// tests passing before the TIP, so running it again is redundant here.
 
 
 We need to fill out the body text of the email,
@@ -930,7 +928,16 @@ Let's spec out two tests for that:
 from accounts.models import Token
 [...]
 
-    def test_creates_token_associated_with_email(self):
+class SendLoginEmailViewTest(TestCase):
+    def test_redirects_to_home_page(self):
+        [...]
+    def test_adds_success_message(self):
+        [...]
+    @mock.patch("accounts.views.send_mail")
+    def test_sends_mail_to_address_from_post(self, mock_send_mail):
+        [...]
+
+    def test_creates_token_associated_with_email(self):  # <1>
         self.client.post(
             "/accounts/send_login_email", data={"email": "edith@example.com"}
         )
@@ -938,7 +945,7 @@ from accounts.models import Token
         self.assertEqual(token.email, "edith@example.com")
 
     @mock.patch("accounts.views.send_mail")
-    def test_sends_link_to_login_using_token_uid(self, mock_send_mail):
+    def test_sends_link_to_login_using_token_uid(self, mock_send_mail):  # <2>
         self.client.post(
             "/accounts/send_login_email", data={"email": "edith@example.com"}
         )
@@ -949,15 +956,14 @@ from accounts.models import Token
         self.assertIn(expected_url, body)
 ----
 ====
-// CSANAD: will that be clear these go under `SendLoginEmailViewTest`?
 
-The first test is fairly straightforward;
-it checks that the token we create in the database
-is associated with the email address from the post request.
+<1> The first test is fairly straightforward;
+  it checks that the token we create in the database
+  is associated with the email address from the post request.
 
-The second one is our second test using mocks.
-We mock out the `send_mail` function again using the `patch` decorator,
-but this time we're interested in the `body` argument from the call arguments.
+<2> The second one is our second test using mocks.
+  We mock out the `send_mail` function again using the `patch` decorator,
+  but this time we're interested in the `body` argument from the call arguments.
 
 Running them now will fail because we're not creating any kind of token:
 
@@ -1040,11 +1046,16 @@ def send_login_email(request):
     You can find lots more discussion on this if you're curious
     by doing a bit of googling.
 
-
-// TODO: investigate kwards for reverse() call
+// IDEA: investigate kwargs for reverse() call
 // reverse("login", token=str(token.uid))
 
-// DAVID: The unit tests now pass, worth mentioning?
+
+And the tests pass.
+
+----
+OK
+----
+
 
 Two more pieces in the puzzle.
 We need an authentication backend,
