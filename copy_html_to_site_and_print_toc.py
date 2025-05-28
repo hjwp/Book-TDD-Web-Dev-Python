@@ -2,8 +2,9 @@
 
 import json
 import subprocess
-from collections import namedtuple
+from collections.abc import Iterator
 from pathlib import Path
+from typing import NamedTuple
 
 from lxml import html
 
@@ -13,7 +14,13 @@ CHAPTERS = [
     c.replace(".asciidoc", ".html")
     for c in json.loads(Path("atlas.json").read_text())["files"]
 ]
-for tweak_chap in ["praise.html", "part1.html", "part2.html", "part3.html"]:
+for tweak_chap in [
+    "praise.html",
+    "part1.html",
+    "part2.html",
+    "part3.html",
+    "part4.html",
+]:
     CHAPTERS[CHAPTERS.index(tweak_chap)] = tweak_chap.replace(".", ".forbook.")
 CHAPTERS.remove("cover.html")
 CHAPTERS.remove("titlepage.html")
@@ -23,7 +30,12 @@ CHAPTERS.remove("ix.html")
 CHAPTERS.remove("author_bio.html")
 CHAPTERS.remove("colo.html")
 
-ChapterInfo = namedtuple("ChapterInfo", "href_id chapter_title subheaders xrefs")
+
+class ChapterInfo(NamedTuple):
+    href_id: str
+    chapter_title: str
+    subheaders: list[str]
+    xrefs: list[str]
 
 
 def make_chapters():
@@ -31,13 +43,13 @@ def make_chapters():
         subprocess.check_call(["make", chapter], stdout=subprocess.PIPE)
 
 
-def parse_chapters():
+def parse_chapters() -> Iterator[tuple[str, html.HtmlElement]]:
     for chapter in CHAPTERS:
         raw_html = Path(chapter).read_text()
         yield chapter, html.fromstring(raw_html)
 
 
-def get_anchor_targets(parsed_html):
+def get_anchor_targets(parsed_html) -> list[str]:
     ignores = {"header", "content", "footnotes", "footer", "footer-text"}
     all_ids = [a.get("id") for a in parsed_html.cssselect("*[id]")]
     return [i for i in all_ids if not i.startswith("_") and i not in ignores]
@@ -103,7 +115,7 @@ def fix_xrefs(contents, chapter, chapter_info):
     return html.tostring(parsed)
 
 
-def fix_title(contents, chapter, chapter_info):
+def fix_appendix_titles(contents, chapter, chapter_info):
     parsed = html.fromstring(contents)
     titles = parsed.cssselect("h2")
     if titles and titles[0].text.startswith("Appendix A"):
@@ -121,7 +133,7 @@ def copy_chapters_across_with_fixes(chapter_info, fixed_toc):
     for chapter in CHAPTERS:
         old_contents = Path(chapter).read_text()
         new_contents = fix_xrefs(old_contents, chapter, chapter_info)
-        new_contents = fix_title(new_contents, chapter, chapter_info)
+        new_contents = fix_appendix_titles(new_contents, chapter, chapter_info)
         parsed = html.fromstring(new_contents)
         body = parsed.cssselect("body")[0]
         if parsed.cssselect("#header"):
@@ -158,7 +170,10 @@ def fix_toc(toc, chapter_info):
         if chap.href_id:
             href_mappings["#" + chap.href_id] = f"/book/{chapter}"
         for subheader in chap.subheaders:
-            href_mappings["#" + subheader] = f"/book/{chapter}#{subheader}"
+            if subheader:
+                href_mappings["#" + subheader] = f"/book/{chapter}#{subheader}"
+            else:
+                print(f"Warning: {chapter} has a subheader with no ID")
 
     def fix_link(href):
         if href in href_mappings:
