@@ -21,11 +21,22 @@ obeythetestinggoat@gmail.com
 
 *******************************************************************************
 
+[role="scratchpad"]
+*****
+* _[strikethrough line-through]#Token model with email + uid#_
+* _view to create token + send login email incl. url w/ token uid_
+* _[strikethrough line-through]#Custom user model with USERNAME_FIELD=email#_
+* _Authentication backend with authenticate() and get_user() functions_
+* _Register auth backend in settings.py_
+* _login view calls authenticate() and login() from django.contrib.auth_
+*****
 
 ((("Django framework", "sending emails")))
 ((("emails, sending from Django")))
 ((("mail.out box attribute")))
-In this chapter we'll start testing the parts of our code that send emails.
+In this chapter we'll start testing the parts of our code that send emails,
+ie the second item on our scratchpad.
+
 In the FT, you saw that Django gives us a way of retrieving
 any emails it sends by using the `mail.outbox` attribute.
 But in this chapter, I want to demonstrate a widespread testing technique called _mocking_,
@@ -60,6 +71,7 @@ but they're a more advanced topic.
 My second book, https://www.cosmicpython.com[Architecture Patterns with Python],
 goes into some detail on these alternatives.
 *******************************************************************************
+
 
 
 === Before We Start: Getting the Basic Plumbing In
@@ -842,11 +854,23 @@ AssertionError: Could not find url in email body:
 Use this link to log in
 ----
 
+OK I think we can call the send_login_email view done for now.
+
+[role="scratchpad"]
+*****
+* _[strikethrough line-through]#Token model with email + uid#_
+* _[strikethrough line-through]#view to create token + send login email incl. url w/ token uid#_
+* _[strikethrough line-through]#Custom user model with USERNAME_FIELD=email#_
+* _Authentication backend with authenticate() and get_user() functions_
+* _Register auth backend in settings.py_
+* _login view calls authenticate() and login() from django.contrib.auth_
+*****
+
 
 ==== Starting on the Login URL
 
 We're going to have to build some kind of URL!
-Let's build one that, again, just cheats:
+Let's build the minimal thing, just a placeholder really:
 
 
 [role="sourcecode"]
@@ -1056,30 +1080,31 @@ And the tests pass.
 OK
 ----
 
+I think _that's_ our send-login-email view done.
 
-Two more pieces in the puzzle.
-We need an authentication backend,
+[role="scratchpad"]
+*****
+* _[strikethrough line-through]#Token model with email + uid#_
+* _[strikethrough line-through]# _view to create token + send login email incl. url w/ token uid_
+* _[strikethrough line-through]#Custom user model with USERNAME_FIELD=email#_
+* _Authentication backend with authenticate() and get_user() functions_
+* _Register auth backend in settings.py_
+* _login view calls authenticate() and login() from django.contrib.auth_
+*****
+
+The next piece in the puzzle is the authentication backend,
 whose job it will be to examine tokens for validity
 and then return the corresponding users;
 then we need to get our login view to actually log users in,
 if they can authenticate.
 ((("", startref="Mpythong19")))((("", startref="Pmock19")))
-// DAVID: Starting this paragraph by talking about authentication backends
-// as a 'need' could leave readers behind. Maybe it would be better to point out that the user isn't actually
-// logged in, talk about HTTP being stateless and how Django uses sessions
-// to get around that, and then say we're going to solve the problem by
-// creating an authentication backend.
-// (Having said that, it might be much simpler just to use Django's session
-// framework directly and set the user in the session. The only snag might be integration
-// with the Django Admin but not sure if that's a concern here).
 
 
 === De-spiking Our Custom Authentication Backend
 
 ((("mocks", "de-spiking custom authentication")))
 ((("spiking and de-spiking", "de-spiking")))
-Our custom authentication backend is next.
-Here's how it looked in the spike:
+Here's how our authentication backend looked in the spike:
 
 
 [[spike-reminder]]
@@ -1117,7 +1142,7 @@ Decoding this:
 
 
 ==== 1 if = 1 More Test
-// DAVID: I was confused by how to read this heading for a moment. (I get it now.)
+
 A rule of thumb for these sorts of tests:
 any `if` means an extra test, and any `try/except` means an extra test,
 so this should be about three tests.
@@ -1239,12 +1264,8 @@ class PasswordlessAuthenticationBackend:
 ====
 
 
-That changes the `FAILED` test to also result in a "matching query does not
-exist" `ERROR`.
-// CSANAD: the first test was already passing even with the placeholder
-// `authenticate`, the second was failing and the third resulted in an error.
-// With this first cut version the passing test remains passing and the other
-// two result in DoesNotExist errors.
+Now, instead of one FAIL and one ERROR,
+we get two ERRORs:
 
 
 [subs="specialcharacters,macros"]
@@ -1263,13 +1284,16 @@ if_token_exists)
 accounts.models.User.DoesNotExist: User matching query does not exist.
 ----
 
-Let's fix each of those in turn:
-// CSANAD: I think it would be nice to explain what this error means and why we
-// can fix it by returning None when it occurs.
-// E.g. "The token with the given `uid` does not exist - this means we couldn't
-// find the uuid in the database, so we should not authorize this login request.
-// In the password-based world this would be the equivalent of an incorrect or
-// missing password."
+Notice that our third test,
+`test_returns_existing_user_with_correct_email_if_token_exists`,
+is actually passing.  Our code _does_ currently handle the "happy path",
+where both the token and the user already exist in the database.
+
+Let's fix each of the remaining ones in turn.
+Notice how the test names are telling us exactly what we need to do.
+First, `test_returns_None_if_no_such_token`,
+which is telling us what to do if the token doesn't exist:
+
 
 [role="sourcecode"]
 .src/accounts/authentication.py (ch20l027)
@@ -1298,11 +1322,9 @@ accounts.models.User.DoesNotExist: User matching query does not exist.
 FAILED (errors=1)
 ----
 
+OK, so we need to return a `new_user_with_correct_email` `if_token_exists`?
+We can do that!
 
-And we can handle the final case like this:
-// CSANAD: again, I would add a bit more explanation:
-// "If we can't find a user with the given email, then we will treat it as a
-// sign-up request for a new user instead."
 
 [role="sourcecode"]
 .src/accounts/authentication.py (ch20l028)
@@ -1321,7 +1343,7 @@ And we can handle the final case like this:
 ====
 // DAVID: Consider User.objects.get_or_create.
 
-That's turned out neater than our spike!
+That's turned out neater than our <<spike-reminder,spike>>!
 
 
 ==== The get_user Method
@@ -1465,12 +1487,21 @@ OK
 
 And we have a working authentication backend!
 
+[role="scratchpad"]
+*****
+* _[strikethrough line-through]#Token model with email + uid#_
+* _[strikethrough line-through]# _view to create token + send login email incl. url w/ token uid_
+* _[strikethrough line-through]#Custom user model with USERNAME_FIELD=email#_
+* _[strikethrough line-through]#Authentication backend with authenticate() and get_user() functions#_
+* _Register auth backend in settings.py_
+* _login view calls authenticate() and login() from django.contrib.auth_
+*****
+
 
 Let's call that a win, and in the next chapter
 we'll work on integrating it into our login view,
 and getting our FT passing.
 
-// DAVID: Shall we do a commit?
 
 [[mocking-py-sidebar-1]]
 .On Mocking in Python
