@@ -1192,18 +1192,31 @@ And now let's add add a _test_models.py_ to say:
 ====
 [source,python]
 ----
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-User = get_user_model()  # <1>
+from accounts.models import User
 
 
 class UserModelTest(TestCase):
-    def test_user_is_valid_with_email_only(self):  # <2>
+    def test_user_is_valid_with_email_only(self):
         user = User(email="a@b.com")
         user.full_clean()  # should not raise
 ----
 ====
+
+
+That gives us the expected failure:
+
+
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+ImportError: cannot import name 'User' from 'accounts.models'
+(...goat-book/src/accounts/models.py)
+----
+
+////
 
 <1> `django.contrib.auth.get_user_model()` is a function that returns the
     user model class that is currently active in this project.
@@ -1212,10 +1225,36 @@ class UserModelTest(TestCase):
     and that Django is happy that it's a valid user model.
 
 <2> And here's our test.  Like our model, it's nice and minimal!
+Just for fun, let's try importing the "standard" Django user model,
+and seeing what the tests think about it:
+
+[role="sourcecode"]
+.src/accounts/models.py (ch19l024)
+====
+[source,python]
+----
+from django.contrib.auth import get_user_model
+from django.db import models
+
+User = get_user_model()  # <1>
+----
+
+<1> django.contrib.auth.get_user_model() is a function that returns
+    the currently-configured user model.
+    At this stage, that's Django's default one.
 
 
-// TODO: separate out a separate test for User == get_user_model()?
-// talk about how this checks the model is compatible with django's auth system
+[subs="specialcharacters,macros"]
+----
+$ pass:quotes[*python src/manage.py test accounts*]
+[...]
+django.core.exceptions.ValidationError: {'password': ['This field cannot be
+blank.'], 'username': ['This field cannot be blank.']}
+----
+
+// DAVID: It would be good to say what test command to run here, since
+// the previous one was just for the lists app.
+
 
 That gives us an expected failure; Django picks up its "normal" default user model,
 which has fields we don't want:
@@ -1231,10 +1270,13 @@ blank.'], 'username': ['This field cannot be blank.']}
 
 
 Password?  Username?  Bah!  How about this?
+////
+
+Ok let's try the absolute minimum then:
 
 
 [role="sourcecode"]
-.src/accounts/models.py (ch19l025)
+.src/accounts/models.py (ch19l024)
 ====
 [source,python]
 ----
@@ -1246,12 +1288,20 @@ class User(models.Model):
 ----
 ====
 
+That gives us an error because Django won't all models,
+unless they're in `INSTALLED_APPS`:
 
-And we wire it up inside _settings.py_, adding `accounts` to `INSTALLED_APPS`
-and a variable called `AUTH_USER_MODEL`:
+[subs="specialcharacters,macros"]
+----
+RuntimeError: Model class accounts.models.User doesn't declare an explicit
+app_label and isn't in an application in INSTALLED_APPS.
+----
+
+So let's add it to _settings.py_:
+
 
 [role="sourcecode"]
-.src/superlists/settings.py (ch19l026)
+.src/superlists/settings.py (ch19l025)
 ====
 [source,python]
 ----
@@ -1262,17 +1312,73 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "lists",
     "accounts",
+    "lists",
 ]
 
+----
+====
+
+
+And that gets our tests passing!
+
+
+----
+OK
+----
+
+Now let's see if we've built a user model that Django can actually work with.
+There's a built-in function in `django.contrib.auth` called `get_user_model()`
+which retrieves the currently active user model,
+and as we'll see, also performs some checks on it.
+Let's use it in our tests:
+
+
+
+[role="sourcecode"]
+.src/accounts/tests/test_models.py (ch19l026-1)
+====
+[source,python]
+----
+from django.contrib import auth
+from django.test import TestCase
+
+from accounts.models import User
+
+
+class UserModelTest(TestCase):
+    def test_model_is_configured_for_django_auth(self):
+        self.assertEqual(auth.get_user_model(), User)
+
+    def test_user_is_valid_with_email_only(self):
+        [...]
+----
+====
+
+That gives:
+
+----
+AssertionError: <class 'django.contrib.auth.models.User'> != <class
+'accounts.models.User'>
+----
+
+
+Ok so let's try wiring up our model inside _settings.py_,
+in a variable called `AUTH_USER_MODEL`:
+
+[role="sourcecode"]
+.src/superlists/settings.py (ch19l026-2)
+====
+[source,python]
+----
 AUTH_USER_MODEL = "accounts.User"
 ----
 ====
 
 
 Now when we run our tests, Django complains
-that our custom user model is missing a couple of bits of metadata:
+that our custom user model is missing a couple of bits of metadata.
+In fact, it's so unhappy that it wont even run the tests:
 
 
 [role="ignore-errors"]
@@ -1383,13 +1489,13 @@ Migrations for 'accounts':
 //ch19l031
 
 
-And the test passes:
+And our tests pass:
 
 [subs="specialcharacters,quotes"]
 ----
 $ *python src/manage.py test accounts*
 [...]
-Ran 1 tests in 0.001s
+Ran 2 tests in 0.001s
 OK
 ----
 
@@ -1424,6 +1530,12 @@ it would be better to have a specific test:
 ====
 [source,python]
 ----
+class UserModelTest(TestCase):
+    def test_model_is_configured_for_django_auth(self):
+        [...]
+    def test_user_is_valid_with_email_only(self):
+        [...]
+
     def test_email_is_primary_key(self):
         user = User(email="a@b.com")
         self.assertEqual(user.pk, "a@b.com")
@@ -1482,7 +1594,7 @@ Now both our tests pass:
 ----
 $ pass:quotes[*python src/manage.py test accounts*]
 [...]
-Ran 2 tests in 0.001s
+Ran 3 tests in 0.001s
 OK
 ----
 
@@ -1522,7 +1634,7 @@ and that ID shouldn't be the same two times in a row:
 ====
 [source,python]
 ----
-from accounts.models import Token
+from accounts.models import Token, User
 [...]
 
 
@@ -1629,7 +1741,7 @@ that should get us to passing tests:
 ----
 $ *python src/manage.py test accounts*
 [...]
-Ran 3 tests in 0.015s
+Ran 4 tests in 0.015s
 
 OK
 ----
