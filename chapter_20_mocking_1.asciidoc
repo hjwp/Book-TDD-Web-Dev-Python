@@ -166,28 +166,26 @@ or what's sometimes called https://en.wikipedia.org/wiki/Monkey_patch[monkeypatc
 Let's suppose that, as a first step,
 we want to get to some code that invokes `send_mail`
 with the right subject line, from address, and to address.
-// CSANAD: wouldn't "sender address" and "recipient address" sound better?
 That would look something like this:
 
 
 [role="sourcecode skipme"]
-.src/accounts/views.py
+.src/accounts/views.py (expected future contents)
 ====
 [source,python]
 ----
 def send_login_email(request):
-    email = request.POST['email']
-    # send_mail(
-    #     'Your login link for Superlists',
-    #     'body text tbc',
-    #     'noreply@superlists',
-    #     [email],
-    # )
-    return redirect('/')
+    email = request.POST["email"]
+    # expected future code:
+    send_mail(
+        "Your login link for Superlists",
+        "some kind of body text tbc",
+        "noreply@superlists",
+        [email],
+    )
+    return redirect("/")
 ----
 ====
-// DAVID: The send_mail function probably shouldn't be commented out here.
-// Also I'm a bit unclear whether or not I should be typing this in or just reading it.
 
 How can we test this, without calling the _real_ `send_mail` function?
 The answer is that our test can ask Python to swap out the `send_mail` function
@@ -233,8 +231,6 @@ class SendLoginEmailViewTest(TestCase):
 ----
 ====
 
-// SEBASTIAN: I really like this way of introducing [monkey]patching in tests, congrats
-
 <1> We define a `fake_send_mail` function,
     which looks like the real `send_mail` function,
     but all it does is save some information about how it was called,
@@ -244,9 +240,6 @@ class SendLoginEmailViewTest(TestCase):
 <2> Then, before we execute the code under test by doing the `self.client.post`,
     we swap out the real `accounts.views.send_mail`
     with our fake version—it's as simple as just assigning it.
-
-// DAVID: Maybe would be less confusing to some readers if fake_send_mail was in the module
-// scope, rather than as an inner function.
 
 // DAVID: Might be better to get everything else working, and the test passing, without send_mail at all.
 // Then we introduce it, run the test and see it fail because it has some dependencies? Then we can just concentrate on
@@ -390,12 +383,20 @@ Or what if this was an API call, not an email?]
 would go out and try to send real emails across the internet,
 and by "mocking out" the `send_email` function,
 we're able to write the tests and code all the same.
+
+But our hand-rolled mock has a couple of problems:
+
+* It involved a fair bit of boilerplate code,
+  population all those `self.xyz` variables to let us assert on them.
+
+* More importantly, although we didn't see this,
+  the monkeypatching will persist from one test to the next,
+  breaking isolation between tests.
+  This can cause serious confusion.
 ((("", startref="monkey19")))((("", startref="Mmanual19")))
 
+// TODO: illustrate this explicitly
 
-// DAVID: Worth finding a way to expose the problems with the current approach, in particular:
-// - the monkeypatch persists after the test runs.
-// - we've had to roll our own logic to see what it was called with.
 
 === The Python Mock Library
 
@@ -476,7 +477,6 @@ class SendLoginEmailViewTest(TestCase):
 
 ----
 ====
-// CSANAD: using `self.assertTrue(mock_send_mail.called)` would be nicer.
 
 <1> Here's the decorator--we'll go into detail about how it works shortly.
 
@@ -514,9 +514,6 @@ def send_login_email(request):
         [...]
 ----
 ====
-// CSANAD: I suggest adding a bit of a text for the print:
-// `print(f'DEBUG send_mail type:{type(send_mail)}')`
-// it's arguably better practice and certainly easier for the eyes to find
 
 Let's run the tests again:
 
@@ -635,16 +632,17 @@ Let's add a test for that.
 ((("Django framework", "messages framework")))
 We'll use Django's "messages framework",
 which is often used to display ephemeral "success" or "warning" messages
-to show the results of an action.
+to show the results of an action, something like:
+
+[[success-message]]
+.A green success message
+image::images/check_your_email.png["Screenshot of success message saying check your email, as it will look at the end of the de-spike."]
+
 Have a look at the
 https://docs.djangoproject.com/en/5.2/ref/contrib/messages/[django messages docs]
 if you haven't come across it already.
 
-Testing Django messages is a bit contorted--we have to pass `follow=True`
-to the test client to tell it to get the page after the 302-redirect,
-and examine its context for a list of messages
-(which we have to listify before it'll play nicely).
-Here's what it looks like:
+Testing Django messages is a bit contorted:
 
 
 [role="sourcecode"]
@@ -656,10 +654,10 @@ Here's what it looks like:
         response = self.client.post(
             "/accounts/send_login_email",
             data={"email": "edith@example.com"},
-            follow=True,
+            follow=True,  # <1>
         )
 
-        message = list(response.context["messages"])[0]
+        message = list(response.context["messages"])[0]  # <1>
         self.assertEqual(
             message.message,
             "Check your email, we've sent you a link you can use to log in.",
@@ -667,6 +665,14 @@ Here's what it looks like:
         self.assertEqual(message.tags, "success")
 ----
 ====
+
+<1> we have to pass `follow=True`
+    to the test client to tell it to get the page _after_ the 302-redirect.
+
+<2> Then we examine the response context for a in iterable with messages in,
+    which we have to listify before it'll play nicely.
+    (We'll use th these later use in a template with `{% for message in messages %}`).
+
 
 That gives:
 
@@ -698,8 +704,7 @@ def send_login_email(request):
     return redirect("/")
 ----
 ====
-// DAVID: Might be worth explaining how the messages framework works - i.e. that if you have a request,
-// you can add messages to the session which will be popped off and displayed in the response.
+
 
 [[mocks-tightly-coupled-sidebar]]
 .Mocks Can Leave You Tightly Coupled to the Implementation
@@ -1341,7 +1346,6 @@ We can do that!
             return None
 ----
 ====
-// DAVID: Consider User.objects.get_or_create.
 
 That's turned out neater than our <<spike-reminder,spike>>!
 
@@ -1356,8 +1360,6 @@ whose job is to retrieve a user based on their unique identifier (the email addr
 or to return `None` if it can't find one
 (have another look at <<spike-reminder,the spiked code>> if you need a
 reminder).
-// DAVID: I was a bit unclear what you meant here to start with. Maybe worth spelling out/reminding that
-// authentication backends need to implement a `get_user` method?
 
 Here are a couple of tests for those two requirements:
 
@@ -1518,13 +1520,16 @@ Mocking and external dependencies::
   ((("external dependencies")))
 
 The Mock library::
-  Michael Foord (who used to work for the company that spawned PythonAnywhere,
-  just before I joined) wrote the excellent "Mock" library
-  that's now been integrated into the standard library of Python 3.
-  It contains most everything you might need for mocking in Python.
+  The `unittest.mock` module from Python's standard library
+  contains most everything you might need for monkeypatching
+  and mocking in Python.footnote:[
+  This library was originally written as a standalone package by Michael Foord,
+  while he was working at the company that later spawned PythonAnywhere,
+  a few years before I joined.
+  It became part of the standard library in Python 3.3.
+  Michael was a friend, and sadly passed away in 2025.]
   ((("mocks", "Python Mock library")))
   ((("Python 3", "Mock library")))
-// todo do we nee this?
 
 
 Monkeypatching::
@@ -1535,7 +1540,6 @@ Monkeypatching::
   ((("monkeypatching")))
 
 
-
 The mock.patch decorator::
   `unittest.mock` ((("patch decorator")))provides a function called `patch`,
   which can be used to "mock out" (monkeypatch)
@@ -1544,15 +1548,9 @@ The mock.patch decorator::
   Importantly, it "undoes" the mocking at the end of the test for you,
   to avoid contamination between tests.
 
-
 Mocks can leave you tightly coupled to the implementation::
-  As we saw in <<mocks-tightly-coupled-sidebar>>,
+  As discussed in a <<mocks-tightly-coupled-sidebar,sidebar earlier>>,
   mocks can leave you tightly coupled to your implementation.
-// CSANAD: this link reads as
-// "As we saw in Mocks Can Leave You Tightly Coupled to the Implementation,
-// mocks can leave you tightly coupled to your implementation" so it just
-// repeats itself. I would re-word it e.g. "As we saw in (...), mocks can make
-// your tests tied to implementation details too much."
   For that reason, you shouldn't use them unless you have a good reason.
-// DAVID: When rendered, this last point says the same phrase three times in a row.
+
 *******************************************************************************

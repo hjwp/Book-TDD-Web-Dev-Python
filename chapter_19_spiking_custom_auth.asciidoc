@@ -214,8 +214,10 @@ First let's prep an app for our accounts stuff:
 [subs="specialcharacters,quotes"]
 ----
 $ *cd src && python manage.py startapp accounts*
+$ *ls accounts*
+__init__.py admin.py    apps.py     migrations  models.py   tests.py    views.py
+$ *cd ..*
 ----
-//16l002
 
 // DAVID: Worth discussing why you chose to make this an app?
 
@@ -353,9 +355,6 @@ TIP: If you want to use Gmail as well,
 ((("", startref="DFemail18")))
 ((("", startref="SDemail18")))
 
-// CSANAD: I was only able to make it work with 2FA enabled and the
-// app-specific password set. If I have time, I'll try again with allowing
-// less secure apps too.
 
 ==== Another Secret, Another Environment Variable
 
@@ -417,10 +416,9 @@ class Token(models.Model):
 ----
 ====
 
-Yes, I know Django supports UID fields in databases,
-but I just want to keep things simple for now.
-// DAVID: The reader might not know that - make "Yes, I know" something like "Now I happen to know...".
-// Also do you definitely mean UID rather than UUID?
+(Django does have a specific UUID fields type for many databases,
+but I just want to keep things simple for now)
+
 The point of this spike is about authentication and emails,
 not optimising database storage.
 We've got enough things we need to learn as it is!
@@ -445,12 +443,9 @@ INSTALLED_APPS = [
 ]
 ----
 ====
-//TODO; renumber listings
 
 We can then do a quick migrations dance to add the token model to the db:
 
-// DAVID: The current working directory is src, maybe we should do a `cd ..` after we
-// create the accounts app?
 
 [subs="specialcharacters,macros"]
 ----
@@ -495,15 +490,8 @@ OK so we've done the first half of "generate and recognise unique tokens":
 *****
 
 Before we can move on to recognising them and making the login work end-to-end though,
-we need to sort out user authentication in Django.
-// CSANAD: not sure if it's clear for the readers why we need to sort out the
-// authn first. Maybe we could just rephrase:
-//
-// "In order to move on to recognising them and making the login work end-to-end,
-// we need to sort out user authentication in Django.
-//
-// This way we aren't just stating what needs to be done first, but also the
-// reason behind it.
+we need to explore Django's authentication system.
+
 The first thing we'll need is a user model.
 I took a dive into the
 https://docs.djangoproject.com/en/5.2/topics/auth/customizing[Django
@@ -656,10 +644,7 @@ def login(request):
 ====
 
 The `authenticate()` function invokes Django's authentication framework,
-which we configure using a "custom authentication backend",
-// CSANAD: why the quote marks? If it's because this is a reference to the
-// official Django docs, we could just make it a link instead to
-// https://docs.djangoproject.com/en/5.2/topics/auth/customizing/#writing-an-authentication-backend
+which we configure using a custom "authentication backend"
 whose job it is to validate the UID and return a user with the right email.
 
 We could have done this stuff directly in the view,
@@ -1122,16 +1107,14 @@ to hold all the files related to login:
 [subs="specialcharacters,quotes"]
 ----
 $ *cd src && python manage.py startapp accounts*
+$ *ls accounts*
+__init__.py admin.py    apps.py     migrations  models.py   tests.py    views.py
+$ *cd ..*
 ----
 //ch19l021
 
-// TODO: some output?
-// DAVID: probably a good idea to `cd ..` after this command.
-
 You could even do a commit just for that, to be able to distinguish the
 placeholder app files from our modifications.
-
-
 ((("", startref="SDde18")))
 
 
@@ -1216,61 +1199,6 @@ ImportError: cannot import name 'User' from 'accounts.models'
 (...goat-book/src/accounts/models.py)
 ----
 
-////
-
-<1> `django.contrib.auth.get_user_model()` is a function that returns the
-    user model class that is currently active in this project.
-    This will allow us to also test that we've configured our custom model
-    to be the active one for the project,
-    and that Django is happy that it's a valid user model.
-
-<2> And here's our test.  Like our model, it's nice and minimal!
-Just for fun, let's try importing the "standard" Django user model,
-and seeing what the tests think about it:
-
-[role="sourcecode"]
-.src/accounts/models.py (ch19l024)
-====
-[source,python]
-----
-from django.contrib.auth import get_user_model
-from django.db import models
-
-User = get_user_model()  # <1>
-----
-
-<1> django.contrib.auth.get_user_model() is a function that returns
-    the currently-configured user model.
-    At this stage, that's Django's default one.
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python src/manage.py test accounts*]
-[...]
-django.core.exceptions.ValidationError: {'password': ['This field cannot be
-blank.'], 'username': ['This field cannot be blank.']}
-----
-
-// DAVID: It would be good to say what test command to run here, since
-// the previous one was just for the lists app.
-
-
-That gives us an expected failure; Django picks up its "normal" default user model,
-which has fields we don't want:
-
-
-[subs="specialcharacters,macros"]
-----
-$ pass:quotes[*python src/manage.py test accounts*]
-[...]
-django.core.exceptions.ValidationError: {'password': ['This field cannot be
-blank.'], 'username': ['This field cannot be blank.']}
-----
-
-
-Password?  Username?  Bah!  How about this?
-////
 
 Ok let's try the absolute minimum then:
 
@@ -1414,7 +1342,7 @@ Next silly question?footnote:[
 You might ask, if I think Django is so silly,
 why don't I submit a pull request to fix it?
 Should be quite a simple fix.
-Well, I promise I will, as soon as I've finished writing the book.
+Well, I promise I will, as soon as I've finished updating the book.
 For now, snarky comments will have to suffice.]
 
 [subs="specialcharacters,macros"]
@@ -1724,17 +1652,19 @@ import uuid
 
 class Token(models.Model):
     email = models.EmailField()
-    uid = models.CharField(default=uuid.uuid4, max_length=40)
+    uid = models.CharField(default=uuid.uuid4, max_length=40)  # <1>
 ----
 ====
-// JAN: I think it would be worth mentioning why uuid.uuid4 isn't called. Can be confusing for people when first seeing this
 
-And, perhaps with a bit more wrangling of migrations,
+<1> The `default=` argument for a field can either be a static value,
+    or a callable that will return a value at the time the model is created.
+    In our case, the use of a callable means
+    we'll get a different unique ID for every model.
+
+
+And, perhaps with a bit more wrangling of `makemigrations`,
 that should get us to passing tests:
 
-// DAVID: The tests will pass without needing to make migrations,
-// but next time they make migrations it will include this change too. That doesn't matter that
-// much but isn't as clean a git history. Might be simpler just to tell them to makemigrations.
 
 [role="dofirst-ch19l041"]
 [subs="specialcharacters,quotes"]
