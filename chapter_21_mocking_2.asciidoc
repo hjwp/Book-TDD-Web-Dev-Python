@@ -33,7 +33,7 @@ NOTE: In this chapter, we start to drift towards what's called "London-school TD
     We won't get into the details here,
     but London school TDD places more emphasis on mocking and isolating parts of the system.
     As always there are pros and cons!
-// TODO: link to blogpost version. Check out <<appendix_purist_unit_tests>> for a longer exploration of the London-style approach.
+// TODO: link to blogpost version of <<appendix_purist_unit_tests>>
 
 
 Along the way, we'll learn a few more useful features of `unittest.mock`,
@@ -489,6 +489,9 @@ and mocks are one way to enable that.
 
 // SEBASTIAN: I am missing one crucial sentence here - that this Django-provided abstraction IS STABLE, so it's safe to mock it.
 //      This is part of a public Django API, meaning it's not going anywhere soon or without breaking backwards-compatibility. That would of course be not welcomed by Django users :)
+// HARRY - otoh, "don't mock what you don't own".
+// some ppl would say, better to write your own wrapper around any third party api,
+// and then your mock doesn't need to change if the third party api changes.
 
 
 === Starting Again, Test-Driving our Implementation With Mocks
@@ -498,8 +501,6 @@ We'll start by reverting all the authentication stuff,
 both from our test and from our view.
 
 Let's disable the test first (we can re-enable them later to sense-check things):
-// CSANAD: I would add this disables the test because now its name does not
-// start with the word "test".
 
 [role="sourcecode small-code"]
 .src/accounts/tests/test_views.py (ch21l006)
@@ -520,7 +521,7 @@ class LoginViewTest(TestCase):
 <2> We change the test name so they no longer start with `test_`,
     using a highly noticeable set of capital letters
     so we don't forget to come back and re-enable them later.
-    I call this "dontifying" tests :)  
+    I call this "dontifying" tests :)
 
 
 Now let's revert the view, and replace our hacky code with some TODOs:
@@ -848,22 +849,25 @@ mismatch.
 Why not use that?  For me, the problem with these magic methods is that
 it's too easy to make a silly typo and end up with a test that always passes:
 
-// SEBASTIAN: actually, this may no longer be valid.
-// Since Python 3.5 there is a kwarg to Mock `unsafe` and by default it is true, which makes it fail when we make a typo in the called method.
-// also using type hints reduces a chance of making a typo, if only in the test we know the object is Mock.
-
 [role="skipme"]
 [source,python]
 ----
 a_mock.asssert_called_with(foo, bar)  # will always pass
 ----
 
-Unless you get the magic method name exactly right,
-then you will just get a "normal" mock method,
+Unless you get the magic method name exactly right,footnote:[
+There was actually an attempt to mitigate this problem in Python 3.5,
+with the addition of an `unsafe` argument that defaults to False,
+which will cause the mock to raise AttributeError for some common
+mis-spellings of `assert_`.  Just not, for example, the one I'm using here.
+So I prefer not to rely on that.
+More info at https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock]
 which just silently return another mock,
 and you may not realise that you've written a test that tests nothing at all.
 
-That's why I prefer to always have an explicit `unittest` method in there.
+That's why I prefer to always have an explicit `unittest` method in there.footnote:[
+If you're using pytest, there's an additional benefit of seeing the `assert` keyword,
+rather than a normal method call, which makes the assert pop out.]
 
 *******************************************************************************
 
@@ -1227,8 +1231,6 @@ the "right" way, ie by calling into Django's `auth.authenticate()` function
 (instead of, eg, instantiating and calling our auth backend ourselves,
 or even just implementing authentication inline in the view).
 
-// DAVID: Another approach for all this would be to swap in stub authentication
-// backends using Django's override_settings helper. Might be worth mentioning.
 
 TIP: "Test behaviour, not implementation" is a GREAT rule of thumb for tests.
     But sometimes, the fact that you're using one implementation rather than another
@@ -1284,7 +1286,7 @@ and non–logged-in users (which our FT relies on):
 <nav class="navbar">
   <div class="container-fluid">
     <a class="navbar-brand" href="/">Superlists</a>
-    {% if user.email %}
+    {% if user.email %}  <1>
       <span class="navbar-text">Logged in as {{ user.email }}</span>
       <form method="POST" action="TODO">
         {% csrf_token %}
@@ -1311,6 +1313,7 @@ and non–logged-in users (which our FT relies on):
 ----
 ====
 
+<1> Here's a new `{% if %}`,and navbar content for logged-in users.
 
 OK there's a TODO in there about the log out button,
 we'll get to that, but how does our FT look now?
@@ -1348,16 +1351,6 @@ Traceback (most recent call last):
 
 ConnectionRefusedError: [Errno 111] Connection refused
 ----
-// CSANAD: I have an unapplied migration for `accounts`. The last time we ran
-// `migrate` was in the 19th chapter, on the passwordless-spike branch.
-// Maybe we should add to the very end of the 19th chapter that once the reader
-// has the Token model with the passing tests, they should run `migrate`? And a
-// commit. A migration did not run flawlessly at this point, due to the table
-// `accounts_token` already exists. I'm not sure if this error would have shown
-// up at the end of the 19th chapter. TODO check.
-// Also, although the error does say the error occurs on `/accounts/send_login_email`
-// maybe it would seem for some readers as if we are expecting this error right
-// after starting the server.
 
 
 ==== Using Our New Environment Variable, and Saving It to .env
@@ -1437,7 +1430,6 @@ $ *python src/manage.py runserver*
 
 ...you should see something like <<despiked-success-message>>.
 
-//TODO: update screenshot
 
 [[despiked-success-message]]
 .Check your email....
@@ -1480,8 +1472,6 @@ $ *git commit -m "Custom passwordless auth backend + custom user model"*
 The last thing we need to do before we call it a day is to test the logout button.
 We extend the FT with a couple more steps:
 
-// CSANAD: since we are adding `logout` functionality to the FT, we should re-
-// name it to `functional_tests/test_authentication.py` or something similar.
 [role="sourcecode"]
 .src/functional_tests/test_login.py (ch21l024)
 ====
@@ -1596,10 +1586,7 @@ Ran 56 tests in 78.124s
 
 OK
 ----
-//54
 
-// DAVID: Should we get them to `cd ..` back out of src?
-// CSANAD: I was just about to comment that my suite has 54 tests.
 
 WARNING: We're nowhere near a truly secure or acceptable login system here.
     Since this is just an example app for a book, we'll leave it at that,
@@ -1607,14 +1594,10 @@ WARNING: We're nowhere near a truly secure or acceptable login system here.
     and usability issues before calling the job done.
     We're dangerously close to "rolling our own crypto" here,
     and relying on a more established login system would be much safer.
+    Read more at https://security.stackexchange.com/a/18198.
     ((("security issues and settings", "login systems")))
 
-// CSANAD: very nice to mention this rule. I would add at least one source
-// further explaining why you should never roll your own crypto (for anything
-// other than studying purposes):
-// https://security.stackexchange.com/a/18198
-//
-// for demonstrating a security issue with our current, custom
+// CSANAD: for demonstrating a security issue with our current, custom
 // authentication, we could mention that after logout, we can log in using any
 // of the previous login magic links (there is no token invalidation)
 
@@ -1637,14 +1620,14 @@ In the meantime, do a commit and enjoy this recap:
 *******************************************************************************
 
 Using mock.return_value::
-  The `.return_value` attribute on a mock can be used
-  to access the return value of a mocked-out function,
+  The `.return_value` attribute on a mock can be used in two ways.
+  You can _read_ it, to access the return value of a mocked-out function,
   and thus check on how it gets used later in your code;
   this usually happens in the "Assert" or "Then" part of your test.
-  It can also be assigned to in the "Arrange" or "Given" part of your test,
-  as a way to say
-  "we want this mocked-out function to return a particular value".
-// DAVID: Could this point be expressed more clearly?
+  Alternatively, you can _assign_ to it,
+  usally up-front in the "Arrange" or "Given" part of your test,
+  as a way of saying
+  "I want this mocked-out function to return a particular value".
 
 Mocks can ensure test isolation and reduce duplication::
   You can use mocks to isolate different parts of your code from each other,

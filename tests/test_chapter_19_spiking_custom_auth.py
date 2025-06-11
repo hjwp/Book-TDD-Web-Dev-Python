@@ -18,8 +18,8 @@ class Chapter19Test(ChapterTest):
         # self.assertTrue(self.listings[88].dofirst)
 
         # skips
-        self.skip_with_check(33, "switch back to main")  # comment
-        self.skip_with_check(35, "remove any trace")  # comment
+        self.skip_with_check(34, "switch back to main")  # comment
+        self.skip_with_check(36, "remove any trace")  # comment
 
         # prep
         self.start_with_checkout()
