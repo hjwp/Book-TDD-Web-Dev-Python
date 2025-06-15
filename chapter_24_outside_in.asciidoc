@@ -574,6 +574,44 @@ to be able to compose reusable template fragments,
 when we don't want to use inheritance.
 
 
+==== An Early Return so we're Refactoring Against Green
+
+
+
+Before we start refactoring, let's put an early return in our FT,
+so we're refactoring against green tests:
+
+
+[role="sourcecode"]
+.src/functional_tests/test_my_lists.py (ch24l010-0)
+====
+[source,python]
+----
+        # She sees her email is there in the page heading
+        self.wait_for(
+            lambda: self.assertIn(
+                "edith@example.com",
+                self.browser.find_element(By.CSS_SELECTOR, "h1").text,
+            )
+        )
+        return # TODO: resume here after templates refactor
+
+        # And she sees that her list is in there,
+        # named according to its first list item
+        [...]
+----
+====
+
+Verify the FTs are all green:
+
+----
+Ran 8 tests in 19.712s
+
+OK
+----
+
+==== Factoring Out Two Template Includes
+
 First let's pull out the form and the script tag from _base.html_:
 
 [role="sourcecode small-code"]
@@ -641,13 +679,12 @@ You can see we've replaced all the lists-specific stuff with 3 new blocks:
 * `content` for the main content of the page
 * `scripts` for any javascript we want to include.
 
-Let's paste in the `<form>` tag into a file at _src/lists/templates/form.html_:
-
-// DAVID: A nice pattern to follow with includes is to put them under an `includes` subdirectory
-// to differentiate them from the page-level templates.
+Let's paste in the `<form>` tag into a file at
+_src/lists/templates/includes/form.html_
+(having a subfolder in templates for includes is a common practice).
 
 [role="sourcecode small-code"]
-.src/lists/templates/form.html (ch24l010-2)
+.src/lists/templates/includes/form.html (ch24l010-2)
 ====
 [source,html]
 ----
@@ -678,10 +715,10 @@ Let's paste in the `<form>` tag into a file at _src/lists/templates/form.html_:
 
 
 Let's paste the scripts tags verbatim
-into a new file at _src/lists/templates/scripts.html_:
+into a new file at _includes/scripts.html_:
 
 [role="sourcecode"]
-.src/lists/templates/scripts.html (ch24l010-3)
+.src/lists/templates/includes/scripts.html (ch24l010-3)
 ====
 [source,html]
 ----
@@ -699,8 +736,6 @@ Now let's look at how to use the include,
 and how the `form_action` change plays out,
 in the changes to _home.html_:
 
-// DAVID: feels to me like we're moving too much code around in one go,
-// without running tests.
 
 [role="sourcecode small-code"]
 .src/lists/templates/home.html (ch24l010-4)
@@ -713,11 +748,11 @@ in the changes to _home.html_:
 
 {% block extra_header %}
   {% url 'new_list' as form_action %}  <1>
-  {% include "form.html" with form=form form_action=form_action %}  <2>
+  {% include "includes/form.html" with form=form form_action=form_action %}  <2>
 {% endblock %}
 
 {% block scripts %}  <3>
-  {% include "scripts.html" %}
+  {% include "includes/scripts.html" %}
 {% endblock %}
 ----
 ====
@@ -727,13 +762,16 @@ in the changes to _home.html_:
 <2> Then we use `{% include ... with key=value... %}`
     to pull in the contents of the `form.html` template,
     with the appropriate context variables passed in--a bit like
-    calling a function.
+    calling a function.footnote:[
+    Strictly speaking you could have omitted the `with=` in this case,
+    as included templates autmatically get the context of their parent.
+    But sometimes you want to pass a context variable under a different name,
+    so I like the with, for consistency and explicitness.]
 
 <3> The `scripts` block is just a straightforward `include`
     with no variables.
 
-// DAVID: You can omit the with=s, the included template gets the context from its parent.
-  
+
 Now let's see it in _list.html_:
 
 [role="sourcecode"]
@@ -750,7 +788,7 @@ Now let's see it in _list.html_:
 -{% block table %}
 +{% block extra_header %}  <1>
 +  {% url 'view_list' list.id as form_action %}
-+  {% include "form.html" with form=form form_action=form_action %}
++  {% include "includes/form.html" with form=form form_action=form_action %}
 +{% endblock %}
 +
 +{% block content %}  <2>
@@ -766,7 +804,7 @@ Now let's see it in _list.html_:
 +{% endblock %}
 +
 +{% block scripts %}  <3>
-+  {% include "scripts.html" %}
++  {% include "includes/scripts.html" %}
  {% endblock %}
 
 ----
@@ -781,30 +819,42 @@ Now let's see it in _list.html_:
 <3> And the scripts block is the same as the one from _home.html_.
 
 
-We can have a little click around our site,
-and then a little re-run of all our FTs to make sure we haven't broken anything, and then commit.
+Now a little re-run of all our FTs to make sure we haven't broken anything:
 
-// DAVID: Worth including a screenshot of the new UI?
-
-[subs="specialcharacters,quotes"]
 ----
-$ *./src/manage.py test functional_tests*
-[...]
-selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
-element: Reticulate splines; [...]
-[...]
-Ran 8 tests in X.Xs
+Ran 8 tests in 19.712s
 
-FAILED (errors=1)
+OK
 ----
 
-8 tests with 1 failure, the same one we had before, we haven't broken anything. Hooray!
+
+OK let's remove the early return:
+
+
+[role="sourcecode"]
+.src/functional_tests/test_my_lists.py (ch24l010-6)
+====
+[source,diff]
+----
+@@ -44,7 +44,6 @@ class MyListsTest(FunctionalTest):
+                 self.browser.find_element(By.CSS_SELECTOR, "h1").text,
+             )
+         )
+-        return # TODO: resume here after templates refactor
+
+         # And she sees that her list is in there,
+         # named according to its first list item
+----
+====
+
 
 // CSANAD something somewhere broke my styling tests, even though right now I work from the book-example
 // commit-to-commit (no manual changes, just `git checkout` the next commit).
 
 // DAVID: For some reason I got an extra failure in test_layout_and_styling. Running it again, it passed.
 // Is it possible it's flakey? (I appreciate this is a terribly vague bug report so feel free to ignore.)
+
+And we'll commit that as a nice refactor:
 
 [subs="specialcharacters,quotes"]
 ----
@@ -820,17 +870,35 @@ for our views layer:
 
 ==== Designing Our API Using the Template
 
+With the early return removed,
+our FT is back to telling us that we need to actually show our lists,
+named after their first items, on the new my_lists page:
+
+[subs="specialcharacters,quotes"]
+----
+$ *./src/manage.py test functional_tests.test_my_lists*
+[...]
+selenium.common.exceptions.NoSuchElementException: Message: Unable to locate
+element: Reticulate splines; [...]
+----
+
+(If you haven't taken a look around the site recently,
+it does look pretty blank, see <<empty-my-lists-page>>.)
+
+[[empty-my-lists-page]]
+.Not much to see here
+image::images/empty_my_lists.png["A screenshot of the My Lists page, showing the user's email in the page header, but no lists."]
+
+
 ((("templates", "designing APIs using")))
 So, in _my_lists.html_ we can now work in the `content` block:
 
 [role="sourcecode"]
-.src/lists/templates/my_lists.html (ch24l010-6)
+.src/lists/templates/my_lists.html (ch24l010-7)
 ====
 [source,html]
 ----
-{% extends 'base.html' %}
-
-{% block header_text %}{{ user.email }}'s Lists{% endblock %}
+[...]
 
 {% block content %}
   <h2>{{ owner.email }}'s lists</h2>  <1>
@@ -851,16 +919,15 @@ We've made several design decisions in this template
 which are going to filter their way down through the code:
 
 <1> We want a variable called `owner` to represent the user in our template.
+    This is what will allow one user to view another users's lists.
 
-<2> We want to be able to iterate through the lists created by the user
+<2> We want to be able to iterate through the lists created by that user
     using `owner.lists.all`
     (I happen to know how to make this work with the Django ORM).
 
 <3> We want to use `list.name` to print out the "name" of the list,
     which is currently specified as the text of its first element.
 
-// DAVID: Would be good to say more about why we need the concept of owner,
-// distinct from user (which we already have).
 
 
 .Programming By Wishful Thinking Again, Still
@@ -932,10 +999,7 @@ In this case, the list owner:
 ====
 [source,python]
 ----
-from django.contrib.auth import get_user_model
-[...]
-
-User = get_user_model()
+from accounts.models import User
 [...]
 
 
@@ -965,9 +1029,7 @@ So:
 ====
 [source,python]
 ----
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
+from accounts.models import User
 [...]
 
 
@@ -977,8 +1039,6 @@ def my_lists(request, email):
 ----
 ====
 
-
-// TODO: dont use get_user_model
 
 That gets our new test passing, but we'll also see an error from the previous test.
 We just need to add a user for it as well:
@@ -1043,9 +1103,6 @@ AttributeError: 'List' object has no attribute 'owner'
 
 To fix it, let's first try writing code like this:
 
-// DAVID: I interpreted this as, 'We *could* write code like this, but we won't.'
-// So I didn't actually make this change, and only discovered the misinterpretation
-// quite a bit later in the chapter.
 
 [role="sourcecode"]
 .src/lists/views.py (ch24l015)
@@ -1129,10 +1186,7 @@ Let's write a test for that:
 ====
 [source,python]
 ----
-from django.contrib.auth import get_user_model
-[...]
-
-User = get_user_model()
+from accounts.models import User
 [...]
 
 
@@ -1191,12 +1245,10 @@ The correct implementation is this:
 ====
 [source,python]
 ----
-from django.conf import settings
-[...]
 
 class List(models.Model):
     owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        "accounts.User",
         related_name="lists",
         blank=True,
         null=True,
@@ -1207,9 +1259,6 @@ class List(models.Model):
         return reverse("view_list", args=[self.id])
 ----
 ====
-// DAVID: Again I think better to use the concrete model here.
-// But if you don't - probably better to switch to using `get_user_model`
-// here as it's consistent with elsewhere (this was changed in Django 1.11 I think).
 
 Now running the tests gives the usual database error:
 
@@ -1247,9 +1296,6 @@ ValueError: Cannot assign "<SimpleLazyObject:
 <django.contrib.auth.models.AnonymousUser object at 0x106a1b440>>": "List.owner" must
 be a "User" instance.
 ----
-
-// DAVID: Is it worth prompting the reader to take a moment to understand what these
-// failures are telling us? Otherwise it's easy to be on autopilot.
 
 We're moving back up to the views layer now, just doing a little tidying up.
 Notice that these are in the existing test for the `new_list` view,
