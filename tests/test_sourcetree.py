@@ -2,8 +2,8 @@ import os
 import subprocess
 import unittest
 from textwrap import dedent
-from unittest.mock import patch
 
+import pytest
 from book_parser import CodeListing
 from sourcetree import (
     ApplyCommitException,
@@ -575,6 +575,9 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         sourcetree.run_command("diff foo bar", cwd=sourcetree.tempdir)
         sourcetree.run_command("python test.py", cwd=sourcetree.tempdir)
 
+    @pytest.mark.xfail(
+        reason="disabled to allow passwordless sudo, see preexec fn in sourcetree.py"
+    )
     def test_cleanup_kills_backgrounded_processes_and_rmdirs(self):
         sourcetree = SourceTree()
         sourcetree.run_command(
@@ -604,9 +607,9 @@ class SourceTreeRunCommandTest(unittest.TestCase):
         assert sids
 
         sourcetree.cleanup()
-        assert "time.sleep" not in subprocess.check_output(
-            "ps auxf", shell=True
-        ).decode("utf8")
+        assert "time.sleep" not in subprocess.check_output("ps aux", shell=True).decode(
+            "utf8"
+        )
         # assert not os.path.exists(sourcetree.tempdir)
 
     def test_running_interactive_command(self):
