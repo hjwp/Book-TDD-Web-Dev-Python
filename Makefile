@@ -89,6 +89,10 @@ xmllint_%: %.asciidoc
 %.xml: %.asciidoc
 	asciidoctor -b docbook $<
 
+.PHONY: check-links
+check-links: book.html
+	python check-links.py book.html
+
 .PHONY: clean-docker
 clean-docker:
 	-docker kill $$(docker ps -q)
