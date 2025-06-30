@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import json
+import re
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -10,25 +10,31 @@ from lxml import html
 
 DEST = Path("~/workspace/www.obeythetestinggoat.com/content/book").expanduser()
 
-CHAPTERS = [
-    c.replace(".asciidoc", ".html")
-    for c in json.loads(Path("atlas.json").read_text())["files"]
+EXCLUDE = [
+    "titlepage.html",
+    "copyright.html",
+    "toc.html",
+    "ix.html",
+    "author_bio.html",
+    "colo.html",
 ]
-for tweak_chap in [
-    "praise.html",
-    "part1.html",
-    "part2.html",
-    "part3.html",
-    "part4.html",
-]:
-    CHAPTERS[CHAPTERS.index(tweak_chap)] = tweak_chap.replace(".", ".forbook.")
-CHAPTERS.remove("cover.html")
-CHAPTERS.remove("titlepage.html")
-CHAPTERS.remove("copyright.html")
-CHAPTERS.remove("toc.html")
-CHAPTERS.remove("ix.html")
-CHAPTERS.remove("author_bio.html")
-CHAPTERS.remove("colo.html")
+ADOC_INCLUDE_RE = re.compile(r"include::(.+.asciidoc)\[\]")
+
+
+def _chapters():
+    for l in Path("book.asciidoc").read_text().splitlines():
+        if not l.startswith("include::"):
+            continue
+        if m := re.match(ADOC_INCLUDE_RE, l):
+            chap = m.group(1).replace(".asciidoc", ".html")
+            if chap in EXCLUDE:
+                continue
+            yield chap
+        else:
+            raise ValueError(f"Could not parse include line in book.asciidoc: {l}")
+
+
+CHAPTERS = list(_chapters())
 
 
 class ChapterInfo(NamedTuple):
