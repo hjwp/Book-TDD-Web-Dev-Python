@@ -83,6 +83,7 @@ xmllint_%: %.asciidoc
 		-e 's/&rsquo;/\&#8217;/g' \
 		-e 's/&hellip;/\&#8230;/g' \
 		-e 's/&nbsp;/\&#160;/g' \
+		-e 's/&times;/\&#215;/g' \
 		| xmllint --noent --noout -
 
 
