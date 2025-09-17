@@ -66,7 +66,7 @@ def strip_mock_ids(output):
 
 
 def strip_object_ids(output):
-    return re.sub("0x([0-9a-f]+)>", "0xXX>", output)
+    return re.sub("0x([0-9a-f]+)>", "0x123abc22>", output)
 
 
 def strip_migration_timestamps(output):
