@@ -104,7 +104,7 @@ def strip_selenium_trace_ids(output):
 
 
 def fix_firefox_esr_version(output):
-    return re.sub(r"(\d\d\d\.\d+\.?\d+)esr", r"128.10.1esr", output)
+    return re.sub(r"(\d\d\d\.\d+\.?\d*)esr", r"128.10.1esr", output)
 
 
 def strip_session_ids(output):
