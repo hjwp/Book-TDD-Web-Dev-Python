@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os
-import subprocess
 import unittest
 from pathlib import Path
 
@@ -30,6 +28,9 @@ class Chapter10Test(ChapterTest):
         self.skip_with_check(55, "Change the owner")
         self.skip_with_check(57, "Change the file to be group-writeable as well")
         self.skip_with_check(61, "note container id")
+
+        # Hack to be able to pretend that 3.14 is out and we dont have to use the rc
+        self.sourcetree.run_command("docker tag python:3.14-rc-slim python:3.14-slim")
 
         # hack fast-forward, nu way
         self.skip_forward_if_skipto_set()
