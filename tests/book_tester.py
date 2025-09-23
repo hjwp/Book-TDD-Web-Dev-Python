@@ -418,7 +418,7 @@ class ChapterTest(unittest.TestCase):
         virtualenv_path = self.tempdir / ".venv"
         if not virtualenv_path.exists():
             print("preparing virtualenv")
-            self.sourcetree.run_command("uv venv .venv")
+            self.sourcetree.run_command("uv venv -p 3.14 .venv")
         os.environ["VIRTUAL_ENV"] = str(virtualenv_path)
         os.environ["PATH"] = ":".join(
             [f"{virtualenv_path}/bin"] + os.environ["PATH"].split(":")
