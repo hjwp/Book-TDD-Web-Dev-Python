@@ -30,6 +30,8 @@ class Chapter10Test(ChapterTest):
         self.skip_with_check(61, "note container id")
 
         # Hack to be able to pretend that 3.14 is out and we dont have to use the rc
+        # TODO: remove me when real 3.14 is out.
+        self.sourcetree.run_command("docker pull python:3.14-rc-slim")
         self.sourcetree.run_command("docker tag python:3.14-rc-slim python:3.14-slim")
 
         # hack fast-forward, nu way
@@ -46,6 +48,8 @@ class Chapter10Test(ChapterTest):
                 "Django==5.2",
                 "gunicorn==2",
                 "whitenoise==6.",
+                # TODO: remove me when real 3.14 is out, and have fed thru cherry-picks
+                "python:3.14-slim",
             ]
         )
         self.assert_all_listings_checked(self.listings)
