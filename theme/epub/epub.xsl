@@ -21,15 +21,14 @@
   </xsl:template> 
 
   <!-- Fix for TOC having empty ol. Matches sections that contain only descendants with the notoc class. We do this by setting the TOC section depth to 1. -->
-<xsl:template match="h:section[descendant::h:section[contains(@class, 'notoc')] and not(descendant::h:section[contains(@data-type, 'sect1') and not(contains(@class, 'notoc'))])]" mode="tocgen">
-    <xsl:param name="toc.section.depth" select="0"/>
+<!-- Match divs that contain only sect1s with notoc class -->
+<xsl:template match="h:div[descendant::h:section[contains(@data-type, 'sect1')] and 
+                         not(descendant::h:section[contains(@data-type, 'sect1') and not(contains(@class, 'notoc'))])]" 
+              mode="tocgen">
+    <xsl:param name="toc.section.depth"/>
     <xsl:param name="inline.markup.in.toc" select="$inline.markup.in.toc"/>
     <xsl:choose>
-      <!-- Don't output entry for section elements at a level that is greater than specified $toc.section.depth -->
-      <xsl:when test="self::h:section[contains(@data-type, 'sect') and htmlbook:section-depth(.) != '' and htmlbook:section-depth(.) &gt; 0]"/>
-      <!-- Don't output entry if a class of "notoc" is specified -->
       <xsl:when test="contains(@class, 'notoc')"/>
-      <!-- Otherwise, go ahead -->
       <xsl:otherwise>
         <xsl:element name="li">
           <xsl:attribute name="data-type">
@@ -52,11 +51,9 @@
             </xsl:if>
             <xsl:choose>
               <xsl:when test="$inline.markup.in.toc = 1">
-                <!-- Include inline elements in TOC entry -->
                 <xsl:apply-templates select="." mode="title.markup"/>
               </xsl:when>
               <xsl:otherwise>
-                <!-- Strip inline tagging from TOC entry: raw text only -->
                 <xsl:variable name="title.markup">
                   <xsl:apply-templates select="." mode="title.markup"/>
                 </xsl:variable>
@@ -64,14 +61,7 @@
               </xsl:otherwise>
             </xsl:choose>    
           </a>
-          <!-- Make sure there are descendants that conform to $toc.section.depth restrictions before generating nested TOC <ol> -->
-          <xsl:if test="descendant::h:section[not(contains(@data-type, 'sect')) or htmlbook:section-depth(.) &lt;= 0]|descendant::h:div[@data-type='part']">
-            <ol>
-              <xsl:apply-templates mode="tocgen">
-                <xsl:with-param name="toc.section.depth" select="0"/>
-              </xsl:apply-templates>
-            </ol>
-          </xsl:if>
+          <!-- Deliberately not including the nested ol here -->
         </xsl:element>
       </xsl:otherwise>
     </xsl:choose>
