@@ -66,7 +66,7 @@ def strip_mock_ids(output):
 
 
 def strip_object_ids(output):
-    return re.sub("0x([0-9a-f]+)>", "0xXX>", output)
+    return re.sub("0x([0-9a-f]+)>", "0x123abc22>", output)
 
 
 def strip_migration_timestamps(output):
@@ -104,7 +104,7 @@ def strip_selenium_trace_ids(output):
 
 
 def fix_firefox_esr_version(output):
-    return re.sub(r"(\d\d\d\.\d+\.?\d+)esr", r"128.10.1esr", output)
+    return re.sub(r"(\d\d\d\.\d+\.?\d*)esr", r"128.10.1esr", output)
 
 
 def strip_session_ids(output):
@@ -418,7 +418,7 @@ class ChapterTest(unittest.TestCase):
         virtualenv_path = self.tempdir / ".venv"
         if not virtualenv_path.exists():
             print("preparing virtualenv")
-            self.sourcetree.run_command("uv venv .venv")
+            self.sourcetree.run_command("uv venv -p 3.14 .venv")
         os.environ["VIRTUAL_ENV"] = str(virtualenv_path)
         os.environ["PATH"] = ":".join(
             [f"{virtualenv_path}/bin"] + os.environ["PATH"].split(":")
