@@ -638,6 +638,8 @@ class AssertConsoleOutputCorrectTest(ChapterTest):
                 actual.replace("128.10.1esr", "1234abc"),
                 Output(expected),
             )
+        actual2 = "1234567890111   geckodriver::capabilities       DEBUG   Found version 140.3esr"
+        self.assert_console_output_correct(actual2, Output(expected))
 
     def test_ignores_docker_image_ids_and_creation_time(self):
         actual = "superlists   latest    522824a399de   2 weeks ago     164MB"

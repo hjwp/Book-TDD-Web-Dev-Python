@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os
-import subprocess
 import unittest
 from pathlib import Path
 
